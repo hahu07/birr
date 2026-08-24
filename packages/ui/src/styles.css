@@ -1,0 +1,32 @@
+/*
+ * Shared design tokens — imported by each app's globals.css, after that
+ * app's own `@import "tailwindcss";`. Tailwind v4 already ships full
+ * neutral/slate scales etc. by default; this block only adds the
+ * project-specific tokens on top.
+ *
+ * Placeholder palette, deliberately easy to reskin from this one file:
+ * deep teal primary (trust/fiduciary tone), muted gold accent. Nobody
+ * has asked for final brand colors yet — swap these when they do.
+ */
+@theme {
+  --color-primary-50: #f0f9f8;
+  --color-primary-100: #d9efec;
+  --color-primary-200: #b3dfd9;
+  --color-primary-300: #82c8bf;
+  --color-primary-400: #4fa89d;
+  --color-primary-500: #2f8a7f;
+  --color-primary-600: #206e65;
+  --color-primary-700: #1c5952;
+  --color-primary-800: #1a4743;
+  --color-primary-900: #193c39;
+
+  --color-accent-50: #fbf7ed;
+  --color-accent-100: #f3e8c8;
+  --color-accent-200: #e8d295;
+  --color-accent-300: #dbb85e;
+  --color-accent-400: #cca03a;
+  --color-accent-500: #b3862a;
+  --color-accent-600: #8f6a21;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}

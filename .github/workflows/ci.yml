@@ -1,0 +1,98 @@
+# Typecheck, backend tests, and a full build on every push/PR to main.
+# No lint job — nothing in this repo has a `lint` script wired up yet
+# (turbo.json declares the task, but every package.json's own script is
+# missing), so a lint step here would just silently pass without
+# checking anything; better to leave it out than fake coverage.
+#
+# Every command below was run and verified locally before being written
+# here (turbo run typecheck, the Jest suite against a real Postgres,
+# and turbo run build — the same build each app's own Dockerfile
+# performs) — this workflow itself has NOT been executed by GitHub
+# Actions, since this repository has no git remote yet. Worth an actual
+# run against a real PR once one exists, not just trusted on the
+# strength of the local dry-runs.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # Corresponds to packageManager in the root package.json.
+  PNPM_VERSION: "9.0.0"
+  NODE_VERSION: "22"
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # turbo's build task depends on ^build, but @birr/db has no build
+      # script (only `generate`) — every other package's typecheck
+      # needs the generated Prisma client to resolve @birr/db's types,
+      # so this can't be left implicit. Same gap called out in
+      # apps/backend/Dockerfile's own comment on this.
+      - run: pnpm --filter @birr/db exec prisma generate
+      - run: pnpm typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: birr
+          POSTGRES_PASSWORD: birr_dev_password
+          POSTGRES_DB: birr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U birr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://birr:birr_dev_password@localhost:5432/birr?schema=public
+      # Test-only placeholders — never a real secret. SETTINGS_ENCRYPTION_KEY
+      # must be exactly 64 hex chars (32 bytes) for AES-256-GCM, same
+      # constraint as .env.example's own comment on this var.
+      JWT_SECRET: ci-test-secret-not-for-real-use
+      SETTINGS_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @birr/db exec prisma generate
+      - run: pnpm --filter @birr/db exec prisma migrate deploy
+      - run: pnpm --filter @birr/backend test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @birr/db exec prisma generate
+      - run: pnpm build

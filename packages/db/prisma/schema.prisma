@@ -1,0 +1,875 @@
+// Birr — Milestone 1 schema
+// Mirrors milestone-1-data-model.md. This file cannot express everything
+// that doc requires — see
+// prisma/migrations/20260731201431_governed_actions_constraints/migration.sql
+// for the CHECK constraints and RLS policies applied on top of whatever
+// `prisma migrate dev` generates from this file. Note this schema has no
+// per-field @map, so Prisma-generated columns are camelCase, not
+// snake_case — that migration's raw SQL matches those actual names.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum UserStatus {
+  invited
+  active
+  suspended
+}
+
+enum FounderKind {
+  institution
+  individual
+}
+
+enum InstitutionType {
+  islamic_bank
+  university
+  corporate_foundation
+  ngo
+  family_office
+  government
+  awqaf_authority
+  other
+}
+
+enum FounderStatus {
+  active
+  suspended
+}
+
+enum FounderPermissionLevel {
+  primary_contact
+  viewer
+  requester
+}
+
+enum MembershipStatus {
+  active
+  revoked
+}
+
+// Kept as an enum on BirrStaff for quick filtering/display, alongside the
+// separate Role/Permission/RolePermission tables for detailed permission
+// checks. The two should stay in sync by key. Consider collapsing into a
+// single FK-based model once the governance workflow engine (Milestone 3)
+// is built — flagged as a rough edge in milestone-1-data-model.md.
+enum BirrStaffRole {
+  mutawalli_officer
+  board_of_trustees
+  investment_committee
+  shariah_board_member
+  audit_committee
+  compliance_officer
+  legal_adviser
+  external_auditor
+  platform_admin
+}
+
+enum StaffStatus {
+  active
+  suspended
+}
+
+enum WaqfType {
+  investment
+  asset
+  project
+  hybrid
+}
+
+enum WaqfStatus {
+  draft
+  active
+  suspended
+  dissolved
+}
+
+enum AssetCategory {
+  real_estate
+  cash
+  securities
+  movable
+  intellectual_property
+  other
+}
+
+// Disposal is a real lifecycle transition (asset.dispose is a governed
+// action), separate from deletedAt below — a disposed asset is not a
+// mistaken record, it's history that must stay visible.
+enum AssetStatus {
+  active
+  disposed
+}
+
+enum BeneficiaryStatus {
+  active
+  inactive
+}
+
+enum InvestmentInstrumentType {
+  sukuk
+  equity_fund
+  real_estate_fund
+  murabaha
+  other
+}
+
+enum InvestmentStatus {
+  active
+  liquidated
+}
+
+enum DistributionStatus {
+  pending
+  approved
+  rejected
+}
+
+enum CaseAssignmentRole {
+  mutawalli_officer
+  investment_officer
+  compliance_reviewer
+  shariah_reviewer
+  auditor
+}
+
+enum AssignmentStatus {
+  active
+  reassigned
+  closed
+}
+
+// Matches the seven agents in CLAUDE.md: Rasid (compliance_monitoring),
+// Nazim (caseload_triage), Kashif (anomaly_detection), Rashid
+// (investment_research), Rafiq (founder_onboarding), Munsif
+// (beneficiary_verification), Bashir (business_development).
+enum AgentTaskType {
+  compliance_monitoring
+  caseload_triage
+  anomaly_detection
+  investment_research
+  founder_onboarding
+  beneficiary_verification
+  business_development
+  other
+}
+
+enum AgentStatus {
+  active
+  disabled
+}
+
+enum MakerType {
+  human
+  ai_agent
+}
+
+enum GovernedActionStatus {
+  proposed
+  approved
+  rejected
+}
+
+enum CoiStatus {
+  declared
+  reviewed
+  cleared
+  escalated
+}
+
+enum ActorType {
+  birr_staff
+  founder_user
+  system
+  ai_agent
+}
+
+enum InviteeKind {
+  founder_user
+  birr_staff
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  expired
+  revoked
+}
+
+enum FoundationStatus {
+  active
+  suspended
+}
+
+// ---------- Models ----------
+
+model User {
+  id                         String     @id @default(uuid())
+  email                      String     @unique
+  fullName                   String
+  authProviderId             String?
+  status                     UserStatus @default(invited)
+  mfaEnabled                 Boolean    @default(false)
+  // Real password auth for the Founder Portal — see
+  // apps/backend/src/common/auth/session.ts. passwordHash is nullable to
+  // accommodate any future non-password-auth users (e.g. an eventual
+  // WorkOS/Auth0 migration per CLAUDE.md), but is always set for
+  // sign-ups created through FoundersService.signUp().
+  username                   String?    @unique
+  passwordHash               String?
+  // Self-service sign-up email verification. Set on signUp(), nulled out
+  // once verifyEmail() consumes it — a single active token per user is
+  // enough for this use case (no separate token table), same inline-token
+  // shape Invitation already uses for the analogous invite-acceptance flow.
+  verificationToken          String?    @unique
+  verificationTokenExpiresAt DateTime?
+  // Step 1 of founder onboarding also requires WhatsApp verification
+  // alongside email. whatsappNumber is set (unverified) as soon as an
+  // OTP is requested; whatsappVerifiedAt stays null until a WhatsAppOtp
+  // is successfully consumed. See WhatsAppOtp below for the short-lived,
+  // attempt-limited code itself — deliberately not the same inline-token
+  // shape as verificationToken, since a human-typed 6-digit code needs a
+  // short expiry and brute-force protection that a 32-byte hex link
+  // doesn't.
+  whatsappNumber             String?
+  whatsappVerifiedAt         DateTime?
+  createdAt                  DateTime   @default(now())
+  updatedAt                  DateTime   @updatedAt
+  deletedAt                  DateTime?
+
+  founderMemberships         FounderMembership[]             @relation("MembershipUser")
+  invitedMemberships         FounderMembership[]             @relation("MembershipInvitedBy")
+  birrStaff                  BirrStaff?
+  makerActions               GovernedAction[]                @relation("GovernedActionMaker")
+  checkerActions             GovernedAction[]                @relation("GovernedActionChecker")
+  auditLogs                  AuditLog[]
+  sentInvitations            Invitation[]                    @relation("InvitationInvitedBy")
+  coiDeclarations            ConflictOfInterestDeclaration[] @relation("CoiDeclaredBy")
+  coiReviews                 ConflictOfInterestDeclaration[] @relation("CoiReviewedBy")
+  whatsappOtps               WhatsAppOtp[]
+  signedWaqfDeeds            WaqfDeed[]
+  updatedProviderCredentials ProviderCredential[]
+
+  @@map("users")
+}
+
+model Founder {
+  id               String           @id @default(uuid())
+  name             String
+  kind             FounderKind
+  institutionType  InstitutionType?
+  homeJurisdiction String?
+  status           FounderStatus    @default(active)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+
+  memberships        FounderMembership[]
+  foundationFounders FoundationFounder[]
+  invitations        Invitation[]
+  auditLogs          AuditLog[]
+  signedWaqfDeeds    WaqfDeed[]
+
+  @@map("founders")
+}
+
+// Lightweight, deliberately — no configurable RBAC here. See CLAUDE.md:
+// "No per-founder RBAC to build."
+model FounderMembership {
+  id              String                 @id @default(uuid())
+  founderId       String
+  founder         Founder                @relation(fields: [founderId], references: [id])
+  userId          String
+  user            User                   @relation("MembershipUser", fields: [userId], references: [id])
+  permissionLevel FounderPermissionLevel
+  status          MembershipStatus       @default(active)
+  invitedBy       String?
+  invitedByUser   User?                  @relation("MembershipInvitedBy", fields: [invitedBy], references: [id])
+  createdAt       DateTime               @default(now())
+  revokedAt       DateTime?
+
+  @@unique([founderId, userId])
+  @@map("founder_memberships")
+}
+
+model BirrStaff {
+  id        String        @id @default(uuid())
+  userId    String        @unique
+  user      User          @relation(fields: [userId], references: [id])
+  staffRole BirrStaffRole
+  status    StaffStatus   @default(active)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  caseAssignments WaqfCaseAssignment[]
+  coiDeclarations ConflictOfInterestDeclaration[]
+
+  @@map("birr_staff")
+}
+
+model Role {
+  id          String  @id @default(uuid())
+  key         String  @unique
+  name        String
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id                   String  @id @default(uuid())
+  key                  String  @unique
+  description          String?
+  category             String?
+  requiresMakerChecker Boolean @default(false)
+
+  rolePermissions RolePermission[]
+  governedActions GovernedAction[]
+
+  @@map("permissions")
+}
+
+// Role-level maker/checker eligibility. This is necessary but not
+// sufficient — see GovernedAction below for the individual-level guarantee.
+model RolePermission {
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  canMaker     Boolean    @default(false)
+  canChecker   Boolean    @default(false)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Waqf {
+  id           String     @id @default(uuid())
+  // Every Waqf must belong to a Foundation — see
+  // foundations/foundations.service.ts for the only place a Waqf's
+  // founder relationship is now established, transitively via
+  // Foundation -> FoundationFounder -> Founder.
+  foundationId String
+  foundation   Foundation @relation(fields: [foundationId], references: [id])
+  name         String
+  type         WaqfType
+  purpose      String?
+  jurisdiction String
+  status       WaqfStatus @default(draft)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  caseAssignments WaqfCaseAssignment[]
+  governedActions GovernedAction[]
+  coiDeclarations ConflictOfInterestDeclaration[]
+  assets          Asset[]
+  beneficiaries   Beneficiary[]
+  investments     Investment[]
+  distributions   Distribution[]
+  waqfCauses      WaqfCause[]
+  contributions   Contribution[]
+  waqfDeed        WaqfDeed?
+
+  @@map("waqfs")
+}
+
+// Lightweight organizational container — "a house for the portfolio of
+// waqf funds." Establishing one is plain CRUD, not a governed_actions
+// action: it carries no fiduciary weight by itself (no assets, no deed).
+// The real trustee relationship still attaches at the Waqf level below,
+// exactly as it did before this model existed — see
+// waqfs/waqfs.service.ts's create() comment.
+model Foundation {
+  id           String           @id @default(uuid())
+  name         String
+  purpose      String?
+  jurisdiction String?
+  // Set via POST /founders/establish (first Foundation, bundled with
+  // Founder creation) — a served-file URL, not the file itself. See
+  // apps/backend/src/modules/foundations/logo-storage.service.ts.
+  logoUrl      String?
+  status       FoundationStatus @default(active)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  deletedAt    DateTime?
+
+  foundationFounders FoundationFounder[]
+  waqfs              Waqf[]
+
+  @@map("foundations")
+}
+
+// Join, not a single founderId column on Foundation — a Foundation can
+// be jointly established by more than one Founder, mirroring the same
+// reasoning that justified the old WaqfFounder join one level down
+// (removed — see the migration that dropped it). Confirmed with the
+// project stakeholder rather than assumed.
+model FoundationFounder {
+  foundationId     String
+  foundation       Foundation @relation(fields: [foundationId], references: [id])
+  founderId        String
+  founder          Founder    @relation(fields: [founderId], references: [id])
+  contributionNote String?
+
+  @@id([foundationId, founderId])
+  @@map("foundation_founders")
+}
+
+// A theme/purpose within one Waqf Fund's deed (e.g. an Education Fund's
+// "Teacher Training", "Scholarships") — NOT a separate legal endowment,
+// so this is plain CRUD like Asset/Beneficiary/Investment registration,
+// not routed through governed_actions. Beneficiary/Distribution
+// reference this so money and eligibility are individually trackable
+// per cause within a fund, not just per fund.
+model WaqfCause {
+  id          String    @id @default(uuid())
+  waqfId      String
+  waqf        Waqf      @relation(fields: [waqfId], references: [id])
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  beneficiaries Beneficiary[]
+  distributions Distribution[]
+
+  @@unique([waqfId, name])
+  @@map("waqf_causes")
+}
+
+// The caseload concept — who serves which function on a given waqf.
+model WaqfCaseAssignment {
+  id             String             @id @default(uuid())
+  waqfId         String
+  waqf           Waqf               @relation(fields: [waqfId], references: [id])
+  birrStaffId    String
+  birrStaff      BirrStaff          @relation(fields: [birrStaffId], references: [id])
+  assignmentRole CaseAssignmentRole
+  status         AssignmentStatus   @default(active)
+  assignedAt     DateTime           @default(now())
+  closedAt       DateTime?
+
+  @@unique([waqfId, birrStaffId, assignmentRole])
+  @@map("waqf_case_assignments")
+}
+
+// Registry of agentic AI proposers — Rasid, Nazim, Kashif, Rashid, Rafiq,
+// Munsif, Bashir. Every agent-initiated action must trace back to a
+// specific row here, never an undifferentiated "the AI."
+model AiAgent {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  taskType  AgentTaskType
+  status    AgentStatus   @default(active)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  // How an agent authenticates to the backend — mirrors User.passwordHash.
+  // Nullable: a registry row can exist (e.g. for future agents) before a
+  // key is ever issued. See common/auth/ai-agent-auth.ts.
+  apiKeyHash String?
+
+  governedActions GovernedAction[]
+  auditLogs       AuditLog[]
+
+  @@map("ai_agents")
+}
+
+// THE enforcement point for the individual-level maker/checker rule.
+// Prisma cannot express these as schema constraints — they're added as raw
+// SQL in the governed_actions_constraints migration:
+//   - checkerUserId <> makerUserId, when both are set
+//   - exactly one of makerUserId / makerAgentId set, matching makerType
+// There is deliberately no checkerAgentId field or relation anywhere in
+// this schema. An AI agent can never be the checker. Do not add one.
+model GovernedAction {
+  id            String               @id @default(uuid())
+  // Nullable: a waqf.create action has no waqf yet to reference — that's
+  // the whole point of the action. Every other governed action (asset
+  // disposal, distribution approval, etc.) is expected to set this.
+  waqfId        String?
+  waqf          Waqf?                @relation(fields: [waqfId], references: [id])
+  permissionId  String
+  permission    Permission           @relation(fields: [permissionId], references: [id])
+  makerType     MakerType
+  makerUserId   String?
+  makerUser     User?                @relation("GovernedActionMaker", fields: [makerUserId], references: [id])
+  makerAgentId  String?
+  makerAgent    AiAgent?             @relation(fields: [makerAgentId], references: [id])
+  checkerUserId String?
+  checkerUser   User?                @relation("GovernedActionChecker", fields: [checkerUserId], references: [id])
+  status        GovernedActionStatus @default(proposed)
+  payload       Json
+  createdAt     DateTime             @default(now())
+  decidedAt     DateTime?
+
+  @@map("governed_actions")
+}
+
+// Registration (this model, created directly) and disposal (only via an
+// approved asset.dispose governed_action — see WaqfsService.create's
+// comment for why WaqfsController has no public create route; the same
+// reasoning does NOT apply to registration here, since asset registration
+// is not in CLAUDE.md's governed-action list, only disposal is) are
+// deliberately different trust levels for the same entity.
+model Asset {
+  id             String        @id @default(uuid())
+  waqfId         String
+  waqf           Waqf          @relation(fields: [waqfId], references: [id])
+  name           String
+  category       AssetCategory
+  estimatedValue Decimal
+  status         AssetStatus   @default(active)
+  disposedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  contribution Contribution?
+
+  @@map("assets")
+}
+
+enum ContributionProvider {
+  stripe
+  paystack
+  stablecoin
+}
+
+enum ContributionStatus {
+  pending
+  confirmed
+  failed
+}
+
+// A donor's declared-and-paid contribution toward a Waqf Fund — real
+// payment processing (Stripe/Paystack/a stablecoin gateway), not a
+// staff-reconciled pledge. Confirming one (via webhook) registers the
+// fund's first real Asset (category: cash) and flips the Waqf from
+// draft to active — the only place that transition happens today.
+model Contribution {
+  id                String               @id @default(uuid())
+  waqfId            String
+  waqf              Waqf                 @relation(fields: [waqfId], references: [id])
+  amount            Decimal
+  // "USD"/"NGN" for the fiat rails, "USDC"/"USDT" for the stablecoin rail.
+  currency          String
+  provider          ContributionProvider
+  // Stripe Checkout Session id / Paystack transaction reference / crypto
+  // gateway charge id — how handleWebhook() finds the matching row.
+  // Always equal to this row's own `id` in practice (each adapter is
+  // handed the Contribution's id as its correlation reference and
+  // echoes it back verbatim in the webhook payload — see the adapters'
+  // own comments) — kept as an explicit, uniquely-indexed field rather
+  // than implicitly relying on `id` so a future adapter that genuinely
+  // needs a provider-assigned reference doesn't require a schema change.
+  providerReference String               @unique
+  status            ContributionStatus   @default(pending)
+  // Set once confirmed and registered as the fund's first real Asset.
+  assetId           String?              @unique
+  asset             Asset?               @relation(fields: [assetId], references: [id])
+  confirmedAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@map("contributions")
+}
+
+// Per-currency floor enforced in ContributionsService.initiate() before a
+// payment is ever created — a real table (not a hardcoded constant) since
+// this is expected to need updating by finance/ops without a code change.
+model ContributionMinimum {
+  id        String   @id @default(uuid())
+  currency  String   @unique
+  minAmount Decimal
+  updatedAt DateTime @updatedAt
+
+  @@map("contribution_minimums")
+}
+
+// A human-typed 6-digit code needs different properties than either
+// existing single-use-token pattern in this schema: a short expiry (not
+// User.verificationToken's 24h) and brute-force protection (neither
+// verificationToken nor Invitation.token attempt-limits, since neither is
+// guessable by hand the way a 1-in-1,000,000 numeric code is). Its own
+// table, not inline User columns, so multiple requests/attempts-history
+// don't overwrite each other.
+model WhatsAppOtp {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  phoneNumber String
+  // sha256(code + userId) — the plaintext code is never persisted,
+  // same reasoning as never storing a plaintext password.
+  codeHash    String
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@map("whatsapp_otps")
+}
+
+// Registration (this model, created directly) is plain CRUD; eligibility
+// criteria changes are always a beneficiary.criteria_update governed
+// action (see BeneficiariesService.updateCriteria's comment) — same
+// two-trust-level split as Asset above.
+model Beneficiary {
+  id                  String            @id @default(uuid())
+  waqfId              String
+  waqf                Waqf              @relation(fields: [waqfId], references: [id])
+  // Nullable — a beneficiary can qualify under the fund generally
+  // without being pinned to one specific cause up front.
+  causeId             String?
+  cause               WaqfCause?        @relation(fields: [causeId], references: [id])
+  name                String
+  eligibilityCriteria String
+  status              BeneficiaryStatus @default(active)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  deletedAt           DateTime?
+
+  distributions Distribution[]
+
+  @@map("beneficiaries")
+}
+
+// Registration (this model, created directly) is plain CRUD; allocation
+// changes are always an investment.change governed action (see
+// InvestmentsService.changeAllocation's comment) — same two-trust-level
+// split as Asset/Beneficiary above.
+model Investment {
+  id              String                   @id @default(uuid())
+  waqfId          String
+  waqf            Waqf                     @relation(fields: [waqfId], references: [id])
+  name            String
+  instrumentType  InvestmentInstrumentType
+  allocatedAmount Decimal
+  status          InvestmentStatus         @default(active)
+  liquidatedAt    DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  deletedAt       DateTime?
+
+  @@map("investments")
+}
+
+// Registration (this model, created directly) is a plain draft — CLAUDE.md's
+// Munsif "drafts distribution recommendations." Approving it is always a
+// distribution.approve governed action (see DistributionsService.approve's
+// comment). Unlike Asset/Beneficiary/Investment, a distribution is a
+// payout *to* someone, so it references both the Waqf and the Beneficiary.
+model Distribution {
+  id            String             @id @default(uuid())
+  waqfId        String
+  waqf          Waqf               @relation(fields: [waqfId], references: [id])
+  // Every payout must be traceable to a specific cause (the concrete
+  // "individually trackable" requirement), not just to the fund.
+  causeId       String
+  cause         WaqfCause          @relation(fields: [causeId], references: [id])
+  beneficiaryId String
+  beneficiary   Beneficiary        @relation(fields: [beneficiaryId], references: [id])
+  amount        Decimal
+  status        DistributionStatus @default(pending)
+  approvedAt    DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  deletedAt     DateTime?
+
+  @@map("distributions")
+}
+
+// reviewedByUserId != declaredByUserId is enforced by a DB CHECK
+// constraint (coi_reviewer_not_declarant — see the migration named for
+// it), the same pattern as checker_not_maker on GovernedAction.
+// declaredByUserId is denormalized from birrStaff.userId at creation time
+// specifically so that CHECK can compare two columns on the same row —
+// it can't join through BirrStaff to get there.
+model ConflictOfInterestDeclaration {
+  id               String    @id @default(uuid())
+  birrStaffId      String
+  birrStaff        BirrStaff @relation(fields: [birrStaffId], references: [id])
+  declaredByUserId String
+  declaredByUser   User      @relation("CoiDeclaredBy", fields: [declaredByUserId], references: [id])
+  waqfId           String?
+  waqf             Waqf?     @relation(fields: [waqfId], references: [id])
+  declarationText  String
+  status           CoiStatus @default(declared)
+  declaredAt       DateTime  @default(now())
+  reviewedByUserId String?
+  reviewedByUser   User?     @relation("CoiReviewedBy", fields: [reviewedByUserId], references: [id])
+  reviewedAt       DateTime?
+
+  @@map("conflict_of_interest_declarations")
+}
+
+// The founder's real, structured e-signature appointing Birr as
+// Mutawalli (trustee) over one specific Waqf Fund — the final step of
+// onboarding. One-to-one with Waqf (scoped per-fund, not per-founder,
+// matching CLAUDE.md's framing that the trustee relationship attaches
+// at establishment of *each* waqf). Immutable like AuditLog once
+// written — see the migration for this model, which revokes UPDATE/
+// DELETE the same way audit_logs already does.
+model WaqfDeed {
+  id                  String   @id @default(uuid())
+  waqfId              String   @unique
+  waqf                Waqf     @relation(fields: [waqfId], references: [id])
+  signedByUserId      String
+  signedByUser        User     @relation(fields: [signedByUserId], references: [id])
+  // Denormalized, same rationale as ConflictOfInterestDeclaration's own
+  // declaredByUserId: lets onboarding-status queries read the founder id
+  // directly without a join through FounderMembership.
+  signedByFounderId   String
+  signedByFounder     Founder  @relation(fields: [signedByFounderId], references: [id])
+  typedLegalName      String
+  // Traceability only — deedText below (the verbatim rendered text at
+  // signing time) is the actual source of truth for what was agreed to,
+  // so a later template edit never retroactively alters a signed record.
+  deedTemplateVersion String
+  deedText            String   @db.Text
+  affirmed            Boolean
+  ipAddress           String?
+  signedAt            DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  @@map("waqf_deeds")
+}
+
+// Immutable, insert-only. A migration must revoke UPDATE/DELETE on this
+// table at the DB role level for the application's runtime connection —
+// do not rely on the application layer alone. See the raw-SQL migration.
+model AuditLog {
+  id             String    @id @default(uuid())
+  waqfId         String?
+  actorUserId    String?
+  actorUser      User?     @relation(fields: [actorUserId], references: [id])
+  actorAgentId   String?
+  actorAgent     AiAgent?  @relation(fields: [actorAgentId], references: [id])
+  // Founders aren't User rows (no FounderMembership built yet — a
+  // founder-portal session maps directly to a Founder record), so a
+  // founder-initiated action (self-service Foundation/Waqf Fund
+  // creation) needs its own actor FK, matching the actorUserId/
+  // actorAgentId pattern rather than leaving actorType: founder_user
+  // entries with no way to say *which* founder.
+  actorFounderId String?
+  actorFounder   Founder?  @relation(fields: [actorFounderId], references: [id])
+  actorType      ActorType
+  action         String
+  entityType     String
+  entityId       String
+  before         Json?
+  after          Json?
+  ipAddress      String?
+  createdAt      DateTime  @default(now())
+
+  @@map("audit_logs")
+}
+
+// One table, discriminated by inviteeKind, for both founder-side and
+// Birr-staff-side invitations — same shape (email, token, expiry).
+model Invitation {
+  id            String           @id @default(uuid())
+  inviteeKind   InviteeKind
+  email         String
+  founderId     String?
+  founder       Founder?         @relation(fields: [founderId], references: [id])
+  roleKey       String?
+  invitedBy     String
+  invitedByUser User             @relation("InvitationInvitedBy", fields: [invitedBy], references: [id])
+  token         String           @unique
+  status        InvitationStatus @default(pending)
+  expiresAt     DateTime
+  createdAt     DateTime         @default(now())
+
+  @@map("invitations")
+}
+
+// Third-party provider credentials (Stripe/Paystack/stablecoin gateway/
+// Resend/Twilio), configurable through the Ops Console's Platform
+// Settings page instead of raw .env edits. encryptedValue is AES-256-GCM
+// ciphertext ("<ivB64>.<authTagB64>.<ciphertextB64>") — see
+// apps/backend/src/common/settings/encryption.service.ts. A missing row
+// for a given (provider, key) means "fall back to the env var" — see
+// SettingsService.get() — so this table only ever holds overrides, not
+// every credential unconditionally.
+model ProviderCredential {
+  id              String   @id @default(uuid())
+  provider        String
+  key             String
+  encryptedValue  String   @db.Text
+  updatedAt       DateTime @updatedAt
+  updatedByUserId String?
+  updatedByUser   User?    @relation(fields: [updatedByUserId], references: [id])
+
+  @@unique([provider, key])
+  @@map("provider_credentials")
+}
+
+enum TrusteeLicenseStatus {
+  active
+  pending
+  suspended
+  expired
+}
+
+// CLAUDE.md's "Regulatory & assurance posture" section, made concrete:
+// acting as trustee is itself a regulated activity in most
+// jurisdictions, separate from and beyond security certification — this
+// is Birr's own record of where it actually holds that license today,
+// keyed by the same free-form jurisdiction string as Waqf.jurisdiction
+// (not the Founder's home jurisdiction — see that field's own comment).
+// Deliberately not a hard gate on Waqf creation (WaqfsService still
+// creates the Waqf either way) — the self-service flow shouldn't be
+// unilaterally blocked by this code on a business/legal call it isn't
+// this system's place to make unprompted; it surfaces as a flag
+// (WaqfsService.jurisdictionLicenseStatus, shown in the Ops Console) for
+// Birr staff to act on.
+model TrusteeLicense {
+  id                String               @id @default(uuid())
+  jurisdiction      String
+  status            TrusteeLicenseStatus @default(pending)
+  licensingAuthority String
+  licenseNumber     String?
+  issuedAt          DateTime?
+  expiresAt         DateTime?
+  notes             String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@map("trustee_licenses")
+}
+
+// The "which compliance policy set applies" registry CLAUDE.md's
+// jurisdiction-driven-compliance instruction calls for
+// ("waqfs.jurisdiction... is what should drive which compliance policy
+// set applies — don't hardcode one jurisdiction's rules") — deliberately
+// a structural pointer (a named framework + where to find its actual
+// text), not the regulatory content itself. This system has no real
+// AAOIFI/IFSB/national-regulator feed anywhere, and inventing rule text
+// would be actively harmful for a fiduciary compliance report to cite as
+// real — same reasoning as Rasid's read_regulatory_sources stub (see
+// services/agents/src/agents/rasid.ts). Birr's own compliance/legal
+// staff populate this through the Ops Console; it starts empty.
+model CompliancePolicySet {
+  id            String   @id @default(uuid())
+  jurisdiction  String   @unique
+  frameworkName String
+  referenceUrl  String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("compliance_policy_sets")
+}

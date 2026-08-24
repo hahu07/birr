@@ -1,0 +1,144 @@
+name: birr
+
+# Local dev/demo stack: Postgres + the NestJS API + both Next.js
+# frontends, each built from its own Dockerfile (see those files' own
+# comments for the turbo-prune pattern each uses). Not a production
+# deployment topology as-is — see the security notes below for what
+# still needs to change before this runs anywhere but a developer's
+# machine or an internal demo.
+#
+# Quickstart:
+#   cp .env.example .env   # fill in at least JWT_SECRET, SETTINGS_ENCRYPTION_KEY
+#   docker compose up --build
+#   docker compose run --rm --profile seed seed   # first run only
+#
+# JWT_SECRET/SETTINGS_ENCRYPTION_KEY below are read from a sibling .env
+# file automatically (Compose's own convention, distinct from each
+# service's own `environment:` block) — see .env.example's comments on
+# generating real values.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: birr
+      POSTGRES_PASSWORD: birr_dev_password
+      POSTGRES_DB: birr
+    ports:
+      - "5432:5432"
+    volumes:
+      - birr_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U birr"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: applies migrations, then exits. backend won't start until
+  # this completes successfully.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    command: ["pnpm", "--filter", "@birr/db", "exec", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://birr:birr_dev_password@postgres:5432/birr?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Not run by default (see the `seed` profile) — seeds roles/permissions
+  # plus a bootstrap platform_admin (packages/db/prisma/seed.ts prints
+  # its dev password to this container's logs). Safe to re-run; every
+  # row is an upsert.
+  seed:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    command: ["pnpm", "--filter", "@birr/db", "exec", "prisma", "db", "seed"]
+    environment:
+      DATABASE_URL: postgresql://birr:birr_dev_password@postgres:5432/birr?schema=public
+    profiles: ["seed"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://birr:birr_dev_password@postgres:5432/birr?schema=public
+      BACKEND_PORT: 4000
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY}
+      # Both point at localhost:4000, not the backend's in-network
+      # hostname — these build verify-email/redirect links a human
+      # clicks from their own browser, which can't resolve Docker's
+      # internal network.
+      BACKEND_URL: http://localhost:4000
+      FOUNDER_PORTAL_URL: http://localhost:3000
+      # Real deployments set these to actual sandbox/live credentials —
+      # left unset here means the relevant feature (email verification,
+      # WhatsApp OTP, payments) fails loudly with a clear error rather
+      # than silently, the same behavior as running the backend outside
+      # Docker with an incomplete .env.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_ADDRESS: ${RESEND_FROM_ADDRESS:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_WHATSAPP_FROM_NUMBER: ${TWILIO_WHATSAPP_FROM_NUMBER:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      PAYSTACK_WEBHOOK_SECRET: ${PAYSTACK_WEBHOOK_SECRET:-}
+      COINBASE_COMMERCE_API_KEY: ${COINBASE_COMMERCE_API_KEY:-}
+      COINBASE_COMMERCE_WEBHOOK_SECRET: ${COINBASE_COMMERCE_WEBHOOK_SECRET:-}
+      RASID_API_KEY: ${RASID_API_KEY:-}
+      NAZIM_API_KEY: ${NAZIM_API_KEY:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  founder-portal:
+    build:
+      context: .
+      dockerfile: apps/founder-portal/Dockerfile
+      args:
+        # Baked into the client bundle at build time (Next.js
+        # NEXT_PUBLIC_* convention) — this runs in the user's browser,
+        # so it must be the backend's host-reachable URL, not an
+        # internal Docker network hostname.
+        NEXT_PUBLIC_BACKEND_URL: http://localhost:4000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  ops-console:
+    build:
+      context: .
+      dockerfile: apps/ops-console/Dockerfile
+      args:
+        NEXT_PUBLIC_OPS_BACKEND_URL: http://localhost:4000
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+
+volumes:
+  birr_postgres_data:
+
+# Before this is anywhere but a developer's machine or an internal demo:
+#   - apps/backend/src/main.ts's CORS allowlist is a localhost/127.0.0.1
+#     regex — replace with the real deployed frontend origins.
+#   - Generate real JWT_SECRET/SETTINGS_ENCRYPTION_KEY (openssl rand
+#     -hex 32/48) — never reuse the .env.example placeholders or
+#     whatever's in a developer's local .env.
+#   - Rotate packages/db/prisma/seed.ts's bootstrap platform_admin
+#     password immediately after first login.
+#   - This compose file has no TLS termination — put a real reverse
+#     proxy/load balancer in front in any non-local environment.

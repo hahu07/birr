@@ -1,0 +1,19 @@
+@import "tailwindcss";
+/* Tailwind v4's automatic content detection scans this app's own source
+   tree; it does not reach into the @birr/ui workspace package (resolved
+   through node_modules, outside this project's root). Without this,
+   any utility class used only inside packages/ui/src (e.g. Table's
+   `overflow-x-auto` horizontal-scroll safety net) is silently dropped
+   from the generated CSS — the class renders as a no-op. */
+@source "../../../packages/ui/src";
+@import "@birr/ui/src/styles.css";
+
+/* App-scoped only (not packages/ui/src/styles.css): swaps the shared
+   `font-sans` token for the self-hosted IBM Plex Sans loaded via
+   next/font in app/layout.tsx, giving the ops console a deliberate,
+   confident typeface for a dense admin surface instead of the bare
+   system-font stack. Overriding here rather than in the shared token
+   file keeps founder-portal unaffected until/unless it opts in too. */
+:root {
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
