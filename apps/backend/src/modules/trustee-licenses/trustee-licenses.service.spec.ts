@@ -1,9 +1,10 @@
 import { prisma } from "@birr/db";
 import { NotFoundException } from "@nestjs/common";
 import { TrusteeLicensesService } from "./trustee-licenses.service";
+import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 
 describe("TrusteeLicensesService", () => {
-  const service = new TrusteeLicensesService();
+  const service = new TrusteeLicensesService(createFakeNotificationsService());
 
   const licenseIds: string[] = [];
   let actorUserId: string;

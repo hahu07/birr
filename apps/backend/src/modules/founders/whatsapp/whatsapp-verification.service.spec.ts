@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { prisma } from "@birr/db";
 import { WhatsAppVerificationService } from "./whatsapp-verification.service";
-import { WhatsAppOtpAdapter } from "./whatsapp-otp.adapter";
+import { WhatsAppOtpAdapter } from "../../../common/whatsapp/whatsapp-otp.adapter";
+import { WhatsAppOtpService } from "../../../common/whatsapp/whatsapp-otp.service";
 
 class FakeOtpAdapter implements WhatsAppOtpAdapter {
   lastCode: string | null = null;
@@ -15,7 +16,8 @@ class FakeOtpAdapter implements WhatsAppOtpAdapter {
 
 describe("WhatsAppVerificationService", () => {
   const fakeAdapter = new FakeOtpAdapter();
-  const service = new WhatsAppVerificationService(fakeAdapter as any);
+  const core = new WhatsAppOtpService(fakeAdapter as any);
+  const service = new WhatsAppVerificationService(core);
 
   // User-keyed, not Founder-keyed — at this point in onboarding no
   // Founder exists yet (that's step 2, after WhatsApp verification).

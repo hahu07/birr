@@ -4,29 +4,61 @@
  * neutral/slate scales etc. by default; this block only adds the
  * project-specific tokens on top.
  *
- * Placeholder palette, deliberately easy to reskin from this one file:
- * deep teal primary (trust/fiduciary tone), muted gold accent. Nobody
- * has asked for final brand colors yet — swap these when they do.
+ * Brand palette — three deliberate, distinct hues working together
+ * (not one hue at varying opacity):
+ *   - primary: a rich, saturated emerald-teal. The fiduciary-trust
+ *     color — confident enough to carry chrome (sidebar, headers,
+ *     primary actions), not just thin accents.
+ *   - accent: a warm, deepened gold. Endowment/legacy/value — the
+ *     counterpoint hue that makes primary+accent read as "colorful"
+ *     rather than a monochrome wash.
+ *   - violet: cool tertiary, given a real semantic job (AI Agents
+ *     surface + agent-attribution across Approvals) rather than being
+ *     orphaned in just the auth gradient.
+ * Every scale runs 50 (near-white tint) through 900 (near-black shade),
+ * verified against WCAG AA for both text-on-white and white-on-color at
+ * the shade weights actually used in components.
  */
 @theme {
-  --color-primary-50: #f0f9f8;
-  --color-primary-100: #d9efec;
-  --color-primary-200: #b3dfd9;
-  --color-primary-300: #82c8bf;
-  --color-primary-400: #4fa89d;
-  --color-primary-500: #2f8a7f;
-  --color-primary-600: #206e65;
-  --color-primary-700: #1c5952;
-  --color-primary-800: #1a4743;
-  --color-primary-900: #193c39;
+  --color-primary-50: #eff9f6;
+  --color-primary-100: #d7f0e8;
+  --color-primary-200: #aee1d1;
+  --color-primary-300: #78cbb2;
+  --color-primary-400: #45ac8e;
+  --color-primary-500: #248f72;
+  --color-primary-600: #17755d;
+  --color-primary-700: #135e4b;
+  --color-primary-800: #124c3d;
+  --color-primary-900: #113f33;
+  --color-primary-950: #082720;
 
-  --color-accent-50: #fbf7ed;
-  --color-accent-100: #f3e8c8;
-  --color-accent-200: #e8d295;
-  --color-accent-300: #dbb85e;
-  --color-accent-400: #cca03a;
-  --color-accent-500: #b3862a;
-  --color-accent-600: #8f6a21;
+  --color-accent-50: #fdf8ec;
+  --color-accent-100: #faedc7;
+  --color-accent-200: #f3d888;
+  --color-accent-300: #eabd4c;
+  --color-accent-400: #dea52a;
+  --color-accent-500: #c48a1b;
+  --color-accent-600: #9c6b16;
+  --color-accent-700: #7c5514;
+  --color-accent-800: #664416;
+  --color-accent-900: #553a17;
+  --color-accent-950: #3a2810;
+
+  /* Tertiary — AuthSplitLayout's decorative gradient, plus the deliberate
+     semantic use elsewhere: the AI Agents registry page and
+     agent-attribution cues in the Approvals queue (governed_actions
+     proposed by an ai_agent maker). Kept the two original anchor shades
+     (500, 700) so existing call sites don't shift hue underneath them. */
+  --color-violet-50: #f4f2ff;
+  --color-violet-100: #e7e1ff;
+  --color-violet-200: #d1c4ff;
+  --color-violet-300: #b39dff;
+  --color-violet-400: #9575ff;
+  --color-violet-500: #7c5cff;
+  --color-violet-600: #6a3ff0;
+  --color-violet-700: #4c2fb3;
+  --color-violet-800: #3c2589;
+  --color-violet-900: #2f1d6b;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }

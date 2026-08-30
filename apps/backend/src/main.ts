@@ -6,6 +6,8 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
+import { NotificationsService } from "./modules/notifications/notifications.service";
+import { startTrusteeLicenseExpiryScheduler } from "./modules/trustee-licenses/trustee-license-expiry-scheduler";
 
 // Payment-provider webhook routes need the exact raw request bytes to
 // verify a signature (each adapter's verifyAndParseWebhook recomputes
@@ -93,5 +95,10 @@ async function bootstrap() {
   // frontend.
   app.enableCors({ origin: /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/, credentials: true });
   await app.listen(process.env.BACKEND_PORT ?? 4000);
+
+  // The one time-based (not event-triggered) notification this backend
+  // sends — see the scheduler's own comment for why this lives here
+  // rather than a governed-actions-style call site.
+  startTrusteeLicenseExpiryScheduler(app.get(NotificationsService));
 }
 bootstrap();

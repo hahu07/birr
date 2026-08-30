@@ -1,6 +1,0 @@
-@import "tailwindcss";
-/* See apps/ops-console/app/globals.css for why this is needed: Tailwind
-   v4's automatic content detection doesn't reach into the @birr/ui
-   workspace package on its own. */
-@source "../../../packages/ui/src";
-@import "@birr/ui/src/styles.css";

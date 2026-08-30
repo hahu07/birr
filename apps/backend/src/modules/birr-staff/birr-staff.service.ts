@@ -33,6 +33,14 @@ const SAFE_USER_SELECT = {
   fullName: true,
   status: true,
   mfaEnabled: true,
+  // Self-facing only (getSessionSummary is always "my own record") — a
+  // staff member's own WhatsApp verification state, needed by the
+  // profile page's request-OTP/verify-OTP form (see
+  // BirrStaffWhatsAppService) to know whether to show "verified" or the
+  // capture form. Same posture as FoundersService exposing the founder
+  // equivalent via its own onboarding-status endpoint.
+  whatsappNumber: true,
+  whatsappVerifiedAt: true,
 } as const;
 
 @Injectable()

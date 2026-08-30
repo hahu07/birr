@@ -1,7 +1,7 @@
 import { HTMLAttributes, ReactNode } from "react";
 
 export interface AlertProps extends HTMLAttributes<HTMLDivElement> {
-  tone?: "neutral" | "success" | "warning" | "danger";
+  tone?: "neutral" | "success" | "warning" | "danger" | "info";
   title?: string;
   children?: ReactNode;
 }
@@ -9,8 +9,9 @@ export interface AlertProps extends HTMLAttributes<HTMLDivElement> {
 const toneClasses: Record<NonNullable<AlertProps["tone"]>, string> = {
   neutral: "border-slate-200 bg-slate-50 text-slate-700",
   success: "border-primary-200 bg-primary-50 text-primary-800",
-  warning: "border-accent-200 bg-accent-50 text-accent-600",
+  warning: "border-accent-300 bg-accent-50 text-accent-800",
   danger: "border-red-200 bg-red-50 text-red-700",
+  info: "border-violet-200 bg-violet-50 text-violet-800",
 };
 
 /** Banner/inline alert — used for fetch errors and decision failures that need to stay attached to context, not a toast. */

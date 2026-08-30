@@ -1,11 +1,12 @@
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { prisma } from "@birr/db";
 import { WaqfsService } from "./waqfs.service";
 import { TrusteeLicensesService } from "../trustee-licenses/trustee-licenses.service";
+import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 
 describe("WaqfsService", () => {
-  const service = new WaqfsService(new TrusteeLicensesService());
+  const service = new WaqfsService(new TrusteeLicensesService(createFakeNotificationsService()), createFakeNotificationsService());
 
   const waqfIds: string[] = [];
 
@@ -71,6 +72,7 @@ describe("WaqfsService", () => {
     // Founders/Foundations are left in place, same reasoning as every
     // other spec — simplest to not chase FK cleanup for rows nothing
     // else depends on.
+    await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
     await prisma.$disconnect();
   });
@@ -115,6 +117,9 @@ describe("WaqfsService", () => {
       jurisdiction: "AE",
       foundationId: foundationAId,
       founderId: founderAId,
+      corpusAmount: "5000",
+      corpusCurrency: "USD",
+      fundingPlan: "lump_sum",
     });
     waqfIds.push(waqf.id);
 
@@ -141,10 +146,31 @@ describe("WaqfsService", () => {
         jurisdiction: "AE",
         foundationId: foundationAId,
         founderId: founderBId,
+        corpusAmount: "5000",
+        corpusCurrency: "USD",
+        fundingPlan: "lump_sum",
       }),
     ).rejects.toThrow(ForbiddenException);
 
     const created = await prisma.waqf.findFirst({ where: { name: "Should Be Rejected" } });
+    expect(created).toBeNull();
+  });
+
+  test("createSelfService() rejects a declared corpus below the configured minimum for that currency", async () => {
+    await expect(
+      service.createSelfService({
+        name: "Corpus Too Small",
+        type: "asset",
+        jurisdiction: "AE",
+        foundationId: foundationAId,
+        founderId: founderAId,
+        corpusAmount: "1",
+        corpusCurrency: "USD",
+        fundingPlan: "lump_sum",
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    const created = await prisma.waqf.findFirst({ where: { name: "Corpus Too Small" } });
     expect(created).toBeNull();
   });
 
@@ -172,7 +198,73 @@ describe("WaqfsService", () => {
         jurisdiction: "AE",
         foundationId: foundation.id,
         founderId: unverifiedFounder.id,
+        corpusAmount: "5000",
+        corpusCurrency: "USD",
+        fundingPlan: "lump_sum",
       }),
     ).rejects.toThrow(ForbiddenException);
+  });
+
+  describe("increaseCorpusTarget()", () => {
+    let corpusWaqfId: string;
+
+    beforeAll(async () => {
+      const waqf = await prisma.waqf.create({
+        data: {
+          name: "Increase Corpus Target Waqf",
+          type: "asset",
+          jurisdiction: "AE",
+          foundationId: foundationAId,
+          corpusAmount: "5000",
+          corpusCurrency: "USD",
+        },
+      });
+      corpusWaqfId = waqf.id;
+      waqfIds.push(waqf.id);
+    });
+
+    test("raises the corpus target and audit-logs the change against the calling founder", async () => {
+      const updated = await service.increaseCorpusTarget(corpusWaqfId, founderAId, "7500");
+      expect(updated.corpusAmount?.toString()).toBe("7500");
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: corpusWaqfId, action: "waqf.corpus_target_increased" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ actorType: "founder_user", actorFounderId: founderAId });
+    });
+
+    test("rejects a new target at or below the current one", async () => {
+      await expect(service.increaseCorpusTarget(corpusWaqfId, founderAId, "7500")).rejects.toThrow(BadRequestException);
+      await expect(service.increaseCorpusTarget(corpusWaqfId, founderAId, "1000")).rejects.toThrow(BadRequestException);
+    });
+
+    test("rejects a founder who doesn't own the waqf", async () => {
+      await expect(service.increaseCorpusTarget(corpusWaqfId, founderBId, "9000")).rejects.toThrow(NotFoundException);
+    });
+
+    test("rejects a waqf with no corpus target to increase", async () => {
+      const noCorpusWaqf = await prisma.waqf.create({
+        data: { name: "No Corpus Waqf", type: "asset", jurisdiction: "AE", foundationId: foundationAId },
+      });
+      waqfIds.push(noCorpusWaqf.id);
+
+      await expect(service.increaseCorpusTarget(noCorpusWaqf.id, founderAId, "1000")).rejects.toThrow(BadRequestException);
+    });
+
+    test("rejects a dissolved waqf", async () => {
+      const dissolvedWaqf = await prisma.waqf.create({
+        data: {
+          name: "Dissolved Waqf",
+          type: "asset",
+          jurisdiction: "AE",
+          foundationId: foundationAId,
+          corpusAmount: "5000",
+          corpusCurrency: "USD",
+          status: "dissolved",
+        },
+      });
+      waqfIds.push(dissolvedWaqf.id);
+
+      await expect(service.increaseCorpusTarget(dissolvedWaqf.id, founderAId, "9000")).rejects.toThrow(BadRequestException);
+    });
   });
 });

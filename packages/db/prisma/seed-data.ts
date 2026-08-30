@@ -29,6 +29,8 @@ export const permissions = [
   { key: "distribution.approve", category: "distribution", requiresMakerChecker: true, description: "Approve a beneficiary distribution." },
   { key: "investment.change", category: "investment", requiresMakerChecker: true, description: "Change an investment or portfolio allocation." },
   { key: "beneficiary.criteria_update", category: "beneficiary", requiresMakerChecker: true, description: "Update beneficiary eligibility criteria." },
+  { key: "beneficiary.status_change", category: "beneficiary", requiresMakerChecker: true, description: "Enable or disable a beneficiary." },
+  { key: "counterparty.onboard", category: "counterparty", requiresMakerChecker: true, description: "Approve a counterparty (or its reactivation) to receive waqf investment money." },
   { key: "waqf.view", category: "waqf", requiresMakerChecker: false, description: "View waqf details. Not maker-checker gated." },
   { key: "compliance.report_export", category: "compliance", requiresMakerChecker: false, description: "Export a compliance report. Not maker-checker gated." },
 ] as const;
@@ -44,6 +46,8 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "distribution.approve": { canMaker: true },
     "investment.change": { canChecker: true },
     "beneficiary.criteria_update": { canMaker: true },
+    "beneficiary.status_change": { canMaker: true },
+    "counterparty.onboard": { canChecker: true },
     "waqf.view": { canMaker: true },
   },
   // Apex checker across every maker-checker gated permission — the Board
@@ -55,26 +59,38 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "distribution.approve": { canChecker: true },
     "investment.change": { canChecker: true },
     "beneficiary.criteria_update": { canChecker: true },
+    "beneficiary.status_change": { canChecker: true },
+    "counterparty.onboard": { canChecker: true },
     "waqf.view": { canMaker: true },
   },
   investment_committee: {
     "asset.dispose": { canChecker: true },
     "investment.change": { canMaker: true },
+    // Same reversed-pairing posture as investment.change: the committee
+    // that actually sources and vets a counterparty relationship
+    // proposes it; independent checkers (including Shariah, since
+    // onboard()'s own precondition already requires their sign-off to
+    // exist first) confirm.
+    "counterparty.onboard": { canMaker: true },
     "waqf.view": { canMaker: true },
   },
   shariah_board_member: {
     "beneficiary.criteria_update": { canChecker: true },
+    "beneficiary.status_change": { canChecker: true },
+    "counterparty.onboard": { canChecker: true },
     "waqf.view": { canMaker: true },
   },
   audit_committee: {
     "asset.dispose": { canChecker: true },
     "investment.change": { canChecker: true },
+    "counterparty.onboard": { canChecker: true },
     "compliance.report_export": { canMaker: true },
     "waqf.view": { canMaker: true },
   },
   compliance_officer: {
     "distribution.approve": { canChecker: true },
     "beneficiary.criteria_update": { canChecker: true },
+    "beneficiary.status_change": { canChecker: true },
     "compliance.report_export": { canMaker: true },
     "waqf.view": { canMaker: true },
   },
@@ -106,4 +122,36 @@ export const contributionMinimums = [
   { currency: "USDC", minAmount: "100" },
   { currency: "USDT", minAmount: "100" },
   { currency: "NGN", minAmount: "150000" },
+] as const;
+
+// Enforced in WaqfsService.create() when a founder declares a corpus —
+// distinct from contributionMinimums above (that's the floor for a
+// single payment; this is the floor for the total endowment target).
+// An order of magnitude above the contribution minimum is a starting
+// placeholder, same "finance/ops should correct this" caveat as
+// contributionMinimums' own NGN row.
+export const corpusMinimums = [
+  { currency: "USD", minAmount: "1000" },
+  { currency: "EUR", minAmount: "1000" },
+  { currency: "GBP", minAmount: "1000" },
+  { currency: "USDC", minAmount: "1000" },
+  { currency: "USDT", minAmount: "1000" },
+  { currency: "NGN", minAmount: "1500000" },
+] as const;
+
+// The starting standard catalog a Founder picks from for their own Waqf
+// Fund (CauseCategoriesService) — Birr's product team maintains this
+// list going forward via the Ops Console admin screen; this seed is just
+// a reasonable starting menu, not the only causes that will ever exist.
+// typicalWaqfTypes is a staff-curated UX hint only (see CauseCategory's
+// own schema comment) — never a restriction on which types can pick a
+// given cause.
+export const causeCategories = [
+  { name: "Education", description: "Scholarships, school fees, and educational materials.", icon: "🎓", sortOrder: 10, typicalWaqfTypes: ["investment", "project"] },
+  { name: "Healthcare", description: "Medical treatment, clinics, and health access.", icon: "🏥", sortOrder: 20, typicalWaqfTypes: ["investment", "asset"] },
+  { name: "Poverty Relief", description: "Direct support for people in need — food, shelter, basic needs.", icon: "🤝", sortOrder: 30, typicalWaqfTypes: ["investment", "project"] },
+  { name: "Orphan Care", description: "Support for orphaned children and their guardians.", icon: "🧒", sortOrder: 40, typicalWaqfTypes: ["investment", "project"] },
+  { name: "Religious Education", description: "Quran memorization, Islamic studies, and mosque support.", icon: "🕌", sortOrder: 50, typicalWaqfTypes: ["asset", "investment"] },
+  { name: "Water & Sanitation", description: "Clean water access and sanitation infrastructure.", icon: "💧", sortOrder: 60, typicalWaqfTypes: ["project", "asset"] },
+  { name: "Disaster Relief", description: "Emergency response to natural disasters and crises.", icon: "🚨", sortOrder: 70, typicalWaqfTypes: ["project"] },
 ] as const;

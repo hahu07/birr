@@ -20,6 +20,67 @@ governance are deliberately different postures, not the same rule
 applied twice. This is a fiduciary system — correctness, auditability,
 and access control matter more than feature velocity.
 
+**The formal, signed deed appointing Birr as Mutawalli is
+Foundation-level, not per-Waqf-Fund.** The original design (still
+reflected in some older comments) had a founder sign a distinct deed
+for each individual Waqf Fund — the reasoning being that each Waqf Fund
+is legally its own distinct endowment (its own assets, purpose, type,
+jurisdiction), which a single blanket agreement can't fully specify.
+That reasoning still holds in the abstract; changed at the owner's
+explicit, informed decision on 2026-08-27, after that tradeoff was
+raised directly, because a Founder establishes more than one Waqf Fund
+under the same Foundation over time and re-signing per fund didn't
+match that reality — in practice it had also silently regressed to
+every Waqf Fund after the first getting no deed at all. One
+`FoundationDeed`, signed once, now covers a Foundation and every Waqf
+Fund under it, present and future; see that model's own schema comment.
+`WaqfDeed` (the superseded per-fund model) is kept in the schema
+untouched, for any historical rows, but nothing writes a new one.
+
+**Cause Allocation — how much of a fund's distributable money goes to
+each selected Cause — is Founder self-service, not a `governed_actions`
+type.** A Founder can set/change `WaqfCause.allocatedAmount` directly
+(`WaqfCausesService.allocate`), the same self-service posture as
+selecting the Cause itself, even though it's a real lever on how much
+money eventually reaches that Cause's beneficiaries. This was raised
+directly with the owner as a tension worth flagging — `distribution.approve`
+and `investment.change` are Birr-staff-governed maker-checker actions
+precisely because they move money, and allocation determines the ceiling
+that governs those distributions — and the owner chose founder
+self-service anyway, at their explicit, informed decision on 2026-08-27.
+What still keeps this fiduciarily sound despite that: `allocatedAmount`
+is a real enforced ceiling, not a decorative figure — `DistributionsService`
+rejects any distribution (at both creation and governed-action approval)
+that would push a Cause's committed total past what the Founder allocated
+to it, so Birr staff still can't move money past what the Founder
+declared, even without a maker-checker gate on the declaration itself.
+Allocation always draws from the Founder's own raised corpus
+(`amountRaised`), for every Waqf Fund type including Investment —
+deliberately *not* from `WaqfProceeds` (investment returns), at the
+owner's explicit direction after an initial draft of this feature drew
+an Investment Fund's allocation from proceeds instead, reasoning from
+classical waqf perpetuity (corpus preserved, only income spent) rather
+than from how the owner actually wanted it to work. `WaqfProceeds`
+still exists as its own thing — Birr-staff-entered (Investment
+Committee/Mutawalli Officer) investment performance/compliance
+reporting.
+
+**Update, 2026-08-28 — `WaqfProceeds` is no longer *entirely* unrelated
+to Cause Allocation.** A second, separate pool now exists:
+`WaqfCause.proceedsAllocatedAmount`, set via
+`WaqfCausesService.allocateProceeds`. Unlike corpus allocation above,
+this one is **Birr-staff-decided, not Founder self-service** — a
+Founder never observes investment performance directly, so there's no
+self-service posture to extend to it. It only ever applies to
+Investment-type Waqf Funds (every other type has no investment layer
+at all, so never has proceeds to allocate). Critically, this is
+*additive*, not a replacement: `allocatedAmount` (corpus, Founder-set)
+is completely untouched by this — `DistributionsService
+.assertWithinAllocation` now sums both fields as one Cause's real
+ceiling, but each pool is still tracked, allocated, and enforced
+independently, preserving the corpus-vs-income distinction the
+2026-08-27 decision above was built on.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
@@ -104,13 +165,23 @@ Birr can actually operate as Mutawalli in at a given time.
 - Human decision authority preserved everywhere AI touches the system
 
 ## Tech stack (confirmed)
-- **Frontend — Next.js (TypeScript, App Router), as two separate
-  deployments**: the Founder Portal (lightweight — view, request) and the
-  Birr Ops Console (internal, higher privilege — case management,
-  approvals, agent review queues). Two apps, not one gated by route
-  permissions, so a compromise in the lower-trust Founder Portal has no
-  code-level path into the Ops Console. Shared component library is fine;
-  shared deployment isn't.
+- **Frontend — Next.js (TypeScript, App Router), one deployment
+  (`apps/web`)**, split into two route groups: `app/(founder)`
+  (lightweight — view, request; public landing page, public sign-up/
+  sign-in) and `app/ops` (internal, higher privilege — case management,
+  approvals, agent review queues; sign-in at `/ops/sign-in`, not linked
+  from anywhere public). **Originally built as two separate
+  deployments specifically so a compromise in the lower-trust
+  Founder-facing surface had no code-level path into Ops Console** — that
+  reasoning still holds in the abstract; merged on 2026-08-24 at the
+  owner's explicit, informed decision, after that tradeoff was raised
+  directly. What's preserved despite the merge: each route group has its
+  own session provider/layout and no shared client state between them,
+  and the actual access-control boundary was never "which port" — it's
+  the backend guards (`SessionAuthGuard`, `PermissionGuard`,
+  `StaffRoleGuard`), untouched by this change. `/ops/sign-in` being
+  unlinked is obscurity, not access control; don't treat it as a real
+  security boundary when reasoning about this system's threat model.
 - **Backend — Node.js/TypeScript with NestJS**, standalone from both
   Next.js apps. Reasons this isn't just Next.js API routes: (1) the
   frontend split only holds if authorization logic lives outside either

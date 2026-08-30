@@ -135,10 +135,11 @@ export class FoundationsService {
 
 // Ops Console's Foundations list page needs to show which Founder(s)
 // own each Foundation and how many Waqf Funds it has, without a second
-// round-trip per row — Founder Portal never calls list()/findById()
-// today (it derives Foundation info from the nested waqf.foundation on
-// GET /waqfs instead), so enriching this response is additive only.
+// round-trip per row. The Founder Portal's own Foundation-detail page
+// and onboarding step 4 also rely on this same shape now (co-founders,
+// and whether the Foundation-level deed has been signed).
 const FOUNDATION_INCLUDE = {
   foundationFounders: { include: { founder: { select: { id: true, name: true } } } },
+  foundationDeed: true,
   _count: { select: { waqfs: true } },
 } as const;

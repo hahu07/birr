@@ -42,4 +42,29 @@ describe("seed role data — segregation of duties", () => {
       expect(grants[key]?.canMaker).not.toBe(true);
     }
   });
+
+  // The permanent version of what the two tests above check by hand for
+  // two specific roles — every role, every governed permission. Since
+  // BirrStaff.staffRole is a single field (one role per person, enforced
+  // by the unique constraint on userId), a role granting both canMaker
+  // and canChecker on the same permission *is* the individual-level
+  // maker-checker bug CLAUDE.md warns about ("a single person could
+  // both propose and approve") — there's no second role for that person
+  // to hide behind. This is the guardrail that catches it the moment a
+  // future edit to rolePermissions introduces one, rather than relying
+  // on a human reviewer to notice.
+  it("never grants any single role both canMaker and canChecker on the same maker-checker gated permission", () => {
+    const governedPermissionKeys = new Set<string>(permissions.filter((p) => p.requiresMakerChecker).map((p) => p.key));
+    for (const [roleKey, grants] of Object.entries(rolePermissions)) {
+      for (const [permissionKey, grant] of Object.entries(grants)) {
+        if (!governedPermissionKeys.has(permissionKey)) continue;
+        if (grant.canMaker && grant.canChecker) {
+          throw new Error(
+            `Role "${roleKey}" grants both canMaker and canChecker on "${permissionKey}" — a single person in ` +
+              `this role could propose and approve their own action. Split the grant across two roles instead.`,
+          );
+        }
+      }
+    }
+  });
 });

@@ -4,7 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { prisma, CoiStatus } from "@birr/db";
+import { prisma, CoiStatus, BirrStaffRole } from "@birr/db";
+import { NotificationsService } from "../notifications/notifications.service";
 
 export interface DeclareInput {
   birrStaffId: string;
@@ -28,8 +29,22 @@ const COI_INCLUDE = {
   reviewedByUser: { select: { id: true, fullName: true } },
 } as const;
 
+// No RolePermission row exists for "who may review a conflict of
+// interest" — declare()/review() are ungated for any active BirrStaff
+// (see the controller's own comment: "any active BirrStaff may declare
+// or review"), so there's no eligible-role table to query the way
+// GovernedActionsService.notifyProposed() does. compliance_officer and
+// audit_committee are the closest semantic fit for day-to-day review;
+// escalation additionally reaches audit_committee + platform_admin.
+// Judgment calls, not something enforced by a guard today — revisit if
+// the product owner wants a real permission for this workflow.
+const COI_REVIEW_ROLES: BirrStaffRole[] = ["compliance_officer", "audit_committee"];
+const COI_ESCALATION_ROLES: BirrStaffRole[] = ["audit_committee", "platform_admin"];
+
 @Injectable()
 export class ConflictOfInterestDeclarationsService {
+  constructor(private readonly notificationsService: NotificationsService) {}
+
   async declare(input: DeclareInput) {
     const staff = await prisma.birrStaff.findUnique({
       where: { id: input.birrStaffId },
@@ -38,7 +53,7 @@ export class ConflictOfInterestDeclarationsService {
       throw new NotFoundException(`BirrStaff "${input.birrStaffId}" not found.`);
     }
 
-    return prisma.$transaction(async (tx) => {
+    const declaration = await prisma.$transaction(async (tx) => {
       const declaration = await tx.conflictOfInterestDeclaration.create({
         data: {
           birrStaffId: staff.id,
@@ -62,6 +77,43 @@ export class ConflictOfInterestDeclarationsService {
 
       return declaration;
     });
+
+    // Deliberately not awaited — same fire-and-forget posture as every
+    // other post-transaction notify() call this session.
+    this.notifyReviewers(COI_REVIEW_ROLES, staff.userId, "coi.needs_review", declaration.id).catch((err) => {
+      console.error(`Failed to notify reviewers of new COI declaration "${declaration.id}":`, err);
+    });
+
+    return declaration;
+  }
+
+  private async notifyReviewers(
+    roles: BirrStaffRole[],
+    excludeUserId: string,
+    type: string,
+    declarationId: string,
+  ): Promise<void> {
+    const reviewers = await prisma.birrStaff.findMany({
+      where: { staffRole: { in: roles }, status: "active", userId: { not: excludeUserId } },
+      select: { userId: true },
+    });
+    await Promise.all(
+      reviewers.map((reviewer) =>
+        this.notificationsService.notify({
+          recipientType: "birr_staff",
+          recipientUserId: reviewer.userId,
+          type,
+          title: type === "coi.escalated" ? "Conflict of interest escalated" : "Conflict of interest needs review",
+          body:
+            type === "coi.escalated"
+              ? "A declared conflict of interest was escalated and needs senior review."
+              : "A new conflict of interest declaration needs review.",
+          linkUrl: "/ops/conflict-of-interest",
+          relatedEntityType: "ConflictOfInterestDeclaration",
+          relatedEntityId: declarationId,
+        }),
+      ),
+    );
   }
 
   async review(input: ReviewInput) {
@@ -88,7 +140,7 @@ export class ConflictOfInterestDeclarationsService {
       );
     }
 
-    return prisma.$transaction(async (tx) => {
+    const reviewed = await prisma.$transaction(async (tx) => {
       const reviewed = await tx.conflictOfInterestDeclaration.update({
         where: { id: declaration.id },
         data: {
@@ -113,6 +165,31 @@ export class ConflictOfInterestDeclarationsService {
 
       return reviewed;
     });
+
+    // Feedback to the declarant — in-app only, same posture as
+    // governed_action.decided.own. Deliberately not awaited.
+    this.notificationsService
+      .notify({
+        recipientType: "birr_staff",
+        recipientUserId: declaration.declaredByUserId,
+        type: "coi.reviewed",
+        title: `Your conflict of interest declaration was ${input.status}`,
+        body: `Your conflict of interest declaration was reviewed: ${input.status}.`,
+        linkUrl: "/ops/conflict-of-interest",
+        relatedEntityType: "ConflictOfInterestDeclaration",
+        relatedEntityId: declaration.id,
+      })
+      .catch((err) => {
+        console.error(`Failed to notify declarant of reviewed COI "${declaration.id}":`, err);
+      });
+
+    if (input.status === "escalated") {
+      this.notifyReviewers(COI_ESCALATION_ROLES, input.reviewerUserId, "coi.escalated", declaration.id).catch((err) => {
+        console.error(`Failed to notify escalation reviewers for COI "${declaration.id}":`, err);
+      });
+    }
+
+    return reviewed;
   }
 
   findById(id: string) {

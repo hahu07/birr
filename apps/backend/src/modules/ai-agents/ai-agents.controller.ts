@@ -12,6 +12,15 @@ export class AiAgentsController {
     return this.service.list();
   }
 
+  // BirrStaff-session-authenticated (no @Public()) — unlike the three
+  // agent-authenticated routes below, this is the Ops Console's own
+  // read, keyed by the AiAgent row's id rather than its registry name to
+  // keep it visibly distinct from those.
+  @Get(":id/drafts")
+  drafts(@Param("id") id: string) {
+    return this.service.drafts(id);
+  }
+
   // @Public() — these three routes are agent-authenticated, not
   // BirrStaff-session-authenticated. Each independently verifies
   // x-agent-api-key against the named agent's own row before doing

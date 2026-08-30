@@ -23,11 +23,24 @@ export class ComplianceReportsService {
     const [governedActions, auditLogs, policySet, trusteeLicenseStatus] = await Promise.all([
       prisma.governedAction.findMany({
         where: { waqfId },
-        include: { permission: true },
+        include: {
+          permission: true,
+          makerUser: { select: { id: true, fullName: true } },
+          makerAgent: { select: { id: true, name: true } },
+          checkerUser: { select: { id: true, fullName: true } },
+        },
         orderBy: { createdAt: "asc" },
       }),
+      // Named actors, not just ids — a compliance report is read by
+      // people outside this codebase (an external auditor, a regulator)
+      // who have no way to resolve a bare actorUserId themselves.
       prisma.auditLog.findMany({
         where: { waqfId },
+        include: {
+          actorUser: { select: { id: true, fullName: true } },
+          actorAgent: { select: { id: true, name: true } },
+          actorFounder: { select: { id: true, name: true } },
+        },
         orderBy: { createdAt: "asc" },
       }),
       this.compliancePolicySets.findByJurisdiction(waqf.jurisdiction),

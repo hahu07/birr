@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { IsEnum, IsNumberString, IsString } from "class-validator";
 import { prisma, Prisma, AssetCategory } from "@birr/db";
+import { withFounderScope } from "../../common/db/founder-scope";
 
 export class CreateAssetInput {
   @IsString()
@@ -82,6 +83,22 @@ export class AssetsService {
     return prisma.asset.findMany({
       where: waqfId ? { waqfId } : undefined,
       orderBy: { createdAt: "desc" },
+    });
+  }
+
+  // Founder-Portal read-only visibility into their own waqf's registered
+  // assets — no PII concern here (an asset isn't a person), unlike
+  // Beneficiary. Returns null (not an empty array) when the waqf isn't
+  // found or isn't theirs, matching WaqfCausesService.listForFounder's
+  // convention — the controller turns that into a 404.
+  async listForFounder(waqfId: string, founderId: string) {
+    return withFounderScope(founderId, async (tx) => {
+      const waqf = await tx.waqf.findFirst({
+        where: { id: waqfId, foundation: { foundationFounders: { some: { founderId } } } },
+        select: { id: true },
+      });
+      if (!waqf) return null;
+      return tx.asset.findMany({ where: { waqfId, deletedAt: null }, orderBy: { createdAt: "desc" } });
     });
   }
 }

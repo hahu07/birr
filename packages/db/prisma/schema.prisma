@@ -92,6 +92,11 @@ enum WaqfStatus {
   dissolved
 }
 
+enum WaqfFundingPlan {
+  lump_sum
+  installment
+}
+
 enum AssetCategory {
   real_estate
   cash
@@ -114,6 +119,14 @@ enum BeneficiaryStatus {
   inactive
 }
 
+// A mosque, orphanage, or other organization is just as real a
+// beneficiary as a person — name covers either case, no extra
+// organization-only field beyond that for now.
+enum BeneficiaryKind {
+  individual
+  organization
+}
+
 enum InvestmentInstrumentType {
   sukuk
   equity_fund
@@ -130,6 +143,15 @@ enum InvestmentStatus {
 enum DistributionStatus {
   pending
   approved
+  // Real-payout lifecycle, added alongside Distribution.payoutProvider/
+  // payoutReference/paidAt/payoutError — see DistributionsService's
+  // initiateDisbursement()/handlePayoutWebhook() own comments. approved
+  // -> disbursing happens automatically right after a checker approves;
+  // disbursing -> paid/payout_failed is webhook-confirmed (async, same
+  // posture as ContributionStatus's confirmed/failed transition).
+  disbursing
+  paid
+  payout_failed
   rejected
 }
 
@@ -195,6 +217,7 @@ enum ActorType {
 enum InviteeKind {
   founder_user
   birr_staff
+  co_founder
 }
 
 enum InvitationStatus {
@@ -256,7 +279,18 @@ model User {
   coiReviews                 ConflictOfInterestDeclaration[] @relation("CoiReviewedBy")
   whatsappOtps               WhatsAppOtp[]
   signedWaqfDeeds            WaqfDeed[]
+  signedFoundationDeeds      FoundationDeed[]
   updatedProviderCredentials ProviderCredential[]
+  proposedCauseSuggestions   CauseCategorySuggestion[]       @relation("CauseSuggestionProposedBy")
+  reviewedCauseSuggestions   CauseCategorySuggestion[]       @relation("CauseSuggestionReviewedBy")
+  proposedBeneficiaryNominations BeneficiaryNomination[]     @relation("BeneficiaryNominationProposedBy")
+  reviewedBeneficiaryNominations BeneficiaryNomination[]     @relation("BeneficiaryNominationReviewedBy")
+  causeImpactUpdates         CauseImpactUpdate[]
+  notifications              Notification[]
+  recordedWaqfProceeds       WaqfProceeds[]
+  counterpartyShariahApprovals Counterparty[]                 @relation("CounterpartyShariahApprover")
+  createdInvestmentPlacements  InvestmentPlacement[]
+  sentMessages                 Message[]
 
   @@map("users")
 }
@@ -277,6 +311,9 @@ model Founder {
   invitations        Invitation[]
   auditLogs          AuditLog[]
   signedWaqfDeeds    WaqfDeed[]
+  signedFoundationDeeds FoundationDeed[]
+  causeSuggestions   CauseCategorySuggestion[]
+  beneficiaryNominations BeneficiaryNomination[]
 
   @@map("founders")
 }
@@ -366,6 +403,15 @@ model Waqf {
   purpose      String?
   jurisdiction String
   status       WaqfStatus @default(draft)
+  // The declared total endowment target — nullable because every waqf
+  // established before this feature has none (no backfill attempted;
+  // see CorpusMinimum below for the admin-enforced floor on new
+  // declarations). fundingPlan is NOT NULL with a safe default since
+  // "lump sum, pay it all now" was the only behavior that existed
+  // before installment funding was added.
+  corpusAmount   Decimal?
+  corpusCurrency String?
+  fundingPlan    WaqfFundingPlan @default(lump_sum)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   deletedAt    DateTime?
@@ -380,6 +426,9 @@ model Waqf {
   waqfCauses      WaqfCause[]
   contributions   Contribution[]
   waqfDeed        WaqfDeed?
+  causeSuggestions CauseCategorySuggestion[]
+  proceeds        WaqfProceeds[]
+  beneficiaryNominations BeneficiaryNomination[]
 
   @@map("waqfs")
 }
@@ -406,8 +455,87 @@ model Foundation {
 
   foundationFounders FoundationFounder[]
   waqfs              Waqf[]
+  invitations        Invitation[]
+  foundationDeed     FoundationDeed?
+  messages           Message[]
 
   @@map("foundations")
+}
+
+// Founder <-> Birr staff communication, scoped per Foundation (not per
+// Waqf Fund — a deliberate choice, confirmed with the owner, over the
+// per-waqf organization every other section on a Waqf Fund's own page
+// uses). Symmetric: unlike Assets/Beneficiaries/etc., both sides can
+// send here, not just Birr staff — this isn't a fiduciary decision, it's
+// communication, so it doesn't go through governed_actions and isn't
+// audit-logged the way a governed entity's writes are.
+model Message {
+  id           String     @id @default(uuid())
+  foundationId String
+  foundation   Foundation @relation(fields: [foundationId], references: [id])
+  senderType   ActorType
+  senderUserId String
+  senderUser   User       @relation(fields: [senderUserId], references: [id])
+  body         String     @db.Text
+  createdAt    DateTime   @default(now())
+  deletedAt    DateTime?
+
+  attachments MessageAttachment[]
+
+  @@index([foundationId, createdAt])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id        String   @id @default(uuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id])
+  // Original filename, for display only — never used to derive the
+  // actual disk path (see MessageAttachmentStorageService, same
+  // randomUUID()-named-file convention as LogoStorageService).
+  fileName  String
+  mimeType  String
+  sizeBytes Int
+  // Served-file URL, same convention as Foundation.logoUrl.
+  url       String
+  createdAt DateTime @default(now())
+
+  @@map("message_attachments")
+}
+
+// The founder's real, structured e-signature appointing Birr as
+// Mutawalli (trustee) over this Foundation and every Waqf Fund
+// established under it, now or in the future — the final step of
+// onboarding. One-to-one with Foundation, not per-Waqf-Fund
+// (WaqfDeed below is the superseded per-fund predecessor, kept only
+// for any historical rows — never written to again). Deliberately a
+// reversal of the original design ("the real trustee relationship
+// attaches at the Waqf level" — see Foundation's own comment above and
+// WaqfsService.create()'s comment) after that tradeoff was raised
+// directly with the project owner and confirmed. Immutable once
+// written, same trigger-based enforcement as WaqfDeed — see that
+// model's own migration history for why a trigger, not a bare REVOKE,
+// is required once an incoming FK exists.
+model FoundationDeed {
+  id                  String     @id @default(uuid())
+  foundationId        String     @unique
+  foundation          Foundation @relation(fields: [foundationId], references: [id])
+  signedByUserId      String
+  signedByUser        User       @relation(fields: [signedByUserId], references: [id])
+  signedByFounderId   String
+  signedByFounder     Founder    @relation(fields: [signedByFounderId], references: [id])
+  typedLegalName      String
+  // Traceability only — deedText below (the verbatim rendered text at
+  // signing time) is the actual source of truth for what was agreed to,
+  // so a later template edit never retroactively alters a signed record.
+  deedTemplateVersion String
+  deedText            String     @db.Text
+  affirmed            Boolean
+  ipAddress           String?
+  signedAt            DateTime   @default(now())
+  createdAt           DateTime   @default(now())
+
+  @@map("foundation_deeds")
 }
 
 // Join, not a single founderId column on Foundation — a Foundation can
@@ -426,27 +554,237 @@ model FoundationFounder {
   @@map("foundation_founders")
 }
 
+// The standard menu of causes Birr's product team maintains — a Founder
+// picks from these for their own Waqf Fund (WaqfCause.causeCategoryId
+// below), self-service, rather than a Birr staff member inventing one
+// per waqf. Soft-delete only (deletedAt = "retired"): once a Founder has
+// selected a category, its WaqfCause row already carries its own copy of
+// name/description (see that model's comment), so retiring a category
+// here never rewrites or breaks history already on a waqf — it only
+// removes the option from what a Founder can newly pick.
+model CauseCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  // Single emoji glyph, e.g. "🎓" — visual identity in the Founder's
+  // picker; no new asset pipeline needed for a handful of catalog rows.
+  icon        String?
+  // Product team's own curated display order (ascending, ties broken by
+  // name) — not creation order or alphabetical, since neither reflects
+  // which causes Birr wants shown first.
+  sortOrder   Int       @default(0)
+  // Staff-curated, not derived from live selection stats — with so few
+  // real waqfs established, usage-based "commonly picked for this type"
+  // would be noise for a long while. A UX nudge only (the Founder's
+  // picker highlights these first): WaqfType and Cause are genuinely
+  // orthogonal (type = how value is held, cause = why it's spent), so
+  // this never filters or restricts which categories a Founder can pick
+  // for their waqf's type — see the founder-facing CausesSection's own
+  // comment. Empty array = "no particular type association," shown
+  // alongside every type's suggestions equally, not hidden from any.
+  typicalWaqfTypes WaqfType[]
+  // Arbitrary depth — a category may itself have a parent that has a
+  // parent, and so on. The only rule enforced (in CauseCategoriesService,
+  // since Prisma/Postgres can't express acyclicity as a schema
+  // constraint) is that a category can never become its own ancestor. A
+  // category with children is just a non-selectable grouping label in
+  // the Founder's picker; one with none behaves exactly as every
+  // category did before this existed.
+  parentId    String?
+  parent      CauseCategory?  @relation("CauseCategoryChildren", fields: [parentId], references: [id])
+  children    CauseCategory[] @relation("CauseCategoryChildren")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  waqfCauses WaqfCause[]
+  resultingFromSuggestions CauseCategorySuggestion[]
+
+  @@map("cause_categories")
+}
+
 // A theme/purpose within one Waqf Fund's deed (e.g. an Education Fund's
 // "Teacher Training", "Scholarships") — NOT a separate legal endowment,
 // so this is plain CRUD like Asset/Beneficiary/Investment registration,
 // not routed through governed_actions. Beneficiary/Distribution
 // reference this so money and eligibility are individually trackable
 // per cause within a fund, not just per fund.
+//
+// Two ways one of these gets created: a Founder selects a CauseCategory
+// for their own waqf (causeCategoryId set; name/description copied from
+// the category at selection time, not looked up live, so a later edit to
+// the category's own name/description never retroactively rewrites a
+// waqf's existing cause — same reasoning as WaqfDeed.deedText), or Birr
+// staff registers a one-off custom cause outside the standard catalog for
+// a case it doesn't cover (causeCategoryId left null, same as before this
+// model existed).
 model WaqfCause {
-  id          String    @id @default(uuid())
-  waqfId      String
-  waqf        Waqf      @relation(fields: [waqfId], references: [id])
-  name        String
-  description String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id              String         @id @default(uuid())
+  waqfId          String
+  waqf            Waqf           @relation(fields: [waqfId], references: [id])
+  causeCategoryId String?
+  causeCategory   CauseCategory? @relation(fields: [causeCategoryId], references: [id])
+  name            String
+  description     String?
+  // How much of the waqf's live amountRaised (confirmed Contributions —
+  // see WaqfCausesService.allocate's own comment) the Founder has
+  // earmarked to this cause. Always drawn from amountRaised, for every
+  // waqf type including Investment — never from WaqfProceeds, which is
+  // a separate pool (see proceedsAllocatedAmount below). Null = not yet
+  // allocated. Founder self-service, same posture as selecting the
+  // cause itself — a deliberate choice over making this a
+  // governed_action; see CLAUDE.md's note on this decision.
+  // DistributionsService.assertWithinAllocation() sums this together
+  // with proceedsAllocatedAmount as the real ceiling, not just a
+  // declared figure.
+  allocatedAmount Decimal?
+  // How much of the waqf's recorded WaqfProceeds total (see
+  // WaqfProceedsService.sumForWaqf) Birr staff has earmarked to this
+  // cause — a second, additive pool on top of allocatedAmount above,
+  // not a replacement. Investment-type waqfs only (every other waqf
+  // type has no investment layer and so never has proceeds to
+  // allocate — stays null there). Birr-staff decision, not Founder
+  // self-service, unlike allocatedAmount: see
+  // WaqfCausesService.allocateProceeds's own comment for why.
+  proceedsAllocatedAmount Decimal?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
 
   beneficiaries Beneficiary[]
   distributions Distribution[]
+  impactUpdates CauseImpactUpdate[]
+  beneficiaryNominations BeneficiaryNomination[]
 
   @@unique([waqfId, name])
   @@map("waqf_causes")
+}
+
+// A periodic, staff-entered record of what a specific waqf's cause has
+// actually achieved — CLAUDE.md lists impact measurement as a real waqf
+// lifecycle stage; nothing captured it before this. Scoped to the
+// per-waqf WaqfCause instance, not the global CauseCategory, since
+// impact is fund-specific ("this fund's Education cause helped 340
+// students," not "Education in general"). Append-only, no update/delete
+// route — a correction is a new entry, not an edit, same posture as
+// AuditLog/WaqfDeed: an honest history of what was reported when, not a
+// single mutable "current" figure.
+model CauseImpactUpdate {
+  id               String   @id @default(uuid())
+  waqfCauseId      String
+  waqfCause        WaqfCause @relation(fields: [waqfCauseId], references: [id])
+  reportedByUserId String
+  reportedByUser   User     @relation(fields: [reportedByUserId], references: [id])
+  periodLabel      String
+  narrative        String   @db.Text
+  // An optional single headline number ("340" / "students") — free text
+  // for the unit rather than a fixed enum, since impact metrics vary
+  // wildly by cause (students, liters of water, families housed...).
+  metricValue      Int?
+  metricLabel      String?
+  createdAt        DateTime @default(now())
+
+  @@map("cause_impact_updates")
+}
+
+enum CauseSuggestionStatus {
+  pending
+  approved
+  rejected
+}
+
+// A Founder's request to add something new to the standard catalog —
+// today only Birr staff can (see CauseCategoriesController's
+// platform_admin gate); this is the self-service half of that gap.
+// Modeled structurally on ConflictOfInterestDeclaration (status +
+// reviewedByUserId/reviewedAt), not governed_actions — same "plain CRUD,
+// not a fiduciary act on a specific waqf's assets" reasoning already
+// established for WaqfCause itself. waqfId is context only (which fund
+// prompted the request), not a scope restriction — an approved
+// suggestion joins the global catalog, available to every Founder.
+model CauseCategorySuggestion {
+  id                  String                @id @default(uuid())
+  proposedByFounderId String
+  proposedByFounder   Founder               @relation(fields: [proposedByFounderId], references: [id])
+  proposedByUserId    String
+  proposedByUser      User                  @relation("CauseSuggestionProposedBy", fields: [proposedByUserId], references: [id])
+  waqfId              String?
+  waqf                Waqf?                 @relation(fields: [waqfId], references: [id])
+  name                String
+  description         String?
+  status              CauseSuggestionStatus @default(pending)
+  reviewedByUserId    String?
+  reviewedByUser      User?                 @relation("CauseSuggestionReviewedBy", fields: [reviewedByUserId], references: [id])
+  reviewedAt          DateTime?
+  reviewNotes         String?
+  // Set on approval — the catalog entry this suggestion became. Staff
+  // sets icon/sortOrder/typicalWaqfTypes at approval time (the Founder's
+  // suggestion supplies only name/description), so this is a genuinely
+  // new CauseCategory, not a stub the suggestion pre-creates.
+  resultingCategoryId String?
+  resultingCategory   CauseCategory?        @relation(fields: [resultingCategoryId], references: [id])
+  createdAt           DateTime              @default(now())
+
+  @@map("cause_category_suggestions")
+}
+
+enum BeneficiaryNominationStatus {
+  pending
+  approved
+  rejected
+}
+
+// A Founder's proposal to register a beneficiary — today only Birr
+// staff can (see BeneficiariesController, no @Public() route). Modeled
+// structurally on CauseCategorySuggestion above (same propose-then-
+// staff-decides shape), not self-service like WaqfCause.allocate: a
+// Founder registering their own beneficiaries directly would remove
+// Birr's independent eligibility check as trustee and risk self-dealing
+// (naming friends/family) — see BeneficiariesService.summaryForFounder's
+// own comment on why beneficiary identity is kept confidential from the
+// donor by standard endowment practice. Unlike CauseCategorySuggestion,
+// waqfId here IS a real scope (a nomination is for one specific waqf's
+// beneficiary list, not a shared global catalog).
+model BeneficiaryNomination {
+  id                  String                       @id @default(uuid())
+  waqfId              String
+  waqf                Waqf                         @relation(fields: [waqfId], references: [id])
+  proposedByFounderId String
+  proposedByFounder   Founder                      @relation(fields: [proposedByFounderId], references: [id])
+  proposedByUserId    String
+  proposedByUser      User      @relation("BeneficiaryNominationProposedBy", fields: [proposedByUserId], references: [id])
+  // Nullable in the DB, required at the input-validation layer — same
+  // convention as Beneficiary.causeId itself (see that field's own
+  // comment).
+  causeId             String?
+  cause               WaqfCause?                   @relation(fields: [causeId], references: [id])
+  name                String
+  kind                BeneficiaryKind              @default(individual)
+  eligibilityCriteria String
+  phone               String?
+  email               String?
+  // Encrypted JSON, same shape/reasoning as Beneficiary.bankDetailsEncrypted
+  // — a Founder-submitted nomination carries this straight through to
+  // the resulting Beneficiary on approval, still never decrypted for
+  // display back to the Founder.
+  bankDetailsEncrypted String?
+  // Same reasoning as Beneficiary.payoutProvider — carried through to
+  // the resulting Beneficiary on approval, same as bank details.
+  payoutProvider       PayoutProvider?
+  status              BeneficiaryNominationStatus  @default(pending)
+  reviewedByUserId    String?
+  reviewedByUser      User?     @relation("BeneficiaryNominationReviewedBy", fields: [reviewedByUserId], references: [id])
+  reviewedAt          DateTime?
+  reviewNotes         String?
+  // Set on approval — the real Beneficiary this nomination became.
+  // eligibilityExpiresAt is deliberately NOT carried from a nomination
+  // — it's a staff-only decision set after approval, not something a
+  // Founder proposes (closer to a governance call than contact info).
+  resultingBeneficiaryId String?      @unique
+  resultingBeneficiary   Beneficiary? @relation(fields: [resultingBeneficiaryId], references: [id])
+  createdAt              DateTime     @default(now())
+
+  @@map("beneficiary_nominations")
 }
 
 // The caseload concept — who serves which function on a given waqf.
@@ -547,6 +885,21 @@ enum ContributionProvider {
   stablecoin
 }
 
+// A Beneficiary's chosen outbound-payout rail — deliberately a separate
+// enum from ContributionProvider even though the values mirror it, since
+// which rails actually support real payout differs from which support
+// real inbound payment. Today only "paystack" has a real, working
+// adapter (their Transfers API — bank code + account number); "stripe"
+// and "stablecoin" are honest stubs (see distributions/providers' own
+// comments on why — Stripe payout needs Connect onboarding, the
+// integrated stablecoin gateway is receive-only) that reject cleanly
+// rather than pretending to succeed.
+enum PayoutProvider {
+  stripe
+  paystack
+  stablecoin
+}
+
 enum ContributionStatus {
   pending
   confirmed
@@ -598,6 +951,35 @@ model ContributionMinimum {
   @@map("contribution_minimums")
 }
 
+// The minimum TOTAL corpus a founder may declare when establishing a
+// Waqf Fund, per currency — checked once at declaration time
+// (WaqfsService.create), not per payment. Deliberately a separate table
+// from ContributionMinimum above rather than a second column on it: the
+// two answer different questions ("how big must the endowment target
+// be" vs "how small can any single payment be") and are managed
+// independently by ops/finance.
+model CorpusMinimum {
+  id        String   @id @default(uuid())
+  currency  String   @unique
+  minAmount Decimal
+  updatedAt DateTime @updatedAt
+
+  @@map("corpus_minimums")
+}
+
+// Singleton — always exactly one row (seeded once, never created again).
+// installmentMinimumPercent is the admin-configurable floor an
+// installment-plan waqf's first payment must clear (see
+// ContributionsService.initiate()) — e.g. 25 means at least 25% of the
+// declared corpus must be paid before the fund activates.
+model WaqfFundingSettings {
+  id                        String   @id @default(uuid())
+  installmentMinimumPercent Decimal  @default(25)
+  updatedAt                 DateTime @updatedAt
+
+  @@map("waqf_funding_settings")
+}
+
 // A human-typed 6-digit code needs different properties than either
 // existing single-use-token pattern in this schema: a short expiry (not
 // User.verificationToken's 24h) and brute-force protection (neither
@@ -630,18 +1012,48 @@ model Beneficiary {
   id                  String            @id @default(uuid())
   waqfId              String
   waqf                Waqf              @relation(fields: [waqfId], references: [id])
-  // Nullable — a beneficiary can qualify under the fund generally
-  // without being pinned to one specific cause up front.
+  // Nullable in the DB (no backfill for pre-existing rows, same
+  // convention as Investment.counterpartyId) — required going forward
+  // at the input-validation layer instead (see
+  // BeneficiariesService.CreateBeneficiaryInput and
+  // BeneficiaryNominationsService.ProposeBeneficiaryNominationInput,
+  // both of which drop @IsOptional() on this).
   causeId             String?
   cause               WaqfCause?        @relation(fields: [causeId], references: [id])
   name                String
+  kind                BeneficiaryKind   @default(individual)
   eligibilityCriteria String
   status              BeneficiaryStatus @default(active)
+  phone               String?
+  email               String?
+  // Encrypted JSON {bankName, accountNumber, accountName, bankCode?} —
+  // see common/settings/encryption.service.ts's EncryptionService
+  // (reused as-is, not a second encryption utility). bankCode is
+  // required going forward once payoutProvider is "paystack" and this
+  // beneficiary's distribution is actually approved — enforced at
+  // DistributionsService.assertPayoutReady()/BeneficiariesService
+  // .getDecryptedBankDetailsForPayout(), not here (this stays
+  // deliberately optional at the input-DTO level — see BankDetailsInput's
+  // own comment on why). Never returned in plaintext to a Founder
+  // session, never included in this row's own audit_logs snapshot —
+  // decrypted only for a Birr staff-facing read.
+  bankDetailsEncrypted String?
+  // Which outbound-payout rail this beneficiary is paid through — see
+  // PayoutProvider's own comment on why only "paystack" actually pays
+  // out today. Nullable, no backfill.
+  payoutProvider       PayoutProvider?
+  // Lazily checked, not a scheduled job — see
+  // DistributionsService.assertBeneficiaryEligible.
+  eligibilityExpiresAt DateTime?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   deletedAt           DateTime?
 
   distributions Distribution[]
+  // Set when this row was created via BeneficiaryNominationsService
+  // .approve() rather than BeneficiariesController.create() directly —
+  // null for every staff-registered beneficiary.
+  nomination    BeneficiaryNomination?
 
   @@map("beneficiaries")
 }
@@ -659,11 +1071,161 @@ model Investment {
   allocatedAmount Decimal
   status          InvestmentStatus         @default(active)
   liquidatedAt    DateTime?
+  // Nullable — no backfill for any pre-existing rows, same convention as
+  // every other nullable addition in this schema. Required going forward
+  // by InvestmentsService.create() at the app layer (see that method's
+  // own comment): who actually holds this money, tracked once so
+  // exposure can be measured across every waqf, not per-fund.
+  counterpartyId  String?
+  counterparty    Counterparty?            @relation(fields: [counterpartyId], references: [id])
+  // Nullable — no backfill, same convention as counterpartyId above. Set
+  // only when this row was created as one leg of a bulk
+  // InvestmentPlacement (many waqfs, one counterparty placement); a
+  // standalone single-waqf POST /investments leaves this null, same as
+  // every row created before this feature existed.
+  placementId     String?
+  placement       InvestmentPlacement?     @relation(fields: [placementId], references: [id])
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
   deletedAt       DateTime?
 
+  proceeds WaqfProceeds[]
+
   @@map("investments")
+}
+
+// One real-world placement of money with a counterparty, spread across
+// however many Waqf Funds contributed to it — the shared anchor that
+// lets an officer bulk-create the N per-waqf Investment rows a single
+// placement produces in one action, and later record one incoming
+// return that gets pro-rated back across every contributing waqf's own
+// WaqfProceeds, instead of manually calculating each fund's share by
+// hand. No totalAmount/currency stored here — always derived by summing
+// this placement's own `investments` (same aggregate-not-denormalize
+// posture as CounterpartiesService.exposure()), since each Investment
+// row already carries its own allocatedAmount and implicitly its own
+// waqf's corpusCurrency (Investment itself has no currency field — see
+// InvestmentPlacementsService.create()'s own comment on why every
+// contributing waqf must share one corpus currency).
+model InvestmentPlacement {
+  id              String                   @id @default(uuid())
+  name            String
+  instrumentType  InvestmentInstrumentType
+  counterpartyId  String
+  counterparty    Counterparty             @relation(fields: [counterpartyId], references: [id])
+  createdByUserId String
+  createdByUser   User                     @relation(fields: [createdByUserId], references: [id])
+  createdAt       DateTime                 @default(now())
+
+  investments Investment[]
+
+  @@map("investment_placements")
+}
+
+enum CounterpartyType {
+  bank
+  asset_manager
+  broker_dealer
+  fund_administrator
+  // A general corporate counterparty that isn't itself a regulated
+  // financial institution — e.g. a real estate developer or trading
+  // company a waqf invests with directly (murabaha, real estate fund
+  // structures). Distinct from "other" so it's queryable/reportable on
+  // its own, not lumped into a catch-all.
+  business
+  other
+}
+
+enum CounterpartyStatus {
+  pending_review // registered, not yet vetted — can't receive investment
+  active // both gates passed — can receive new investment
+  under_review // flagged for re-vetting (e.g. license nearing expiry) — new investment blocked, existing untouched
+  suspended // Risk & Compliance emergency stop — new investment blocked, existing untouched
+  blacklisted // permanent — new investment blocked, existing flagged for wind-down
+}
+
+// An external institution actually holding waqf investment money — banks,
+// asset managers, broker-dealers. Distinct from Investment.allocatedAmount
+// (how much corpus sits in *an instrument*): this is WHO holds it, tracked
+// once so exposure can be measured across every waqf, not per-fund.
+// Two independent gates must both pass before `status` can become
+// `active`: (1) shariahApprovedAt/By, set directly by a shariah_board_member
+// (their own domain sign-off, not maker-checker — same posture as a single
+// expert declaration, see ConflictOfInterestDeclaration); (2) the
+// counterparty.onboard governed_action itself (investment_committee
+// proposes, checked by mutawalli_officer/board_of_trustees/audit_committee/
+// shariah_board_member) — its onApprove handler (CounterpartiesService.onboard)
+// refuses to flip status to active unless gate (1) already passed.
+// Reactivating a suspended/blacklisted counterparty goes through the same
+// onboard flow again; moving TO suspended/blacklisted is immediate,
+// unilateral compliance_officer action (speed over dual-control when
+// stopping a bad actor — see CounterpartiesService.suspend's own comment).
+model Counterparty {
+  id                         String              @id @default(uuid())
+  name                       String              @unique
+  institutionType            CounterpartyType
+  jurisdiction               String
+  status                     CounterpartyStatus  @default(pending_review)
+  // Basic corporate identity — distinct from regulatoryLicenseNumber
+  // below, which is specifically a financial-services license and
+  // doesn't apply to a plain "business" counterparty with no such
+  // license at all.
+  registrationNumber         String?
+  address                    String?
+  businessActivities         String?
+  website                    String?
+  contactName                String?
+  contactEmail               String?
+  contactPhone               String?
+  regulatoryLicenseNumber    String?
+  regulatingAuthority        String?
+  licenseExpiresAt           DateTime?
+  shariahApprovedAt          DateTime?
+  shariahApprovedByUserId    String?
+  shariahApprovedByUser      User?               @relation("CounterpartyShariahApprover", fields: [shariahApprovedByUserId], references: [id])
+  // Risk & Compliance's ceiling on total exposure to this ONE counterparty
+  // across every waqf combined — null means no limit configured yet.
+  // Enforced in InvestmentsService.create() the same way
+  // WaqfCause.allocatedAmount is enforced in DistributionsService: a real
+  // ceiling, not a decorative figure.
+  concentrationLimit         Decimal?
+  concentrationLimitCurrency String?
+  notes                      String?
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+  deletedAt                  DateTime?
+
+  investments          Investment[]
+  investmentPlacements InvestmentPlacement[]
+
+  @@map("counterparties")
+}
+
+// A recorded return/proceeds event for an Investment-type waqf — Birr
+// staff enters these periodically (e.g. quarterly) as investments
+// generate income. Distinct from Investment.allocatedAmount (how much
+// corpus sits in an instrument): this is the *return* that instrument
+// produced, which is what actually becomes distributable — the corpus
+// itself stays invested, preserving the endowment per classical waqf
+// principle. investmentId is optional (a waqf-level return not tied to
+// one specific instrument is still valid). Append-only by convention, no
+// update/delete route — same posture as CauseImpactUpdate: a correction
+// is a new (possibly negative) entry, never an edit, so the income
+// history stays honest.
+model WaqfProceeds {
+  id               String      @id @default(uuid())
+  waqfId           String
+  waqf             Waqf        @relation(fields: [waqfId], references: [id])
+  investmentId     String?
+  investment       Investment? @relation(fields: [investmentId], references: [id])
+  amount           Decimal
+  currency         String
+  description      String
+  recordedByUserId String
+  recordedByUser   User        @relation(fields: [recordedByUserId], references: [id])
+  createdAt        DateTime    @default(now())
+
+  @@map("waqf_proceeds")
 }
 
 // Registration (this model, created directly) is a plain draft — CLAUDE.md's
@@ -682,8 +1244,31 @@ model Distribution {
   beneficiaryId String
   beneficiary   Beneficiary        @relation(fields: [beneficiaryId], references: [id])
   amount        Decimal
+  // No currency existed anywhere on this model before — every monetary
+  // field in this schema (Asset.estimatedValue, Investment.allocatedAmount,
+  // this one) was a bare Decimal, and a waqf can receive contributions in
+  // several currencies (see ContributionMinimum), so summing amount
+  // across a waqf's distributions was previously meaningless. Fixed here
+  // only, since this is the one entity the cause-level financial rollup
+  // needs to sum; see the migration for the backfill on pre-existing rows.
+  currency      String
   status        DistributionStatus @default(pending)
   approvedAt    DateTime?
+  // Set together, at DistributionsService.initiateDisbursement() time —
+  // the real payout rail this distribution was actually sent through
+  // (only ever "paystack" today — see PayoutProvider's own comment) and
+  // the correlation id its webhook is matched back against. Always this
+  // row's own id — same "always the row's own id, echoed back by the
+  // provider" convention as Contribution.providerReference.
+  payoutProvider  PayoutProvider?
+  payoutReference String?          @unique
+  // Set once a transfer.success webhook confirms the payout actually
+  // landed — see handlePayoutWebhook.
+  paidAt          DateTime?
+  // Last disbursement failure's message, if any — cleared on a
+  // successful retryDisbursement(). Surfaced to staff so a payout_failed
+  // row is actionable, not just a dead end.
+  payoutError     String?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
   deletedAt     DateTime?
@@ -777,6 +1362,38 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// "Who needs to know," not "what happened" — a deliberately separate
+// model from AuditLog rather than folded into it. AuditLog is
+// insert-only at the DB role level (UPDATE/DELETE revoked, CLAUDE.md's
+// non-negotiable) because it's the compliance record; a notification
+// needs a mutable readAt, and most of them aren't compliance-relevant
+// at all (a "your fund is now active" nudge has no audit-trail reason
+// to exist). recipientUserId is always a real User row — both
+// birr_staff and founder_user notifications resolve through it, same
+// shared-account-table pattern already established everywhere else
+// (WhatsAppOtp, FounderMembership, BirrStaff all key off User, not off
+// Founder/BirrStaff directly).
+model Notification {
+  id                String    @id @default(uuid())
+  recipientType     ActorType
+  recipientUserId   String
+  recipientUser     User      @relation(fields: [recipientUserId], references: [id])
+  // A stable machine key ("governed_action.proposed"), not free text —
+  // this is what NotificationsService's CHANNEL_PLAN and the WhatsApp/
+  // email template registries key off of.
+  type              String
+  title             String
+  body              String
+  linkUrl           String?
+  relatedEntityType String?
+  relatedEntityId   String?
+  readAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([recipientUserId, readAt])
+  @@map("notifications")
+}
+
 // One table, discriminated by inviteeKind, for both founder-side and
 // Birr-staff-side invitations — same shape (email, token, expiry).
 model Invitation {
@@ -785,6 +1402,13 @@ model Invitation {
   email         String
   founderId     String?
   founder       Founder?         @relation(fields: [founderId], references: [id])
+  // co_founder only — the EXISTING Foundation this invitation, once
+  // accepted, attaches a brand-new Founder to. Null for founder_user/
+  // birr_staff invitations, which use founderId instead (an EXISTING
+  // Founder a teammate joins) — the two columns are deliberately
+  // separate rather than one reused for both meanings.
+  foundationId  String?
+  foundation    Foundation?      @relation(fields: [foundationId], references: [id])
   roleKey       String?
   invitedBy     String
   invitedByUser User             @relation("InvitationInvitedBy", fields: [invitedBy], references: [id])

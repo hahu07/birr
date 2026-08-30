@@ -103,10 +103,13 @@ services:
       migrate:
         condition: service_completed_successfully
 
-  founder-portal:
+  # Merged Founder Portal + Ops Console app — app/(founder) and app/ops
+  # are separate route groups within this one deployment (see the
+  # founder-portal/ops-console merge plan). One service, one port.
+  web:
     build:
       context: .
-      dockerfile: apps/founder-portal/Dockerfile
+      dockerfile: apps/web/Dockerfile
       args:
         # Baked into the client bundle at build time (Next.js
         # NEXT_PUBLIC_* convention) — this runs in the user's browser,
@@ -115,17 +118,6 @@ services:
         NEXT_PUBLIC_BACKEND_URL: http://localhost:4000
     ports:
       - "3000:3000"
-    depends_on:
-      - backend
-
-  ops-console:
-    build:
-      context: .
-      dockerfile: apps/ops-console/Dockerfile
-      args:
-        NEXT_PUBLIC_OPS_BACKEND_URL: http://localhost:4000
-    ports:
-      - "3001:3001"
     depends_on:
       - backend
 

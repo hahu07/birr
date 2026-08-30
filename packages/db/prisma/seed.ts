@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
-import { roles, permissions, rolePermissions, contributionMinimums } from "./seed-data";
+import { roles, permissions, rolePermissions, contributionMinimums, corpusMinimums, causeCategories } from "./seed-data";
 
 const prisma = new PrismaClient();
 const BCRYPT_ROUNDS = 10;
@@ -13,10 +13,17 @@ const SEED_ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "admin@birr.dev";
 const SEED_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "ChangeMe123!";
 const SEED_ADMIN_FULL_NAME = "Platform Admin";
 
-// Only the two agents actually wired up in services/agents get a
-// registry row — seeding a row for Kashif/Rashid/Rafiq/Munsif/Bashir
-// would imply they're live when they're still config-only scaffolding.
-// Same dev/pilot-stage bootstrap-credential pattern as the admin above.
+// Only agents actually wired up in services/agents get a registry row —
+// seeding one for Kashif/Rashid/Munsif/Bashir would imply they're live
+// when they're still config-only scaffolding. Same dev/pilot-stage
+// bootstrap-credential pattern as the admin above.
+//
+// Rafiq's shape is different from Rasid/Nazim's scheduled batch runs —
+// it's invoked on demand, from the Founder Portal's own onboarding
+// wizard (POST /founders/onboarding/purpose-suggestion), not a cron
+// tick — but it still needs a real registry row so
+// audit_logs.actorAgentId has something to reference and it shows up
+// honestly on the AI Agents oversight page, same as any other agent.
 const agentSeeds = [
   {
     name: "rasid",
@@ -29,6 +36,12 @@ const agentSeeds = [
     taskType: "caseload_triage",
     apiKeyEnvVar: "NAZIM_API_KEY",
     defaultApiKey: "nazim-dev-key-change-me",
+  },
+  {
+    name: "rafiq",
+    taskType: "founder_onboarding",
+    apiKeyEnvVar: "RAFIQ_API_KEY",
+    defaultApiKey: "rafiq-dev-key-change-me",
   },
 ] as const;
 
@@ -81,6 +94,35 @@ async function main() {
     });
   }
 
+  for (const minimum of corpusMinimums) {
+    await prisma.corpusMinimum.upsert({
+      where: { currency: minimum.currency },
+      update: { minAmount: minimum.minAmount },
+      create: minimum,
+    });
+  }
+
+  // Singleton — no natural unique key to upsert on, so this only ever
+  // creates the row once; re-running the seed leaves an already-tuned
+  // percentage alone rather than stomping it back to the default.
+  const existingFundingSettings = await prisma.waqfFundingSettings.findFirst();
+  if (!existingFundingSettings) {
+    await prisma.waqfFundingSettings.create({ data: { installmentMinimumPercent: 25 } });
+  }
+
+  for (const category of causeCategories) {
+    await prisma.causeCategory.upsert({
+      where: { name: category.name },
+      update: {
+        description: category.description,
+        icon: category.icon,
+        sortOrder: category.sortOrder,
+        typicalWaqfTypes: category.typicalWaqfTypes,
+      },
+      create: category,
+    });
+  }
+
   const adminPasswordHash = await hash(SEED_ADMIN_PASSWORD, BCRYPT_ROUNDS);
   const adminUser = await prisma.user.upsert({
     where: { email: SEED_ADMIN_EMAIL },
@@ -98,7 +140,7 @@ async function main() {
     create: { userId: adminUser.id, staffRole: "platform_admin" },
   });
 
-  console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums.`);
+  console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums, ${corpusMinimums.length} corpus minimums, ${causeCategories.length} cause categories.`);
   console.log(`Seeded bootstrap platform_admin: ${SEED_ADMIN_EMAIL} (password: ${SEED_ADMIN_PASSWORD}) — change this before any shared/non-local use.`);
 
   for (const agentSeed of agentSeeds) {

@@ -13,12 +13,15 @@ import { rashid } from "./agents/rashid";
 import { rafiq } from "./agents/rafiq";
 import { munsif } from "./agents/munsif";
 import { bashir } from "./agents/bashir";
+import { startServer } from "./server";
 
 export const agents = { rasid, nazim, kashif, rashid, rafiq, munsif, bashir };
 
 // Only the two agents with a real run() (see agents/rasid.ts, agents/nazim.ts)
 // are schedulable today — the rest are config-only scaffolding for a later
-// build phase (CLAUDE.md's own graduation ordering).
+// build phase (CLAUDE.md's own graduation ordering). Rafiq is real too,
+// but shaped differently: it's invoked on demand via startServer() below,
+// never on this interval-based RUNNERS map — see rafiq.ts's own comment.
 const RUNNERS: Record<string, () => Promise<void>> = {
   rasid: runRasid,
   nazim: runNazim,
@@ -71,6 +74,7 @@ async function main(): Promise<void> {
     await runOne(name);
     return;
   }
+  startServer();
   startScheduler();
 }
 

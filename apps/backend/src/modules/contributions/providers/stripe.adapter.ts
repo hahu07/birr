@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import Stripe from "stripe";
 import {
   CreatePaymentInput,
@@ -38,7 +38,11 @@ export class StripeAdapter implements PaymentProviderAdapter {
   private async getStripe(): Promise<Stripe> {
     const apiKey = await this.settings.get("stripe", "SECRET_KEY");
     if (!apiKey) {
-      throw new Error("Stripe secret key is not configured.");
+      // A plain Error here surfaces to the founder as an opaque 500
+      // "Internal server error" — this is an operator configuration gap
+      // (no key set for this environment/rail), not a founder-facing
+      // bug, so it gets a clear 503 and an actionable message instead.
+      throw new ServiceUnavailableException("Card payments aren't available right now.");
     }
     if (!this.stripeClient || apiKey !== this.cachedApiKey) {
       // Pinned to the version the installed `stripe` package's types

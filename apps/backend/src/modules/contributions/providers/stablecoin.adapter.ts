@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "crypto";
 import {
   CreatePaymentInput,
@@ -50,7 +50,11 @@ export class StablecoinAdapter implements PaymentProviderAdapter {
   async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult> {
     const apiKey = await this.settings.get("stablecoin", "API_KEY");
     if (!apiKey) {
-      throw new Error("Stablecoin gateway API key is not configured.");
+      // A plain Error here surfaces to the founder as an opaque 500
+      // "Internal server error" — this is an operator configuration gap
+      // (no key set for this environment/rail), not a founder-facing
+      // bug, so it gets a clear 503 and an actionable message instead.
+      throw new ServiceUnavailableException("Stablecoin payments aren't available right now.");
     }
 
     const res = await fetch(`${this.baseUrl}/charges`, {

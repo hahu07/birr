@@ -1,6 +1,6 @@
 import { ForbiddenException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
-import { prisma, Prisma } from "@birr/db";
+import { prisma, Prisma, FounderPermissionLevel } from "@birr/db";
 import { SESSION_COOKIE_NAME, verifySessionToken } from "./session";
 
 export interface AuthenticatedUser {
@@ -12,6 +12,14 @@ export interface AuthenticatedUser {
 export interface AuthenticatedFounder {
   id: string;
   name: string;
+  // The calling user's own membership tier — primary_contact, viewer, or
+  // requester (see FounderPermissionLevel). resolveFounderFromSession
+  // resolves any active membership now (see that function's own
+  // comment), so a caller that needs to restrict a specific write to the
+  // org's principal (establishing a Foundation/Waqf Fund, signing the
+  // deed, inviting/revoking team members) must check this explicitly —
+  // see assertPrimaryContact below.
+  permissionLevel: FounderPermissionLevel;
 }
 
 /**
@@ -46,22 +54,43 @@ export async function resolveUserFromSession(request: Request): Promise<Authenti
 
 /**
  * For routes that require an already-established Founder (Foundation
- * #2+, Waqf, Contribution, WaqfDeed) — resolves the session User, then
- * their primary_contact FounderMembership. A user who hasn't completed
- * onboarding step 2 (establish Founder + Foundation) yet has no such
- * membership, which is a genuine "you haven't done this yet" state, not
- * an auth failure — surfaced as 404, not 401/403.
+ * #2+, Waqf, Contribution, WaqfDeed, and every founder-scoped read) —
+ * resolves the session User, then *any* active FounderMembership of
+ * theirs, not just primary_contact. Before team invites existed, every
+ * membership WAS a primary_contact one (the only path that created a
+ * FounderMembership was establishFounderAndFoundation), so filtering on
+ * that was equivalent to "any real founder user" — restricting to it
+ * literally here would leave every invited viewer/requester colleague
+ * unable to reach anything after accepting their invite. Callers that
+ * need to restrict a specific action to the org's principal must check
+ * `.permissionLevel` themselves — see assertPrimaryContact below. A
+ * user who hasn't completed onboarding step 2 yet has no membership at
+ * all, which is a genuine "you haven't done this yet" state, not an
+ * auth failure — surfaced as 404, not 401/403.
  */
 export async function resolveFounderFromSession(request: Request): Promise<AuthenticatedFounder> {
   const user = await resolveUserFromSession(request);
   const membership = await prisma.founderMembership.findFirst({
-    where: { userId: user.id, permissionLevel: "primary_contact" },
+    where: { userId: user.id, status: "active" },
     include: { founder: true },
   });
   if (!membership) {
     throw new NotFoundException("Establish your Foundation first.");
   }
-  return { id: membership.founder.id, name: membership.founder.name };
+  return { id: membership.founder.id, name: membership.founder.name, permissionLevel: membership.permissionLevel };
+}
+
+/**
+ * Gate for the org-principal-only actions: establishing a new Foundation
+ * or Waqf Fund, initiating a contribution, signing the waqf deed,
+ * inviting or revoking a team member. A viewer/requester colleague can
+ * use everything else a Founder session reaches; this is the explicit
+ * line for "commits the organization to something."
+ */
+export function assertPrimaryContact(founder: AuthenticatedFounder): void {
+  if (founder.permissionLevel !== "primary_contact") {
+    throw new ForbiddenException("Only the primary contact for this Foundation can do this.");
+  }
 }
 
 /**

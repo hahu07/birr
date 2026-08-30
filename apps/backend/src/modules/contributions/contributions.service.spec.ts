@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, UnauthorizedException } from "
 import { prisma, Asset, Waqf } from "@birr/db";
 import { ContributionsService } from "./contributions.service";
 import { AssetsService } from "../assets/assets.service";
+import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import {
   CreatePaymentInput,
   CreatePaymentResult,
@@ -32,7 +33,13 @@ describe("ContributionsService", () => {
   const stripeFake = new FakeAdapter();
   const paystackFake = new FakeAdapter();
   const stablecoinFake = new FakeAdapter();
-  const service = new ContributionsService(new AssetsService(), stripeFake as any, paystackFake as any, stablecoinFake as any);
+  const service = new ContributionsService(
+    new AssetsService(),
+    createFakeNotificationsService(),
+    stripeFake as any,
+    paystackFake as any,
+    stablecoinFake as any,
+  );
 
   const waqfIds: string[] = [];
   const contributionIds: string[] = [];
@@ -42,6 +49,8 @@ describe("ContributionsService", () => {
   let otherFounderId: string;
   let foundationId: string;
   let waqfId: string;
+  let installmentWaqfId: string;
+  let lumpSumWaqfId: string;
 
   beforeAll(async () => {
     const founder = await prisma.founder.create({
@@ -62,6 +71,39 @@ describe("ContributionsService", () => {
     });
     waqfId = waqf.id;
     waqfIds.push(waqf.id);
+
+    // Separate fixture waqf, not shared with the lump-sum tests above —
+    // its own confirmed-contribution count needs to start at zero for
+    // the installment-floor tests below to actually exercise "this is
+    // the first payment" rather than accidentally inheriting state from
+    // an earlier test.
+    const installmentWaqf = await prisma.waqf.create({
+      data: {
+        name: "Contributions Spec Installment Waqf",
+        type: "asset",
+        jurisdiction: "AE",
+        foundationId,
+        fundingPlan: "installment",
+        corpusAmount: "10000",
+        corpusCurrency: "USD",
+      },
+    });
+    installmentWaqfId = installmentWaqf.id;
+    waqfIds.push(installmentWaqf.id);
+
+    const lumpSumWaqf = await prisma.waqf.create({
+      data: {
+        name: "Contributions Spec Lump Sum Waqf",
+        type: "asset",
+        jurisdiction: "AE",
+        foundationId,
+        fundingPlan: "lump_sum",
+        corpusAmount: "5000",
+        corpusCurrency: "USD",
+      },
+    });
+    lumpSumWaqfId = lumpSumWaqf.id;
+    waqfIds.push(lumpSumWaqf.id);
   });
 
   afterAll(async () => {
@@ -96,6 +138,129 @@ describe("ContributionsService", () => {
     });
     contributionIds.push(result.contribution.id);
     expect(result.contribution.status).toBe("pending");
+  });
+
+  test("initiate() rejects an installment plan's first payment below the configured percent floor", async () => {
+    // Corpus is 10000, seeded installmentMinimumPercent is 25 -> floor
+    // is 2500. Comfortably above the plain ContributionMinimum (100), so
+    // this exercises the installment-specific check, not the general one.
+    await expect(
+      service.initiate({
+        waqfId: installmentWaqfId,
+        amount: "1000.00",
+        currency: "USD",
+        provider: "stripe",
+        founderId,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  test("initiate() below the installment floor reports that floor, not the flat minimum", async () => {
+    // amount (50) clears neither floor, but the founder should be told
+    // the actual (installment) floor they need to clear, not the flat
+    // ContributionMinimum they'd also fail.
+    await expect(
+      service.initiate({
+        waqfId: installmentWaqfId,
+        amount: "50.00",
+        currency: "USD",
+        provider: "stripe",
+        founderId,
+      }),
+    ).rejects.toThrow(/25% of the declared corpus/);
+  });
+
+  test("initiate() accepts an installment first payment below the flat minimum when the percent floor alone is lower", async () => {
+    // Corpus 300, percent 25 -> floor 75, which is BELOW the flat USD
+    // ContributionMinimum (100). The percentage floor is authoritative
+    // for a waqf's first payment on its own — a founder who declared a
+    // smaller corpus can make a genuinely proportional first payment,
+    // not one inflated by an unrelated flat floor.
+    const smallWaqf = await prisma.waqf.create({
+      data: {
+        name: "Contributions Spec Small Installment Waqf",
+        type: "asset",
+        jurisdiction: "AE",
+        foundationId,
+        fundingPlan: "installment",
+        corpusAmount: "300",
+        corpusCurrency: "USD",
+      },
+    });
+    waqfIds.push(smallWaqf.id);
+
+    const result = await service.initiate({
+      waqfId: smallWaqf.id,
+      amount: "75.00",
+      currency: "USD",
+      provider: "stripe",
+      founderId,
+    });
+    contributionIds.push(result.contribution.id);
+    expect(result.contribution.status).toBe("pending");
+  });
+
+  test("initiate() accepts an installment plan's first payment at the configured percent floor", async () => {
+    const result = await service.initiate({
+      waqfId: installmentWaqfId,
+      amount: "2500.00",
+      currency: "USD",
+      provider: "stripe",
+      founderId,
+    });
+    contributionIds.push(result.contribution.id);
+    expect(result.contribution.status).toBe("pending");
+  });
+
+  test("initiate() rejects a lump-sum waqf's first payment below the full declared corpus", async () => {
+    // Corpus is 5000 — comfortably above the flat USD minimum (100), so
+    // this exercises the lump-sum-specific floor, not the general one.
+    await expect(
+      service.initiate({
+        waqfId: lumpSumWaqfId,
+        amount: "1000.00",
+        currency: "USD",
+        provider: "stripe",
+        founderId,
+      }),
+    ).rejects.toThrow(/full declared corpus/);
+  });
+
+  test("initiate() accepts a lump-sum waqf's first payment at exactly the full corpus", async () => {
+    const result = await service.initiate({
+      waqfId: lumpSumWaqfId,
+      amount: "5000.00",
+      currency: "USD",
+      provider: "stripe",
+      founderId,
+    });
+    contributionIds.push(result.contribution.id);
+    expect(result.contribution.status).toBe("pending");
+  });
+
+  test("initiate() rejects a first payment in a different currency than the declared corpus", async () => {
+    const waqf = await prisma.waqf.create({
+      data: {
+        name: "Contributions Spec Currency Mismatch Waqf",
+        type: "asset",
+        jurisdiction: "AE",
+        foundationId,
+        fundingPlan: "lump_sum",
+        corpusAmount: "5000",
+        corpusCurrency: "USD",
+      },
+    });
+    waqfIds.push(waqf.id);
+
+    await expect(
+      service.initiate({
+        waqfId: waqf.id,
+        amount: "5000.00",
+        currency: "EUR",
+        provider: "stripe",
+        founderId,
+      }),
+    ).rejects.toThrow(/same currency/);
   });
 
   test("initiate() rejects when the founder's primary contact hasn't verified email + WhatsApp yet", async () => {
@@ -192,6 +357,28 @@ describe("ContributionsService", () => {
     expect(logs.some((l) => l.action === "contribution.confirmed")).toBe(true);
   });
 
+  test("initiate() + handleWebhook() a second time against an already-active waqf succeeds (top-up), and the resulting Asset is named accordingly", async () => {
+    // waqfId is already active by this point (the previous test's
+    // confirmed contribution flipped it) — nothing in initiate() blocks
+    // calling it again for the same waqf.
+    const topUp = await service.initiate({
+      waqfId,
+      amount: "250.00",
+      currency: "USD",
+      provider: "stripe",
+      founderId,
+    });
+    contributionIds.push(topUp.contribution.id);
+
+    stripeFake.nextWebhookResult = { providerReference: topUp.contribution.id, status: "confirmed" };
+    const confirmed = await service.handleWebhook("stripe", Buffer.from("{}"), {});
+    expect(confirmed?.status).toBe("confirmed");
+    if (confirmed?.assetId) assetIds.push(confirmed.assetId);
+
+    const asset = await prisma.asset.findUnique({ where: { id: confirmed!.assetId! } });
+    expect(asset?.name).toBe("Corpus top-up");
+  });
+
   test("handleWebhook() failed → Contribution failed, no Asset created, Waqf untouched", async () => {
     // Fresh waqf so this test's "no Asset created / stays draft"
     // assertion isn't confused by the previous test's confirmed
@@ -237,10 +424,40 @@ describe("ContributionsService", () => {
     const second = await service.handleWebhook("stripe", Buffer.from("{}"), {});
     expect(second?.assetId).toBe(first?.assetId);
 
-    const assetsForContribution = await prisma.asset.findMany({ where: { name: "Initial contribution", waqfId } });
-    // Both this test's and the earlier confirmed-path test's assets
-    // share this waqfId and name, so just confirm this run's specific
-    // asset only appears once, not that the count is exactly 1 overall.
+    // Not filtered by name — this fixture waqf already has an earlier
+    // confirmed contribution from the "confirmed → Asset registered"
+    // test above, so this one is correctly named "Corpus top-up" now
+    // (see ContributionsService.handleWebhook()'s own comment), not
+    // "Initial contribution". Idempotency is the only thing under test
+    // here: this specific asset id appears exactly once regardless.
+    const assetsForContribution = await prisma.asset.findMany({ where: { waqfId } });
     expect(assetsForContribution.filter((a) => a.id === first?.assetId)).toHaveLength(1);
+  });
+
+  test("platformSummary() sums confirmed contributions by currency, across every waqf, excluding pending/failed", async () => {
+    // A distinctive per-run currency code, not a real one (USD/NGN/etc)
+    // — this is a shared dev DB with plenty of pre-existing confirmed
+    // contributions in real currencies from other tests/fixtures, so
+    // asserting an exact platform-wide total only holds for a currency
+    // nothing else could have touched.
+    const currency = `T${Date.now().toString(36).slice(-3).toUpperCase()}`;
+
+    const confirmedA = await prisma.contribution.create({
+      data: { waqfId, amount: "100", currency, provider: "stripe", providerReference: `platform-summary-a-${Date.now()}`, status: "confirmed" },
+    });
+    const confirmedB = await prisma.contribution.create({
+      data: { waqfId, amount: "50", currency, provider: "stripe", providerReference: `platform-summary-b-${Date.now()}`, status: "confirmed" },
+    });
+    const pending = await prisma.contribution.create({
+      data: { waqfId, amount: "999", currency, provider: "stripe", providerReference: `platform-summary-c-${Date.now()}`, status: "pending" },
+    });
+    const failed = await prisma.contribution.create({
+      data: { waqfId, amount: "999", currency, provider: "stripe", providerReference: `platform-summary-d-${Date.now()}`, status: "failed" },
+    });
+    contributionIds.push(confirmedA.id, confirmedB.id, pending.id, failed.id);
+
+    const summary = await service.platformSummary();
+    const row = summary.find((s) => s.currency === currency);
+    expect(row?.totalAmount.toString()).toBe("150");
   });
 });

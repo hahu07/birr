@@ -141,26 +141,50 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  test("signUp() surfaces a clear error and does not silently succeed when email delivery fails", async () => {
+  test("signUp() still succeeds (emailSent: false) when email delivery fails — never blocks account creation", async () => {
     const email = testEmail("signup-delivery-fails");
     emailAdapter.shouldFail = true;
+    let result: Awaited<ReturnType<typeof service.signUp>>;
     try {
-      await expect(
-        service.signUp({
-          fullName: "Delivery Fails",
-          email,
-          username: testUsername("signupdeliveryfails"),
-          password: "correct-horse-battery",
-        }),
-      ).rejects.toThrow(BadRequestException);
+      result = await service.signUp({
+        fullName: "Delivery Fails",
+        email,
+        username: testUsername("signupdeliveryfails"),
+        password: "correct-horse-battery",
+      });
     } finally {
       emailAdapter.shouldFail = false;
     }
 
+    expect(result.emailSent).toBe(false);
+
     // The account itself was still created — a delivery failure doesn't
-    // roll back a successfully created account.
+    // roll back a successfully created account, and (unlike before) no
+    // longer prevents the controller from logging the founder in either.
     const user = await prisma.user.findUnique({ where: { email } });
     expect(user).not.toBeNull();
+  });
+
+  test("resendVerificationEmail() sends a fresh link and rejects once already verified", async () => {
+    const email = testEmail("resend-verification");
+    const { userId } = await service.signUp({
+      fullName: "Resend Verification",
+      email,
+      username: testUsername("resendverification"),
+      password: "correct-horse-battery",
+    });
+    emailAdapter.sent = [];
+
+    await service.resendVerificationEmail(userId);
+    expect(emailAdapter.sent).toHaveLength(1);
+    expect(emailAdapter.sent[0]?.to).toBe(email);
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    expect(user?.verificationToken).not.toBeNull();
+
+    await service.verifyEmail(user!.verificationToken!);
+
+    await expect(service.resendVerificationEmail(userId)).rejects.toThrow(BadRequestException);
   });
 
   test("login() succeeds with the correct username + password", async () => {
@@ -445,10 +469,12 @@ describe("FoundersService.getOnboardingStatus", () => {
     expect(status.steps.firstWaqfFunded.waqfId).toBe(waqf.id);
     expect(status.steps.deedSigned.complete).toBe(false);
 
-    // State 6: deed signed -> done, onboardingComplete.
-    await prisma.waqfDeed.create({
+    // State 6: deed signed -> done, onboardingComplete. Deed-signing is
+    // Foundation-level, not per-Waqf — see FoundationDeed's own schema
+    // comment.
+    await prisma.foundationDeed.create({
       data: {
-        waqfId: waqf.id,
+        foundationId: foundation.id,
         signedByUserId: userId,
         signedByFounderId: founder.id,
         typedLegalName: "Onboarding Spec Contact",

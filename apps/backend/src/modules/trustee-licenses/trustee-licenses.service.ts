@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { IsDateString, IsEnum, IsOptional, IsString } from "class-validator";
 import { prisma, TrusteeLicenseStatus } from "@birr/db";
+import { NotificationsService } from "../notifications/notifications.service";
 
 export class CreateTrusteeLicenseInput {
   @IsString()
@@ -52,6 +53,8 @@ export class UpdateTrusteeLicenseInput {
 
 @Injectable()
 export class TrusteeLicensesService {
+  constructor(private readonly notificationsService: NotificationsService) {}
+
   // Represents Birr's actual regulatory standing to act as Mutawalli in a
   // jurisdiction (see CLAUDE.md's "Regulatory & assurance posture"
   // section) — a silent, unaudited change here is a real compliance
@@ -85,7 +88,7 @@ export class TrusteeLicensesService {
   }
 
   async update(id: string, input: UpdateTrusteeLicenseInput, actorUserId: string) {
-    return prisma.$transaction(async (tx) => {
+    const { existing, updated } = await prisma.$transaction(async (tx) => {
       const existing = await tx.trusteeLicense.findUnique({ where: { id } });
       if (!existing) throw new NotFoundException(`Trustee license "${id}" not found.`);
       const updated = await tx.trusteeLicense.update({
@@ -109,8 +112,66 @@ export class TrusteeLicensesService {
           after: updated as any,
         },
       });
-      return updated;
+      return { existing, updated };
     });
+
+    // Only when the status itself actually changed — not every edit to
+    // licenseNumber/notes/etc. Deliberately not awaited, same
+    // fire-and-forget posture as every other post-transaction notify()
+    // call this session.
+    if (existing.status !== updated.status) {
+      this.notifyAffectedFounders(updated.jurisdiction, updated.status).catch((err) => {
+        console.error(`Failed to notify founders of trustee license status change "${updated.id}":`, err);
+      });
+    }
+
+    return updated;
+  }
+
+  private async notifyAffectedFounders(jurisdiction: string, status: TrusteeLicenseStatus): Promise<void> {
+    const affectedWaqfs = await prisma.waqf.findMany({
+      where: { jurisdiction, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        foundation: {
+          select: {
+            foundationFounders: {
+              select: {
+                founder: {
+                  select: { memberships: { where: { status: "active" }, select: { userId: true } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await Promise.all(
+      affectedWaqfs.map(async (waqf) => {
+        const recipientUserIds = new Set<string>();
+        for (const foundationFounder of waqf.foundation.foundationFounders) {
+          for (const membership of foundationFounder.founder.memberships) {
+            recipientUserIds.add(membership.userId);
+          }
+        }
+        await Promise.all(
+          [...recipientUserIds].map((userId) =>
+            this.notificationsService.notify({
+              recipientType: "founder_user",
+              recipientUserId: userId,
+              type: "trustee_license.status_changed",
+              title: `Trustee license update — ${jurisdiction}`,
+              body: `Birr's trustee license status in ${jurisdiction} changed to "${status}", affecting ${waqf.name}.`,
+              linkUrl: `/portfolio/${waqf.id}`,
+              relatedEntityType: "Waqf",
+              relatedEntityId: waqf.id,
+            }),
+          ),
+        );
+      }),
+    );
   }
 
   findById(id: string) {

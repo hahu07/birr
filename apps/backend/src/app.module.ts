@@ -6,9 +6,14 @@ import { FoundationsModule } from "./modules/foundations/foundations.module";
 import { BirrStaffModule } from "./modules/birr-staff/birr-staff.module";
 import { WaqfsModule } from "./modules/waqfs/waqfs.module";
 import { WaqfCausesModule } from "./modules/waqf-causes/waqf-causes.module";
+import { CauseCategoriesModule } from "./modules/cause-categories/cause-categories.module";
+import { CauseCategorySuggestionsModule } from "./modules/cause-category-suggestions/cause-category-suggestions.module";
+import { CauseImpactUpdatesModule } from "./modules/cause-impact-updates/cause-impact-updates.module";
 import { AssetsModule } from "./modules/assets/assets.module";
 import { BeneficiariesModule } from "./modules/beneficiaries/beneficiaries.module";
 import { InvestmentsModule } from "./modules/investments/investments.module";
+import { CounterpartiesModule } from "./modules/counterparties/counterparties.module";
+import { WaqfProceedsModule } from "./modules/waqf-proceeds/waqf-proceeds.module";
 import { DistributionsModule } from "./modules/distributions/distributions.module";
 import { GovernedActionsModule } from "./modules/governed-actions/governed-actions.module";
 import { AuditLogsModule } from "./modules/audit-logs/audit-logs.module";
@@ -19,9 +24,16 @@ import { ComplianceReportsModule } from "./modules/compliance-reports/compliance
 import { InvitationsModule } from "./modules/invitations/invitations.module";
 import { ContributionsModule } from "./modules/contributions/contributions.module";
 import { WaqfDeedsModule } from "./modules/waqf-deeds/waqf-deeds.module";
+import { FoundationDeedsModule } from "./modules/foundation-deeds/foundation-deeds.module";
 import { PlatformSettingsModule } from "./modules/platform-settings/platform-settings.module";
 import { TrusteeLicensesModule } from "./modules/trustee-licenses/trustee-licenses.module";
 import { CompliancePolicySetsModule } from "./modules/compliance-policy-sets/compliance-policy-sets.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
+import { WaqfFundingModule } from "./modules/waqf-funding/waqf-funding.module";
+import { RolesModule } from "./modules/roles/roles.module";
+import { InvestmentPlacementsModule } from "./modules/investment-placements/investment-placements.module";
+import { BeneficiaryNominationsModule } from "./modules/beneficiary-nominations/beneficiary-nominations.module";
+import { MessagesModule } from "./modules/messages/messages.module";
 import { PermissionGuard } from "./common/guards/permission.guard";
 import { StaffRoleGuard } from "./common/guards/staff-role.guard";
 import { SessionAuthGuard } from "./common/guards/session-auth.guard";
@@ -37,9 +49,14 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     BirrStaffModule,
     WaqfsModule,
     WaqfCausesModule,
+    CauseCategoriesModule,
+    CauseCategorySuggestionsModule,
+    CauseImpactUpdatesModule,
     AssetsModule,
     BeneficiariesModule,
     InvestmentsModule,
+    CounterpartiesModule,
+    WaqfProceedsModule,
     DistributionsModule,
     GovernedActionsModule,
     AuditLogsModule,
@@ -50,9 +67,16 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     InvitationsModule,
     ContributionsModule,
     WaqfDeedsModule,
+    FoundationDeedsModule,
     PlatformSettingsModule,
     TrusteeLicensesModule,
     CompliancePolicySetsModule,
+    NotificationsModule,
+    WaqfFundingModule,
+    RolesModule,
+    InvestmentPlacementsModule,
+    BeneficiaryNominationsModule,
+    MessagesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -1,17 +1,57 @@
 import { prisma, Waqf, Beneficiary, Investment, Distribution } from "@birr/db";
-import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { GovernedActionsService } from "./governed-actions.service";
 import { AssetsService } from "../assets/assets.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { InvestmentsService } from "../investments/investments.service";
+import { CounterpartiesService } from "../counterparties/counterparties.service";
 import { DistributionsService } from "../distributions/distributions.service";
+import {
+  FakePaystackPayoutAdapter,
+  createFakeStripePayoutAdapter,
+  createFakeStablecoinPayoutAdapter,
+} from "../distributions/test-support/fake-payout-adapters";
+import { EncryptionService } from "../../common/settings/encryption.service";
+import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 
 describe("GovernedActionsService", () => {
+  // Never construct the real NotificationsService adapters in a test —
+  // see createFakeNotificationsService's own comment. asset.dispose's
+  // checker-eligible roles (board_of_trustees, audit_committee, ...) can
+  // include every active BirrStaff fixture ever created by every spec in
+  // a shared dev database, so a real adapter here doesn't just send one
+  // extra email like a typical spec would — propose() fans out to all of
+  // them at once, which is exactly what flooded the real Resend account
+  // with tens of thousands of live API calls before this was caught.
+  const notificationsService = createFakeNotificationsService();
+  const encryption = new EncryptionService();
+  const beneficiariesService = new BeneficiariesService(encryption);
+  const fakePaystackPayoutAdapter = new FakePaystackPayoutAdapter();
+  // Any fixture beneficiary that gets decided with approve: true on
+  // distribution.approve needs complete Paystack payout details now that
+  // approve() gates on DistributionsService.assertPayoutReady.
+  function paystackReadyBeneficiaryData() {
+    return {
+      payoutProvider: "paystack" as const,
+      bankDetailsEncrypted: encryption.encrypt(
+        JSON.stringify({ bankName: "Test Bank", accountNumber: "0123456789", accountName: "Test Beneficiary", bankCode: "058" }),
+      ),
+    };
+  }
   const service = new GovernedActionsService(
     new AssetsService(),
-    new BeneficiariesService(),
+    beneficiariesService,
     new InvestmentsService(),
-    new DistributionsService(),
+    new CounterpartiesService(),
+    new DistributionsService(
+      beneficiariesService,
+      notificationsService,
+      createFakeStripePayoutAdapter() as any,
+      fakePaystackPayoutAdapter as any,
+      createFakeStablecoinPayoutAdapter() as any,
+    ),
+    notificationsService,
   );
 
   const governedActionIds: string[] = [];
@@ -19,6 +59,7 @@ describe("GovernedActionsService", () => {
   const assetIds: string[] = [];
   const beneficiaryIds: string[] = [];
   const investmentIds: string[] = [];
+  const counterpartyIds: string[] = [];
   const distributionIds: string[] = [];
   const waqfCauseIds: string[] = [];
 
@@ -142,6 +183,8 @@ describe("GovernedActionsService", () => {
     await prisma.asset.deleteMany({ where: { id: { in: assetIds } } });
     await prisma.beneficiary.deleteMany({ where: { id: { in: beneficiaryIds } } });
     await prisma.investment.deleteMany({ where: { id: { in: investmentIds } } });
+    await prisma.counterparty.deleteMany({ where: { id: { in: counterpartyIds } } });
+    await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
     await prisma.$disconnect();
   });
@@ -433,6 +476,54 @@ describe("GovernedActionsService", () => {
     expect(beneficiaryLogs.some((l) => l.action === "beneficiary.criteria_updated")).toBe(true);
   });
 
+  test("beneficiary.status_change: approve → status flips, waqfId is derived, both audit-logged, bank details excluded", async () => {
+    const waqf = await prisma.waqf.create({
+      data: { name: "Beneficiary Status Change Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId },
+    });
+    waqfIds.push(waqf.id);
+    const beneficiary = await prisma.beneficiary.create({
+      data: {
+        waqfId: waqf.id,
+        name: "Fixture Beneficiary For Status Change",
+        eligibilityCriteria: "Fixture criteria",
+        bankDetailsEncrypted: "not-real-ciphertext-but-should-never-appear-in-audit",
+      },
+    });
+    beneficiaryIds.push(beneficiary.id);
+    expect(beneficiary.status).toBe("active");
+
+    const action = await service.propose({
+      permissionKey: "beneficiary.status_change",
+      payload: { beneficiaryId: beneficiary.id, newStatus: "inactive" },
+      makerUserId,
+    });
+    governedActionIds.push(action.id);
+    expect(action.waqfId).toBe(waqf.id);
+
+    const result = await service.decide({
+      governedActionId: action.id,
+      checkerUserId: beneficiaryCheckerUserId,
+      approve: true,
+    });
+
+    expect(result.governedAction.status).toBe("approved");
+    expect(result.fulfillment?.entityType).toBe("Beneficiary");
+    const updated = result.fulfillment?.after as Beneficiary;
+    expect(updated.status).toBe("inactive");
+    expect((result.fulfillment?.after as any).bankDetailsEncrypted).toBeUndefined();
+
+    const persisted = await prisma.beneficiary.findUnique({ where: { id: beneficiary.id } });
+    expect(persisted!.status).toBe("inactive");
+
+    const decisionLogs = await auditLogsFor(action.id);
+    expect(decisionLogs.some((l) => l.action === "governed_action.approved")).toBe(true);
+
+    const beneficiaryLogs = await auditLogsFor(beneficiary.id);
+    const statusChangedLog = beneficiaryLogs.find((l) => l.action === "beneficiary.status_changed");
+    expect(statusChangedLog).toBeTruthy();
+    expect((statusChangedLog!.after as any).bankDetailsEncrypted).toBeUndefined();
+  });
+
   test("investment.change: approve → allocation is updated, waqfId is derived, both audit-logged", async () => {
     // Fixture setup bypasses governance entirely — a Waqf and Investment
     // must already exist; only the allocation *change* is a governed
@@ -445,6 +536,18 @@ describe("GovernedActionsService", () => {
       data: { name: "Investment Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId },
     });
     waqfIds.push(waqf.id);
+    // A waqf can't invest more than it's actually raised — needed for
+    // the allocation change below to have headroom.
+    await prisma.contribution.create({
+      data: {
+        waqfId: waqf.id,
+        amount: "100000",
+        currency: "USD",
+        provider: "paystack",
+        providerReference: `governed-actions-spec-investment-${waqf.id}`,
+        status: "confirmed",
+      },
+    });
     const investment = await prisma.investment.create({
       data: {
         waqfId: waqf.id,
@@ -481,6 +584,96 @@ describe("GovernedActionsService", () => {
     expect(investmentLogs.some((l) => l.action === "investment.allocation_changed")).toBe(true);
   });
 
+  test("counterparty.onboard: rejects approval with no Shariah sign-off, then succeeds once recorded", async () => {
+    // Same reversed pairing as investment.change: investment_committee
+    // proposes, mutawalli_officer checks — matching seed-data.ts exactly.
+    // No resolveWaqfId — a Counterparty is a global registry entry, not
+    // scoped to one waqf (see GovernedActionsService's own comment on
+    // this handler).
+    const counterparty = await prisma.counterparty.create({
+      data: { name: `Governed Actions Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+    });
+    counterpartyIds.push(counterparty.id);
+
+    const action = await service.propose({
+      permissionKey: "counterparty.onboard",
+      payload: { counterpartyId: counterparty.id },
+      makerUserId: investmentMakerUserId,
+    });
+    governedActionIds.push(action.id);
+    expect(action.waqfId).toBeNull();
+
+    // Gate 1 (Shariah sign-off) hasn't happened yet — decide() itself
+    // succeeds (the maker/checker exchange is valid), but the
+    // transaction's onApprove call rejects, so nothing should flip.
+    await expect(
+      service.decide({ governedActionId: action.id, checkerUserId: makerUserId, approve: true }),
+    ).rejects.toThrow(BadRequestException);
+
+    const stillPending = await prisma.governedAction.findUniqueOrThrow({ where: { id: action.id } });
+    expect(stillPending.status).toBe("proposed");
+
+    // beneficiaryCheckerUserId is seeded as shariah_board_member (see
+    // beforeAll above) — reused here for the Shariah sign-off itself,
+    // not as a governed-action checker.
+    await new CounterpartiesService().recordShariahApproval(counterparty.id, beneficiaryCheckerUserId);
+
+    const result = await service.decide({
+      governedActionId: action.id,
+      checkerUserId: makerUserId,
+      approve: true,
+    });
+
+    expect(result.governedAction.status).toBe("approved");
+    expect(result.fulfillment?.entityType).toBe("Counterparty");
+    expect((result.fulfillment?.after as { status: string }).status).toBe("active");
+
+    const decisionLogs = await auditLogsFor(action.id);
+    expect(decisionLogs.some((l) => l.action === "governed_action.approved")).toBe(true);
+
+    const counterpartyLogs = await auditLogsFor(counterparty.id);
+    expect(counterpartyLogs.some((l) => l.action === "counterparty.onboarded")).toBe(true);
+  });
+
+  test("counterparty.onboard: propose() rejects a second proposal while one is already pending for the same counterparty", async () => {
+    // Regression test — Counterparty.status doesn't change until decided,
+    // not proposed, so without this guard a repeat click on "Propose
+    // onboarding" (e.g. no visible feedback after the first click) piles
+    // up duplicate proposals that each separately need a checker's
+    // attention. Confirmed live: 9 duplicates for one counterparty before
+    // this fix.
+    const counterparty = await prisma.counterparty.create({
+      data: { name: `Governed Actions Duplicate Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+    });
+    counterpartyIds.push(counterparty.id);
+
+    const first = await service.propose({
+      permissionKey: "counterparty.onboard",
+      payload: { counterpartyId: counterparty.id },
+      makerUserId: investmentMakerUserId,
+    });
+    governedActionIds.push(first.id);
+
+    await expect(
+      service.propose({
+        permissionKey: "counterparty.onboard",
+        payload: { counterpartyId: counterparty.id },
+        makerUserId: investmentMakerUserId,
+      }),
+    ).rejects.toThrow(ConflictException);
+
+    // Once the first is decided (rejected, here), proposing again is
+    // fine — the guard only blocks while one is genuinely still pending.
+    await service.decide({ governedActionId: first.id, checkerUserId: makerUserId, approve: false });
+    const second = await service.propose({
+      permissionKey: "counterparty.onboard",
+      payload: { counterpartyId: counterparty.id },
+      makerUserId: investmentMakerUserId,
+    });
+    governedActionIds.push(second.id);
+    expect(second.id).not.toBe(first.id);
+  });
+
   test("distribution.approve: approve → status is approved, approvedAt set, waqfId is derived, both audit-logged", async () => {
     // Fixture setup bypasses governance entirely — a Waqf, Beneficiary,
     // and pending Distribution must already exist; only the *approval*
@@ -497,17 +690,18 @@ describe("GovernedActionsService", () => {
         waqfId: waqf.id,
         name: "Distribution Fixture Beneficiary",
         eligibilityCriteria: "Fixture criteria",
+        ...paystackReadyBeneficiaryData(),
       },
     });
     beneficiaryIds.push(beneficiary.id);
     // Distribution.causeId is required — every payout must be traceable
     // to a specific cause within the fund.
     const cause = await prisma.waqfCause.create({
-      data: { waqfId: waqf.id, name: "Distribution Fixture Cause" },
+      data: { waqfId: waqf.id, name: "Distribution Fixture Cause", allocatedAmount: "500" },
     });
     waqfCauseIds.push(cause.id);
     const distribution = await prisma.distribution.create({
-      data: { waqfId: waqf.id, beneficiaryId: beneficiary.id, causeId: cause.id, amount: "500" },
+      data: { waqfId: waqf.id, beneficiaryId: beneficiary.id, causeId: cause.id, amount: "500", currency: "USD" },
     });
     distributionIds.push(distribution.id);
 
@@ -536,6 +730,103 @@ describe("GovernedActionsService", () => {
 
     const distributionLogs = await auditLogsFor(distribution.id);
     expect(distributionLogs.some((l) => l.action === "distribution.approved")).toBe(true);
+  });
+
+  test("distribution.approve: decide(approve: true) throws and the GovernedAction stays proposed when the beneficiary has incomplete payout details", async () => {
+    // The core rollback guarantee this plan hinges on — a distribution
+    // that can't actually be paid must never even reach "approved".
+    // DistributionsService.approve() throws from inside decide()'s
+    // $transaction, so the whole transaction (including the
+    // GovernedAction status update) rolls back.
+    const waqf = await prisma.waqf.create({
+      data: { name: "Distribution Blocked Approval Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId },
+    });
+    waqfIds.push(waqf.id);
+    const beneficiary = await prisma.beneficiary.create({
+      data: { waqfId: waqf.id, name: "No Payout Details Beneficiary", eligibilityCriteria: "Fixture criteria" },
+    });
+    beneficiaryIds.push(beneficiary.id);
+    const cause = await prisma.waqfCause.create({
+      data: { waqfId: waqf.id, name: "Blocked Approval Fixture Cause", allocatedAmount: "500" },
+    });
+    waqfCauseIds.push(cause.id);
+    const distribution = await prisma.distribution.create({
+      data: { waqfId: waqf.id, beneficiaryId: beneficiary.id, causeId: cause.id, amount: "500", currency: "USD" },
+    });
+    distributionIds.push(distribution.id);
+
+    const action = await service.propose({
+      permissionKey: "distribution.approve",
+      payload: { distributionId: distribution.id },
+      makerUserId,
+    });
+    governedActionIds.push(action.id);
+
+    await expect(
+      service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true }),
+    ).rejects.toThrow(BadRequestException);
+
+    const stillProposed = await service.findById(action.id);
+    expect(stillProposed?.status).toBe("proposed");
+    const unchangedDistribution = await prisma.distribution.findUnique({ where: { id: distribution.id } });
+    expect(unchangedDistribution!.status).toBe("pending");
+  });
+
+  test("distribution.approve: propose() rejects a second proposal while one is already pending for the same distribution", async () => {
+    // Regression test — Distribution.status only flips on *decide*, not
+    // propose, so without this guard the same still-pending distribution
+    // can be proposed twice (a second staff session, or a page reload
+    // resetting the propose button's own local "already proposed" state).
+    // Confirmed live: two duplicate proposals for one distribution, both
+    // permanently unable to approve once the cause's headroom shrank
+    // below the distribution's amount — exactly the state this guard
+    // exists to prevent from being reachable at all.
+    const waqf = await prisma.waqf.create({
+      data: { name: "Distribution Duplicate Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId },
+    });
+    waqfIds.push(waqf.id);
+    const beneficiary = await prisma.beneficiary.create({
+      data: {
+        waqfId: waqf.id,
+        name: "Distribution Duplicate Fixture Beneficiary",
+        eligibilityCriteria: "Fixture criteria",
+      },
+    });
+    beneficiaryIds.push(beneficiary.id);
+    const cause = await prisma.waqfCause.create({
+      data: { waqfId: waqf.id, name: "Distribution Duplicate Fixture Cause", allocatedAmount: "500" },
+    });
+    waqfCauseIds.push(cause.id);
+    const distribution = await prisma.distribution.create({
+      data: { waqfId: waqf.id, beneficiaryId: beneficiary.id, causeId: cause.id, amount: "500", currency: "USD" },
+    });
+    distributionIds.push(distribution.id);
+
+    const first = await service.propose({
+      permissionKey: "distribution.approve",
+      payload: { distributionId: distribution.id },
+      makerUserId,
+    });
+    governedActionIds.push(first.id);
+
+    await expect(
+      service.propose({
+        permissionKey: "distribution.approve",
+        payload: { distributionId: distribution.id },
+        makerUserId,
+      }),
+    ).rejects.toThrow(ConflictException);
+
+    // Once the first is decided (rejected, here), proposing again is
+    // fine — the guard only blocks while one is genuinely still pending.
+    await service.decide({ governedActionId: first.id, checkerUserId: distributionCheckerUserId, approve: false });
+    const second = await service.propose({
+      permissionKey: "distribution.approve",
+      payload: { distributionId: distribution.id },
+      makerUserId,
+    });
+    governedActionIds.push(second.id);
+    expect(second.id).not.toBe(first.id);
   });
 
   // proposedFoundation's resolution logic (attachProposedFoundations) is
@@ -590,6 +881,54 @@ describe("GovernedActionsService", () => {
 
     const approved = await service.list({ status: "approved" });
     expect(approved.some((a) => a.id === action.id)).toBe(false);
+  });
+
+  test("list() resolves a human-readable summary per action, distinguishing two same-permission proposals on the same waqf", async () => {
+    // Regression test — before describePayload, two distribution.approve
+    // proposals on the same waqf, same proposer, same day were literally
+    // indistinguishable in the queue table (confirmed live: two rows
+    // with identical Permission/Waqf/Proposed by/Proposed columns).
+    const waqf = await prisma.waqf.create({
+      data: { name: "Summary Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId },
+    });
+    waqfIds.push(waqf.id);
+    const beneficiary = await prisma.beneficiary.create({
+      data: { waqfId: waqf.id, name: "Summary Fixture Beneficiary", eligibilityCriteria: "Fixture criteria" },
+    });
+    beneficiaryIds.push(beneficiary.id);
+    const cause = await prisma.waqfCause.create({
+      data: { waqfId: waqf.id, name: "Summary Fixture Cause", allocatedAmount: "1000" },
+    });
+    waqfCauseIds.push(cause.id);
+    const distributionA = await prisma.distribution.create({
+      data: { waqfId: waqf.id, beneficiaryId: beneficiary.id, causeId: cause.id, amount: "100", currency: "USD" },
+    });
+    distributionIds.push(distributionA.id);
+    const distributionB = await prisma.distribution.create({
+      data: { waqfId: waqf.id, beneficiaryId: beneficiary.id, causeId: cause.id, amount: "200", currency: "USD" },
+    });
+    distributionIds.push(distributionB.id);
+
+    const actionA = await service.propose({
+      permissionKey: "distribution.approve",
+      payload: { distributionId: distributionA.id },
+      makerUserId,
+    });
+    governedActionIds.push(actionA.id);
+    const actionB = await service.propose({
+      permissionKey: "distribution.approve",
+      payload: { distributionId: distributionB.id },
+      makerUserId,
+    });
+    governedActionIds.push(actionB.id);
+
+    const proposed = await service.list({ status: "proposed" });
+    const foundA = proposed.find((a) => a.id === actionA.id)!;
+    const foundB = proposed.find((a) => a.id === actionB.id)!;
+    expect(foundA.summary).toContain("100");
+    expect(foundA.summary).toContain("Summary Fixture Beneficiary");
+    expect(foundB.summary).toContain("200");
+    expect(foundA.summary).not.toBe(foundB.summary);
   });
 
   test("findById() returns the action with its permission, and null for an unknown id", async () => {

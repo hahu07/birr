@@ -1,7 +1,7 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
 import { Request } from "express";
 import { FoundationsService, CreateFoundationInput } from "./foundations.service";
-import { resolveFounderFromSession } from "../../common/auth/current-founder";
+import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { SESSION_COOKIE_NAME } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
@@ -25,6 +25,10 @@ export class FoundationsController {
   async create(@Body() body: CreateFoundationInput, @Req() request: Request) {
     if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
+      // Establishing a new Foundation is an org-commitment action — same
+      // restriction as deed-signing/waqf-fund establishment, not
+      // something a viewer/requester colleague can do on the org's behalf.
+      assertPrimaryContact(founder);
       return this.service.create({ ...body, founderIds: [founder.id] }, { type: "founder", founderId: founder.id });
     }
     return this.service.create(body);

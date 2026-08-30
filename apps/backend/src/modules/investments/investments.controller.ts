@@ -1,6 +1,10 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
+import { Request } from "express";
 import { InvestmentsService, CreateInvestmentInput } from "./investments.service";
-import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
+import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
+import { resolveFounderFromSession } from "../../common/auth/current-founder";
+import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { Public } from "../../common/guards/public.decorator";
 
 @Controller("investments")
 export class InvestmentsController {
@@ -16,8 +20,19 @@ export class InvestmentsController {
     return this.service.create(body, staff.userId);
   }
 
+  // @Public() — also reachable by a signed-in Founder viewing their own
+  // waqf's investment allocations (read-only). Same session-priority
+  // pattern as AssetsController.list()/WaqfCausesController.list().
+  @Public()
   @Get()
-  list(@Query("waqfId") waqfId?: string) {
+  async list(@Query("waqfId") waqfId: string | undefined, @Req() request: Request) {
+    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+      if (!waqfId) throw new BadRequestException("Query parameter waqfId is required.");
+      const founder = await resolveFounderFromSession(request);
+      const investments = await this.service.listForFounder(waqfId, founder.id);
+      if (investments === null) throw new NotFoundException(`Waqf "${waqfId}" not found.`);
+      return investments;
+    }
     return this.service.list(waqfId);
   }
 

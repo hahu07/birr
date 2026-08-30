@@ -1,5 +1,4 @@
-import { Injectable } from "@nestjs/common";
-import { createHmac, timingSafeEqual } from "crypto";
+import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import {
   CreatePaymentInput,
   CreatePaymentResult,
@@ -7,6 +6,7 @@ import {
   WebhookResult,
 } from "./payment-provider.interface";
 import { SettingsService } from "../../../common/settings/settings.service";
+import { verifyPaystackSignature } from "../../../common/payments/verify-paystack-signature";
 
 interface PaystackInitializeResponse {
   status: boolean;
@@ -36,7 +36,11 @@ export class PaystackAdapter implements PaymentProviderAdapter {
   async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult> {
     const secretKey = await this.settings.get("paystack", "SECRET_KEY");
     if (!secretKey) {
-      throw new Error("Paystack secret key is not configured.");
+      // A plain Error here surfaces to the founder as an opaque 500
+      // "Internal server error" — this is an operator configuration gap
+      // (no key set for this environment/rail), not a founder-facing
+      // bug, so it gets a clear 503 and an actionable message instead.
+      throw new ServiceUnavailableException("Card payments via Nigeria aren't available right now.");
     }
     // Paystack amounts are in the smallest currency unit (kobo for NGN),
     // same 2-decimal-currency assumption as the Stripe adapter's minor-unit math.
@@ -71,18 +75,7 @@ export class PaystackAdapter implements PaymentProviderAdapter {
   ): Promise<WebhookResult | null> {
     const signature = headers["x-paystack-signature"];
     const secretKey = await this.settings.get("paystack", "SECRET_KEY");
-    if (!signature || !secretKey) return null;
-
-    // Paystack signs with HMAC-SHA512 over the raw body, keyed by the
-    // secret key itself (not a separate webhook secret) — per their
-    // documented scheme. Constant-time compare to avoid a timing side
-    // channel on the signature check.
-    const expected = createHmac("sha512", secretKey).update(rawBody).digest("hex");
-    const expectedBuf = Buffer.from(expected, "hex");
-    const signatureBuf = Buffer.from(signature, "hex");
-    if (expectedBuf.length !== signatureBuf.length || !timingSafeEqual(expectedBuf, signatureBuf)) {
-      return null;
-    }
+    if (!verifyPaystackSignature(rawBody, signature, secretKey)) return null;
 
     let event: PaystackWebhookEvent;
     try {

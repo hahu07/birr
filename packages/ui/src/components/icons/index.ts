@@ -18,3 +18,8 @@ export { IconUsers } from "./IconUsers";
 export { IconFileText } from "./IconFileText";
 export { IconShieldAlert } from "./IconShieldAlert";
 export { IconGlobe } from "./IconGlobe";
+export { IconKey } from "./IconKey";
+export { IconEye } from "./IconEye";
+export { IconEyeOff } from "./IconEyeOff";
+export { IconChevronDown } from "./IconChevronDown";
+export { IconBell } from "./IconBell";

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
 import { Request } from "express";
-import { CreateWaqfInput, WaqfsService } from "./waqfs.service";
-import { resolveFounderFromSession } from "../../common/auth/current-founder";
+import { CreateWaqfInput, IncreaseCorpusTargetInput, WaqfsService } from "./waqfs.service";
+import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { SESSION_COOKIE_NAME } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
@@ -18,14 +18,36 @@ export class WaqfsController {
   // there's no "internal system" caller for this route (a script that
   // needs to create a waqf without a founder session calls
   // WaqfsService.create() directly, not this HTTP route).
+  // Org-commitment action — restricted to the primary contact, same as
+  // Foundation establishment and deed-signing.
   @Post()
   async create(@Body() body: CreateWaqfInput, @Req() request: Request) {
     const founder = await resolveFounderFromSession(request);
+    assertPrimaryContact(founder);
     return this.service.createSelfService({ ...body, founderId: founder.id });
   }
 
+  // Founder-Portal self-service — raises this waqf's own declared corpus
+  // target. Same org-commitment gate as create() above (primary contact
+  // only): a bigger pledge is still a pledge.
+  @Post(":id/increase-corpus-target")
+  async increaseCorpusTarget(
+    @Param("id") id: string,
+    @Body() body: IncreaseCorpusTargetInput,
+    @Req() request: Request,
+  ) {
+    const founder = await resolveFounderFromSession(request);
+    assertPrimaryContact(founder);
+    return this.service.increaseCorpusTarget(id, founder.id, body.corpusAmount);
+  }
+
   @Get()
-  async list(@Query("founderId") founderId: string | undefined, @Req() request: Request) {
+  async list(
+    @Query("founderId") founderId: string | undefined,
+    @Query("type") type: string | undefined,
+    @Query("search") search: string | undefined,
+    @Req() request: Request,
+  ) {
     // A founder-portal caller identifies itself via its session cookie —
     // that's authoritative and overrides any client-supplied
     // ?founderId= query param entirely, so a founder-portal session can
@@ -37,9 +59,9 @@ export class WaqfsController {
     // callers are trusted already.
     if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
-      return this.service.list(founder.id);
+      return this.service.list(founder.id, { type, search });
     }
-    return this.service.list(founderId);
+    return this.service.list(founderId, { type, search });
   }
 
   // Same session-priority pattern as list() — a signed-in Founder can

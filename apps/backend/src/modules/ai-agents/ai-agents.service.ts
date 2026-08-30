@@ -3,6 +3,19 @@ import { IsObject, IsOptional, IsString } from "class-validator";
 import { prisma, AiAgent } from "@birr/db";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 
+// Never select apiKeyHash onto a response body — same principle as
+// BirrStaffService's SAFE_USER_SELECT for User.passwordHash. list() had
+// been returning it unselected (a plain findMany with no `select`)
+// straight to the Ops Console's browser.
+const SAFE_AGENT_SELECT = {
+  id: true,
+  name: true,
+  taskType: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export class DraftInput {
   @IsString()
   action!: string;
@@ -47,8 +60,53 @@ export class AiAgentsService {
     return prisma.aiAgent.findUniqueOrThrow({ where: { name } });
   }
 
-  list() {
-    return prisma.aiAgent.findMany({ where: { status: "active" } });
+  // CLAUDE.md's graduation gate ("officers consistently act on its
+  // drafts without correcting them") is a qualitative call a human makes
+  // — nothing here decides it automatically. What this *can* surface
+  // honestly: how many drafts an agent has actually produced, how many
+  // governed_actions it's actually proposed (0 for every agent today —
+  // none has graduated), and when it last did anything at all. Real
+  // signal an officer can look at, not a fabricated readiness score.
+  async list() {
+    const agents = await prisma.aiAgent.findMany({ where: { status: "active" }, select: SAFE_AGENT_SELECT });
+    const agentIds = agents.map((a) => a.id);
+    if (agentIds.length === 0) return agents.map((a) => ({ ...a, draftCount: 0, governedActionCount: 0, lastActiveAt: null }));
+
+    const [draftStats, governedActionCounts] = await Promise.all([
+      prisma.auditLog.groupBy({
+        by: ["actorAgentId"],
+        where: { actorType: "ai_agent", actorAgentId: { in: agentIds } },
+        _count: { _all: true },
+        _max: { createdAt: true },
+      }),
+      prisma.governedAction.groupBy({
+        by: ["makerAgentId"],
+        where: { makerType: "ai_agent", makerAgentId: { in: agentIds } },
+        _count: { _all: true },
+      }),
+    ]);
+    const draftStatsById = new Map(draftStats.map((d) => [d.actorAgentId, d]));
+    const governedActionCountById = new Map(governedActionCounts.map((g) => [g.makerAgentId, g._count._all]));
+
+    return agents.map((agent) => ({
+      ...agent,
+      draftCount: draftStatsById.get(agent.id)?._count._all ?? 0,
+      governedActionCount: governedActionCountById.get(agent.id) ?? 0,
+      lastActiveAt: draftStatsById.get(agent.id)?._max.createdAt ?? null,
+    }));
+  }
+
+  // Staff-facing detail behind the registry list above — the actual
+  // draft content an agent has produced (audit_logs rows this same
+  // agent wrote via recordDraft), most recent first. This is what makes
+  // "draft-only" mean something concrete: an officer can read exactly
+  // what Rasid/Nazim have been drafting, not just a status label.
+  drafts(agentId: string) {
+    return prisma.auditLog.findMany({
+      where: { actorType: "ai_agent", actorAgentId: agentId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    });
   }
 
   /** GET /ai-agents/:name/jurisdiction-data — Rasid's read_waqf_jurisdictions tool. */

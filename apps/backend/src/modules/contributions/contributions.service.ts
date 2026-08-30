@@ -3,6 +3,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException,
 import { prisma, Prisma, ContributionProvider } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
 import { AssetsService } from "../assets/assets.service";
+import { NotificationsService } from "../notifications/notifications.service";
+import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { PaymentProviderAdapter } from "./providers/payment-provider.interface";
 import { StripeAdapter } from "./providers/stripe.adapter";
 import { PaystackAdapter } from "./providers/paystack.adapter";
@@ -23,6 +25,7 @@ export class ContributionsService {
 
   constructor(
     private readonly assetsService: AssetsService,
+    private readonly notificationsService: NotificationsService,
     stripeAdapter: StripeAdapter,
     paystackAdapter: PaystackAdapter,
     stablecoinAdapter: StablecoinAdapter,
@@ -69,7 +72,62 @@ export class ContributionsService {
     if (!minimum) {
       throw new BadRequestException(`No minimum contribution is configured for currency "${input.currency}".`);
     }
-    if (new Prisma.Decimal(input.amount).lt(minimum.minAmount)) {
+
+    // A waqf's very first payment is floored by a percentage of its
+    // declared corpus — 100% for a lump-sum plan ("pay it all now" is
+    // the whole point — a partial first payment would leave a lump-sum
+    // waqf permanently underfunded, since there's no "top up the rest"
+    // step for that plan the way installment has), or the
+    // admin-configured percentage for an installment plan. This
+    // percentage floor is authoritative on its own for that one
+    // payment — it does NOT additionally have to clear the platform's
+    // general flat per-payment minimum (ContributionMinimum) too: a
+    // founder who declared a smaller corpus should be able to make a
+    // genuinely proportional first payment (e.g. exactly 25% of it),
+    // not a larger one inflated by an unrelated flat floor that exists
+    // to filter out trivial payments in general, not to second-guess a
+    // percentage the founder's own declared corpus already determines.
+    // The flat minimum still applies to every other payment (top-ups,
+    // or any contribution to a waqf with no declared corpus at all).
+    // Judged by "no confirmed contribution yet", not "no contribution
+    // row at all", so a retry after a failed/abandoned first attempt
+    // doesn't get treated as a second (unconstrained) payment.
+    let firstPaymentFloor: Prisma.Decimal | null = null;
+    let firstPaymentPercent: Prisma.Decimal | null = null;
+    if (waqf.corpusAmount) {
+      const confirmedCount = await prisma.contribution.count({
+        where: { waqfId: input.waqfId, status: "confirmed" },
+      });
+      if (confirmedCount === 0) {
+        // The corpus and its floor are only meaningful in the currency
+        // it was declared in — comparing a payment amount against it
+        // across currencies would be comparing raw numbers with no FX
+        // conversion, silently wrong either way it could go.
+        if (waqf.corpusCurrency && input.currency !== waqf.corpusCurrency) {
+          throw new BadRequestException(
+            `This waqf's corpus was declared in ${waqf.corpusCurrency} — the first payment must be made in the same currency.`,
+          );
+        }
+        if (waqf.fundingPlan === "lump_sum") {
+          firstPaymentPercent = new Prisma.Decimal(100);
+        } else {
+          const settings = await prisma.waqfFundingSettings.findFirst();
+          firstPaymentPercent = settings?.installmentMinimumPercent ?? new Prisma.Decimal(25);
+        }
+        firstPaymentFloor = new Prisma.Decimal(waqf.corpusAmount).mul(firstPaymentPercent).div(100);
+      }
+    }
+
+    const amount = new Prisma.Decimal(input.amount);
+    if (firstPaymentFloor) {
+      if (amount.lt(firstPaymentFloor)) {
+        throw new BadRequestException(
+          waqf.fundingPlan === "lump_sum"
+            ? `A lump-sum waqf's first payment must cover the full declared corpus (${firstPaymentFloor} ${input.currency}).`
+            : `An installment plan's first payment must be at least ${firstPaymentPercent}% of the declared corpus (${firstPaymentFloor} ${input.currency}).`,
+        );
+      }
+    } else if (amount.lt(minimum.minAmount)) {
       throw new BadRequestException(
         `The minimum contribution for ${input.currency} is ${minimum.minAmount}. Please increase the amount.`,
       );
@@ -138,14 +196,26 @@ export class ContributionsService {
     }
 
     if (result.status === "failed") {
-      return prisma.contribution.update({ where: { id: contribution.id }, data: { status: "failed" } });
+      const failed = await prisma.contribution.update({ where: { id: contribution.id }, data: { status: "failed" } });
+      this.notifyContributionOutcome(contribution.waqfId, "failed", failed).catch((err) => {
+        console.error(`Failed to notify on failed contribution "${failed.id}":`, err);
+      });
+      return failed;
     }
 
-    return prisma.$transaction(async (tx) => {
+    const { confirmed, waqfActivated } = await prisma.$transaction(async (tx) => {
+      // Every previously-confirmed contribution before this one — 0 means
+      // this is genuinely the first money in, anything else means it's a
+      // later installment payment or a voluntary top-up. Was hardcoded to
+      // always say "Initial contribution" regardless of which one this
+      // was; fixed so the Asset trail actually reflects what happened.
+      const priorConfirmedCount = await tx.contribution.count({
+        where: { waqfId: contribution.waqfId, status: "confirmed" },
+      });
       const asset = await this.assetsService.create(
         {
           waqfId: contribution.waqfId,
-          name: "Initial contribution",
+          name: priorConfirmedCount === 0 ? "Initial contribution" : "Corpus top-up",
           category: "cash",
           estimatedValue: contribution.amount,
         },
@@ -160,7 +230,12 @@ export class ContributionsService {
 
       // The first confirmed contribution is what actually activates a
       // Waqf Fund — it stays draft at creation time precisely because
-      // nothing has been dedicated to it yet.
+      // nothing has been dedicated to it yet. Checked here (before the
+      // unconditional update below) specifically so the notification
+      // fired after commit can tell "just activated" apart from "already
+      // active, this is a later contribution" — the update itself
+      // doesn't distinguish the two.
+      const waqfBefore = await tx.waqf.findUnique({ where: { id: contribution.waqfId }, select: { status: true } });
       await tx.waqf.update({ where: { id: contribution.waqfId }, data: { status: "active" } });
 
       await tx.auditLog.create({
@@ -175,11 +250,131 @@ export class ContributionsService {
         },
       });
 
-      return confirmed;
+      return { confirmed, waqfActivated: waqfBefore?.status === "draft" };
     });
+
+    this.notifyContributionOutcome(contribution.waqfId, "confirmed", confirmed).catch((err) => {
+      console.error(`Failed to notify on confirmed contribution "${confirmed.id}":`, err);
+    });
+    if (waqfActivated) {
+      this.notifyWaqfActivated(contribution.waqfId).catch((err) => {
+        console.error(`Failed to notify on waqf activation for waqf "${contribution.waqfId}":`, err);
+      });
+    }
+
+    return confirmed;
+  }
+
+  // Deliberately NOT awaited by handleWebhook — a payment provider's
+  // webhook response time shouldn't depend on Resend/Twilio round-trips,
+  // same posture as GovernedActionsService's fire-and-forget notify calls.
+  private async notifyContributionOutcome(
+    waqfId: string,
+    outcome: "confirmed" | "failed",
+    contribution: { id: string; amount: string | Prisma.Decimal; currency: string },
+  ): Promise<void> {
+    const recipientUserIds = await resolveFounderRecipientUserIdsForWaqf(waqfId);
+    const type = outcome === "confirmed" ? "contribution.confirmed" : "contribution.failed";
+    const title = outcome === "confirmed" ? "Contribution confirmed" : "Contribution failed";
+    const body =
+      outcome === "confirmed"
+        ? `Your contribution of ${contribution.currency} ${contribution.amount} was confirmed.`
+        : `Your contribution of ${contribution.currency} ${contribution.amount} could not be processed. Please try again.`;
+    await Promise.all(
+      recipientUserIds.map((userId) =>
+        this.notificationsService.notify({
+          recipientType: "founder_user",
+          recipientUserId: userId,
+          type,
+          title,
+          body,
+          linkUrl: `/portfolio/${waqfId}`,
+          relatedEntityType: "Contribution",
+          relatedEntityId: contribution.id,
+        }),
+      ),
+    );
+  }
+
+  private async notifyWaqfActivated(waqfId: string): Promise<void> {
+    const waqf = await prisma.waqf.findUnique({ where: { id: waqfId }, select: { name: true } });
+    if (!waqf) return;
+    const recipientUserIds = await resolveFounderRecipientUserIdsForWaqf(waqfId);
+    await Promise.all(
+      recipientUserIds.map((userId) =>
+        this.notificationsService.notify({
+          recipientType: "founder_user",
+          recipientUserId: userId,
+          type: "waqf.activated",
+          title: `${waqf.name} is now active`,
+          body: `${waqf.name} has received its first contribution and is now an active Waqf Fund.`,
+          linkUrl: `/portfolio/${waqfId}`,
+          relatedEntityType: "Waqf",
+          relatedEntityId: waqfId,
+        }),
+      ),
+    );
   }
 
   findById(id: string) {
     return prisma.contribution.findUnique({ where: { id } });
+  }
+
+  // Founder-Portal read — the contribution history + running total the
+  // new funding-progress UI needs. Ownership-checked the same way as
+  // initiate(): the waqf must actually belong to the calling founder via
+  // the foundationFounders join. Returns null (not throw) when the waqf
+  // isn't found or isn't theirs — same indistinguishable-from-404
+  // convention as every other founder-scoped read in this codebase.
+  async listForWaqf(waqfId: string, founderId: string) {
+    const waqf = await prisma.waqf.findFirst({
+      where: { id: waqfId, foundation: { foundationFounders: { some: { founderId } } } },
+      select: { id: true },
+    });
+    if (!waqf) return null;
+    return prisma.contribution.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" } });
+  }
+
+  // Ops Console — Birr staff need to see the actual payment record
+  // behind a waqf's funding progress for oversight/audit, same as they
+  // can for Assets/Beneficiaries/Distributions on this same waqf. No
+  // ownership scoping (unlike listForWaqf above) — any active BirrStaff
+  // may view any waqf's contributions, matching AssetsService.list()'s
+  // own unscoped posture for its staff-facing counterpart.
+  list(waqfId?: string) {
+    return prisma.contribution.findMany({
+      where: waqfId ? { waqfId } : undefined,
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  // Platform-wide total raised, for the Ops Console's own landing-page
+  // overview (see apps/web/app/ops/page.tsx's PlatformOverview) —
+  // across every waqf, not one. Only "confirmed" counts as actually
+  // raised (a pending contribution hasn't cleared yet, a failed one
+  // never will) — same "only count money that's actually moved"
+  // posture as DistributionsService.summaryByCause's own "paid" filter.
+  // Grouped by currency, never blended — same reasoning as
+  // Distribution.currency's own schema comment.
+  async platformSummary(): Promise<{ currency: string; totalAmount: Prisma.Decimal }[]> {
+    const grouped = await prisma.contribution.groupBy({
+      by: ["currency"],
+      where: { status: "confirmed" },
+      _sum: { amount: true },
+    });
+    return grouped.map((g) => ({ currency: g.currency, totalAmount: g._sum.amount ?? new Prisma.Decimal(0) }));
+  }
+
+  // Founder-scoped counterpart to platformSummary() above, for the
+  // Founder Portal's own Overview page — confirmed-only total raised
+  // across every waqf this founder has established (via the same
+  // foundationFounders join listForWaqf() uses), grouped by currency.
+  async founderSummary(founderId: string): Promise<{ currency: string; totalAmount: Prisma.Decimal }[]> {
+    const grouped = await prisma.contribution.groupBy({
+      by: ["currency"],
+      where: { status: "confirmed", waqf: { foundation: { foundationFounders: { some: { founderId } } } } },
+      _sum: { amount: true },
+    });
+    return grouped.map((g) => ({ currency: g.currency, totalAmount: g._sum.amount ?? new Prisma.Decimal(0) }));
   }
 }

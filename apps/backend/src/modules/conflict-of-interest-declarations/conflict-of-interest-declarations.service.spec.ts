@@ -1,9 +1,10 @@
 import { prisma } from "@birr/db";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { ConflictOfInterestDeclarationsService } from "./conflict-of-interest-declarations.service";
+import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 
 describe("ConflictOfInterestDeclarationsService", () => {
-  const service = new ConflictOfInterestDeclarationsService();
+  const service = new ConflictOfInterestDeclarationsService(createFakeNotificationsService());
 
   const declarationIds: string[] = [];
 

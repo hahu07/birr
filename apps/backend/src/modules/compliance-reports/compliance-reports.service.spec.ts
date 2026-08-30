@@ -3,9 +3,13 @@ import { NotFoundException } from "@nestjs/common";
 import { ComplianceReportsService } from "./compliance-reports.service";
 import { TrusteeLicensesService } from "../trustee-licenses/trustee-licenses.service";
 import { CompliancePolicySetsService } from "../compliance-policy-sets/compliance-policy-sets.service";
+import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 
 describe("ComplianceReportsService", () => {
-  const service = new ComplianceReportsService(new TrusteeLicensesService(), new CompliancePolicySetsService());
+  const service = new ComplianceReportsService(
+    new TrusteeLicensesService(createFakeNotificationsService()),
+    new CompliancePolicySetsService(),
+  );
 
   const waqfIds: string[] = [];
   const governedActionIds: string[] = [];

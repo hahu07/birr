@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -13,7 +14,10 @@ import { Request } from "express";
 import { GovernedActionStatus } from "@birr/db";
 import { GovernedActionsService } from "./governed-actions.service";
 import { RequiresPermission } from "../../common/guards/permission.guard";
-import { AuthenticatedBirrStaff } from "../../common/auth/current-birr-staff";
+import { AuthenticatedBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
+import { resolveFounderFromSession } from "../../common/auth/current-founder";
+import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { Public } from "../../common/guards/public.decorator";
 
 type AuthenticatedRequest = Request & { birrStaff: AuthenticatedBirrStaff };
 
@@ -44,11 +48,26 @@ class DecideActionBody {
 export class GovernedActionsController {
   constructor(private readonly service: GovernedActionsService) {}
 
+  // @Public() — also reachable by a signed-in Founder viewing decided
+  // (approved/rejected) governance activity on their own waqf, read-only
+  // — the passive visibility CLAUDE.md's lifecycle list calls for, that
+  // otherwise only existed on the Ops side. Same session-priority
+  // pattern as every other founder-scoped list() in this codebase; the
+  // staff path below is unchanged.
+  @Public()
   @Get()
-  list(
-    @Query("status") status?: GovernedActionStatus,
-    @Query("waqfId") waqfId?: string,
+  async list(
+    @Query("status") status: GovernedActionStatus | undefined,
+    @Query("waqfId") waqfId: string | undefined,
+    @Req() request: Request,
   ) {
+    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+      if (!waqfId) throw new BadRequestException("Query parameter waqfId is required.");
+      const founder = await resolveFounderFromSession(request);
+      const actions = await this.service.listDecidedForFounder(waqfId, founder.id);
+      if (actions === null) throw new NotFoundException(`Waqf "${waqfId}" not found.`);
+      return actions;
+    }
     return this.service.list({ status, waqfId });
   }
 

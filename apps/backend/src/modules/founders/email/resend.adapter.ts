@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Resend } from "resend";
 import { VerificationEmailAdapter } from "./verification-email.adapter";
 import { SettingsService } from "../../../common/settings/settings.service";
+import { renderEmailTemplate } from "../../../common/email/notification-template";
 
 /**
  * Lazy client construction, same reasoning as StripeAdapter — the Resend
@@ -41,12 +42,14 @@ export class ResendVerificationEmailAdapter implements VerificationEmailAdapter 
       from,
       to,
       subject: "Verify your Birr Founder account",
-      html: `
-        <p>Welcome to Birr.</p>
-        <p>Confirm your email to activate your Founder account and begin establishing your Foundation:</p>
-        <p><a href="${link}">${link}</a></p>
-        <p>This link expires in 24 hours. If you didn't request this, you can ignore this email.</p>
-      `,
+      html: renderEmailTemplate({
+        heading: "Welcome to Birr",
+        bodyHtml:
+          "<p>Confirm your email to activate your Founder account and begin establishing your Foundation. " +
+          "This link expires in 24 hours.</p>",
+        ctaLabel: "Verify email",
+        ctaUrl: link,
+      }),
     });
     if (error) {
       throw new Error(`Resend rejected the verification email: ${error.message}`);

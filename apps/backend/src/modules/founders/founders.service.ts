@@ -82,6 +82,27 @@ export class EstablishFounderAndFoundationInput {
   jurisdiction?: string;
 }
 
+// Step 2's own fields, minus the ones Rafiq has no use for (logo) —
+// whatever the Founder has already typed by the time they ask for help.
+export class DraftPurposeSuggestionInput {
+  @IsString()
+  founderName!: string;
+
+  @IsEnum(FounderKind)
+  kind!: FounderKind;
+
+  @IsOptional()
+  @IsEnum(InstitutionType)
+  institutionType?: InstitutionType;
+
+  @IsString()
+  foundationName!: string;
+
+  @IsOptional()
+  @IsString()
+  jurisdiction?: string;
+}
+
 const VERIFICATION_TOKEN_VALIDITY_HOURS = 24;
 const BCRYPT_ROUNDS = 10;
 
@@ -184,23 +205,71 @@ export class FoundersService {
     });
 
     const verifyLink = `${process.env.BACKEND_URL ?? "http://localhost:4000"}/founders/verify-email?token=${token}`;
-    // Deliberately outside the DB transaction — the account must exist
-    // either way; a delivery failure here shouldn't roll back a
-    // successfully created account (the user can request the link be
-    // resent later), it should just surface as a 502 for this request.
+    // Best-effort, outside the DB transaction — same posture as every
+    // other side-channel send in this codebase (InvitationsService.invite(),
+    // NotificationsService.notify()): a Resend outage must never turn a
+    // successfully created account into an error response. This used to
+    // throw here, which meant the controller's setSessionCookie() below
+    // never ran and the founder was left with a real, unverified account
+    // but no session and no way to request a new link — signing up again
+    // just hit "an account already exists." resendVerificationEmail()
+    // below is the real fix for "the email didn't arrive," not this path.
+    let emailSent = false;
+    try {
+      await this.emailAdapter.sendVerificationEmail(user.email, verifyLink);
+      emailSent = true;
+    } catch (err) {
+      console.error(`Couldn't send verification email to ${user.email}:`, err instanceof Error ? err.message : err);
+    }
+
+    return { userId: user.id, emailSent };
+  }
+
+  /**
+   * The other half of the signUp() fix above — lets a founder whose
+   * verification email never arrived (Resend outage, spam filter, a
+   * stale/expired link) get a new one without needing a whole new
+   * account. Requires a session because signUp() always logs the
+   * founder in immediately regardless of email delivery — there's no
+   * unauthenticated identifier to resend to that wouldn't leak whether
+   * an email address has an account.
+   */
+  async resendVerificationEmail(userId: string) {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (user.status === "active") {
+      throw new BadRequestException("This email is already verified.");
+    }
+
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_VALIDITY_HOURS * 60 * 60 * 1000);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { verificationToken: token, verificationTokenExpiresAt: expiresAt },
+    });
+
+    const verifyLink = `${process.env.BACKEND_URL ?? "http://localhost:4000"}/founders/verify-email?token=${token}`;
     try {
       await this.emailAdapter.sendVerificationEmail(user.email, verifyLink);
     } catch (err) {
       throw new BadRequestException(
-        `Account created but the verification email could not be sent: ${err instanceof Error ? err.message : "unknown error"}`,
+        `Couldn't send the verification email: ${err instanceof Error ? err.message : "unknown error"}`,
       );
     }
 
-    return { userId: user.id };
+    return { ok: true };
   }
 
+  // Accepts either the self-service username picked at sign-up, or an
+  // email — an invited founder_user (InvitationsService.accept()) never
+  // goes through signUp() and so never gets a username at all
+  // (User.username stays null), and email is the only identifier they
+  // have. Self-service founders keep logging in with their username
+  // exactly as before; the OR just adds a second way in, never removes
+  // the first.
   async login(input: LoginInput) {
-    const user = await prisma.user.findUnique({ where: { username: input.username } });
+    const user = await prisma.user.findFirst({
+      where: { OR: [{ username: input.username }, { email: input.username }] },
+    });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException("Incorrect username or password.");
     }
@@ -324,17 +393,83 @@ export class FoundersService {
     });
   }
 
-  /** GET /founders/me — session bootstrap for the frontend. */
+  /**
+   * POST /founders/onboarding/purpose-suggestion — Rafiq, invoked on
+   * demand rather than through the ai_agents API-key path the scheduled
+   * agents use (see services/agents/src/server.ts's own comment on why
+   * this shape is different). The backend calls out to the agent
+   * service directly and records the draft itself — there's no round
+   * trip through POST /ai-agents/:name/drafts here, since the backend is
+   * already the one making the call, not an external agent
+   * authenticating in. No Foundation exists yet at this point in
+   * onboarding, so the audit entry is User-keyed rather than
+   * Foundation-keyed — the closest real entity that exists right now.
+   */
+  async draftPurposeSuggestion(userId: string, input: DraftPurposeSuggestionInput) {
+    const agentServiceUrl = process.env.AGENT_SERVICE_URL ?? "http://localhost:4100";
+    const internalKey = process.env.AGENT_SERVICE_INTERNAL_KEY;
+    if (!internalKey) {
+      throw new Error("AGENT_SERVICE_INTERNAL_KEY is not configured.");
+    }
+
+    const res = await fetch(`${agentServiceUrl}/rafiq/draft-help`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-internal-key": internalKey },
+      body: JSON.stringify(input),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new BadRequestException(body?.message ?? "Rafiq couldn't draft a suggestion right now.");
+    }
+
+    const rafiqAgent = await prisma.aiAgent.findUnique({ where: { name: "rafiq" } });
+    await prisma.auditLog.create({
+      data: {
+        actorType: "ai_agent",
+        actorAgentId: rafiqAgent?.id,
+        action: "onboarding_assist.drafted",
+        entityType: "User",
+        entityId: userId,
+        after: { input, suggestedPurpose: body.suggestedPurpose } as any,
+      },
+    });
+
+    return { suggestedPurpose: body.suggestedPurpose as string };
+  }
+
+  /**
+   * GET /founders/me — session bootstrap for the frontend. Any active
+   * membership, not just primary_contact — see
+   * resolveFounderFromSession's own comment on why that restriction
+   * would leave an invited viewer/requester colleague looking like they
+   * have no Foundation at all.
+   */
   async getSessionSummary(userId: string) {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const membership = await prisma.founderMembership.findFirst({
-      where: { userId, permissionLevel: "primary_contact" },
+      where: { userId, status: "active" },
       include: { founder: true },
     });
     return {
       user: { id: user.id, email: user.email, fullName: user.fullName },
       founder: membership?.founder ?? null,
     };
+  }
+
+  /**
+   * GET /founders/me/members — a Founder's own view of who else has
+   * access to their Foundation (all statuses, so a revoked colleague
+   * still shows with that status rather than vanishing). Any active
+   * member can see this list — it's who has access, not a sensitive
+   * admin-only fact — but only the primary contact can invite or revoke
+   * (see InvitationsController's assertPrimaryContact checks).
+   */
+  listMembers(founderId: string) {
+    return prisma.founderMembership.findMany({
+      where: { founderId },
+      include: { user: { select: { id: true, fullName: true, email: true } } },
+      orderBy: { createdAt: "asc" },
+    });
   }
 
   /**
@@ -346,6 +481,13 @@ export class FoundersService {
    * re-derives its own prerequisite from these same rows, never from
    * this method's output. User-keyed, not Founder-keyed — a Founder may
    * not exist yet (steps 1-2).
+   *
+   * Any active membership, not just primary_contact — an invited
+   * viewer/requester colleague has their own User row but never goes
+   * through steps 1-2 themselves (the invitation is what vouches for
+   * them, same posture as an invited BirrStaff member). See the
+   * currentStep gate below for how their email/WhatsApp verification
+   * state is kept from blocking them on an org that's already onboarded.
    */
   async getOnboardingStatus(userId: string) {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
@@ -353,7 +495,7 @@ export class FoundersService {
     const whatsappVerified = user.whatsappVerifiedAt !== null;
 
     const membership = await prisma.founderMembership.findFirst({
-      where: { userId, permissionLevel: "primary_contact" },
+      where: { userId, status: "active" },
     });
     const founderId = membership?.founderId ?? null;
 
@@ -361,6 +503,7 @@ export class FoundersService {
       ? await prisma.foundation.findFirst({
           where: { foundationFounders: { some: { founderId } } },
           orderBy: { createdAt: "asc" },
+          include: { foundationDeed: true },
         })
       : null;
 
@@ -375,17 +518,26 @@ export class FoundersService {
             orderBy: { createdAt: "asc" },
             include: {
               contributions: { where: { status: "confirmed" }, take: 1 },
-              waqfDeed: true,
             },
           })
         : null;
 
     const firstWaqfFunded = firstWaqf?.status === "active";
-    const deedSigned = Boolean(firstWaqf?.waqfDeed);
+    // Deed-signing is Foundation-level, not per-Waqf — see
+    // FoundationDeed's own schema comment for why this superseded the
+    // original per-Waqf design.
+    const deedSigned = Boolean(firstFoundation?.foundationDeed);
 
+    // Steps 1-2 (email/WhatsApp verification, then establishing the
+    // Founder + Foundation) are about a person with no membership yet —
+    // once founderId exists, the org itself is past that point, whether
+    // this particular user got there by doing steps 1-2 themselves or by
+    // being invited into an org that already had. Gating on *this*
+    // user's own emailVerified/whatsappVerified past that point would
+    // wrongly send an invited colleague back into onboarding for
+    // something the invitation already vouched for.
     let currentStep: 1 | 2 | 3 | 4 | "done";
-    if (!emailVerified || !whatsappVerified) currentStep = 1;
-    else if (!founderId) currentStep = 2;
+    if (!founderId) currentStep = !emailVerified || !whatsappVerified ? 1 : 2;
     else if (!firstWaqfFunded) currentStep = 3;
     else if (!deedSigned) currentStep = 4;
     else currentStep = "done";
@@ -407,8 +559,8 @@ export class FoundersService {
         },
         deedSigned: {
           complete: deedSigned,
-          waqfId: firstWaqf?.id ?? null,
-          signedAt: firstWaqf?.waqfDeed?.signedAt.toISOString() ?? null,
+          foundationId: firstFoundation?.id ?? null,
+          signedAt: firstFoundation?.foundationDeed?.signedAt.toISOString() ?? null,
         },
       },
       currentStep,
