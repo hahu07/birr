@@ -1,10 +1,12 @@
 # Succession & Long-Term Preservation — Scoping Notes
 
-Status: **not designed, not built**. This documents what these two
-stages mean and the open questions to resolve before scoping real work,
-found and written up during the 2026-08-25/26 production-readiness
-audit (see the punch list — these were the two lifecycle stages with
-zero representation anywhere in the codebase, backend or frontend).
+Status: **policy decided (2026-08-30), not yet built**. This documents
+what these two stages mean and the open questions that blocked scoping
+real work, found and written up during the 2026-08-25/26
+production-readiness audit (see the punch list — these were the two
+lifecycle stages with zero representation anywhere in the codebase,
+backend or frontend). See "Policy decision" below for what's now
+resolved and what's still open before either becomes a real plan.
 
 These are the last two of CLAUDE.md's thirteen waqf lifecycle stages:
 
@@ -81,10 +83,53 @@ Concretely, before scoping either into a plan:
   failure mode being protected against — Birr's own database loss, or
   Birr's own institutional discontinuity?
 
+## Policy decision (2026-08-30)
+
+The owner's answer to the "why now vs. someday" question above:
+**the company assumes it is a going concern** — Birr does not plan for
+its own shutdown, acquisition, or discontinuity as a live risk to
+design against. This resolves the two "why now" questions differently:
+
+**Long-term preservation — resolved, no new feature needed.** The
+doc's own framing above asked whether the failure mode being protected
+against is "Birr's own database loss, or Birr's own institutional
+discontinuity." Under a going-concern assumption, the second one isn't
+a live risk to engineer around — there's no successor-custodian,
+escrow, or independent-of-Birr archival posture to build. What's
+already in place under CLAUDE.md's own non-negotiables — the immutable
+audit trail (`audit_logs`, insert-only at the DB role level), signed
+deeds stored as their own durable rows (`WaqfDeed`/`FoundationDeed`,
+DB-trigger-enforced immutable), and ordinary infrastructure backups —
+**is** the preservation mechanism, as long as Birr continues operating.
+Nothing further to scope here; this stage should be treated as
+structurally satisfied by existing non-negotiables rather than a gap.
+
+**Succession management — narrows to the Founder side only.** Of the
+three scenarios above, scenario 3 (Birr itself transferring
+trusteeship to a successor) is exactly the institutional-discontinuity
+case the going-concern assumption sets aside — genuinely a someday
+problem, not scoped now. Scenarios 1 and 2 are different in kind: a
+Foundation's primary contact leaving, or an institutional Founder's
+named leadership changing, are ordinary, expected real-world events
+regardless of Birr's own continuity, and today the product has no path
+through either one. **This is the real, buildable scope**: a
+Founder-side succession workflow — reassigning who holds
+`primary_contact` on a Foundation when the current holder is gone or
+unreachable, preserving the audit trail of who was accountable when.
+
+**Still open before this becomes a plan**: who's allowed to initiate a
+succession (the outgoing primary contact themselves, another active
+member, Birr staff on request — or some combination depending on
+whether the outgoing contact is reachable), and whether reassigning
+`primary_contact` needs its own maker-checker gate given how
+consequential handing over control of an endowment's donor-side
+authority is — a real design fork, not yet answered.
+
 ## Next step
 
-Revisit this doc once there's a real answer to the "why now vs.
-someday" question above for each. At that point this becomes a normal
-scoped plan — vertical slice per entity, tests asserting the audit
-trail, live verification — same as every other feature built this way
-in this codebase.
+Succession management (Founder-side scope, above) is ready to become a
+normal scoped plan once the "who can initiate, maker-checker or not"
+question is answered — vertical slice, tests asserting the audit
+trail, live verification, same as every other feature built this way
+in this codebase. Long-term preservation needs no further scoping —
+see above.

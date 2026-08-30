@@ -61,7 +61,11 @@ export class ContributionsController {
   // founder path (an ops-wide unfiltered list is a legitimate call too).
   @Get("contributions")
   async list(@Query("waqfId") waqfId: string | undefined, @Req() request: Request) {
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       if (!waqfId) throw new BadRequestException("Query parameter waqfId is required.");
       const founder = await resolveFounderFromSession(request);
       const contributions = await this.service.listForWaqf(waqfId, founder.id);

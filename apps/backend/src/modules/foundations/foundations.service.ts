@@ -21,8 +21,11 @@ export class CreateFoundationInput {
   // Not @ArrayNotEmpty() — the Founder Portal's self-service create()
   // call always sends [] here, since FoundationsController.create()
   // ignores this field entirely and forces [the caller's own founderId]
-  // whenever a Founder session is present. Only the "system"/direct-API
-  // path (no session) actually uses whatever list is sent.
+  // whenever a Founder session is present. Only a genuinely trusted
+  // (Birr-staff-authenticated) caller reaches the branch that uses
+  // whatever list is sent — see that controller method's own
+  // 2026-08-30 fix comment for why "no session" no longer counts as
+  // trusted here.
   @IsArray()
   @IsString({ each: true })
   founderIds!: string[];

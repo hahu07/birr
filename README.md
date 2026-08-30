@@ -17,6 +17,10 @@ long-term preservation) — what they mean and the open policy questions
 before either becomes a real plan — see
 **`docs/succession-and-preservation.md`**.
 
+For a standing prompt to run a comprehensive, whole-codebase review
+against CLAUDE.md's non-negotiables and known trouble patterns — see
+**`docs/comprehensive-code-review-prompt.md`**.
+
 ## Layout
 - `apps/web` — merged Founder-facing (`app/(founder)`) + internal Ops
   Console (`app/ops`) Next.js app. One deployment; the two route groups

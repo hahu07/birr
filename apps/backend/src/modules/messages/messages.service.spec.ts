@@ -4,6 +4,24 @@ import { MessagesService } from "./messages.service";
 import { MessageAttachmentStorageService } from "./message-attachment-storage.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 
+// send()'s notifyRecipients() call is deliberately fire-and-forget
+// (post-commit, not awaited — same posture as
+// GovernedActionsService.decide()'s own notifyDecision() call) — a
+// single fixed sleep before asserting is inherently flaky under real
+// load (this file failed exactly this way when run right after a
+// backend restart). Poll instead: check every 20ms, up to 1s, for the
+// expected notification count to actually land.
+async function waitForNotifications(where: { type: string; relatedEntityId: string }, atLeast = 1) {
+  const deadline = Date.now() + 15000;
+  let found: Awaited<ReturnType<typeof prisma.notification.findMany>> = [];
+  while (Date.now() < deadline) {
+    found = await prisma.notification.findMany({ where });
+    if (found.length >= atLeast) return found;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return found;
+}
+
 describe("MessagesService", () => {
   const service = new MessagesService(new MessageAttachmentStorageService(), createFakeNotificationsService());
 
@@ -147,16 +165,10 @@ describe("MessagesService", () => {
     );
     messageIds.push(message.id);
 
-    // notifyRecipients() is fire-and-forget (post-commit, not awaited by
-    // send()) — give the microtask queue a turn before asserting.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const notifications = await prisma.notification.findMany({
-      where: { type: "message.received", relatedEntityId: message.id },
-    });
+    const notifications = await waitForNotifications({ type: "message.received", relatedEntityId: message.id });
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toMatchObject({ recipientType: "birr_staff", recipientUserId: staffUserId });
-  });
+  }, 20_000);
 
   test("a staff-sent message notifies every active founder membership on the foundation", async () => {
     const message = await service.send(
@@ -166,12 +178,37 @@ describe("MessagesService", () => {
     );
     messageIds.push(message.id);
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const notifications = await prisma.notification.findMany({
-      where: { type: "message.received", relatedEntityId: message.id },
-    });
+    const notifications = await waitForNotifications({ type: "message.received", relatedEntityId: message.id }, 2);
     const recipientIds = notifications.map((n) => n.recipientUserId).sort();
     expect(recipientIds).toEqual([founderUserAId, founderUserBId].sort());
+  }, 20_000);
+
+  describe("inbox()", () => {
+    test("returns one row per foundation, most-recently-active first, with the latest message only", async () => {
+      const inbox = await service.inbox();
+      const row = inbox.find((r) => r.foundation.id === foundationId);
+      expect(row).toBeDefined();
+      // Latest message on this foundation at this point is the
+      // "Notify founders please" one sent by staff, just above.
+      expect(row!.lastMessage.body).toBe("Notify founders please");
+      expect(row!.lastMessage.senderType).toBe("birr_staff");
+
+      // One row per foundation, not one row per message.
+      const occurrences = inbox.filter((r) => r.foundation.id === foundationId);
+      expect(occurrences).toHaveLength(1);
+    });
+  });
+
+  describe("inboxForFounder()", () => {
+    test("only includes foundations the founder is actually attached to", async () => {
+      const inbox = await service.inboxForFounder(founderId);
+      expect(inbox.some((r) => r.foundation.id === foundationId)).toBe(true);
+      expect(inbox.some((r) => r.foundation.id === otherFoundationId)).toBe(false);
+    });
+
+    test("a founder with no messages on their own foundation gets an empty inbox", async () => {
+      const inbox = await service.inboxForFounder(otherFounderId);
+      expect(inbox).toHaveLength(0);
+    });
   });
 });

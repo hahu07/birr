@@ -29,6 +29,7 @@ import {
   IconHome,
   IconLogOut,
   IconMark,
+  IconMessageCircle,
   IconUsers,
   NotificationBell,
   type NotificationItem,
@@ -37,6 +38,7 @@ import {
 const NAV_ITEMS = [
   { href: "/", label: "Overview", icon: IconHome },
   { href: "/portfolio", label: "Portfolio", icon: IconBriefcase },
+  { href: "/messages", label: "Messages", icon: IconMessageCircle },
   { href: "/impact", label: "Impact", icon: IconCheckCircle },
   { href: "/team", label: "Team", icon: IconUsers },
 ];
@@ -172,7 +174,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <Sidebar user={user} founder={founder} pathname={pathname} onSignOut={handleSignOut} />
+      <Sidebar
+        user={user}
+        founder={founder}
+        pathname={pathname}
+        unreadMessageCount={notifications.filter((n) => n.type === "message.received" && !n.readAt).length}
+        onSignOut={handleSignOut}
+      />
       <div className="min-w-0 flex-1">
         <header className="flex items-center justify-end border-b border-slate-200 bg-white px-4 py-2.5 sm:px-8">
           <NotificationBell
@@ -211,11 +219,13 @@ function Sidebar({
   user,
   founder,
   pathname,
+  unreadMessageCount,
   onSignOut,
 }: {
   user: SessionUser;
   founder: Founder;
   pathname: string;
+  unreadMessageCount: number;
   onSignOut: () => void;
 }) {
   return (
@@ -257,6 +267,11 @@ function Sidebar({
             >
               <Icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? "text-white" : "text-primary-300"}`} />
               <span className="hidden sm:inline">{item.label}</span>
+              {item.href === "/messages" && unreadMessageCount > 0 && (
+                <span className="ml-auto hidden h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white sm:flex">
+                  {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
+                </span>
+              )}
             </Link>
           );
         })}

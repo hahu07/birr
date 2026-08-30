@@ -28,13 +28,18 @@ class FakeEmailAdapter {
   }
 }
 
+// Real PNG magic bytes — LogoStorageService.saveLogo now decides the
+// allowlist off file content, not the client-supplied mimetype (2026-08-30
+// security audit fix), so this fixture needs to actually match.
+const REAL_PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+
 const FAKE_LOGO: Express.Multer.File = {
   fieldname: "logo",
   originalname: "logo.png",
   encoding: "7bit",
   mimetype: "image/png",
-  size: 128,
-  buffer: Buffer.from("fake-png-bytes"),
+  size: REAL_PNG_BYTES.length,
+  buffer: REAL_PNG_BYTES,
 } as Express.Multer.File;
 
 describe("FoundersService.signUp / login / verifyEmail", () => {

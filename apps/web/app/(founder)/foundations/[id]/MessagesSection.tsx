@@ -8,11 +8,11 @@
 // imports from this route group's own lib/api.ts/types.ts — the UI
 // itself (packages/ui's MessageThread) is byte-for-byte the same
 // component the Ops-side wrapper renders.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatRelativeTime } from "../../../../lib/format";
 import type { Message } from "../../../../lib/types";
-import { Alert, MessageThread, Skeleton } from "@birr/ui";
+import { Alert, MessageThread, Skeleton, type NotificationItem } from "@birr/ui";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -20,6 +20,12 @@ export function MessagesSection({ foundationId }: { foundationId: string }) {
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  // Opening this Foundation's own thread is the real "I've seen this"
+  // signal — without this, a message read here (rather than via the
+  // bell dropdown's own onSelect) never marks its notification read, so
+  // the sidebar's unread badge would never clear. Runs once per mount,
+  // not on every 30s poll.
+  const markedReadRef = useRef(false);
 
   const load = useCallback(() => {
     apiFetchJson<Message[]>(`/messages?foundationId=${foundationId}`)
@@ -32,6 +38,19 @@ export function MessagesSection({ foundationId }: { foundationId: string }) {
     const interval = setInterval(load, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [load]);
+
+  useEffect(() => {
+    if (markedReadRef.current) return;
+    markedReadRef.current = true;
+    apiFetchJson<NotificationItem[]>("/notifications")
+      .then((notifications) => {
+        const unread = notifications.filter(
+          (n) => n.type === "message.received" && !n.readAt && n.linkUrl === `/foundations/${foundationId}`,
+        );
+        return Promise.all(unread.map((n) => apiFetchJson(`/notifications/${n.id}/read`, { method: "POST" })));
+      })
+      .catch(() => {});
+  }, [foundationId]);
 
   async function handleSend(body: string, files: File[]) {
     setSending(true);

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Req, Res } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { IsEmail, IsEnum, IsOptional, IsString } from "class-validator";
 import type { Request, Response } from "express";
 import { InvitationsService, InviteInput, AcceptInput } from "./invitations.service";
@@ -135,7 +135,16 @@ export class InvitationsController {
   @Public()
   @Get()
   async list(@Req() request: Request) {
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // A request with NO session cookie at all must not fall through to
+    // the unscoped staff branch below — this exact route leaked every
+    // pending invitation's token/roleKey to fully anonymous callers
+    // (discovered in the 2026-08-30 security audit), which chained with
+    // accept() into unauthenticated BirrStaff account creation. Same
+    // explicit no-cookie guard as FoundationDeedsController.findByFoundationId.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       return this.service.listForFounder(founder.id);
     }

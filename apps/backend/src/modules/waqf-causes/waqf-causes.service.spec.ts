@@ -8,6 +8,13 @@ describe("WaqfCausesService", () => {
 
   const waqfCauseIds: string[] = [];
   const waqfIds: string[] = [];
+  // Real CauseCategory rows the Founder Portal's cause picker queries
+  // from directly — never cleaned up here before this fix, so every
+  // full-suite run permanently added 3 more "Allocate Fixture
+  // Category {uuid}" rows to the shared dev DB's real catalog
+  // (discovered live, this session, after it had visibly re-polluted
+  // the catalog a cleanup pass had just cleared).
+  const causeCategoryIds: string[] = [];
 
   let waqfId: string;
   let actorUserId: string;
@@ -39,6 +46,10 @@ describe("WaqfCausesService", () => {
     await prisma.waqfProceeds.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
+    // Real rows the Founder Portal's cause picker queries directly —
+    // deleted after waqfCause above (which references them), same
+    // ordering reasoning as everywhere else in this codebase.
+    await prisma.causeCategory.deleteMany({ where: { id: { in: causeCategoryIds } } });
     await prisma.$disconnect();
   });
 
@@ -84,6 +95,7 @@ describe("WaqfCausesService", () => {
         data: { name: `Allocate Fixture Category ${randomUUID()}`, typicalWaqfTypes: [] },
       });
       categoryId = category.id;
+      causeCategoryIds.push(category.id);
 
       const foundation = await prisma.foundation.create({ data: { name: "Allocate Fixture Foundation" } });
       await prisma.foundationFounder.create({ data: { foundationId: foundation.id, founderId } });
@@ -115,6 +127,7 @@ describe("WaqfCausesService", () => {
       const secondCategory = await prisma.causeCategory.create({
         data: { name: `Allocate Fixture Category 2 ${randomUUID()}`, typicalWaqfTypes: [] },
       });
+      causeCategoryIds.push(secondCategory.id);
       const secondAssetCause = await prisma.waqfCause.create({
         data: { waqfId: assetWaqfId, causeCategoryId: secondCategory.id, name: secondCategory.name },
       });
@@ -165,7 +178,10 @@ describe("WaqfCausesService", () => {
 
       const logs = await prisma.auditLog.findMany({ where: { entityId: assetCauseId, action: "waqf_cause.allocation_set" } });
       expect(logs).toHaveLength(1);
-      expect(logs[0]).toMatchObject({ actorType: "founder_user" });
+      // actorFounderId specifically — 2026-08-30 security audit fix,
+      // this was previously always null (see the fix's own comment in
+      // waqf-causes.service.ts).
+      expect(logs[0]).toMatchObject({ actorType: "founder_user", actorFounderId: founderId });
     });
 
     test("rejects an allocation that would exceed the waqf's total pool across its causes", async () => {
@@ -194,6 +210,123 @@ describe("WaqfCausesService", () => {
 
     test("rejects allocating against a Birr-staff custom cause (no causeCategoryId)", async () => {
       await expect(service.allocate(customCauseId, founderId, "1")).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // 2026-08-30 security audit fix — allocate()'s pool computation used to
+  // sum Contribution.amount across currencies blindly, the same
+  // root-cause bug as DistributionsService.assertWithinAllocation (see
+  // that fix's own tests). These prove the fix: a waqf with confirmed
+  // contributions in more than one currency and no declared
+  // corpusCurrency has no unambiguous pool to allocate from, and a waqf
+  // WITH a declared corpusCurrency correctly ignores contributions in any
+  // other currency when computing what's available.
+  describe("allocate() currency handling", () => {
+    let founderId: string;
+    let ambiguousWaqfId: string;
+    let ambiguousCauseId: string;
+    let declaredWaqfId: string;
+    let declaredCauseId: string;
+
+    beforeAll(async () => {
+      const founder = await prisma.founder.create({ data: { name: "Allocate Currency Fixture Founder", kind: "institution" } });
+      founderId = founder.id;
+
+      const foundation = await prisma.foundation.create({ data: { name: "Allocate Currency Fixture Foundation" } });
+      await prisma.foundationFounder.create({ data: { foundationId: foundation.id, founderId } });
+
+      const category = await prisma.causeCategory.create({
+        data: { name: `Allocate Currency Fixture Category ${randomUUID()}`, typicalWaqfTypes: [] },
+      });
+      causeCategoryIds.push(category.id);
+
+      // No corpusCurrency declared, and confirmed contributions in two
+      // different currencies — there's no single unambiguous pool to
+      // allocate a corpus amount from.
+      const ambiguousWaqf = await prisma.waqf.create({
+        data: { name: "Allocate Currency Ambiguous Waqf", type: "asset", jurisdiction: "AE", foundationId: foundation.id },
+      });
+      ambiguousWaqfId = ambiguousWaqf.id;
+      waqfIds.push(ambiguousWaqf.id);
+      await prisma.contribution.createMany({
+        data: [
+          {
+            waqfId: ambiguousWaqfId,
+            amount: "1000",
+            currency: "USD",
+            provider: "paystack",
+            providerReference: `allocate-currency-spec-usd-${randomUUID()}`,
+            status: "confirmed",
+          },
+          {
+            waqfId: ambiguousWaqfId,
+            amount: "500000",
+            currency: "NGN",
+            provider: "paystack",
+            providerReference: `allocate-currency-spec-ngn-${randomUUID()}`,
+            status: "confirmed",
+          },
+        ],
+      });
+      const ambiguousCause = await prisma.waqfCause.create({
+        data: { waqfId: ambiguousWaqfId, causeCategoryId: category.id, name: category.name },
+      });
+      ambiguousCauseId = ambiguousCause.id;
+      waqfCauseIds.push(ambiguousCause.id);
+
+      // corpusCurrency declared as USD — the NGN contribution must be
+      // ignored entirely when computing the allocatable pool.
+      const declaredWaqf = await prisma.waqf.create({
+        data: {
+          name: "Allocate Currency Declared Waqf",
+          type: "asset",
+          jurisdiction: "AE",
+          foundationId: foundation.id,
+          corpusCurrency: "USD",
+        },
+      });
+      declaredWaqfId = declaredWaqf.id;
+      waqfIds.push(declaredWaqf.id);
+      await prisma.contribution.createMany({
+        data: [
+          {
+            waqfId: declaredWaqfId,
+            amount: "1000",
+            currency: "USD",
+            provider: "paystack",
+            providerReference: `allocate-currency-spec-declared-usd-${randomUUID()}`,
+            status: "confirmed",
+          },
+          {
+            waqfId: declaredWaqfId,
+            amount: "999999",
+            currency: "NGN",
+            provider: "paystack",
+            providerReference: `allocate-currency-spec-declared-ngn-${randomUUID()}`,
+            status: "confirmed",
+          },
+        ],
+      });
+      const declaredCause = await prisma.waqfCause.create({
+        data: { waqfId: declaredWaqfId, causeCategoryId: category.id, name: category.name },
+      });
+      declaredCauseId = declaredCause.id;
+      waqfCauseIds.push(declaredCause.id);
+    });
+
+    test("rejects allocation when confirmed contributions span multiple currencies with no declared corpusCurrency", async () => {
+      await expect(service.allocate(ambiguousCauseId, founderId, "1")).rejects.toThrow(BadRequestException);
+      await expect(service.allocate(ambiguousCauseId, founderId, "1")).rejects.toThrow(/more than one currency/);
+    });
+
+    test("uses the declared corpusCurrency's pool, ignoring contributions in other currencies", async () => {
+      // Only 1000 USD was actually raised — the 999999 NGN contribution
+      // must play no part. Asking for more than the USD pool fails...
+      await expect(service.allocate(declaredCauseId, founderId, "1001")).rejects.toThrow(BadRequestException);
+
+      // ...but exactly what was raised in the declared currency succeeds.
+      const updated = await service.allocate(declaredCauseId, founderId, "1000");
+      expect(updated.allocatedAmount?.toString()).toBe("1000");
     });
   });
 
@@ -229,6 +362,7 @@ describe("WaqfCausesService", () => {
       const category = await prisma.causeCategory.create({
         data: { name: `Allocate Proceeds Fixture Category ${randomUUID()}`, typicalWaqfTypes: [] },
       });
+      causeCategoryIds.push(category.id);
       const firstCause = await prisma.waqfCause.create({
         data: { waqfId: proceedsWaqfId, causeCategoryId: category.id, name: category.name },
       });
@@ -444,6 +578,59 @@ describe("WaqfCausesService", () => {
       // weight — recomputed to 150, not 100 + 50 double-counted or
       // additively topped up.
       expect(secondRun!.proceedsAllocatedAmount?.toString()).toBe("150");
+    });
+  });
+
+  describe("selectForFounder() / unselectForFounder() audit attribution", () => {
+    // 2026-08-30 security audit fix — these two audit_logs writes
+    // previously carried actorType: "founder_user" with no
+    // actorUserId/actorFounderId at all, defeating "who did this" on
+    // the audit trail. See each method's own fix comment in
+    // waqf-causes.service.ts.
+    let founderId: string;
+    let waqfId: string;
+    let categoryId: string;
+
+    beforeAll(async () => {
+      const founder = await prisma.founder.create({ data: { name: "Select Attribution Fixture Founder", kind: "institution" } });
+      founderId = founder.id;
+      const foundation = await prisma.foundation.create({ data: { name: "Select Attribution Fixture Foundation" } });
+      await prisma.foundationFounder.create({ data: { foundationId: foundation.id, founderId } });
+      const waqf = await prisma.waqf.create({
+        data: { name: "Select Attribution Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId: foundation.id },
+      });
+      waqfId = waqf.id;
+      waqfIds.push(waqf.id);
+      const category = await prisma.causeCategory.create({
+        data: { name: `Select Attribution Fixture Category ${randomUUID()}`, typicalWaqfTypes: [] },
+      });
+      categoryId = category.id;
+      causeCategoryIds.push(category.id);
+    });
+
+    test("selectForFounder() writes actorFounderId on its audit log", async () => {
+      const cause = await service.selectForFounder(waqfId, categoryId, founderId);
+      waqfCauseIds.push(cause.id);
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: cause.id, action: "waqf_cause.selected" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ actorType: "founder_user", actorFounderId: founderId });
+    });
+
+    test("unselectForFounder() writes actorFounderId on its audit log", async () => {
+      const unselectCategory = await prisma.causeCategory.create({
+        data: { name: `Unselect Fixture Category ${randomUUID()}`, typicalWaqfTypes: [] },
+      });
+      causeCategoryIds.push(unselectCategory.id);
+
+      const cause = await service.selectForFounder(waqfId, unselectCategory.id, founderId);
+      waqfCauseIds.push(cause.id);
+
+      await service.unselectForFounder(cause.id, founderId);
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: cause.id, action: "waqf_cause.unselected" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ actorType: "founder_user", actorFounderId: founderId });
     });
   });
 });

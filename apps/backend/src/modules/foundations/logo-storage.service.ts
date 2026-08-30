@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import * as path from "path";
+import { detectMimeType } from "../../common/files/detect-mime-type";
 
 const ALLOWED_MIME_TYPES: Record<string, string> = {
   "image/png": "png",
@@ -31,7 +32,11 @@ const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "logos");
 @Injectable()
 export class LogoStorageService {
   async saveLogo(file: Express.Multer.File): Promise<{ url: string }> {
-    const extension = ALLOWED_MIME_TYPES[file.mimetype];
+    // Decided by the file's actual bytes, not the client-supplied
+    // mimetype — see detectMimeType's own comment (2026-08-30 security
+    // audit fix).
+    const detectedMimeType = detectMimeType(file.buffer);
+    const extension = detectedMimeType ? ALLOWED_MIME_TYPES[detectedMimeType] : undefined;
     if (!extension) {
       throw new BadRequestException("Logo must be a PNG, JPEG, or WebP image.");
     }

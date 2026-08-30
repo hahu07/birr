@@ -26,6 +26,8 @@ export { DonutChart } from "./components/DonutChart";
 export type { DonutChartProps, DonutChartSegment } from "./components/DonutChart";
 export { MessageThread } from "./components/MessageThread";
 export type { MessageThreadProps, MessageThreadItem, MessageThreadAttachment } from "./components/MessageThread";
+export { LifecycleChecklist } from "./components/LifecycleChecklist";
+export type { LifecycleChecklistProps, LifecycleChecklistRow } from "./components/LifecycleChecklist";
 export { StepProgress } from "./components/StepProgress";
 export type { StepProgressProps } from "./components/StepProgress";
 export { AuthSplitLayout } from "./components/AuthSplitLayout";
@@ -54,6 +56,7 @@ export {
   IconGlobe,
   IconChevronDown,
   IconBell,
+  IconMessageCircle,
   IconKey,
 } from "./components/icons";
 export type { IconProps } from "./components/icons";

@@ -17,6 +17,7 @@ import type { Waqf } from "../../../../lib/ops-types";
 import { Alert, Badge, IconBriefcase, Skeleton } from "@birr/ui";
 import { LicenseStatusBanner } from "./LicenseStatusBanner";
 import { CaseAssignmentsSection } from "./CaseAssignmentsSection";
+import { LifecycleSection } from "./LifecycleSection";
 import { ContributionsSection } from "./ContributionsSection";
 import { CausesSection } from "./CausesSection";
 import { CauseImpactSection } from "./CauseImpactSection";
@@ -26,6 +27,7 @@ import { InvestmentsSection } from "./InvestmentsSection";
 import { ProceedsSection } from "./ProceedsSection";
 import { DistributionsSection } from "./DistributionsSection";
 import { ComplianceReportSection } from "./ComplianceReportSection";
+import { FinancialReportSection } from "./FinancialReportSection";
 
 const STATUS_TONE: Record<Waqf["status"], "success" | "warning" | "neutral" | "danger"> = {
   active: "success",
@@ -113,6 +115,7 @@ export default function WaqfDetailPage() {
 
       <div className="space-y-10">
         <CaseAssignmentsSection waqfId={id} />
+        {waqf.type === "project" && <LifecycleSection waqfId={id} />}
         <ContributionsSection waqfId={id} />
         <CausesSection
           waqfId={id}
@@ -142,6 +145,7 @@ export default function WaqfDetailPage() {
           </>
         )}
         <DistributionsSection waqfId={id} causesVersion={causesVersion} beneficiariesVersion={beneficiariesVersion} />
+        <FinancialReportSection waqfId={id} />
         <ComplianceReportSection waqfId={id} />
       </div>
     </div>

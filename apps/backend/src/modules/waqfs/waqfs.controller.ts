@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
 import { CreateWaqfInput, IncreaseCorpusTargetInput, WaqfsService } from "./waqfs.service";
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
@@ -51,13 +51,20 @@ export class WaqfsController {
     // A founder-portal caller identifies itself via its session cookie —
     // that's authoritative and overrides any client-supplied
     // ?founderId= query param entirely, so a founder-portal session can
-    // never widen its own scope just by editing the URL. Absent a
-    // session, or when the session belongs to Birr staff rather than a
-    // Founder (Ops Console calls this route too, and both now carry the
-    // same httpOnly cookie — see isBirrStaffSession's own comment), the
-    // query param still works as an ops filtering convenience — those
-    // callers are trusted already.
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // never widen its own scope just by editing the URL. When the
+    // session belongs to Birr staff rather than a Founder (Ops Console
+    // calls this route too, and both now carry the same httpOnly
+    // cookie — see isBirrStaffSession's own comment), the query param
+    // works as an ops filtering convenience. A request with NO session
+    // cookie at all is neither of those — it must not be treated as a
+    // trusted ops caller (2026-08-30 security audit fix: this exact
+    // "absent session = trusted" assumption previously let this route
+    // return the full unscoped waqf list to anyone, unauthenticated —
+    // see docs/comprehensive-code-review-prompt.md).
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       return this.service.list(founder.id, { type, search });
     }
@@ -70,9 +77,33 @@ export class WaqfsController {
   // (WaqfsService.findByIdForFounder). 404, not 403 — indistinguishable
   // from "id doesn't exist," so this never confirms another Founder's
   // waqf exists.
+  // CLAUDE.md's 13 waqf lifecycle stages, computed live — see
+  // WaqfsService.getLifecycleStatus's own comment. Same dual-branch
+  // ownership shape as findById below: no ordering concern versus that
+  // route, ":id" only ever matches one path segment.
+  @Get(":id/lifecycle")
+  async lifecycle(@Param("id") id: string, @Req() request: Request) {
+    // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
+      const founder = await resolveFounderFromSession(request);
+      const waqf = await this.service.findByIdForFounder(id, founder.id);
+      if (!waqf) throw new NotFoundException(`Waqf "${id}" not found.`);
+    }
+    const status = await this.service.getLifecycleStatus(id);
+    if (!status) throw new NotFoundException(`Waqf "${id}" not found.`);
+    return status;
+  }
+
   @Get(":id")
   async findById(@Param("id") id: string, @Req() request: Request) {
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       const waqf = await this.service.findByIdForFounder(id, founder.id);
       if (!waqf) throw new NotFoundException(`Waqf "${id}" not found.`);

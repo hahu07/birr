@@ -135,6 +135,12 @@ export class WaqfCausesService {
         data: {
           waqfId,
           actorType: "founder_user",
+          // 2026-08-30 security audit fix — was previously missing
+          // (see docs/comprehensive-code-review-prompt.md): every other
+          // founder_user audit write in this codebase sets
+          // actorFounderId, this file was the sole outlier, defeating
+          // "who did this" on the audit trail.
+          actorFounderId: founderId,
           action: "waqf_cause.selected",
           entityType: "WaqfCause",
           entityId: cause.id,
@@ -180,6 +186,9 @@ export class WaqfCausesService {
         data: {
           waqfId: cause.waqfId,
           actorType: "founder_user",
+          // 2026-08-30 security audit fix — see selectForFounder's own
+          // comment above.
+          actorFounderId: founderId,
           action: "waqf_cause.unselected",
           entityType: "WaqfCause",
           entityId: updated.id,
@@ -232,11 +241,39 @@ export class WaqfCausesService {
         throw new NotFoundException(`WaqfCause "${waqfCauseId}" not found.`);
       }
 
-      const raised = await tx.contribution.aggregate({
+      // Scoped to a single currency — Contribution.currency exists
+      // per-row (a waqf can receive contributions in more than one
+      // currency), but this pool and every WaqfCause.allocatedAmount it
+      // gets compared against carry no currency of their own. Summing
+      // raw amounts across currencies here previously let, e.g., a
+      // fresh USD contribution silently inflate an NGN-denominated
+      // allocatable pool (2026-08-30 security audit follow-up — see
+      // docs/comprehensive-code-review-prompt.md and
+      // DistributionsService.assertWithinAllocation's own fix comment
+      // for the sibling bug this one mirrors). Prefer the waqf's own
+      // declared corpusCurrency as the canonical currency; if none is
+      // declared (legacy waqfs predating the corpus-target feature),
+      // fall back to requiring every confirmed contribution to already
+      // be in one single currency — ambiguous mixing is refused outright
+      // rather than silently blended.
+      const raisedByCurrency = await tx.contribution.groupBy({
+        by: ["currency"],
         where: { waqfId: cause.waqfId, status: "confirmed" },
         _sum: { amount: true },
       });
-      const pool = raised._sum.amount ?? new Prisma.Decimal(0);
+      let poolCurrency = waqf.corpusCurrency;
+      if (!poolCurrency) {
+        const distinctCurrencies = new Set(raisedByCurrency.map((r) => r.currency));
+        if (distinctCurrencies.size > 1) {
+          throw new BadRequestException(
+            `This waqf has confirmed contributions in more than one currency (${[...distinctCurrencies].join(", ")}) and no declared corpus currency — set a corpus target first so cause allocation has an unambiguous currency to work with.`,
+          );
+        }
+        poolCurrency = [...distinctCurrencies][0] ?? null;
+      }
+      const pool = poolCurrency
+        ? raisedByCurrency.find((r) => r.currency === poolCurrency)?._sum.amount ?? new Prisma.Decimal(0)
+        : new Prisma.Decimal(0);
 
       const otherCauses = await tx.waqfCause.findMany({
         where: { waqfId: cause.waqfId, deletedAt: null, id: { not: waqfCauseId } },
@@ -264,6 +301,11 @@ export class WaqfCausesService {
         data: {
           waqfId: cause.waqfId,
           actorType: "founder_user",
+          // 2026-08-30 security audit fix — see selectForFounder's own
+          // comment above. This is the real-money cause-allocation
+          // ceiling CLAUDE.md calls out by name; attribution matters
+          // most here.
+          actorFounderId: founderId,
           action: "waqf_cause.allocation_set",
           entityType: "WaqfCause",
           entityId: updated.id,

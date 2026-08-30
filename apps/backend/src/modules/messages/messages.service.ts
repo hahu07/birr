@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { IsNotEmpty, IsString } from "class-validator";
-import { prisma } from "@birr/db";
+import { prisma, Prisma } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { resolveFounderRecipientUserIdsForFoundation } from "../../common/notifications/resolve-founder-recipients";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -78,6 +78,64 @@ export class MessagesService {
       orderBy: { createdAt: "asc" },
       include: MESSAGE_INCLUDE,
     });
+  }
+
+  // One row per Foundation that has at least one message, most-recently-
+  // active first — the Ops Console's own Messages nav item needs this
+  // (staff manage many Foundations at once, so a per-Foundation-page
+  // thread alone isn't discoverable), and the Founder Portal reuses the
+  // exact same shape for a founder attached to more than one Foundation.
+  // No new "unread" bookkeeping here — that's already covered by the
+  // existing message.received Notification rows; the frontend derives
+  // per-Foundation unread state from those instead of this endpoint
+  // tracking a second, redundant read-state.
+  inbox() {
+    return this.buildInbox();
+  }
+
+  async inboxForFounder(founderId: string) {
+    return withFounderScope(founderId, (tx) => this.buildInbox(founderId, tx));
+  }
+
+  private async buildInbox(founderId?: string, client: Prisma.TransactionClient | typeof prisma = prisma) {
+    const messages = await client.message.findMany({
+      where: {
+        deletedAt: null,
+        ...(founderId ? { foundation: { foundationFounders: { some: { founderId } } } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        foundation: { select: { id: true, name: true } },
+        senderUser: { select: { id: true, fullName: true } },
+      },
+    });
+
+    const seenFoundationIds = new Set<string>();
+    const inbox: {
+      foundation: { id: string; name: string };
+      lastMessage: {
+        id: string;
+        body: string;
+        senderType: string;
+        senderUser: { id: string; fullName: string };
+        createdAt: Date;
+      };
+    }[] = [];
+    for (const message of messages) {
+      if (seenFoundationIds.has(message.foundationId)) continue;
+      seenFoundationIds.add(message.foundationId);
+      inbox.push({
+        foundation: message.foundation,
+        lastMessage: {
+          id: message.id,
+          body: message.body,
+          senderType: message.senderType,
+          senderUser: message.senderUser,
+          createdAt: message.createdAt,
+        },
+      });
+    }
+    return inbox;
   }
 
   // Mirrors AssetsService.listForFounder's shape exactly — withFounderScope,

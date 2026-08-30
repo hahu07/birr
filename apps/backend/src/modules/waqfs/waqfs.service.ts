@@ -297,6 +297,118 @@ export class WaqfsService {
   }
 
   /**
+   * CLAUDE.md's 13 "Waqf lifecycle stages" — purely computed, never
+   * persisted, same "derive live from real rows, no lifecycle_stage
+   * column, no cron job" shape as FoundersService.getOnboardingStatus.
+   * Unlike onboarding, these stages aren't sequential/gated in reality
+   * (a fund can have beneficiaries before its first compliance policy
+   * match), so this returns a checklist + completion count, not a
+   * single "current stage."
+   *
+   * Three non-"complete" states, not a plain boolean:
+   *  - "pending": trackable, hasn't happened yet.
+   *  - "not_applicable": can never happen for this waqf (e.g.
+   *    investment management on a non-investment-type fund — Investments
+   *    can only ever exist for type: investment, per
+   *    InvestmentsService.createOne()'s own guard).
+   *  - "not_available": explicitly deferred pending an unresolved
+   *    design fork (succession management only — see
+   *    docs/succession-and-preservation.md's 2026-08-30 policy
+   *    decision: who's allowed to initiate a primary_contact handoff,
+   *    and whether it needs its own maker-checker gate, is still open;
+   *    do not compute anything real here without that answer first).
+   *    Financial reporting and long-term preservation used to live here
+   *    too — financial reporting until FinancialReportsService shipped
+   *    (now checked for real), long-term preservation until the same
+   *    2026-08-30 decision resolved it as structurally satisfied by
+   *    existing non-negotiables (now always "complete", not deferred).
+   */
+  async getLifecycleStatus(waqfId: string) {
+    const waqf = await prisma.waqf.findUnique({
+      where: { id: waqfId },
+      include: { foundation: { include: { foundationDeed: true } } },
+    });
+    if (!waqf) return null;
+
+    const [assetCount, activeAssignments, investmentCount, beneficiaryCount, paidDistributionCount, policySet, impactUpdateCount, auditLogCount, financialReportCount] =
+      await Promise.all([
+        prisma.asset.count({ where: { waqfId, deletedAt: null } }),
+        prisma.waqfCaseAssignment.findMany({ where: { waqfId, status: "active" }, select: { assignmentRole: true } }),
+        prisma.investment.count({ where: { waqfId } }),
+        prisma.beneficiary.count({ where: { waqfId, deletedAt: null } }),
+        prisma.distribution.count({ where: { waqfId, status: "paid", deletedAt: null } }),
+        prisma.compliancePolicySet.findUnique({ where: { jurisdiction: waqf.jurisdiction } }),
+        prisma.causeImpactUpdate.count({ where: { waqfCause: { waqfId } } }),
+        prisma.auditLog.count({ where: { waqfId } }),
+        // Generating a FinancialReportsService.generate() report writes
+        // this exact action — same "check real audit_logs rows" pattern
+        // as audit itself, and doubles as the source of truth once a
+        // financial report has actually been pulled at least once.
+        prisma.auditLog.count({ where: { waqfId, action: "financial_report.exported" } }),
+      ]);
+
+    const stages = {
+      establishment: { status: "complete" as const, completedAt: waqf.createdAt },
+      legalDocumentation: {
+        status: (waqf.foundation.foundationDeed ? "complete" : "pending") as "complete" | "pending",
+        signedAt: waqf.foundation.foundationDeed?.signedAt ?? null,
+      },
+      assetRegistration: { status: (assetCount > 0 ? "complete" : "pending") as "complete" | "pending", count: assetCount },
+      governanceConfiguration: {
+        status: (activeAssignments.length > 0 ? "complete" : "pending") as "complete" | "pending",
+        assignmentRoles: activeAssignments.map((a) => a.assignmentRole),
+      },
+      investmentManagement:
+        waqf.type !== "investment"
+          ? { status: "not_applicable" as const, count: undefined as number | undefined }
+          : { status: (investmentCount > 0 ? "complete" : "pending") as "complete" | "pending", count: investmentCount },
+      beneficiaryAdministration: {
+        status: (beneficiaryCount > 0 ? "complete" : "pending") as "complete" | "pending",
+        count: beneficiaryCount,
+      },
+      distributionManagement: {
+        status: (paidDistributionCount > 0 ? "complete" : "pending") as "complete" | "pending",
+        count: paidDistributionCount,
+      },
+      complianceMonitoring: {
+        status: (policySet ? "complete" : "pending") as "complete" | "pending",
+        frameworkName: policySet?.frameworkName ?? null,
+      },
+      financialReporting: {
+        status: (financialReportCount > 0 ? "complete" : "pending") as "complete" | "pending",
+        count: financialReportCount,
+      },
+      impactMeasurement: {
+        status: (impactUpdateCount > 0 ? "complete" : "pending") as "complete" | "pending",
+        count: impactUpdateCount,
+      },
+      audit: { status: (auditLogCount > 0 ? "complete" : "pending") as "complete" | "pending", count: auditLogCount },
+      // Still not_available — the owner's 2026-08-30 going-concern
+      // decision (see docs/succession-and-preservation.md) narrowed
+      // this to a real, buildable Founder-side scope (reassigning
+      // primary_contact when the current holder is gone), but who's
+      // allowed to initiate it and whether it needs its own
+      // maker-checker gate is still an open design fork — nothing to
+      // compute here yet.
+      successionManagement: { status: "not_available" as const },
+      // Always complete, unconditionally — resolved, not deferred, by
+      // the same 2026-08-30 decision: under a going-concern assumption,
+      // "preservation independent of Birr's own existence" isn't a live
+      // risk to engineer around, and what CLAUDE.md's non-negotiables
+      // already guarantee (audit_logs is insert-only at the DB role
+      // level; WaqfDeed/FoundationDeed are DB-trigger-immutable once
+      // signed) already *is* the preservation mechanism for every waqf,
+      // not something a specific waqf can be missing.
+      longTermPreservation: { status: "complete" as const },
+    };
+
+    const trackable = Object.values(stages).filter((s) => s.status !== "not_applicable" && s.status !== "not_available");
+    const completedCount = trackable.filter((s) => s.status === "complete").length;
+
+    return { waqfId, stages, completedCount, trackableCount: trackable.length };
+  }
+
+  /**
    * When founderId is given, this also sets the app.current_founder_id
    * session variable that founder_isolation
    * (packages/db/prisma/migrations/20260802211506_drop_waqf_founders_and_rewrite_founder_isolation)

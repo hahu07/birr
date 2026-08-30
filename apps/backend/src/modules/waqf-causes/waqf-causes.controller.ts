@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { IsString } from "class-validator";
 import { Request } from "express";
 import { WaqfCausesService, CreateWaqfCauseInput, SelectCauseCategoryInput, AllocateCauseInput } from "./waqf-causes.service";
@@ -96,7 +96,11 @@ export class WaqfCausesController {
     if (!waqfId) {
       throw new BadRequestException("Query parameter waqfId is required.");
     }
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       const causes = await this.service.listForFounder(waqfId, founder.id);
       if (causes === null) throw new NotFoundException(`Waqf "${waqfId}" not found.`);

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Post, Query, Req, UploadedFiles, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Post, Query, Req, UnauthorizedException, UploadedFiles, UseInterceptors } from "@nestjs/common";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { Request } from "express";
 import { MessagesService, SendMessageInput } from "./messages.service";
@@ -37,10 +37,26 @@ export class MessagesController {
     );
   }
 
+  // Declared before the bare "list()" route below purely for readability
+  // — no actual routing-order concern here, since "inbox" is a literal
+  // path segment, not a ":id"-style param that could shadow it.
+  @Get("inbox")
+  async inbox(@Req() request: Request) {
+    if (await isBirrStaffSession(request)) {
+      return this.service.inbox();
+    }
+    const founder = await resolveFounderFromSession(request);
+    return this.service.inboxForFounder(founder.id);
+  }
+
   @Get()
   async list(@Query("foundationId") foundationId: string | undefined, @Req() request: Request) {
     if (!foundationId) throw new BadRequestException("Query parameter foundationId is required.");
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       const messages = await this.service.listForFounder(foundationId, founder.id);
       if (messages === null) throw new NotFoundException(`Foundation "${foundationId}" not found.`);

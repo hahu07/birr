@@ -4,9 +4,39 @@ import { prisma } from "@birr/db";
 import { WaqfsService } from "./waqfs.service";
 import { TrusteeLicensesService } from "../trustee-licenses/trustee-licenses.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
+import { FinancialReportsService } from "../financial-reports/financial-reports.service";
+import { DistributionsService } from "../distributions/distributions.service";
+import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
+import { WaqfProceedsService } from "../waqf-proceeds/waqf-proceeds.service";
+import { EncryptionService } from "../../common/settings/encryption.service";
+import {
+  FakePaystackPayoutAdapter,
+  createFakeStripePayoutAdapter,
+  createFakeStablecoinPayoutAdapter,
+} from "../distributions/test-support/fake-payout-adapters";
 
 describe("WaqfsService", () => {
+  if (!process.env.SETTINGS_ENCRYPTION_KEY) {
+    process.env.SETTINGS_ENCRYPTION_KEY = "0".repeat(64);
+  }
+
   const service = new WaqfsService(new TrusteeLicensesService(createFakeNotificationsService()), createFakeNotificationsService());
+  // Only used by the "generating a financial report" test below — a
+  // Project-type waqf never calls WaqfProceedsService.sumForWaqf() (see
+  // that method's own waqf.type === "investment" gate), so a bare
+  // placeholder here is safe, same reasoning
+  // createWiredWaqfServices' own comment gives for its cycle-breaking
+  // pattern.
+  const financialReportsService = new FinancialReportsService(
+    new DistributionsService(
+      new BeneficiariesService(new EncryptionService()),
+      createFakeNotificationsService(),
+      createFakeStripePayoutAdapter() as any,
+      new FakePaystackPayoutAdapter() as any,
+      createFakeStablecoinPayoutAdapter() as any,
+    ),
+    new WaqfProceedsService(undefined as any),
+  );
 
   const waqfIds: string[] = [];
 
@@ -265,6 +295,132 @@ describe("WaqfsService", () => {
       waqfIds.push(dissolvedWaqf.id);
 
       await expect(service.increaseCorpusTarget(dissolvedWaqf.id, founderAId, "9000")).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("getLifecycleStatus()", () => {
+    let projectWaqfId: string;
+    let investmentWaqfId: string;
+    let lifecycleStaffUserId: string;
+    const policySetJurisdictions: string[] = [];
+
+    beforeAll(async () => {
+      // Fixture User/BirrStaff not cleaned up — same reasoning as every
+      // other spec in this codebase.
+      const staffUser = await prisma.user.create({
+        data: { email: `waqfs-lifecycle-staff-${Date.now()}@example.com`, fullName: "Lifecycle Fixture Staff" },
+      });
+      lifecycleStaffUserId = staffUser.id;
+      await prisma.birrStaff.create({ data: { userId: lifecycleStaffUserId, staffRole: "mutawalli_officer" } });
+
+      // Distinct, unlikely-to-collide jurisdiction codes — the shared dev
+      // DB already has a real CompliancePolicySet for "AE", which would
+      // silently make complianceMonitoring "complete" from the start.
+      const projectWaqf = await prisma.waqf.create({
+        data: { name: "Lifecycle Fixture Project Waqf", type: "project", jurisdiction: "ZZ", foundationId: foundationAId },
+      });
+      projectWaqfId = projectWaqf.id;
+      waqfIds.push(projectWaqfId);
+
+      const investmentWaqf = await prisma.waqf.create({
+        data: { name: "Lifecycle Fixture Investment Waqf", type: "investment", jurisdiction: "ZY", foundationId: foundationAId },
+      });
+      investmentWaqfId = investmentWaqf.id;
+      waqfIds.push(investmentWaqfId);
+    });
+
+    afterAll(async () => {
+      await prisma.compliancePolicySet.deleteMany({ where: { jurisdiction: { in: policySetJurisdictions } } });
+    });
+
+    test("a fresh Project waqf: every trackable stage pending except establishment and long-term preservation; investment management is not_applicable; succession management is not_available", async () => {
+      const status = await service.getLifecycleStatus(projectWaqfId);
+      expect(status!.stages.establishment.status).toBe("complete");
+      expect(status!.stages.legalDocumentation.status).toBe("pending");
+      expect(status!.stages.assetRegistration.status).toBe("pending");
+      expect(status!.stages.governanceConfiguration.status).toBe("pending");
+      expect(status!.stages.investmentManagement.status).toBe("not_applicable");
+      expect(status!.stages.beneficiaryAdministration.status).toBe("pending");
+      expect(status!.stages.distributionManagement.status).toBe("pending");
+      expect(status!.stages.complianceMonitoring.status).toBe("pending");
+      // "pending", not "not_available" — FinancialReportsService now
+      // exists; this stage is checked for real (no financial report has
+      // been generated for this fixture waqf yet).
+      expect(status!.stages.financialReporting.status).toBe("pending");
+      expect(status!.stages.impactMeasurement.status).toBe("pending");
+      // "pending", not "complete" — this fixture waqf was inserted
+      // directly via prisma.waqf.create() (raw, bypassing
+      // WaqfsService.createSelfService()), which is the only place
+      // that actually writes an audit_logs row on creation. Confirms
+      // getLifecycleStatus() checks real audit_logs rows rather than
+      // assuming every waqf has one.
+      expect(status!.stages.audit.status).toBe("pending");
+      expect(status!.stages.successionManagement.status).toBe("not_available");
+      // Always complete, unconditionally — see waqfs.service.ts's own
+      // comment (the 2026-08-30 going-concern policy decision resolved
+      // this one, not deferred it).
+      expect(status!.stages.longTermPreservation.status).toBe("complete");
+      // 11 trackable stages (13 minus the 1 always-not_available —
+      // successionManagement — minus the 1 not_applicable-for-Project
+      // investmentManagement); establishment and longTermPreservation
+      // are complete from the start, everything else pending.
+      expect(status!.trackableCount).toBe(11);
+      expect(status!.completedCount).toBe(2);
+    });
+
+    test("generating a financial report flips financialReporting to complete", async () => {
+      await financialReportsService.generate(projectWaqfId, { actorType: "birr_staff", actorUserId: lifecycleStaffUserId });
+
+      const status = await service.getLifecycleStatus(projectWaqfId);
+      expect(status!.stages.financialReporting).toMatchObject({ status: "complete", count: 1 });
+    });
+
+    test("returns null for a waqf that doesn't exist", async () => {
+      const status = await service.getLifecycleStatus(randomUUID());
+      expect(status).toBeNull();
+    });
+
+    test("registering an asset flips assetRegistration to complete with the right count", async () => {
+      const asset = await prisma.asset.create({
+        data: { waqfId: projectWaqfId, name: "Lifecycle Fixture Asset", category: "cash", estimatedValue: "100" },
+      });
+      const status = await service.getLifecycleStatus(projectWaqfId);
+      expect(status!.stages.assetRegistration).toMatchObject({ status: "complete", count: 1 });
+      await prisma.asset.delete({ where: { id: asset.id } });
+    });
+
+    test("a matching CompliancePolicySet flips complianceMonitoring to complete", async () => {
+      await prisma.compliancePolicySet.create({
+        data: { jurisdiction: "ZZ", frameworkName: "Lifecycle Fixture Framework" },
+      });
+      policySetJurisdictions.push("ZZ");
+
+      const status = await service.getLifecycleStatus(projectWaqfId);
+      expect(status!.stages.complianceMonitoring).toMatchObject({ status: "complete", frameworkName: "Lifecycle Fixture Framework" });
+    });
+
+    test("investment management is genuinely trackable (not not_applicable) on an Investment-type waqf", async () => {
+      const before = await service.getLifecycleStatus(investmentWaqfId);
+      expect(before!.stages.investmentManagement.status).toBe("pending");
+
+      const counterparty = await prisma.counterparty.create({
+        data: { name: "Lifecycle Fixture Counterparty", institutionType: "bank", jurisdiction: "AE", status: "active" },
+      });
+      const investment = await prisma.investment.create({
+        data: {
+          waqfId: investmentWaqfId,
+          name: "Lifecycle Fixture Investment",
+          counterpartyId: counterparty.id,
+          instrumentType: "sukuk",
+          allocatedAmount: "100",
+        },
+      });
+
+      const after = await service.getLifecycleStatus(investmentWaqfId);
+      expect(after!.stages.investmentManagement).toMatchObject({ status: "complete", count: 1 });
+
+      await prisma.investment.delete({ where: { id: investment.id } });
+      await prisma.counterparty.delete({ where: { id: counterparty.id } });
     });
   });
 });

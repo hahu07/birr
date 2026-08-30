@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import * as path from "path";
+import { detectMimeType } from "../../common/files/detect-mime-type";
 
 const ALLOWED_MIME_TYPES: Record<string, string> = {
   "application/pdf": "pdf",
@@ -39,8 +40,12 @@ export interface SavedAttachment {
 @Injectable()
 export class MessageAttachmentStorageService {
   async saveAttachment(file: Express.Multer.File): Promise<SavedAttachment> {
-    const extension = ALLOWED_MIME_TYPES[file.mimetype];
-    if (!extension) {
+    // Decided by the file's actual bytes, not the client-supplied
+    // mimetype — see detectMimeType's own comment (2026-08-30 security
+    // audit fix).
+    const detectedMimeType = detectMimeType(file.buffer);
+    const extension = detectedMimeType ? ALLOWED_MIME_TYPES[detectedMimeType] : undefined;
+    if (!extension || !detectedMimeType) {
       throw new BadRequestException(`"${file.originalname}" must be a PDF, PNG, JPEG, or WebP file.`);
     }
     if (file.size > MAX_SIZE_BYTES) {
@@ -54,7 +59,7 @@ export class MessageAttachmentStorageService {
     const backendUrl = process.env.BACKEND_URL ?? "http://localhost:4000";
     return {
       fileName: file.originalname,
-      mimeType: file.mimetype,
+      mimeType: detectedMimeType,
       sizeBytes: file.size,
       url: `${backendUrl}/uploads/message-attachments/${filename}`,
     };

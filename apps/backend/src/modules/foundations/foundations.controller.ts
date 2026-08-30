@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
 import { FoundationsService, CreateFoundationInput } from "./foundations.service";
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
@@ -23,7 +23,18 @@ export class FoundationsController {
   // POST /founders/establish instead — see FoundersController.
   @Post()
   async create(@Body() body: CreateFoundationInput, @Req() request: Request) {
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // A request with NO session cookie at all is NOT a trusted
+    // "system"/direct-API caller — that assumption (see
+    // CreateFoundationInput.founderIds's own comment, now stale) let an
+    // anonymous caller create a Foundation attached to ARBITRARY existing
+    // founderIds of their choosing (2026-08-30 security audit fix — see
+    // docs/comprehensive-code-review-prompt.md). A genuine internal/
+    // script caller should authenticate as Birr staff, same as every
+    // other trusted-caller path in this codebase.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       // Establishing a new Foundation is an org-commitment action — same
       // restriction as deed-signing/waqf-fund establishment, not
@@ -44,7 +55,11 @@ export class FoundationsController {
   // isBirrStaffSession's own comment).
   @Get()
   async list(@Query("founderId") founderId: string | undefined, @Req() request: Request) {
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       return this.service.list(founder.id);
     }
@@ -59,7 +74,11 @@ export class FoundationsController {
   // another Founder's foundation exists.
   @Get(":id")
   async findById(@Param("id") id: string, @Req() request: Request) {
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       const foundation = await this.service.findByIdForFounder(id, founder.id);
       if (!foundation) throw new NotFoundException(`Foundation "${id}" not found.`);

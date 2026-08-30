@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
 import { AssetsService, CreateAssetInput } from "./assets.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
@@ -28,7 +28,13 @@ export class AssetsController {
   @Public()
   @Get()
   async list(@Query("waqfId") waqfId: string | undefined, @Req() request: Request) {
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // A request with NO session cookie at all must not fall through to
+    // the unscoped staff branch below (2026-08-30 security audit fix —
+    // see docs/comprehensive-code-review-prompt.md).
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       if (!waqfId) throw new BadRequestException("Query parameter waqfId is required.");
       const founder = await resolveFounderFromSession(request);
       const assets = await this.service.listForFounder(waqfId, founder.id);

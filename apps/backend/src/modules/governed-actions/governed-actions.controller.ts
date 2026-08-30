@@ -8,6 +8,7 @@ import {
   Post,
   Query,
   Req,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { IsBoolean, IsObject, IsString } from "class-validator";
 import { Request } from "express";
@@ -61,7 +62,11 @@ export class GovernedActionsController {
     @Query("waqfId") waqfId: string | undefined,
     @Req() request: Request,
   ) {
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       if (!waqfId) throw new BadRequestException("Query parameter waqfId is required.");
       const founder = await resolveFounderFromSession(request);
       const actions = await this.service.listDecidedForFounder(waqfId, founder.id);

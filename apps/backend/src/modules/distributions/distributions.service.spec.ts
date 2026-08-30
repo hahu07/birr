@@ -204,6 +204,42 @@ describe("DistributionsService", () => {
       distributionIds.push(second.id);
     });
 
+    test("locks a cause to its first committed currency — rejects a second currency, and confirms the ceiling can't be bypassed by mixing currencies (2026-08-30 security audit fix)", async () => {
+      const cause = await prisma.waqfCause.create({
+        data: { waqfId: waqfAId, name: "Currency Lock Cause", allocatedAmount: "100" },
+      });
+      waqfCauseIds.push(cause.id);
+
+      // 90 NGN committed — well within the 100 ceiling.
+      const ngnDistribution = await service.create(
+        { waqfId: waqfAId, beneficiaryId, causeId: cause.id, amount: "90", currency: "NGN" },
+        actorUserId,
+      );
+      distributionIds.push(ngnDistribution.id);
+
+      // Before the fix, a second currency's own committed sum was
+      // compared against the ceiling with NO awareness of the 90 NGN
+      // already committed — a 15 USD distribution would have been
+      // accepted purely because 15 < 100, even though nothing about a
+      // shared numeric ceiling makes 90 NGN + 15 USD any kind of
+      // meaningful total. Now it's rejected outright: the cause is
+      // locked to NGN once NGN has committed.
+      await expect(
+        service.create(
+          { waqfId: waqfAId, beneficiaryId, causeId: cause.id, amount: "15", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      // A same-currency (NGN) distribution within the remaining headroom
+      // still works exactly as before.
+      const secondNgn = await service.create(
+        { waqfId: waqfAId, beneficiaryId, causeId: cause.id, amount: "10", currency: "NGN" },
+        actorUserId,
+      );
+      distributionIds.push(secondNgn.id);
+    });
+
     test("approve() re-checks headroom and rejects if it shrank since creation", async () => {
       const cause = await prisma.waqfCause.create({
         data: { waqfId: waqfAId, name: "Approve Recheck Cause", allocatedAmount: "100" },

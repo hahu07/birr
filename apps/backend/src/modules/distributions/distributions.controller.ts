@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
 import { DistributionsService, CreateDistributionInput } from "./distributions.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
@@ -37,7 +37,15 @@ export class DistributionsController {
   @Get("summary")
   async summary(@Query("waqfId") waqfId: string | undefined, @Req() request: Request) {
     if (!waqfId) throw new BadRequestException("Query parameter waqfId is required.");
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // A request with NO session cookie at all must not fall through to
+    // the includeBeneficiaryNames: true staff branch below — this exact
+    // route leaked real beneficiary names to fully anonymous callers
+    // (2026-08-30 security audit fix — see
+    // docs/comprehensive-code-review-prompt.md).
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       const summary = await this.service.summaryByCauseForFounder(waqfId, founder.id);
       if (summary === null) throw new NotFoundException(`Waqf "${waqfId}" not found.`);

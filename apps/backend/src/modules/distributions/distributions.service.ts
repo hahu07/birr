@@ -73,7 +73,7 @@ export class DistributionsService {
     }
     return prisma.$transaction(async (tx) => {
       await this.assertBeneficiaryEligible(input.waqfId, input.beneficiaryId, tx);
-      await this.assertWithinAllocation(input.causeId, new Prisma.Decimal(input.amount), tx);
+      await this.assertWithinAllocation(input.causeId, new Prisma.Decimal(input.amount), input.currency, tx);
       const distribution = await tx.distribution.create({ data: input });
       await tx.auditLog.create({
         data: {
@@ -120,7 +120,7 @@ export class DistributionsService {
     // (re-)confirmed. Same reasoning for beneficiary eligibility below:
     // status/expiry can change in that same gap.
     await this.assertBeneficiaryEligible(distribution.waqfId, distribution.beneficiaryId, tx);
-    await this.assertWithinAllocation(distribution.causeId, distribution.amount, tx, id);
+    await this.assertWithinAllocation(distribution.causeId, distribution.amount, distribution.currency, tx, id);
     return tx.distribution.update({
       where: { id },
       data: { status: "approved", approvedAt: new Date() },
@@ -242,7 +242,7 @@ export class DistributionsService {
           `Distribution "${distributionId}" is not in a failed-payout state (status: ${distribution.status}).`,
         );
       }
-      await this.assertWithinAllocation(distribution.causeId, distribution.amount, tx, distributionId);
+      await this.assertWithinAllocation(distribution.causeId, distribution.amount, distribution.currency, tx, distributionId);
       const updated = await tx.distribution.update({
         where: { id: distributionId },
         data: { status: "approved", payoutError: null },
@@ -390,23 +390,55 @@ export class DistributionsService {
    * same cause isn't blocked by money that never left. Excludes
    * `excludeDistributionId` so approve()'s/retryDisbursement's re-checks
    * don't double-count the row being (re-)confirmed against itself.
+   *
+   * Scoped to `currency` — WaqfCause.allocatedAmount/proceedsAllocatedAmount
+   * carry no currency of their own (a pre-existing schema gap, not fixed
+   * here), so this treats the ceiling as denominated in whichever
+   * currency the cause's *first* committed distribution used, and
+   * locks every later distribution against the same cause to that same
+   * currency (2026-08-30 security audit fix — see
+   * docs/comprehensive-code-review-prompt.md). Deliberately NOT just
+   * "sum same-currency commitments and ignore other currencies" —
+   * that alone would let every distinct currency independently reach
+   * the full ceiling against one cause (e.g. 100 NGN *and* 100 USD
+   * *and* 100 GBP all committed against a single allocatedAmount: 100
+   * cause), which is a different but equally real bypass of the ceiling
+   * CLAUDE.md calls "a real enforced ceiling, not a decorative figure."
+   * Locking to one currency per cause matches the implicit
+   * single-currency assumption already used throughout this codebase
+   * (e.g. summaryByCause's own comment on why mixing currencies is
+   * meaningless) without requiring an exchange-rate conversion, which
+   * is out of scope for this fix.
    */
   private async assertWithinAllocation(
     causeId: string,
     additionalAmount: Prisma.Decimal,
+    currency: string,
     tx: Prisma.TransactionClient,
     excludeDistributionId?: string,
   ): Promise<void> {
     const cause = await tx.waqfCause.findUnique({ where: { id: causeId } });
     const allocated = new Prisma.Decimal(cause?.allocatedAmount ?? 0).plus(cause?.proceedsAllocatedAmount ?? 0);
 
+    const committedWhere: Prisma.DistributionWhereInput = {
+      causeId,
+      deletedAt: null,
+      status: { in: ["pending", "approved", "disbursing", "paid"] },
+      ...(excludeDistributionId ? { id: { not: excludeDistributionId } } : {}),
+    };
+
+    const otherCurrencyCommitment = await tx.distribution.findFirst({
+      where: { ...committedWhere, currency: { not: currency } },
+      select: { currency: true },
+    });
+    if (otherCurrencyCommitment) {
+      throw new BadRequestException(
+        `This cause already has committed distributions in ${otherCurrencyCommitment.currency} — a distribution against the same cause can't switch to ${currency} without first resolving the earlier ones.`,
+      );
+    }
+
     const committed = await tx.distribution.aggregate({
-      where: {
-        causeId,
-        deletedAt: null,
-        status: { in: ["pending", "approved", "disbursing", "paid"] },
-        ...(excludeDistributionId ? { id: { not: excludeDistributionId } } : {}),
-      },
+      where: { ...committedWhere, currency },
       _sum: { amount: true },
     });
     const alreadyCommitted = committed._sum.amount ?? new Prisma.Decimal(0);
@@ -414,7 +446,7 @@ export class DistributionsService {
     if (alreadyCommitted.plus(additionalAmount).gt(allocated)) {
       const remaining = allocated.minus(alreadyCommitted);
       throw new BadRequestException(
-        `This distribution's amount (${additionalAmount}) exceeds this cause's unused allocation — only ${remaining.isNegative() ? 0 : remaining} of its ${allocated} allocation is unused.`,
+        `This distribution's amount (${additionalAmount} ${currency}) exceeds this cause's unused allocation — only ${remaining.isNegative() ? 0 : remaining} ${currency} of its ${allocated} allocation is unused.`,
       );
     }
   }

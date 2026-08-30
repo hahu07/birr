@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Post, Query, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
 import { RecordWaqfProceedsInput, WaqfProceedsService } from "./waqf-proceeds.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
@@ -21,7 +21,11 @@ export class WaqfProceedsController {
   @Public()
   @Get()
   async list(@Query("waqfId") waqfId: string | undefined, @Req() request: Request) {
-    if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
+    // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
       if (!waqfId) throw new BadRequestException("Query parameter waqfId is required.");
       const founder = await resolveFounderFromSession(request);
       const proceeds = await this.service.listForFounder(waqfId, founder.id);

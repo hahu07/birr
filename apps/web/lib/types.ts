@@ -50,6 +50,13 @@ export interface Waqf {
   // what was agreed to (see WaqfDeed's own schema comment). null before
   // signing.
   waqfDeed?: { id: string; typedLegalName: string; deedText: string; signedAt: string } | null;
+  // Active causes registered/selected for this waqf — present on both
+  // GET /waqfs (list) and the founder-scoped equivalent (see
+  // WaqfsService.list's _count include, which runs unconditionally for
+  // both the staff and founder-scoped branches). 2026-08-30 fix: this
+  // field was already in every response the Founder Portal receives but
+  // had no type here.
+  causesCount?: number;
 }
 
 export interface WaqfCause {
@@ -252,4 +259,67 @@ export interface Message {
   body: string;
   createdAt: string;
   attachments: MessageAttachment[];
+}
+
+// GET /messages/inbox — one row per Foundation with at least one
+// message, most-recently-active first. See MessagesService.buildInbox's
+// own comment on why "unread" isn't tracked here (derived client-side
+// from the existing message.received Notification rows instead).
+export interface MessagesInboxRow {
+  foundation: { id: string; name: string };
+  lastMessage: {
+    id: string;
+    body: string;
+    senderType: "birr_staff" | "founder_user";
+    senderUser: { id: string; fullName: string };
+    createdAt: string;
+  };
+}
+
+// GET /waqfs/:id/lifecycle — CLAUDE.md's 13 waqf lifecycle stages,
+// computed live (never persisted). See WaqfsService.getLifecycleStatus's
+// own comment for what each status value means.
+export type LifecycleStageStatus = "complete" | "pending" | "not_applicable" | "not_available";
+
+export interface WaqfLifecycleStatus {
+  waqfId: string;
+  stages: {
+    establishment: { status: LifecycleStageStatus; completedAt?: string };
+    legalDocumentation: { status: LifecycleStageStatus; signedAt?: string | null };
+    assetRegistration: { status: LifecycleStageStatus; count?: number };
+    governanceConfiguration: { status: LifecycleStageStatus; assignmentRoles?: string[] };
+    investmentManagement: { status: LifecycleStageStatus; count?: number };
+    beneficiaryAdministration: { status: LifecycleStageStatus; count?: number };
+    distributionManagement: { status: LifecycleStageStatus; count?: number };
+    complianceMonitoring: { status: LifecycleStageStatus; frameworkName?: string | null };
+    financialReporting: { status: LifecycleStageStatus; count?: number };
+    impactMeasurement: { status: LifecycleStageStatus; count?: number };
+    audit: { status: LifecycleStageStatus; count?: number };
+    successionManagement: { status: LifecycleStageStatus };
+    longTermPreservation: { status: LifecycleStageStatus };
+  };
+  completedCount: number;
+  trackableCount: number;
+}
+
+// GET /financial-reports/:waqfId — computed fresh on every call, never
+// persisted as a "report" row, same posture as ComplianceReportsService
+// .generate(). Reuses DistributionCauseSummary as-is for
+// distributionsByCause (identical shape to what GET /distributions/summary
+// already returns).
+export interface FinancialReport {
+  waqf: {
+    id: string;
+    name: string;
+    type: Waqf["type"];
+    jurisdiction: string;
+    corpusAmount: string | null;
+    corpusCurrency: string | null;
+  };
+  raised: { currency: string; totalAmount: string }[];
+  distributed: { currency: string; totalAmount: string }[];
+  distributionsByCause: DistributionCauseSummary[];
+  proceeds: { total: string } | null;
+  causeAllocations: { id: string; name: string; allocatedAmount: string | null; proceedsAllocatedAmount: string | null }[];
+  generatedAt: string;
 }

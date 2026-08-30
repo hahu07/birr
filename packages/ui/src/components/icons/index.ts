@@ -23,3 +23,4 @@ export { IconEye } from "./IconEye";
 export { IconEyeOff } from "./IconEyeOff";
 export { IconChevronDown } from "./IconChevronDown";
 export { IconBell } from "./IconBell";
+export { IconMessageCircle } from "./IconMessageCircle";
