@@ -3,25 +3,35 @@ import { Request } from "express";
 import { prisma } from "@birr/db";
 import { FoundersController } from "./founders.controller";
 import { FoundersService } from "./founders.service";
-import { signSessionToken, SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { signSessionToken, SESSION_COOKIE_NAME, STAFF_SESSION_COOKIE_NAME } from "../../common/auth/session";
 
-function requestWithCookie(token: string): Request {
+function requestWithFounderCookie(token: string): Request {
   return { cookies: { [SESSION_COOKIE_NAME]: token } } as unknown as Request;
+}
+
+function requestWithStaffCookie(token: string): Request {
+  return { cookies: { [STAFF_SESSION_COOKIE_NAME]: token } } as unknown as Request;
 }
 
 function requestWithNoCookie(): Request {
   return { cookies: {} } as unknown as Request;
 }
 
-// Regression coverage for the founder/staff cookie-ambiguity bug class
-// (same shared birr_session cookie backs both identities — see
-// current-birr-staff.ts's own comment). GET /founders/me previously had
-// no isBirrStaffSession() check, unlike WaqfsController/
-// FoundationsController which were already fixed for this — a Birr
-// staff member browsing the merged app's founder route group would
+// Regression coverage for the founder/staff cookie-ambiguity bug class.
+// GET /founders/me used to have no isBirrStaffSession() check, and
+// Founder/staff sessions used to share one cookie — together, a Birr
+// staff member browsing the merged app's founder route group could
 // resolve here as "a real user, no founder yet," which the founder
 // AppShell then renders as onboarding-step-1 UI instead of bouncing
-// them to /sign-in.
+// them to /sign-in. Fixed twice, structurally: first by adding an
+// explicit isBirrStaffSession() guard, then superseded by giving
+// Founder and staff sessions separate cookies (STAFF_SESSION_COOKIE_NAME
+// vs SESSION_COOKIE_NAME) — resolveUserFromSession now has no staff-
+// session input it COULD misresolve, so the explicit guard was removed
+// as redundant (see founders.controller.ts's own comment). These tests
+// now exercise a request that carries ONLY a staff cookie (no founder
+// cookie at all) — the realistic shape of "a staff member's browser
+// hits a founder-only route" — and confirm it's still cleanly rejected.
 describe("FoundersController — staff/founder session isolation", () => {
   let staffUserId: string;
 
@@ -42,17 +52,17 @@ describe("FoundersController — staff/founder session isolation", () => {
   });
 
   // Constructor deps are never reached — both methods reject before
-  // touching `this.service`/`this.whatsAppVerification` for a staff
-  // session, so real instances aren't needed here.
+  // touching `this.service`/`this.whatsAppVerification` for a
+  // staff-cookie-only request, so real instances aren't needed here.
   const controller = new FoundersController(undefined as never, undefined as never);
 
-  test("me() rejects a Birr staff session instead of treating it as a founder with no Foundation yet", async () => {
-    const request = requestWithCookie(signSessionToken(staffUserId));
+  test("me() rejects a request carrying only a staff session, no founder cookie", async () => {
+    const request = requestWithStaffCookie(signSessionToken(staffUserId));
     await expect(controller.me(request)).rejects.toThrow(UnauthorizedException);
   });
 
-  test("myOnboardingStatus() rejects a Birr staff session the same way", async () => {
-    const request = requestWithCookie(signSessionToken(staffUserId));
+  test("myOnboardingStatus() rejects a request carrying only a staff session, no founder cookie", async () => {
+    const request = requestWithStaffCookie(signSessionToken(staffUserId));
     await expect(controller.myOnboardingStatus(request)).rejects.toThrow(UnauthorizedException);
   });
 });
@@ -105,12 +115,12 @@ describe("FoundersController — list()/findById() are Birr-staff only", () => {
   });
 
   test("list() rejects a Founder session", async () => {
-    const request = requestWithCookie(signSessionToken(founderUserId));
+    const request = requestWithFounderCookie(signSessionToken(founderUserId));
     await expect(controller.list(request)).rejects.toThrow(UnauthorizedException);
   });
 
   test("list() succeeds for a Birr staff session", async () => {
-    const request = requestWithCookie(signSessionToken(staffUserId));
+    const request = requestWithStaffCookie(signSessionToken(staffUserId));
     const result = await controller.list(request);
     expect(Array.isArray(result)).toBe(true);
   });
@@ -120,12 +130,12 @@ describe("FoundersController — list()/findById() are Birr-staff only", () => {
   });
 
   test("findById() rejects a Founder session, even for that founder's own id", async () => {
-    const request = requestWithCookie(signSessionToken(founderUserId));
+    const request = requestWithFounderCookie(signSessionToken(founderUserId));
     await expect(controller.findById(founderId, request)).rejects.toThrow(UnauthorizedException);
   });
 
   test("findById() succeeds for a Birr staff session", async () => {
-    const request = requestWithCookie(signSessionToken(staffUserId));
+    const request = requestWithStaffCookie(signSessionToken(staffUserId));
     const result = await controller.findById(founderId, request);
     expect(result.id).toBe(founderId);
   });

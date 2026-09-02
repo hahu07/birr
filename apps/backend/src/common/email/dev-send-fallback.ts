@@ -1,3 +1,7 @@
+import { Logger } from "@nestjs/common";
+
+const logger = new Logger("DevSendFallback");
+
 /**
  * Every Resend adapter (founders/email, invitations/email,
  * notifications/email) fails loudly when Resend isn't configured — a
@@ -17,5 +21,5 @@ export function inRealDeployment(): boolean {
 }
 
 export function logDevEmailFallback(kind: string, to: string, body: string): void {
-  console.warn(`[dev-only] Resend isn't configured — ${kind} to ${to} was NOT actually sent.\n${body}`);
+  logger.warn(`[dev-only] Resend isn't configured — ${kind} to ${to} was NOT actually sent.\n${body}`);
 }

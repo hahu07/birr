@@ -5,7 +5,7 @@ import { MessagesService, SendMessageInput } from "./messages.service";
 import { MAX_SIZE_BYTES as MAX_ATTACHMENT_SIZE_BYTES } from "./message-attachment-storage.service";
 import { isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
-import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 // @Public() — dual-reachable, same "authenticated a different way"
@@ -58,7 +58,7 @@ export class MessagesController {
   async list(@Query("foundationId") foundationId: string | undefined, @Req() request: Request) {
     if (!foundationId) throw new BadRequestException("Query parameter foundationId is required.");
     // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {

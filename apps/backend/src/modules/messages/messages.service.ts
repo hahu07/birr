@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsNotEmpty, IsString } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -35,6 +35,8 @@ const MESSAGE_INCLUDE = {
  */
 @Injectable()
 export class MessagesService {
+  private readonly logger = new Logger(MessagesService.name);
+
   constructor(
     private readonly attachmentStorage: MessageAttachmentStorageService,
     private readonly notifications: NotificationsService,
@@ -75,7 +77,10 @@ export class MessagesService {
       sender.senderType === "founder_user" ? await withFounderScope(sender.founderId, run) : await prisma.$transaction(run);
 
     this.notifyRecipients(message, sender).catch((err) => {
-      console.error(`Failed to notify recipients for message "${message.id}":`, err);
+      this.logger.error(
+        `Failed to notify recipients for message "${message.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
 
     return message;

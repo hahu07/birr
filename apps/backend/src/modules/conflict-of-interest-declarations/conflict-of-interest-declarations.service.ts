@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { prisma, CoiStatus, BirrStaffRole } from "@birr/db";
@@ -43,6 +44,8 @@ const COI_ESCALATION_ROLES: BirrStaffRole[] = ["audit_committee", "platform_admi
 
 @Injectable()
 export class ConflictOfInterestDeclarationsService {
+  private readonly logger = new Logger(ConflictOfInterestDeclarationsService.name);
+
   constructor(private readonly notificationsService: NotificationsService) {}
 
   async declare(input: DeclareInput) {
@@ -81,7 +84,10 @@ export class ConflictOfInterestDeclarationsService {
     // Deliberately not awaited — same fire-and-forget posture as every
     // other post-transaction notify() call this session.
     this.notifyReviewers(COI_REVIEW_ROLES, staff.userId, "coi.needs_review", declaration.id).catch((err) => {
-      console.error(`Failed to notify reviewers of new COI declaration "${declaration.id}":`, err);
+      this.logger.error(
+        `Failed to notify reviewers of new COI declaration "${declaration.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
 
     return declaration;
@@ -180,12 +186,18 @@ export class ConflictOfInterestDeclarationsService {
         relatedEntityId: declaration.id,
       })
       .catch((err) => {
-        console.error(`Failed to notify declarant of reviewed COI "${declaration.id}":`, err);
+        this.logger.error(
+          `Failed to notify declarant of reviewed COI "${declaration.id}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
 
     if (input.status === "escalated") {
       this.notifyReviewers(COI_ESCALATION_ROLES, input.reviewerUserId, "coi.escalated", declaration.id).catch((err) => {
-        console.error(`Failed to notify escalation reviewers for COI "${declaration.id}":`, err);
+        this.logger.error(
+          `Failed to notify escalation reviewers for COI "${declaration.id}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
     }
 

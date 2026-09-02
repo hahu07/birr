@@ -330,6 +330,81 @@ describe("WaqfCausesService", () => {
     });
   });
 
+  // Row-lock regression (TOCTOU) — see waqf-causes.service.ts's own
+  // comment on the SELECT ... FOR UPDATE added to allocate(). Uses two
+  // DIFFERENT sibling causes on the same waqf specifically: locking just
+  // the cause being written wouldn't catch this, since the ceiling spans
+  // every cause on the waqf, not one row.
+  describe("allocate() concurrency", () => {
+    let founderId: string;
+    let causeAId: string;
+    let causeBId: string;
+
+    beforeAll(async () => {
+      const founder = await prisma.founder.create({ data: { name: "Allocate Concurrency Fixture Founder", kind: "institution" } });
+      founderId = founder.id;
+      const foundation = await prisma.foundation.create({ data: { name: "Allocate Concurrency Fixture Foundation" } });
+      await prisma.foundationFounder.create({ data: { foundationId: foundation.id, founderId } });
+
+      const waqf = await prisma.waqf.create({
+        data: { name: "Allocate Concurrency Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId: foundation.id },
+      });
+      waqfIds.push(waqf.id);
+      await prisma.contribution.create({
+        data: {
+          waqfId: waqf.id,
+          amount: "100",
+          currency: "USD",
+          provider: "paystack",
+          providerReference: `allocate-concurrency-spec-${randomUUID()}`,
+          status: "confirmed",
+        },
+      });
+
+      const categoryA = await prisma.causeCategory.create({
+        data: { name: `Allocate Concurrency Fixture Category A ${randomUUID()}`, typicalWaqfTypes: [] },
+      });
+      const categoryB = await prisma.causeCategory.create({
+        data: { name: `Allocate Concurrency Fixture Category B ${randomUUID()}`, typicalWaqfTypes: [] },
+      });
+      causeCategoryIds.push(categoryA.id, categoryB.id);
+
+      const causeA = await prisma.waqfCause.create({
+        data: { waqfId: waqf.id, causeCategoryId: categoryA.id, name: categoryA.name },
+      });
+      causeAId = causeA.id;
+      const causeB = await prisma.waqfCause.create({
+        data: { waqfId: waqf.id, causeCategoryId: categoryB.id, name: categoryB.name },
+      });
+      causeBId = causeB.id;
+      waqfCauseIds.push(causeA.id, causeB.id);
+    });
+
+    test("concurrent allocate() calls against different sibling causes can't jointly exceed the waqf's pool (TOCTOU regression)", async () => {
+      // Each individually fits under the 100 pool (60 < 100), but
+      // together they total 120 — exceeding it. Without the row lock,
+      // both transactions could read "0 already allocated across other
+      // causes" before either commits, and both would succeed.
+      const results = await Promise.allSettled([
+        service.allocate(causeAId, founderId, "60"),
+        service.allocate(causeBId, founderId, "60"),
+      ]);
+
+      const fulfilled = results.filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof service.allocate>>> => r.status === "fulfilled");
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(BadRequestException);
+
+      const [causeA, causeB] = await Promise.all([
+        prisma.waqfCause.findUnique({ where: { id: causeAId } }),
+        prisma.waqfCause.findUnique({ where: { id: causeBId } }),
+      ]);
+      const totalAllocated = new Prisma.Decimal(causeA?.allocatedAmount ?? 0).plus(causeB?.allocatedAmount ?? 0);
+      expect(totalAllocated.toString()).toBe("60");
+    });
+  });
+
   describe("allocateProceeds()", () => {
     let proceedsFoundationId: string;
     let proceedsWaqfId: string;

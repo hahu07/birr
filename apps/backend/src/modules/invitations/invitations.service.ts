@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { IsEnum, IsOptional, IsString, MinLength } from "class-validator";
 import { prisma, InviteeKind, BirrStaffRole, FounderPermissionLevel, FounderKind, InstitutionType } from "@birr/db";
@@ -80,6 +80,8 @@ export class AcceptInput {
 
 @Injectable()
 export class InvitationsService {
+  private readonly logger = new Logger(InvitationsService.name);
+
   constructor(
     private readonly emailAdapter: ResendInvitationEmailAdapter,
     private readonly notificationsService: NotificationsService,
@@ -175,7 +177,7 @@ export class InvitationsService {
       });
       emailSent = true;
     } catch (err) {
-      console.error(`Couldn't send invitation email to ${input.email}:`, err instanceof Error ? err.message : err);
+      this.logger.error(`Couldn't send invitation email to ${input.email}:`, err instanceof Error ? err.message : err);
     }
 
     // In-app confirmation to whoever just sent it — not the invitee
@@ -202,7 +204,10 @@ export class InvitationsService {
         relatedEntityId: invitation.id,
       })
       .catch((err) => {
-        console.error(`Failed to notify inviter for invitation "${invitation.id}":`, err);
+        this.logger.error(
+          `Failed to notify inviter for invitation "${invitation.id}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
 
     return { ...invitation, emailSent };
@@ -364,12 +369,18 @@ export class InvitationsService {
     if (invitation.inviteeKind === "founder_user" && invitation.founderId) {
       this.notifyTeammatesOfNewMember(invitation.founderId, result.user.id, result.user.fullName, result.membershipOrStaff.id).catch(
         (err) => {
-          console.error(`Failed to notify teammates of new member "${result.user.id}":`, err);
+          this.logger.error(
+            `Failed to notify teammates of new member "${result.user.id}":`,
+            err instanceof Error ? err.stack : String(err),
+          );
         },
       );
     } else if (invitation.inviteeKind === "co_founder" && invitation.foundationId && result.newFounderId) {
       this.notifyCoFoundersOfNewFounder(invitation.foundationId, result.newFounderId, input.founderName!).catch((err) => {
-        console.error(`Failed to notify co-founders of new founder "${result.newFounderId}":`, err);
+        this.logger.error(
+          `Failed to notify co-founders of new founder "${result.newFounderId}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
     }
 

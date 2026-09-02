@@ -18,20 +18,24 @@ import { AuthenticatedBirrStaff, resolveBirrStaffFromSession } from "../auth/cur
  * waqf-case-assignments.controller.ts).
  */
 export const REQUIRES_STAFF_ROLE_KEY = "requiresStaffRole";
-export const RequiresStaffRole = (role: BirrStaffRole) => SetMetadata(REQUIRES_STAFF_ROLE_KEY, role);
+// Accepts either one role or several — e.g. a route that's fine with
+// "platform_admin" OR "mutawalli_officer" — normalized to an array below
+// so every existing single-role call site keeps working unchanged.
+export const RequiresStaffRole = (role: BirrStaffRole | BirrStaffRole[]) => SetMetadata(REQUIRES_STAFF_ROLE_KEY, role);
 
 @Injectable()
 export class StaffRoleGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredRole = this.reflector.get<BirrStaffRole>(REQUIRES_STAFF_ROLE_KEY, context.getHandler());
+    const requiredRole = this.reflector.get<BirrStaffRole | BirrStaffRole[]>(REQUIRES_STAFF_ROLE_KEY, context.getHandler());
     if (!requiredRole) return true;
+    const requiredRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
 
     const request = context.switchToHttp().getRequest<Request>();
     const staff = await resolveBirrStaffFromSession(request);
-    if (staff.staffRole !== requiredRole) {
-      throw new ForbiddenException(`Requires the "${requiredRole}" role.`);
+    if (!requiredRoles.includes(staff.staffRole as BirrStaffRole)) {
+      throw new ForbiddenException(`Requires one of the following roles: ${requiredRoles.join(", ")}.`);
     }
 
     (request as Request & { birrStaff: AuthenticatedBirrStaff }).birrStaff = staff;

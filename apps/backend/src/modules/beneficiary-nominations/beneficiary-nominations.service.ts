@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { prisma, Prisma, BeneficiaryKind, PayoutProvider } from "@birr/db";
@@ -77,6 +77,8 @@ const NOMINATION_INCLUDE = {
 
 @Injectable()
 export class BeneficiaryNominationsService {
+  private readonly logger = new Logger(BeneficiaryNominationsService.name);
+
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly encryption: EncryptionService,
@@ -144,7 +146,10 @@ export class BeneficiaryNominationsService {
     });
 
     this.notifyCaseAssignees(nomination.waqfId, nomination.id, nomination.name).catch((err) => {
-      console.error(`Failed to notify case assignees of new beneficiary nomination "${nomination.id}":`, err);
+      this.logger.error(
+        `Failed to notify case assignees of new beneficiary nomination "${nomination.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
 
     return nomination;
@@ -263,7 +268,10 @@ export class BeneficiaryNominationsService {
     });
 
     this.notifyProposer(reviewed.proposedByUserId, reviewed.name, "approved", reviewed.id).catch((err) => {
-      console.error(`Failed to notify proposer of approved nomination "${reviewed.id}":`, err);
+      this.logger.error(
+        `Failed to notify proposer of approved nomination "${reviewed.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
     return reviewed;
   }
@@ -298,7 +306,10 @@ export class BeneficiaryNominationsService {
     });
 
     this.notifyProposer(reviewed.proposedByUserId, reviewed.name, "rejected", reviewed.id).catch((err) => {
-      console.error(`Failed to notify proposer of rejected nomination "${reviewed.id}":`, err);
+      this.logger.error(
+        `Failed to notify proposer of rejected nomination "${reviewed.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
     return reviewed;
   }

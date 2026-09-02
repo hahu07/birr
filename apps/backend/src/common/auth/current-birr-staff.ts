@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { Request } from "express";
 import { prisma } from "@birr/db";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "./session";
+import { STAFF_SESSION_COOKIE_NAME, verifySessionToken } from "./session";
 
 export interface AuthenticatedBirrStaff {
   id: string;
@@ -15,16 +15,16 @@ export interface AuthenticatedBirrStaff {
 
 /**
  * Real session resolution — replaces the old header-trust stand-in.
- * Reads the same httpOnly session cookie the Founder side already uses
- * (common/auth/session.ts), verifies the JWT, loads the User it names,
- * then resolves the BirrStaff row for that User. Nothing downstream
- * (PermissionGuard, StaffRoleGuard, SessionAuthGuard, @CurrentBirrStaff())
- * needed to change, since they all call this same function.
+ * Reads the httpOnly staff session cookie (common/auth/session.ts),
+ * verifies the JWT, loads the User it names, then resolves the
+ * BirrStaff row for that User. Nothing downstream (PermissionGuard,
+ * StaffRoleGuard, SessionAuthGuard, @CurrentBirrStaff()) needed to
+ * change, since they all call this same function.
  */
 export async function resolveBirrStaffFromSession(
   request: Request,
 ): Promise<AuthenticatedBirrStaff> {
-  const token = request.cookies?.[SESSION_COOKIE_NAME];
+  const token = request.cookies?.[STAFF_SESSION_COOKIE_NAME];
   if (!token) {
     throw new UnauthorizedException("Not signed in.");
   }
@@ -48,17 +48,17 @@ export async function resolveBirrStaffFromSession(
 }
 
 /**
- * Non-throwing check for "is this session's cookie a Birr-staff session"
- * — used where a route needs to tell a Birr-staff caller apart from a
- * Founder caller when BOTH now carry the exact same httpOnly
- * birr_session cookie (they share one JWT scheme; only the User they
- * name differs). WaqfsController/FoundationsController's list()/
- * findById() need this: before Birr staff had real sessions, "a session
- * cookie is present" *did* mean "this is a Founder session," since staff
- * used the old x-birr-staff-id header instead — that assumption broke
- * the moment staff sessions became real cookies too, so those routes
- * must check this first and only treat the cookie as a Founder session
- * when it isn't a staff one.
+ * Non-throwing check for "does this request carry a valid Birr-staff
+ * session" — used where a route needs to tell a Birr-staff caller apart
+ * from a Founder caller. Founder and staff sessions are now two
+ * separate cookies (STAFF_SESSION_COOKIE_NAME vs SESSION_COOKIE_NAME —
+ * see the former's own comment), so both can genuinely be present at
+ * once in the same browser; WaqfsController/FoundationsController's
+ * list()/findById() (and every other dual-purpose route) still check
+ * this first and treat the request as a staff caller when it resolves,
+ * falling back to the Founder cookie otherwise — an unchanged,
+ * deliberate precedence, not a leftover ambiguity from the single-cookie
+ * era.
  */
 export async function isBirrStaffSession(request: Request): Promise<boolean> {
   try {

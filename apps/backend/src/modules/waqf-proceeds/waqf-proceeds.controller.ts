@@ -3,7 +3,7 @@ import { Request } from "express";
 import { RecordWaqfProceedsInput, WaqfProceedsService } from "./waqf-proceeds.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
-import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 @Controller("waqf-proceeds")
@@ -22,7 +22,7 @@ export class WaqfProceedsController {
   @Get()
   async list(@Query("waqfId") waqfId: string | undefined, @Req() request: Request) {
     // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {

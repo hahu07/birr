@@ -3,7 +3,7 @@ import type { Request } from "express";
 import { WaqfDeedsService } from "./waqf-deeds.service";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
-import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 // @Public() — Founder-Portal self-service surface, same reasoning as
@@ -25,7 +25,7 @@ export class WaqfDeedsController {
   // check at all.
   @Get(":waqfId")
   async findByWaqfId(@Param("waqfId") waqfId: string, @Req() request: Request) {
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {

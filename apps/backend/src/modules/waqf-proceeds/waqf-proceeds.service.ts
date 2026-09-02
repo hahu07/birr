@@ -1,4 +1,4 @@
-import { BadRequestException, forwardRef, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, forwardRef, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -24,6 +24,8 @@ export class RecordWaqfProceedsInput {
 
 @Injectable()
 export class WaqfProceedsService {
+  private readonly logger = new Logger(WaqfProceedsService.name);
+
   // forwardRef — WaqfCausesService already depends on this service
   // (sumForWaqf); this is the reverse edge of that same pair, so both
   // sides need forwardRef (see WaqfCausesService's own comment).
@@ -101,7 +103,10 @@ export class WaqfProceedsService {
       // — a normal, expected state, not a bug. Never lets a best-effort
       // follow-up fail the request that already successfully recorded
       // real proceeds.
-      console.error(`Couldn't auto-reallocate proceeds for waqf "${input.waqfId}" after recording:`, err);
+      this.logger.error(
+        `Couldn't auto-reallocate proceeds for waqf "${input.waqfId}" after recording:`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
 
     return proceeds;

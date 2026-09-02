@@ -1,5 +1,5 @@
 import { prisma } from "@birr/db";
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { WaqfCaseAssignmentsService } from "./waqf-case-assignments.service";
 
 describe("WaqfCaseAssignmentsService", () => {
@@ -10,6 +10,8 @@ describe("WaqfCaseAssignmentsService", () => {
 
   let actorUserId: string;
   let birrStaffId: string;
+  let auditCommitteeStaffId: string;
+  let investmentCommitteeStaffId: string;
   let waqfId: string;
 
   beforeAll(async () => {
@@ -31,6 +33,26 @@ describe("WaqfCaseAssignmentsService", () => {
       data: { userId: staffUser.id, staffRole: "compliance_officer" },
     });
     birrStaffId = staff.id;
+
+    // Separate fixtures whose staffRole actually maps to the
+    // "auditor"/"investment_officer" case roles used below — the shared
+    // compliance_officer fixture above is only eligible for
+    // "compliance_reviewer" under ASSIGNABLE_STAFF_ROLES.
+    const auditCommitteeUser = await prisma.user.create({
+      data: { email: `case-audit-${Date.now()}@example.com`, fullName: "Test Audit Committee Staff" },
+    });
+    const auditCommitteeStaff = await prisma.birrStaff.create({
+      data: { userId: auditCommitteeUser.id, staffRole: "audit_committee" },
+    });
+    auditCommitteeStaffId = auditCommitteeStaff.id;
+
+    const investmentCommitteeUser = await prisma.user.create({
+      data: { email: `case-investment-${Date.now()}@example.com`, fullName: "Test Investment Committee Staff" },
+    });
+    const investmentCommitteeStaff = await prisma.birrStaff.create({
+      data: { userId: investmentCommitteeUser.id, staffRole: "investment_committee" },
+    });
+    investmentCommitteeStaffId = investmentCommitteeStaff.id;
 
     // Every Waqf must belong to a Foundation now — this fixture doesn't
     // exercise founder scoping, so no FoundationFounder rows are needed.
@@ -93,7 +115,7 @@ describe("WaqfCaseAssignmentsService", () => {
   test("close() happy path: status transitions, closedAt is set, audit log written", async () => {
     const assignment = await service.assign({
       waqfId,
-      birrStaffId,
+      birrStaffId: auditCommitteeStaffId,
       assignmentRole: "auditor",
       actorUserId,
     });
@@ -115,7 +137,7 @@ describe("WaqfCaseAssignmentsService", () => {
   test("close() rejects closing an already-closed assignment", async () => {
     const assignment = await service.assign({
       waqfId,
-      birrStaffId,
+      birrStaffId: investmentCommitteeStaffId,
       assignmentRole: "investment_officer",
       actorUserId,
     });
@@ -126,5 +148,29 @@ describe("WaqfCaseAssignmentsService", () => {
     await expect(
       service.close({ id: assignment.id, status: "closed", actorUserId }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  test("assign() rejects a birrStaffId whose staffRole doesn't map to the requested case assignmentRole", async () => {
+    // birrStaffId is compliance_officer — eligible for
+    // "compliance_reviewer" only, not "auditor".
+    await expect(
+      service.assign({
+        waqfId,
+        birrStaffId,
+        assignmentRole: "auditor",
+        actorUserId,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  test("assign() rejects an unknown birrStaffId", async () => {
+    await expect(
+      service.assign({
+        waqfId,
+        birrStaffId: "00000000-0000-0000-0000-000000000000",
+        assignmentRole: "compliance_reviewer",
+        actorUserId,
+      }),
+    ).rejects.toThrow(NotFoundException);
   });
 });

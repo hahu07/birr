@@ -1,8 +1,9 @@
-# Typecheck, backend tests, and a full build on every push/PR to main.
-# No lint job — nothing in this repo has a `lint` script wired up yet
-# (turbo.json declares the task, but every package.json's own script is
-# missing), so a lint step here would just silently pass without
-# checking anything; better to leave it out than fake coverage.
+# Typecheck, backend tests, a full build, and a dependency audit on
+# every push/PR to main. No lint job — nothing in this repo has a
+# `lint` script wired up yet (turbo.json declares the task, but every
+# package.json's own script is missing), so a lint step here would just
+# silently pass without checking anything; better to leave it out than
+# fake coverage.
 #
 # Every command below was run and verified locally before being written
 # here (turbo run typecheck, the Jest suite against a real Postgres,
@@ -62,6 +63,9 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      # Superuser connection — needed for `prisma migrate deploy`'s DDL
+      # (creating the birr_app role itself, RLS policies, the audit_logs
+      # REVOKE). Deliberately NOT what the test step below runs as.
       DATABASE_URL: postgresql://birr:birr_dev_password@localhost:5432/birr?schema=public
       # Test-only placeholders — never a real secret. SETTINGS_ENCRYPTION_KEY
       # must be exactly 64 hex chars (32 bytes) for AES-256-GCM, same
@@ -80,7 +84,27 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @birr/db exec prisma generate
       - run: pnpm --filter @birr/db exec prisma migrate deploy
+      # Several specs (e.g. governed-actions.service.spec.ts, see its own
+      # beforeAll comment) reuse the seeded roles/permissions/
+      # role_permissions from packages/db/prisma/seed.ts rather than
+      # creating their own Permission fixtures — this step was previously
+      # missing here, so those specs would fail against a freshly
+      # migrated-but-unseeded database. Runs as `birr_app`: seed.ts only
+      # does DML (upserts), which that role already has grants for.
+      - run: pnpm --filter @birr/db exec prisma db seed
+        env:
+          DATABASE_URL: postgresql://birr_app:birr_app_dev_password@localhost:5432/birr?schema=public
+      # Runs as the non-superuser `birr_app` runtime role (created by the
+      # migrate step above), NOT the job-level superuser DATABASE_URL —
+      # a Postgres superuser unconditionally bypasses Row-Level Security
+      # (see 20260831180000_add_birr_app_runtime_role's own comment), so
+      # running the test suite as `birr` would make
+      # founder-isolation-rls.spec.ts assert nothing real: every query
+      # would see every row regardless of whether the RLS policy is
+      # correct, wrong, or entirely missing.
       - run: pnpm --filter @birr/backend test
+        env:
+          DATABASE_URL: postgresql://birr_app:birr_app_dev_password@localhost:5432/birr?schema=public
 
   build:
     runs-on: ubuntu-latest
@@ -96,3 +120,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @birr/db exec prisma generate
       - run: pnpm build
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Fails the job on any HIGH-or-worse known vulnerability in the
+      # dependency tree — cheapest real improvement to "no dependency/
+      # secret scanning" without introducing new tooling/services.
+      # moderate-and-below findings don't block CI (would otherwise make
+      # this job flaky against upstream advisories nobody here can act
+      # on immediately), but a high/critical finding on a fiduciary
+      # system's dependency tree should stop the build.
+      - run: pnpm audit --audit-level=high

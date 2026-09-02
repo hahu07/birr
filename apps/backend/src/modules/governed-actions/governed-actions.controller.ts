@@ -17,7 +17,7 @@ import { GovernedActionsService } from "./governed-actions.service";
 import { RequiresPermission } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
-import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 type AuthenticatedRequest = Request & { birrStaff: AuthenticatedBirrStaff };
@@ -63,7 +63,7 @@ export class GovernedActionsController {
     @Req() request: Request,
   ) {
     // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {

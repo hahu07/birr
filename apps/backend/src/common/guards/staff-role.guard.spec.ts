@@ -2,11 +2,14 @@ import { ExecutionContext, ForbiddenException, UnauthorizedException } from "@ne
 import { Reflector } from "@nestjs/core";
 import { prisma } from "@birr/db";
 import { RequiresStaffRole, StaffRoleGuard } from "./staff-role.guard";
-import { signSessionToken, SESSION_COOKIE_NAME } from "../auth/session";
+import { signSessionToken, STAFF_SESSION_COOKIE_NAME } from "../auth/session";
 
 class TestController {
   @RequiresStaffRole("platform_admin")
   restricted() {}
+
+  @RequiresStaffRole(["platform_admin", "mutawalli_officer"])
+  restrictedToEitherOf() {}
 
   unrestricted() {}
 }
@@ -15,7 +18,7 @@ function makeContext(handler: () => void, token?: string): ExecutionContext {
   return {
     getHandler: () => handler,
     switchToHttp: () => ({
-      getRequest: () => ({ cookies: token ? { [SESSION_COOKIE_NAME]: token } : {} }),
+      getRequest: () => ({ cookies: token ? { [STAFF_SESSION_COOKIE_NAME]: token } : {} }),
     }),
   } as unknown as ExecutionContext;
 }
@@ -26,6 +29,7 @@ describe("StaffRoleGuard", () => {
 
   let adminUserId: string;
   let otherUserId: string;
+  let mutawalliOfficerUserId: string;
 
   beforeAll(async () => {
     // Fixture Users/BirrStaff not cleaned up in afterAll — same reasoning
@@ -46,6 +50,14 @@ describe("StaffRoleGuard", () => {
       data: { userId: otherUser.id, staffRole: "compliance_officer" },
     });
     otherUserId = otherUser.id;
+
+    const mutawalliOfficerUser = await prisma.user.create({
+      data: { email: `staff-role-guard-mutawalli-${Date.now()}@example.test`, fullName: "Guard Spec Mutawalli Officer" },
+    });
+    await prisma.birrStaff.create({
+      data: { userId: mutawalliOfficerUser.id, staffRole: "mutawalli_officer" },
+    });
+    mutawalliOfficerUserId = mutawalliOfficerUser.id;
   });
 
   afterAll(async () => {
@@ -70,5 +82,18 @@ describe("StaffRoleGuard", () => {
   test("is a no-op (returns true) for a route with no @RequiresStaffRole metadata", async () => {
     const ctx = makeContext(controller.unrestricted, undefined);
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  test("@RequiresStaffRole([...]) allows any one of several roles through", async () => {
+    const asAdmin = makeContext(controller.restrictedToEitherOf, signSessionToken(adminUserId));
+    await expect(guard.canActivate(asAdmin)).resolves.toBe(true);
+
+    const asMutawalliOfficer = makeContext(controller.restrictedToEitherOf, signSessionToken(mutawalliOfficerUserId));
+    await expect(guard.canActivate(asMutawalliOfficer)).resolves.toBe(true);
+  });
+
+  test("@RequiresStaffRole([...]) rejects a role outside the allowed list", async () => {
+    const ctx = makeContext(controller.restrictedToEitherOf, signSessionToken(otherUserId));
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
   });
 });

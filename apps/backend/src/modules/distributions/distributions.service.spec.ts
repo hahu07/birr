@@ -261,6 +261,35 @@ describe("DistributionsService", () => {
       });
     });
 
+    test("concurrent create() calls against the same cause can't jointly exceed the ceiling (TOCTOU regression)", async () => {
+      const cause = await prisma.waqfCause.create({
+        data: { waqfId: waqfAId, name: "Concurrency Fixture Cause", allocatedAmount: "100" },
+      });
+      waqfCauseIds.push(cause.id);
+
+      // Each individually fits under the 100 ceiling (60 < 100), but
+      // together they total 120 — exceeding it. Without the row lock in
+      // assertWithinAllocation, both transactions could read "0 already
+      // committed" before either commits, and both would succeed.
+      const results = await Promise.allSettled([
+        service.create({ waqfId: waqfAId, beneficiaryId, causeId: cause.id, amount: "60", currency: "USD" }, actorUserId),
+        service.create({ waqfId: waqfAId, beneficiaryId, causeId: cause.id, amount: "60", currency: "USD" }, actorUserId),
+      ]);
+
+      const fulfilled = results.filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof service.create>>> => r.status === "fulfilled");
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(BadRequestException);
+      distributionIds.push(fulfilled[0].value.id);
+
+      const committed = await prisma.distribution.aggregate({
+        where: { causeId: cause.id, status: { in: ["pending", "approved", "disbursing", "paid"] } },
+        _sum: { amount: true },
+      });
+      expect(committed._sum.amount?.toString()).toBe("60");
+    });
+
     test("ceiling is the sum of allocatedAmount (corpus) and proceedsAllocatedAmount (investment proceeds)", async () => {
       const cause = await prisma.waqfCause.create({
         data: { waqfId: waqfAId, name: "Two Pools Cause", allocatedAmount: "60", proceedsAllocatedAmount: "40" },

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from "class-validator";
 import { prisma } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -40,6 +40,8 @@ const IMPACT_INCLUDE = {
 
 @Injectable()
 export class CauseImpactUpdatesService {
+  private readonly logger = new Logger(CauseImpactUpdatesService.name);
+
   constructor(private readonly notificationsService: NotificationsService) {}
 
   // Birr-staff only — see the schema's own comment on why this is
@@ -79,7 +81,10 @@ export class CauseImpactUpdatesService {
     // Deliberately NOT awaited — see the established fire-and-forget
     // posture for every post-transaction notify() fan-out this session.
     this.notifyFounders(waqfCause.waqfId, waqfCause.name, update.id).catch((err) => {
-      console.error(`Failed to notify founders of impact update "${update.id}":`, err);
+      this.logger.error(
+        `Failed to notify founders of impact update "${update.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
 
     return update;

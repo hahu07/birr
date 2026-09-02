@@ -9,7 +9,7 @@ import {
   CurrentBirrStaff,
   resolveBirrStaffFromSession,
 } from "../../common/auth/current-birr-staff";
-import { setSessionCookie, clearSessionCookie, signSessionToken } from "../../common/auth/session";
+import { setStaffSessionCookie, clearStaffSessionCookie, signSessionToken } from "../../common/auth/session";
 import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 import { Public } from "../../common/guards/public.decorator";
 
@@ -47,7 +47,7 @@ export class BirrStaffController {
   @Throttle({ default: { limit: 10, ttl: 600_000 } })
   async login(@Body() body: BirrStaffLoginInput, @Res({ passthrough: true }) res: Response) {
     const { userId } = await this.service.login(body);
-    setSessionCookie(res, signSessionToken(userId));
+    setStaffSessionCookie(res, signSessionToken(userId));
     return { ok: true };
   }
 
@@ -56,7 +56,7 @@ export class BirrStaffController {
   @Post("logout")
   @Public()
   logout(@Res({ passthrough: true }) res: Response) {
-    clearSessionCookie(res);
+    clearStaffSessionCookie(res);
     return { ok: true };
   }
 

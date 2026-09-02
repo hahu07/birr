@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, WaqfType } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -48,6 +48,8 @@ const SUGGESTION_INCLUDE = {
 
 @Injectable()
 export class CauseCategorySuggestionsService {
+  private readonly logger = new Logger(CauseCategorySuggestionsService.name);
+
   constructor(private readonly notificationsService: NotificationsService) {}
 
   // Founder-Portal self-service — a Founder asking Birr's product team
@@ -92,7 +94,10 @@ export class CauseCategorySuggestionsService {
     // query like GovernedActionsService.notifyProposed() does; the role
     // is simply hardcoded to match the controller's own @RequiresStaffRole.
     this.notifyPlatformAdmins(suggestion.id, suggestion.name).catch((err) => {
-      console.error(`Failed to notify platform_admin of new cause suggestion "${suggestion.id}":`, err);
+      this.logger.error(
+        `Failed to notify platform_admin of new cause suggestion "${suggestion.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
 
     return suggestion;
@@ -192,7 +197,10 @@ export class CauseCategorySuggestionsService {
     }
 
     this.notifyProposer(reviewed.proposedByUserId, reviewed.name, "approved", reviewed.id).catch((err) => {
-      console.error(`Failed to notify proposer of approved suggestion "${reviewed.id}":`, err);
+      this.logger.error(
+        `Failed to notify proposer of approved suggestion "${reviewed.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
     return reviewed;
   }
@@ -225,7 +233,10 @@ export class CauseCategorySuggestionsService {
     });
 
     this.notifyProposer(reviewed.proposedByUserId, reviewed.name, "rejected", reviewed.id).catch((err) => {
-      console.error(`Failed to notify proposer of rejected suggestion "${reviewed.id}":`, err);
+      this.logger.error(
+        `Failed to notify proposer of rejected suggestion "${reviewed.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
     return reviewed;
   }

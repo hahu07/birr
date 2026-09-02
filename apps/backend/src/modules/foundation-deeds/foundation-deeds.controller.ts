@@ -4,7 +4,7 @@ import type { Request } from "express";
 import { FoundationDeedsService } from "./foundation-deeds.service";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
-import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 class SignFoundationDeedBody {
@@ -49,7 +49,7 @@ export class FoundationDeedsController {
   // same posture as WaqfDeedsController.findByWaqfId.
   @Get(":foundationId")
   async findByFoundationId(@Param("foundationId") foundationId: string, @Req() request: Request) {
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {

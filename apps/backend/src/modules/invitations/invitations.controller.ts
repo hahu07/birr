@@ -4,7 +4,7 @@ import type { Request, Response } from "express";
 import { InvitationsService, InviteInput, AcceptInput } from "./invitations.service";
 import { isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
 import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
-import { setSessionCookie, signSessionToken, SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { setSessionCookie, setStaffSessionCookie, signSessionToken, SESSION_COOKIE_NAME, hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 import { prisma, InviteeKind } from "@birr/db";
 
@@ -51,6 +51,12 @@ export class InvitationsController {
   @Public()
   @Post()
   async invite(@Body() body: InviteBody, @Req() request: Request) {
+    // Deliberately checks the Founder cookie specifically (not
+    // hasAnySessionCookie) — this branch's job is "does this request
+    // carry a Founder identity to invite on behalf of," which a bare
+    // "some session exists" check can't answer. A pure-staff caller (no
+    // Founder cookie) correctly falls through to the staff branch below
+    // regardless of this condition, same as before the cookie split.
     if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       assertPrimaryContact(founder);
@@ -111,13 +117,23 @@ export class InvitationsController {
   @Public()
   async accept(@Body() body: AcceptInput, @Res({ passthrough: true }) res: Response) {
     const result = await this.service.accept(body);
-    setSessionCookie(res, signSessionToken(result.user.id));
+    // A birr_staff invite must log the new staff member into the staff
+    // session (STAFF_SESSION_COOKIE_NAME), never the Founder one — see
+    // that cookie's own comment. founder_user/co_founder both get the
+    // Founder cookie, same as every other founder sign-up/login path.
+    if (result.invitation.inviteeKind === "birr_staff") {
+      setStaffSessionCookie(res, signSessionToken(result.user.id));
+    } else {
+      setSessionCookie(res, signSessionToken(result.user.id));
+    }
     return result;
   }
 
   @Public()
   @Post(":id/revoke")
   async revoke(@Param("id") id: string, @Req() request: Request) {
+    // Same reasoning as invite() above — deliberately the Founder
+    // cookie specifically, not hasAnySessionCookie.
     if (request.cookies?.[SESSION_COOKIE_NAME] && !(await isBirrStaffSession(request))) {
       const founder = await resolveFounderFromSession(request);
       assertPrimaryContact(founder);
@@ -141,7 +157,7 @@ export class InvitationsController {
     // (discovered in the 2026-08-30 security audit), which chained with
     // accept() into unauthenticated BirrStaff account creation. Same
     // explicit no-cookie guard as FoundationDeedsController.findByFoundationId.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {

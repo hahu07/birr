@@ -2,10 +2,10 @@ import { UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
 import { prisma } from "@birr/db";
 import { resolveBirrStaffFromSession } from "./current-birr-staff";
-import { signSessionToken, SESSION_COOKIE_NAME } from "./session";
+import { signSessionToken, STAFF_SESSION_COOKIE_NAME } from "./session";
 
 function requestWithCookie(token?: string): Request {
-  return { cookies: token ? { [SESSION_COOKIE_NAME]: token } : {} } as unknown as Request;
+  return { cookies: token ? { [STAFF_SESSION_COOKIE_NAME]: token } : {} } as unknown as Request;
 }
 
 describe("resolveBirrStaffFromSession", () => {

@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { prisma, Prisma, GovernedActionStatus, BirrStaffRole, BeneficiaryStatus } from "@birr/db";
@@ -46,6 +47,7 @@ interface FulfillmentResult {
   auditAction: string;
   entityType: string;
   entityId: string;
+  before: unknown;
   after: unknown;
 }
 
@@ -105,6 +107,7 @@ interface GovernedActionHandler {
 
 @Injectable()
 export class GovernedActionsService {
+  private readonly logger = new Logger(GovernedActionsService.name);
   private readonly handlers: Map<string, GovernedActionHandler>;
 
   constructor(
@@ -143,11 +146,13 @@ export class GovernedActionsService {
           },
           onApprove: async (payload, tx) => {
             const { assetId } = payload as { assetId: string };
+            const before = await tx.asset.findUnique({ where: { id: assetId } });
             const asset = await this.assetsService.dispose(assetId, tx);
             return {
               auditAction: "asset.disposed",
               entityType: "Asset",
               entityId: asset.id,
+              before,
               after: asset,
             };
           },
@@ -185,19 +190,26 @@ export class GovernedActionsService {
               beneficiaryId: string;
               newCriteria: string;
             };
+            const beforeRow = await tx.beneficiary.findUnique({ where: { id: beneficiaryId } });
             const beneficiary = await this.beneficiariesService.updateCriteria(
               beneficiaryId,
               newCriteria,
               tx,
             );
-            // bankDetailsEncrypted excluded from the audit snapshot —
+            // bankDetailsEncrypted excluded from both snapshots —
             // see BeneficiariesService.create's identical reasoning.
-            const { bankDetailsEncrypted, ...auditSafe } = beneficiary;
+            const { bankDetailsEncrypted: _afterBankDetails, ...auditSafeAfter } = beneficiary;
+            let auditSafeBefore: Record<string, unknown> | null = null;
+            if (beforeRow) {
+              const { bankDetailsEncrypted: _beforeBankDetails, ...rest } = beforeRow;
+              auditSafeBefore = rest;
+            }
             return {
               auditAction: "beneficiary.criteria_updated",
               entityType: "Beneficiary",
               entityId: beneficiary.id,
-              after: auditSafe,
+              before: auditSafeBefore,
+              after: auditSafeAfter,
             };
           },
         },
@@ -234,13 +246,20 @@ export class GovernedActionsService {
               beneficiaryId: string;
               newStatus: BeneficiaryStatus;
             };
+            const beforeRow = await tx.beneficiary.findUnique({ where: { id: beneficiaryId } });
             const beneficiary = await this.beneficiariesService.updateStatus(beneficiaryId, newStatus, tx);
-            const { bankDetailsEncrypted, ...auditSafe } = beneficiary;
+            const { bankDetailsEncrypted: _afterBankDetails, ...auditSafeAfter } = beneficiary;
+            let auditSafeBefore: Record<string, unknown> | null = null;
+            if (beforeRow) {
+              const { bankDetailsEncrypted: _beforeBankDetails, ...rest } = beforeRow;
+              auditSafeBefore = rest;
+            }
             return {
               auditAction: "beneficiary.status_changed",
               entityType: "Beneficiary",
               entityId: beneficiary.id,
-              after: auditSafe,
+              before: auditSafeBefore,
+              after: auditSafeAfter,
             };
           },
         },
@@ -280,6 +299,7 @@ export class GovernedActionsService {
               investmentId: string;
               newAllocatedAmount: string | number;
             };
+            const before = await tx.investment.findUnique({ where: { id: investmentId } });
             const investment = await this.investmentsService.changeAllocation(
               investmentId,
               newAllocatedAmount,
@@ -289,6 +309,7 @@ export class GovernedActionsService {
               auditAction: "investment.allocation_changed",
               entityType: "Investment",
               entityId: investment.id,
+              before,
               after: investment,
             };
           },
@@ -332,11 +353,13 @@ export class GovernedActionsService {
           },
           onApprove: async (payload, tx) => {
             const { counterpartyId } = payload as { counterpartyId: string };
+            const before = await tx.counterparty.findUnique({ where: { id: counterpartyId } });
             const counterparty = await this.counterpartiesService.onboard(counterpartyId, tx);
             return {
               auditAction: "counterparty.onboarded",
               entityType: "Counterparty",
               entityId: counterparty.id,
+              before,
               after: counterparty,
             };
           },
@@ -385,11 +408,13 @@ export class GovernedActionsService {
           },
           onApprove: async (payload, tx) => {
             const { distributionId } = payload as { distributionId: string };
+            const before = await tx.distribution.findUnique({ where: { id: distributionId } });
             const distribution = await this.distributionsService.approve(distributionId, tx);
             return {
               auditAction: "distribution.approved",
               entityType: "Distribution",
               entityId: distribution.id,
+              before,
               after: distribution,
             };
           },
@@ -468,7 +493,10 @@ export class GovernedActionsService {
     // Resend/Twilio. Still can't silently swallow a broken promise
     // chain, so the rejection is still caught and logged here.
     this.notifyProposed(action, permission).catch((err) => {
-      console.error(`Failed to notify checkers for governed action "${action.id}":`, err);
+      this.logger.error(
+        `Failed to notify checkers for governed action "${action.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
 
     return action;
@@ -597,6 +625,7 @@ export class GovernedActionsService {
               action: fulfillment.auditAction,
               entityType: fulfillment.entityType,
               entityId: fulfillment.entityId,
+              before: fulfillment.before as any,
               after: fulfillment.after as any,
             },
           });
@@ -612,7 +641,10 @@ export class GovernedActionsService {
     // "don't make a governance decision wait on Resend/Twilio" reasoning
     // applies either way.
     this.notifyDecision(action, result.governedAction, result.fulfillment).catch((err) => {
-      console.error(`Failed to notify on decision for governed action "${action.id}":`, err);
+      this.logger.error(
+        `Failed to notify on decision for governed action "${action.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
 
     // Same fire-and-forget, post-commit posture as notifyDecision above
@@ -623,7 +655,10 @@ export class GovernedActionsService {
     // genuinely unexpected errors.
     if (input.approve && result.fulfillment?.entityType === "Distribution") {
       this.distributionsService.initiateDisbursement(result.fulfillment.entityId).catch((err) => {
-        console.error(`Failed to initiate disbursement for distribution "${result.fulfillment!.entityId}":`, err);
+        this.logger.error(
+          `Failed to initiate disbursement for distribution "${result.fulfillment!.entityId}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
     }
 

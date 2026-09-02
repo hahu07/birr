@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsNotEmpty, IsNumberString, IsString } from "class-validator";
 import { prisma, Prisma, PayoutProvider } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -35,6 +35,7 @@ export class CreateDistributionInput {
 
 @Injectable()
 export class DistributionsService {
+  private readonly logger = new Logger(DistributionsService.name);
   private readonly payoutAdapters: Map<PayoutProvider, PayoutProviderAdapter>;
 
   constructor(
@@ -310,7 +311,10 @@ export class DistributionsService {
     // .notifyContributionOutcome's own posture — a webhook's response
     // time shouldn't depend on Resend/Twilio round-trips.
     this.notifyPayoutOutcome(distribution.waqfId, result.status, updated).catch((err) => {
-      console.error(`Failed to notify on payout outcome for distribution "${updated.id}":`, err);
+      this.logger.error(
+        `Failed to notify on payout outcome for distribution "${updated.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
 
     return updated;
@@ -417,6 +421,13 @@ export class DistributionsService {
     tx: Prisma.TransactionClient,
     excludeDistributionId?: string,
   ): Promise<void> {
+    // Row-locked for the rest of this transaction so two concurrent
+    // distributions against the same cause can't both read the
+    // pre-commit "already committed" sum below and jointly exceed the
+    // allocation ceiling (TOCTOU) — the DB lock is what actually makes
+    // this "a real enforced ceiling, not a decorative figure" under
+    // concurrency, not just the comparison below on its own.
+    await tx.$queryRaw`SELECT id FROM "waqf_causes" WHERE id = ${causeId} FOR UPDATE`;
     const cause = await tx.waqfCause.findUnique({ where: { id: causeId } });
     const allocated = new Prisma.Decimal(cause?.allocatedAmount ?? 0).plus(cause?.proceedsAllocatedAmount ?? 0);
 

@@ -139,6 +139,11 @@ export class InvestmentsService {
     tx: Prisma.TransactionClient,
     excludeInvestmentId?: string,
   ): Promise<void> {
+    // Row-locked for the rest of this transaction so two concurrent
+    // investment creates/changes against the same waqf can't both read
+    // the pre-commit "already invested" sum below and jointly exceed the
+    // raised-corpus ceiling (TOCTOU).
+    await tx.$queryRaw`SELECT id FROM "waqfs" WHERE id = ${waqfId} FOR UPDATE`;
     // Scoped to the waqf's declared corpus currency, same reasoning as
     // WaqfsService.attachAmountRaised — Investment.allocatedAmount has no
     // currency field of its own, so this ceiling implicitly assumes every
@@ -192,6 +197,10 @@ export class InvestmentsService {
     excludeInvestmentId?: string,
   ): Promise<void> {
     if (!counterparty.concentrationLimit) return;
+    // Row-locked — same TOCTOU reasoning as assertWithinRaised, but
+    // scoped to the counterparty, since this ceiling spans investments
+    // across every waqf combined against one counterparty.
+    await tx.$queryRaw`SELECT id FROM "counterparties" WHERE id = ${counterparty.id} FOR UPDATE`;
     const limitCurrency = counterparty.concentrationLimitCurrency;
     // The limit is denominated in one currency — Investment itself has no
     // currency field (see this model's own schema comment), it inherits

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { prisma, ActorType } from "@birr/db";
 import { ResendNotificationEmailAdapter } from "./email/resend-notification.adapter";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
@@ -72,6 +72,8 @@ const CHANNEL_PLAN: Record<string, { email: boolean; whatsapp: boolean }> = {
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     private readonly emailAdapter: ResendNotificationEmailAdapter,
     private readonly whatsAppAdapter: TwilioWhatsAppAdapter,
@@ -113,7 +115,7 @@ export class NotificationsService {
           linkUrl: input.linkUrl,
         });
       } catch (err) {
-        console.error(
+        this.logger.error(
           `Couldn't send notification email (${input.type}) to ${user.email}:`,
           err instanceof Error ? err.message : err,
         );
@@ -122,12 +124,12 @@ export class NotificationsService {
 
     if (plan.whatsapp) {
       if (!user.whatsappNumber || !user.whatsappVerifiedAt) {
-        console.log(`Skipping WhatsApp for notification "${notification.id}" — recipient has no verified number.`);
+        this.logger.log(`Skipping WhatsApp for notification "${notification.id}" — recipient has no verified number.`);
       } else {
         try {
           await this.sendWhatsApp(user.whatsappNumber, input);
         } catch (err) {
-          console.error(
+          this.logger.error(
             `Couldn't send WhatsApp notification (${input.type}) to user ${user.id}:`,
             err instanceof Error ? err.message : err,
           );

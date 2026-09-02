@@ -3,7 +3,7 @@ import { Request } from "express";
 import { FoundationsService, CreateFoundationInput } from "./foundations.service";
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
-import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 // @Public() — Founder-Portal self-service surface, same reasoning as
@@ -31,7 +31,7 @@ export class FoundationsController {
     // docs/comprehensive-code-review-prompt.md). A genuine internal/
     // script caller should authenticate as Birr staff, same as every
     // other trusted-caller path in this codebase.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {
@@ -56,7 +56,7 @@ export class FoundationsController {
   @Get()
   async list(@Query("founderId") founderId: string | undefined, @Req() request: Request) {
     // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {
@@ -75,7 +75,7 @@ export class FoundationsController {
   @Get(":id")
   async findById(@Param("id") id: string, @Req() request: Request) {
     // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {

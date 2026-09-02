@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -108,6 +109,8 @@ const BCRYPT_ROUNDS = 10;
 
 @Injectable()
 export class FoundersService {
+  private readonly logger = new Logger(FoundersService.name);
+
   constructor(
     private readonly emailAdapter: ResendVerificationEmailAdapter,
     private readonly logoStorage: LogoStorageService,
@@ -219,7 +222,7 @@ export class FoundersService {
       await this.emailAdapter.sendVerificationEmail(user.email, verifyLink);
       emailSent = true;
     } catch (err) {
-      console.error(`Couldn't send verification email to ${user.email}:`, err instanceof Error ? err.message : err);
+      this.logger.error(`Couldn't send verification email to ${user.email}:`, err instanceof Error ? err.message : err);
     }
 
     return { userId: user.id, emailSent };

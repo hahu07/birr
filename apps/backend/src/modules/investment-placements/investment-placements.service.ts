@@ -92,6 +92,21 @@ export class InvestmentPlacementsService {
           createdByUserId: actorUserId,
         },
       });
+      // waqfId: null — a placement spans every fund in input.allocations,
+      // not one single waqf, same "no single owning waqf" posture as
+      // counterparty.onboard's own audit entry. Each child Investment leg
+      // still gets its own waqf-scoped audit row below via createOne().
+      await tx.auditLog.create({
+        data: {
+          waqfId: null,
+          actorType: "birr_staff",
+          actorUserId,
+          action: "investment_placement.created",
+          entityType: "InvestmentPlacement",
+          entityId: placement.id,
+          after: placement as any,
+        },
+      });
 
       const investments = [];
       for (const allocation of input.allocations) {

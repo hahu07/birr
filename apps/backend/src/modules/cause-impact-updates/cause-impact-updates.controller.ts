@@ -3,7 +3,7 @@ import { Request } from "express";
 import { CauseImpactUpdatesService, CreateCauseImpactUpdateInput } from "./cause-impact-updates.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
-import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 // @Public() — also reachable read-only by the owning Founder (their own
@@ -22,7 +22,7 @@ export class CauseImpactUpdatesController {
   @Get()
   async list(@Query("waqfCauseId") waqfCauseId: string | undefined, @Req() request: Request) {
     // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     const isFounderSession = !(await isBirrStaffSession(request));

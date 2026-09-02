@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsEnum, IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma, WaqfType, WaqfFundingPlan } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
@@ -51,6 +51,8 @@ export class IncreaseCorpusTargetInput {
 
 @Injectable()
 export class WaqfsService {
+  private readonly logger = new Logger(WaqfsService.name);
+
   constructor(
     private readonly trusteeLicenses: TrusteeLicensesService,
     private readonly notificationsService: NotificationsService,
@@ -162,7 +164,10 @@ export class WaqfsService {
     // awaited, same posture as every other post-transaction notify()
     // fan-out this session.
     this.notifyPlatformAdminsOfNewWaqf(waqf.id, waqf.name).catch((err) => {
-      console.error(`Failed to notify platform_admin of new waqf "${waqf.id}":`, err);
+      this.logger.error(
+        `Failed to notify platform_admin of new waqf "${waqf.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
 
     return waqf;

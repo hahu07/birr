@@ -35,6 +35,7 @@ import { InvestmentPlacementsModule } from "./modules/investment-placements/inve
 import { BeneficiaryNominationsModule } from "./modules/beneficiary-nominations/beneficiary-nominations.module";
 import { MessagesModule } from "./modules/messages/messages.module";
 import { FinancialReportsModule } from "./modules/financial-reports/financial-reports.module";
+import { HealthModule } from "./modules/health/health.module";
 import { PermissionGuard } from "./common/guards/permission.guard";
 import { StaffRoleGuard } from "./common/guards/staff-role.guard";
 import { SessionAuthGuard } from "./common/guards/session-auth.guard";
@@ -79,6 +80,7 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     BeneficiaryNominationsModule,
     MessagesModule,
     FinancialReportsModule,
+    HealthModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -241,6 +241,15 @@ export class WaqfCausesService {
         throw new NotFoundException(`WaqfCause "${waqfCauseId}" not found.`);
       }
 
+      // Row-locked for the rest of this transaction so two concurrent
+      // allocate() calls against *different* sibling causes on this same
+      // waqf can't both read the same pre-commit "already allocated
+      // across other causes" sum below and jointly exceed the waqf's
+      // raised pool (TOCTOU) — locking just this one cause's own row
+      // wouldn't stop that, since the ceiling spans every cause on the
+      // waqf.
+      await tx.$queryRaw`SELECT id FROM "waqfs" WHERE id = ${waqf.id} FOR UPDATE`;
+
       // Scoped to a single currency — Contribution.currency exists
       // per-row (a waqf can receive contributions in more than one
       // currency), but this pool and every WaqfCause.allocatedAmount it
@@ -359,6 +368,11 @@ export class WaqfCausesService {
         );
       }
 
+      // Row-locked — same TOCTOU reasoning as allocate()'s own comment,
+      // against sibling causes' proceedsAllocatedAmount instead of
+      // allocatedAmount.
+      await tx.$queryRaw`SELECT id FROM "waqfs" WHERE id = ${waqf.id} FOR UPDATE`;
+
       const pool = await this.proceedsService.sumForWaqf(cause.waqfId, tx);
 
       const otherCauses = await tx.waqfCause.findMany({
@@ -440,6 +454,14 @@ export class WaqfCausesService {
           `Only Investment-type Waqf Funds have investment proceeds to allocate — "${waqf.name}" is ${waqf.type}.`,
         );
       }
+
+      // Row-locked — same TOCTOU reasoning as allocate()'s/allocateProceeds()'s
+      // own comments: this overwrites every sibling cause's
+      // proceedsAllocatedAmount from the current pool/ratios in one
+      // pass, so it must not interleave with a concurrent
+      // allocateProceeds()/allocateProceedsProportionally() call
+      // touching the same waqf's causes.
+      await tx.$queryRaw`SELECT id FROM "waqfs" WHERE id = ${waqfId} FOR UPDATE`;
 
       const causes = await tx.waqfCause.findMany({ where: { waqfId, deletedAt: null } });
       if (causes.length === 0) {

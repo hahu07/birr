@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsDateString, IsEnum, IsOptional, IsString } from "class-validator";
 import { prisma, TrusteeLicenseStatus } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -53,6 +53,8 @@ export class UpdateTrusteeLicenseInput {
 
 @Injectable()
 export class TrusteeLicensesService {
+  private readonly logger = new Logger(TrusteeLicensesService.name);
+
   constructor(private readonly notificationsService: NotificationsService) {}
 
   // Represents Birr's actual regulatory standing to act as Mutawalli in a
@@ -121,7 +123,10 @@ export class TrusteeLicensesService {
     // call this session.
     if (existing.status !== updated.status) {
       this.notifyAffectedFounders(updated.jurisdiction, updated.status).catch((err) => {
-        console.error(`Failed to notify founders of trustee license status change "${updated.id}":`, err);
+        this.logger.error(
+          `Failed to notify founders of trustee license status change "${updated.id}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
     }
 

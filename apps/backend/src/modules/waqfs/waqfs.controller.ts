@@ -3,7 +3,7 @@ import { Request } from "express";
 import { CreateWaqfInput, IncreaseCorpusTargetInput, WaqfsService } from "./waqfs.service";
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
-import { SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 // @Public() — Founder-Portal self-service surface, same reasoning as
@@ -53,15 +53,16 @@ export class WaqfsController {
     // ?founderId= query param entirely, so a founder-portal session can
     // never widen its own scope just by editing the URL. When the
     // session belongs to Birr staff rather than a Founder (Ops Console
-    // calls this route too, and both now carry the same httpOnly
-    // cookie — see isBirrStaffSession's own comment), the query param
-    // works as an ops filtering convenience. A request with NO session
-    // cookie at all is neither of those — it must not be treated as a
+    // calls this route too — see isBirrStaffSession's own comment on how
+    // that's resolved now that Founder/staff sessions are separate
+    // cookies), the query param works as an ops filtering convenience. A
+    // request with NO session cookie at all is neither of those — it
+    // must not be treated as a
     // trusted ops caller (2026-08-30 security audit fix: this exact
     // "absent session = trusted" assumption previously let this route
     // return the full unscoped waqf list to anyone, unauthenticated —
     // see docs/comprehensive-code-review-prompt.md).
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {
@@ -84,7 +85,7 @@ export class WaqfsController {
   @Get(":id/lifecycle")
   async lifecycle(@Param("id") id: string, @Req() request: Request) {
     // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {
@@ -100,7 +101,7 @@ export class WaqfsController {
   @Get(":id")
   async findById(@Param("id") id: string, @Req() request: Request) {
     // 2026-08-30 security audit fix — see docs/comprehensive-code-review-prompt.md.
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {

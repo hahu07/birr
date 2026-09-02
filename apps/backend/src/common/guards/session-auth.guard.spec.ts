@@ -3,7 +3,7 @@ import { Reflector } from "@nestjs/core";
 import { prisma } from "@birr/db";
 import { SessionAuthGuard } from "./session-auth.guard";
 import { Public } from "./public.decorator";
-import { signSessionToken, SESSION_COOKIE_NAME } from "../auth/session";
+import { signSessionToken, STAFF_SESSION_COOKIE_NAME } from "../auth/session";
 
 class TestController {
   noMetadata() {}
@@ -22,7 +22,7 @@ function makeContext(handler: () => void, cls: Function, token?: string): Execut
     getHandler: () => handler,
     getClass: () => cls,
     switchToHttp: () => ({
-      getRequest: () => ({ cookies: token ? { [SESSION_COOKIE_NAME]: token } : {} }),
+      getRequest: () => ({ cookies: token ? { [STAFF_SESSION_COOKIE_NAME]: token } : {} }),
     }),
   } as unknown as ExecutionContext;
 }

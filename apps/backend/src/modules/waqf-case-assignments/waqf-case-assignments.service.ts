@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { prisma, Prisma, CaseAssignmentRole } from "@birr/db";
+import { prisma, Prisma, CaseAssignmentRole, BirrStaffRole } from "@birr/db";
 
 export interface AssignInput {
   waqfId: string;
@@ -23,9 +23,34 @@ export interface CloseInput {
 
 const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
+// CaseAssignmentRole and BirrStaffRole are separate enums with no 1:1
+// naming overlap beyond "mutawalli_officer" — assigning a BirrStaff
+// member to a case role their actual staffRole has no business holding
+// (e.g. a compliance_officer taking the "auditor" case role) would let
+// them start receiving message/beneficiary-nomination notifications
+// meant for a different function's reviewer, defeating the segregation
+// this mapping exists to enforce.
+const ASSIGNABLE_STAFF_ROLES: Record<CaseAssignmentRole, BirrStaffRole[]> = {
+  mutawalli_officer: ["mutawalli_officer"],
+  investment_officer: ["investment_committee"],
+  compliance_reviewer: ["compliance_officer"],
+  shariah_reviewer: ["shariah_board_member"],
+  auditor: ["audit_committee", "external_auditor"],
+};
+
 @Injectable()
 export class WaqfCaseAssignmentsService {
   async assign(input: AssignInput) {
+    const assignee = await prisma.birrStaff.findUnique({ where: { id: input.birrStaffId } });
+    if (!assignee) {
+      throw new NotFoundException(`BirrStaff "${input.birrStaffId}" not found.`);
+    }
+    if (!ASSIGNABLE_STAFF_ROLES[input.assignmentRole].includes(assignee.staffRole)) {
+      throw new BadRequestException(
+        `A "${assignee.staffRole}" staff member can't hold the "${input.assignmentRole}" case role — only ${ASSIGNABLE_STAFF_ROLES[input.assignmentRole].join(" or ")} can.`,
+      );
+    }
+
     try {
       return await prisma.$transaction(async (tx) => {
         const assignment = await tx.waqfCaseAssignment.create({

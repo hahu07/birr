@@ -1,5 +1,12 @@
 import { randomUUID } from "crypto";
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { prisma, Prisma, ContributionProvider } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -22,6 +29,7 @@ export interface InitiateContributionInput {
 
 @Injectable()
 export class ContributionsService {
+  private readonly logger = new Logger(ContributionsService.name);
   private readonly adapters: Map<ContributionProvider, PaymentProviderAdapter>;
 
   constructor(
@@ -253,7 +261,10 @@ export class ContributionsService {
         return failed;
       });
       this.notifyContributionOutcome(contribution.waqfId, "failed", failed).catch((err) => {
-        console.error(`Failed to notify on failed contribution "${failed.id}":`, err);
+        this.logger.error(
+          `Failed to notify on failed contribution "${failed.id}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
       return failed;
     }
@@ -309,11 +320,17 @@ export class ContributionsService {
     });
 
     this.notifyContributionOutcome(contribution.waqfId, "confirmed", confirmed).catch((err) => {
-      console.error(`Failed to notify on confirmed contribution "${confirmed.id}":`, err);
+      this.logger.error(
+        `Failed to notify on confirmed contribution "${confirmed.id}":`,
+        err instanceof Error ? err.stack : String(err),
+      );
     });
     if (waqfActivated) {
       this.notifyWaqfActivated(contribution.waqfId).catch((err) => {
-        console.error(`Failed to notify on waqf activation for waqf "${contribution.waqfId}":`, err);
+        this.logger.error(
+          `Failed to notify on waqf activation for waqf "${contribution.waqfId}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
     }
 

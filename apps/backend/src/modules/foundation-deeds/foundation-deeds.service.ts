@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { prisma } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -15,6 +15,8 @@ export interface SignFoundationDeedInput {
 
 @Injectable()
 export class FoundationDeedsService {
+  private readonly logger = new Logger(FoundationDeedsService.name);
+
   constructor(private readonly notificationsService: NotificationsService) {}
 
   /**
@@ -112,7 +114,10 @@ export class FoundationDeedsService {
         relatedEntityId: deed.id,
       })
       .catch((err) => {
-        console.error(`Failed to notify signer of deed "${deed.id}":`, err);
+        this.logger.error(
+          `Failed to notify signer of deed "${deed.id}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
       });
 
     return deed;

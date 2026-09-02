@@ -28,7 +28,7 @@ import { WhatsAppVerificationService } from "./whatsapp/whatsapp-verification.se
 import { MAX_SIZE_BYTES as MAX_LOGO_SIZE_BYTES } from "../foundations/logo-storage.service";
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
-import { setSessionCookie, clearSessionCookie, signSessionToken, SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { setSessionCookie, clearSessionCookie, signSessionToken, hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 class RequestWhatsAppOtpBody {
@@ -103,28 +103,25 @@ export class FoundersController {
 
   // Declared before ":id" — otherwise Nest would match GET /founders/me
   // as findById(id: "me") instead of this route.
+  // Founder and BirrStaff sessions now carry distinct cookies
+  // (STAFF_SESSION_COOKIE_NAME vs SESSION_COOKIE_NAME — see the former's
+  // own comment), so resolveUserFromSession below can no longer resolve
+  // a staff member's identity by accident the way it could when both
+  // sides shared one cookie — there's structurally no staff-session
+  // input it could read here. Previously this route also rejected a
+  // caller who happened to ALSO hold a staff cookie in the same browser
+  // (isBirrStaffSession(request)); that check is deliberately gone now —
+  // holding a valid Founder cookie is what a request to a Founder-only
+  // route needs, independent of whatever else that browser is signed
+  // into, which is exactly the point of no longer sharing one cookie.
   @Get("me")
   async me(@Req() request: Request) {
-    // The same birr_session cookie mechanism backs both Founder and
-    // BirrStaff identities (see common/auth/current-birr-staff.ts's own
-    // comment on this) — without this check, a signed-in Birr staff
-    // member browsing the merged app's founder route group would
-    // resolve here as "a real user, no founder yet," which the founder
-    // AppShell then renders as onboarding-step-1 UI. Same bug class
-    // already fixed on WaqfsController/FoundationsController; this route
-    // just hadn't been touched by that pass.
-    if (await isBirrStaffSession(request)) {
-      throw new UnauthorizedException("This session belongs to Birr staff, not a Founder.");
-    }
     const user = await resolveUserFromSession(request);
     return this.service.getSessionSummary(user.id);
   }
 
   @Get("me/onboarding-status")
   async myOnboardingStatus(@Req() request: Request) {
-    if (await isBirrStaffSession(request)) {
-      throw new UnauthorizedException("This session belongs to Birr staff, not a Founder.");
-    }
     const user = await resolveUserFromSession(request);
     return this.service.getOnboardingStatus(user.id);
   }
@@ -134,9 +131,6 @@ export class FoundersController {
   // access is different from being able to change it.
   @Get("me/members")
   async myMembers(@Req() request: Request) {
-    if (await isBirrStaffSession(request)) {
-      throw new UnauthorizedException("This session belongs to Birr staff, not a Founder.");
-    }
     const founder = await resolveFounderFromSession(request);
     return this.service.listMembers(founder.id);
   }
@@ -210,7 +204,7 @@ export class FoundersController {
   // don't fall through to a founder branch since none is legitimate here.
   @Get()
   async list(@Req() request: Request) {
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {
@@ -221,7 +215,7 @@ export class FoundersController {
 
   @Get(":id")
   async findById(@Param("id") id: string, @Req() request: Request) {
-    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+    if (!hasAnySessionCookie(request)) {
       throw new UnauthorizedException("Not signed in.");
     }
     if (!(await isBirrStaffSession(request))) {

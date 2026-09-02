@@ -1,5 +1,8 @@
+import { Logger } from "@nestjs/common";
 import { prisma } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
+
+const logger = new Logger("TrusteeLicenseExpiryScheduler");
 
 const EXPIRY_WARNING_WINDOW_DAYS = 30;
 
@@ -27,7 +30,7 @@ export function startTrusteeLicenseExpiryScheduler(notificationsService: Notific
 
   const tick = () => {
     checkExpiringLicenses(notificationsService).catch((err) => {
-      console.error("Trustee license expiry check failed:", err);
+      logger.error("Trustee license expiry check failed:", err instanceof Error ? err.stack : String(err));
     });
   };
 
