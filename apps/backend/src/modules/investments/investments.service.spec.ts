@@ -218,4 +218,103 @@ describe("InvestmentsService", () => {
       investmentIds.push(second.id);
     });
   });
+
+  // Regression coverage for the 2026-08-31 codebase audit finding:
+  // Investment has no currency field of its own (it inherits its waqf's
+  // corpusCurrency) — a prior version of assertWithinConcentrationLimit
+  // summed allocatedAmount across every waqf regardless of currency, so
+  // a SAR investment could silently blend into (and wrongly exhaust) a
+  // USD-denominated concentration limit.
+  describe("concentration limit — scoped to its own currency, not blended across currencies", () => {
+    let limitedCounterpartyId: string;
+    let usdWaqfId: string;
+    let sarWaqfId: string;
+
+    beforeAll(async () => {
+      const counterparty = await prisma.counterparty.create({
+        data: {
+          name: `Investments Fixture Currency Bank ${randomUUID()}`,
+          institutionType: "bank",
+          jurisdiction: "AE",
+          status: "active",
+          concentrationLimit: "1500",
+          concentrationLimitCurrency: "USD",
+        },
+      });
+      limitedCounterpartyId = counterparty.id;
+
+      const foundation = await prisma.foundation.create({ data: { name: "Investments Fixture Foundation (Currency)" } });
+      const [usdWaqf, sarWaqf] = await Promise.all([
+        prisma.waqf.create({
+          data: {
+            name: "Investments Fixture USD Waqf",
+            type: "investment",
+            jurisdiction: "AE",
+            foundationId: foundation.id,
+            corpusCurrency: "USD",
+          },
+        }),
+        prisma.waqf.create({
+          data: {
+            name: "Investments Fixture SAR Waqf",
+            type: "investment",
+            jurisdiction: "AE",
+            foundationId: foundation.id,
+            corpusCurrency: "SAR",
+          },
+        }),
+      ]);
+      usdWaqfId = usdWaqf.id;
+      sarWaqfId = sarWaqf.id;
+      waqfIds.push(usdWaqfId, sarWaqfId);
+      await Promise.all(
+        [
+          { id: usdWaqfId, currency: "USD" },
+          { id: sarWaqfId, currency: "SAR" },
+        ].map(({ id, currency }) =>
+          prisma.contribution.create({
+            data: {
+              waqfId: id,
+              amount: "5000",
+              currency,
+              provider: "paystack",
+              providerReference: `investments-spec-currency-${id}`,
+              status: "confirmed",
+            },
+          }),
+        ),
+      );
+    });
+
+    afterAll(async () => {
+      await prisma.counterparty.deleteMany({ where: { id: limitedCounterpartyId } });
+    });
+
+    test("a SAR investment doesn't count against a USD concentration limit, and vice versa", async () => {
+      // 1400 SAR through this counterparty — if this wrongly counted
+      // against the 1500 USD limit, the USD investment below would be
+      // rejected as "only 100 remaining" instead of succeeding at 1500.
+      const sarInvestment = await service.create(
+        { waqfId: sarWaqfId, name: "SAR Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "1400", counterpartyId: limitedCounterpartyId },
+        actorUserId,
+      );
+      investmentIds.push(sarInvestment.id);
+
+      const usdInvestment = await service.create(
+        { waqfId: usdWaqfId, name: "USD Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "1500", counterpartyId: limitedCounterpartyId },
+        actorUserId,
+      );
+      investmentIds.push(usdInvestment.id);
+
+      // Now genuinely at the USD limit — 1 more USD should be rejected,
+      // confirming the check still enforces same-currency exposure for
+      // real (this isn't a no-op that always passes).
+      await expect(
+        service.create(
+          { waqfId: usdWaqfId, name: "Should Be Rejected", instrumentType: "sukuk", allocatedAmount: "1", counterpartyId: limitedCounterpartyId },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
 });

@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { IsArray, IsOptional, IsString } from "class-validator";
-import { prisma } from "@birr/db";
+import { prisma, Prisma } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
 
@@ -54,7 +55,8 @@ export class FoundationsService {
     if (!input.purpose?.trim()) {
       throw new BadRequestException("purpose is required.");
     }
-    return prisma.$transaction(async (tx) => {
+
+    const run = async (tx: Prisma.TransactionClient) => {
       if (actor.type === "founder") {
         await assertFounderVerified(tx, actor.founderId);
       }
@@ -68,17 +70,32 @@ export class FoundationsService {
         throw new NotFoundException(`Unknown founder id(s): ${missing.join(", ")}`);
       }
 
-      const foundation = await tx.foundation.create({
-        data: {
-          name: input.name,
-          purpose: input.purpose,
-          jurisdiction: input.jurisdiction,
-        },
-      });
+      // Plain INSERT with no RETURNING — not tx.foundation.create(), which
+      // always compiles to INSERT ... RETURNING. Postgres re-checks a
+      // RETURNING row against the table's SELECT-relevant RLS policy (see
+      // founder_isolation's own comment on this table), and a brand-new
+      // Foundation can never pass that check yet: its only ownership link
+      // (foundation_founders) doesn't exist until the very next statement
+      // below. The policy's WITH CHECK(true) already lets a plain INSERT
+      // through regardless — it's specifically RETURNING's implicit
+      // visibility recheck a plain INSERT avoids. Found empirically
+      // (2026-08-31) the first time RLS was actually enforced by a
+      // non-superuser connection — see
+      // 20260831183000_fix_foundations_self_service_insert_rls's own
+      // comment.
+      const id = randomUUID();
+      await tx.$executeRaw`
+        INSERT INTO "foundations" ("id", "name", "purpose", "jurisdiction", "status", "createdAt", "updatedAt")
+        VALUES (${id}, ${input.name}, ${input.purpose}, ${input.jurisdiction ?? null}, 'active', now(), now())
+      `;
 
       await tx.foundationFounder.createMany({
-        data: input.founderIds.map((founderId) => ({ foundationId: foundation.id, founderId })),
+        data: input.founderIds.map((founderId) => ({ foundationId: id, founderId })),
       });
+
+      // Now that the ownership link exists, a plain read legitimately
+      // passes founder_isolation's USING clause.
+      const foundation = await tx.foundation.findUniqueOrThrow({ where: { id } });
 
       await tx.auditLog.create({
         data: {
@@ -92,7 +109,21 @@ export class FoundationsService {
       });
 
       return foundation;
-    });
+    };
+
+    // Routed through withFounderScope for the self-service founder path
+    // (2026-08-31 codebase audit finding) — the ownership enforcement
+    // above (founderIds is forced to just [actor.founderId] by the
+    // controller) was already correct, but without the RLS session var
+    // set, founder_isolation was a silent no-op on this write. Only
+    // meaningful for a real founder actor — the "system"/trusted-caller
+    // path can name multiple arbitrary founderIds (a joint Foundation),
+    // so there's no single founder to scope RLS to there, and that path
+    // was never founder-session-reachable to begin with.
+    if (actor.type === "founder") {
+      return withFounderScope(actor.founderId, run);
+    }
+    return prisma.$transaction(run);
   }
 
   findById(id: string) {

@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Get, NotFoundException, Post, Qu
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { Request } from "express";
 import { MessagesService, SendMessageInput } from "./messages.service";
+import { MAX_SIZE_BYTES as MAX_ATTACHMENT_SIZE_BYTES } from "./message-attachment-storage.service";
 import { isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { SESSION_COOKIE_NAME } from "../../common/auth/session";
@@ -17,8 +18,12 @@ import { Public } from "../../common/guards/public.decorator";
 export class MessagesController {
   constructor(private readonly service: MessagesService) {}
 
+  // maxCount + limits.fileSize match MessageAttachmentStorageService's own
+  // caps — without them, multer buffers an arbitrarily large/numerous
+  // upload into memory before that service's own checks ever run (2026
+  // -08-31 codebase audit finding).
   @Post()
-  @UseInterceptors(FilesInterceptor("attachments"))
+  @UseInterceptors(FilesInterceptor("attachments", 5, { limits: { fileSize: MAX_ATTACHMENT_SIZE_BYTES } }))
   async send(
     @Body() body: SendMessageInput,
     @UploadedFiles() attachments: Express.Multer.File[] | undefined,

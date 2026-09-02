@@ -40,18 +40,24 @@ export class MessagesService {
     private readonly notifications: NotificationsService,
   ) {}
 
+  // Founder branch routed through withFounderScope (2026-08-31 codebase
+  // audit finding) — the ownership check below was already correct on
+  // its own, but without the RLS session var set, founder_isolation was
+  // a silent no-op on this write. Not applicable to a birr_staff sender
+  // (no single founder to scope RLS to — staff can message any
+  // Foundation), so that branch keeps the plain, unscoped transaction.
   async send(input: SendMessageInput, sender: MessageSender, files: Express.Multer.File[]) {
-    if (sender.senderType === "founder_user") {
-      const foundation = await prisma.foundation.findFirst({
-        where: { id: input.foundationId, foundationFounders: { some: { founderId: sender.founderId } } },
-        select: { id: true },
-      });
-      if (!foundation) {
-        throw new NotFoundException(`Foundation "${input.foundationId}" not found.`);
+    const run = async (tx: Prisma.TransactionClient) => {
+      if (sender.senderType === "founder_user") {
+        const foundation = await tx.foundation.findFirst({
+          where: { id: input.foundationId, foundationFounders: { some: { founderId: sender.founderId } } },
+          select: { id: true },
+        });
+        if (!foundation) {
+          throw new NotFoundException(`Foundation "${input.foundationId}" not found.`);
+        }
       }
-    }
 
-    const message = await prisma.$transaction(async (tx) => {
       const created = await tx.message.create({
         data: { foundationId: input.foundationId, senderType: sender.senderType, senderUserId: sender.senderUserId, body: input.body },
       });
@@ -63,7 +69,10 @@ export class MessagesService {
         await tx.messageAttachment.create({ data: { messageId: created.id, ...saved } });
       }
       return tx.message.findUniqueOrThrow({ where: { id: created.id }, include: MESSAGE_INCLUDE });
-    });
+    };
+
+    const message =
+      sender.senderType === "founder_user" ? await withFounderScope(sender.founderId, run) : await prisma.$transaction(run);
 
     this.notifyRecipients(message, sender).catch((err) => {
       console.error(`Failed to notify recipients for message "${message.id}":`, err);

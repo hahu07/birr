@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize, formatDate } from "../../../../lib/format";
+import { useMarkNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Waqf } from "../../../../lib/ops-types";
 import { Alert, Badge, IconBriefcase, Skeleton } from "@birr/ui";
 import { LicenseStatusBanner } from "./LicenseStatusBanner";
@@ -61,6 +62,11 @@ export default function WaqfDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — covers
+  // waqf.needs_case_assignment, which links here.
+  useMarkNotificationsReadForEntity("Waqf", id);
 
   if (error) {
     return (

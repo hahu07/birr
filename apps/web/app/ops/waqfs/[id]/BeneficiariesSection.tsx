@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatDate, humanize } from "../../../../lib/format";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
+import { markNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Beneficiary, BeneficiaryNomination, WaqfCause } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
@@ -567,6 +568,15 @@ function NominationsQueue({ waqfId, onDecided }: { waqfId: string; onDecided: ()
   }, [load]);
 
   const pending = nominations?.filter((n) => n.status === "pending") ?? [];
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — this queue IS the content
+  // beneficiary_nomination.pending's linkUrl points to.
+  useEffect(() => {
+    pending.forEach((n) => markNotificationsReadForEntity("BeneficiaryNomination", n.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nominations]);
+
   if (!error && nominations !== null && pending.length === 0) return null;
 
   return (

@@ -43,8 +43,14 @@ describe("ComplianceReportsService", () => {
     waqfId = waqf.id;
     waqfIds.push(waqf.id);
 
+    // Any real governed_actions permission works here — the report just
+    // needs a GovernedAction fixture to assemble, not a specific
+    // permission's semantics. "waqf.create" was removed from seed data
+    // once waqf establishment became self-service (no longer a
+    // governed_actions concept at all — see CLAUDE.md), which silently
+    // broke this fixture; asset.dispose is a real governed permission.
     const permission = await prisma.permission.findUniqueOrThrow({
-      where: { key: "waqf.create" },
+      where: { key: "asset.dispose" },
     });
     permissionId = permission.id;
 

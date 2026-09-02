@@ -153,6 +153,33 @@ anywhere the system would need to represent jurisdiction-specific trustee
 licensing status, since that's a real constraint on which jurisdictions
 Birr can actually operate as Mutawalli in at a given time.
 
+**Update, 2026-09-01 — that constraint is jurisdiction-specific, not
+universal.** Birr today operates only as a non-profit registered in
+Nigeria, where there's no such thing as a trustee license that expires
+or a jurisdiction-scoped limitation on operating — the `TrusteeLicense`
+model's "unlicensed" status, surfaced identically for every jurisdiction
+regardless of whether one actually applies there, was flagging a
+compliance gap that isn't real for Nigeria's case. Raised directly with
+the owner as the system's own instruction above (flag jurisdiction-
+specific licensing) colliding with the concrete fact that not every
+jurisdiction has such a regime to begin with; the owner's direction was
+to keep the underlying model rather than delete it, since Birr may
+still end up trustee somewhere that does license/regulate trusteeship —
+deleting it would mean rebuilding it from scratch at that point.
+`CompliancePolicySet` (the existing per-jurisdiction registry Birr's own
+compliance/legal staff populate through the Ops Console) now carries a
+`requiresTrusteeLicense` boolean, defaulting to `true` so an
+unconfigured jurisdiction still gets flagged exactly as before — it
+takes an explicit staff decision through the Ops Console to mark a
+jurisdiction as not requiring one, never silent absence.
+`TrusteeLicensesService.statusForJurisdiction` returns a distinct
+`"not_required"` status (never blocking, same as every other status
+here) for a jurisdiction explicitly marked this way, and the expiry-
+check scheduler ignores any stray license row left in one. Nigeria
+itself isn't seeded with this automatically — that's still a real
+compliance/legal call for a human to make through the Ops Console, not
+something to hardcode from a chat instruction.
+
 ## Tech principles
 - Cloud-native, API-first (every feature needs an API before/alongside UI)
 - Security and privacy by design

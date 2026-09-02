@@ -1,5 +1,18 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "outDir": "dist" },
+  "compilerOptions": {
+    // CommonJS, not the base ESNext/Bundler config — apps/backend's
+    // compiled output plain-`require()`s this package (no bundler in
+    // between, unlike apps/web/services/agents). A `.ts` (or ESM `.js`)
+    // "main" hits Node's require(esm) interop, which silently drops any
+    // local `export const` that sits alongside this file's
+    // `export * from "@prisma/client"` (reproduced directly against
+    // Node's module loader — cjs-module-lexer fails to detect the local
+    // binding once a wildcard re-export is also present). Emitting real
+    // CommonJS sidesteps that interop path entirely.
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist"
+  },
   "include": ["src"]
 }

@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../../lib/api";
 import { formatDate } from "../../../../../lib/format";
+import { useMarkNotificationsReadForEntity } from "../../../../../lib/notifications";
 import type { Foundation } from "../../../../../lib/types";
 import { Alert, Button, Card, Skeleton } from "@birr/ui";
 
@@ -32,6 +33,11 @@ export default function FoundationDeedPage() {
       cancelled = true;
     };
   }, [params.id]);
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — covers foundation_deed.signed,
+  // which links here.
+  useMarkNotificationsReadForEntity("FoundationDeed", foundation?.foundationDeed?.id);
 
   return (
     <div className="mx-auto max-w-3xl">

@@ -107,6 +107,7 @@ export interface CauseImpactUpdate {
   metricValue: number | null;
   metricLabel: string | null;
   createdAt: string;
+  reportedByUser: { id: string; fullName: string };
 }
 
 // Shape of GET /cause-impact-updates with no waqfCauseId (a Founder
@@ -122,7 +123,12 @@ export interface CauseCategorySuggestion {
   description: string | null;
   status: "pending" | "approved" | "rejected";
   reviewNotes: string | null;
+  reviewedAt: string | null;
   createdAt: string;
+  proposedByFounder: { id: string; name: string };
+  proposedByUser: { id: string; fullName: string };
+  waqf: { id: string; name: string } | null;
+  reviewedByUser: { id: string; fullName: string } | null;
   resultingCategory: { id: string; name: string } | null;
 }
 

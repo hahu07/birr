@@ -1460,6 +1460,12 @@ enum TrusteeLicenseStatus {
 // this system's place to make unprompted; it surfaces as a flag
 // (WaqfsService.jurisdictionLicenseStatus, shown in the Ops Console) for
 // Birr staff to act on.
+//
+// Not every jurisdiction has a trustee-licensing regime to hold a
+// license in at all — see CompliancePolicySet.requiresTrusteeLicense's
+// own comment. A jurisdiction marked as not requiring one there reads
+// as "not_required" from TrusteeLicensesService.statusForJurisdiction
+// regardless of whether a row exists here, never "unlicensed".
 model TrusteeLicense {
   id                String               @id @default(uuid())
   jurisdiction      String
@@ -1486,14 +1492,27 @@ model TrusteeLicense {
 // real — same reasoning as Rasid's read_regulatory_sources stub (see
 // services/agents/src/agents/rasid.ts). Birr's own compliance/legal
 // staff populate this through the Ops Console; it starts empty.
+//
+// requiresTrusteeLicense — added 2026-09-01, at the owner's explicit,
+// informed decision: Birr today operates only as a Nigerian-registered
+// non-profit, where there is no such thing as a trustee license that
+// expires or a jurisdiction-limitation on operating — TrusteeLicense's
+// "unlicensed" status, treated uniformly as a compliance gap regardless
+// of jurisdiction, was a false alarm for that reality. Defaults to
+// `true` (conservative) so a jurisdiction with no explicit policy set
+// row yet still gets flagged, same as before this field existed — it
+// takes an explicit, informed staff decision through the Ops Console to
+// mark a jurisdiction as not requiring one, not silent absence. See
+// TrusteeLicensesService.statusForJurisdiction for how this is read.
 model CompliancePolicySet {
-  id            String   @id @default(uuid())
-  jurisdiction  String   @unique
-  frameworkName String
-  referenceUrl  String?
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                     String   @id @default(uuid())
+  jurisdiction           String   @unique
+  frameworkName          String
+  referenceUrl           String?
+  notes                  String?
+  requiresTrusteeLicense Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@map("compliance_policy_sets")
 }

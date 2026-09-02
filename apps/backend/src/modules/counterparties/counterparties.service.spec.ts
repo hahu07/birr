@@ -321,6 +321,42 @@ describe("CounterpartiesService", () => {
       expect(exposure.totalInvested.toString()).toBe("4000");
       expect(exposure.remaining?.toString()).toBe("6000");
     });
+
+    // Regression coverage for the 2026-08-31 codebase audit finding:
+    // Investment has no currency field of its own (it inherits its
+    // waqf's corpusCurrency) — a prior version summed allocatedAmount
+    // across every waqf regardless of currency, blending a SAR
+    // investment into a USD-denominated exposure figure.
+    test("excludes an Investment in a different currency than the concentration limit from totalInvested", async () => {
+      const counterparty = await service.register(
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        actorUserId,
+      );
+      counterpartyIds.push(counterparty.id);
+      await service.setConcentrationLimit(counterparty.id, { amount: "10000", currency: "USD" }, actorUserId);
+
+      const foundation = await prisma.foundation.create({ data: { name: "Counterparties Currency Exposure Fixture Foundation" } });
+      const [usdWaqf, sarWaqf] = await Promise.all([
+        prisma.waqf.create({
+          data: { name: "Counterparties Currency Exposure USD Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "USD" },
+        }),
+        prisma.waqf.create({
+          data: { name: "Counterparties Currency Exposure SAR Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "SAR" },
+        }),
+      ]);
+      await Promise.all([
+        prisma.investment.create({
+          data: { waqfId: usdWaqf.id, name: "USD Exposure Investment", instrumentType: "sukuk", allocatedAmount: "3000", counterpartyId: counterparty.id },
+        }),
+        prisma.investment.create({
+          data: { waqfId: sarWaqf.id, name: "SAR Exposure Investment", instrumentType: "sukuk", allocatedAmount: "9000", counterpartyId: counterparty.id },
+        }),
+      ]);
+
+      const exposure = await service.exposure(counterparty.id);
+      expect(exposure.totalInvested.toString()).toBe("3000");
+      expect(exposure.remaining?.toString()).toBe("7000");
+    });
   });
 
   describe("list()", () => {

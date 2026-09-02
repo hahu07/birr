@@ -13,7 +13,12 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
   // vector if ever served with a permissive Content-Type.
 };
 
-const MAX_SIZE_BYTES = 2 * 1024 * 1024;
+// Exported so the controller's FileInterceptor can enforce the same cap
+// at the multer layer (see founders.controller.ts) — without a multer
+// `limits.fileSize`, the whole request body gets buffered into memory
+// before this service's own size check ever runs, so the check alone
+// doesn't bound memory use under a large/repeated upload.
+export const MAX_SIZE_BYTES = 2 * 1024 * 1024;
 
 // dist/modules/foundations -> apps/backend/uploads/logos. Kept as a
 // plain local-disk write, not an S3/R2-style adapter — there's only one

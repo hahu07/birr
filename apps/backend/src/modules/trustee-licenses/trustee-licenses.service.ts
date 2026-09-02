@@ -188,8 +188,19 @@ export class TrusteeLicensesService {
    * "unlicensed" (not just an empty array) is the meaningful signal a
    * caller acts on: no active, non-expired license row exists for this
    * jurisdiction at all.
+   *
+   * "not_required" is a distinct signal from "unlicensed" — it means
+   * Birr's compliance/legal staff have explicitly recorded (via the
+   * jurisdiction's CompliancePolicySet) that trustee licensing isn't a
+   * regulated activity there at all, so an absent license row isn't a
+   * compliance gap. See CompliancePolicySet.requiresTrusteeLicense's own
+   * schema comment for why the default, absent that explicit record, is
+   * still "required" (conservative) rather than assumed not required.
    */
-  async statusForJurisdiction(jurisdiction: string): Promise<TrusteeLicenseStatus | "unlicensed"> {
+  async statusForJurisdiction(jurisdiction: string): Promise<TrusteeLicenseStatus | "unlicensed" | "not_required"> {
+    const policySet = await prisma.compliancePolicySet.findUnique({ where: { jurisdiction } });
+    if (policySet && !policySet.requiresTrusteeLicense) return "not_required";
+
     const license = await prisma.trusteeLicense.findFirst({
       where: { jurisdiction, status: "active" },
       orderBy: { updatedAt: "desc" },

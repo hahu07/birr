@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate, humanize } from "../../../lib/format";
+import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { ConflictOfInterestDeclaration } from "../../../lib/ops-types";
 import {
@@ -49,6 +50,13 @@ export default function ConflictOfInterestPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — covers coi.needs_review,
+  // coi.escalated, and coi.reviewed, all of which link here.
+  useEffect(() => {
+    declarations?.forEach((d) => markNotificationsReadForEntity("ConflictOfInterestDeclaration", d.id));
+  }, [declarations]);
 
   const query = search.trim().toLowerCase();
   const visibleDeclarations =

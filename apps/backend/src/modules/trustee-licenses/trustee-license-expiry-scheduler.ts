@@ -38,9 +38,21 @@ export function startTrusteeLicenseExpiryScheduler(notificationsService: Notific
 async function checkExpiringLicenses(notificationsService: NotificationsService): Promise<void> {
   const warningCutoff = new Date(Date.now() + EXPIRY_WARNING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-  const licenses = await prisma.trusteeLicense.findMany({
-    where: { status: "active", expiresAt: { not: null, lte: warningCutoff } },
-  });
+  const notRequiredJurisdictions = new Set(
+    (await prisma.compliancePolicySet.findMany({ where: { requiresTrusteeLicense: false }, select: { jurisdiction: true } })).map(
+      (p) => p.jurisdiction,
+    ),
+  );
+
+  // Filtered in JS, not the query itself — a stray license row left
+  // over in a jurisdiction since marked "no license required" (see
+  // CompliancePolicySet.requiresTrusteeLicense) shouldn't still page
+  // admins about it.
+  const licenses = (
+    await prisma.trusteeLicense.findMany({
+      where: { status: "active", expiresAt: { not: null, lte: warningCutoff } },
+    })
+  ).filter((license) => !notRequiredJurisdictions.has(license.jurisdiction));
   if (licenses.length === 0) return;
 
   const admins = await prisma.birrStaff.findMany({

@@ -10,12 +10,21 @@
 // still awaiting a Birr officer's maker-checker decision.
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
+import { useMarkNotificationsReadByTypeAndLink } from "../../../../lib/notifications";
 import type { DistributionCauseSummary } from "../../../../lib/types";
 import { Alert, Skeleton } from "@birr/ui";
+
+const DISTRIBUTION_NOTIFICATION_TYPES = ["distribution.approved", "distribution.paid", "distribution.payout_failed"];
 
 export function DistributionsSection({ waqfId }: { waqfId: string }) {
   const [summary, setSummary] = useState<DistributionCauseSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — this summary is the only
+  // Founder-facing content these notification types point to, since
+  // individual distribution rows are deliberately never shown here.
+  useMarkNotificationsReadByTypeAndLink(DISTRIBUTION_NOTIFICATION_TYPES, `/portfolio/${waqfId}`);
 
   useEffect(() => {
     let cancelled = false;

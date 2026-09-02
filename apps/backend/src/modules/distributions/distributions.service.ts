@@ -502,17 +502,23 @@ export class DistributionsService {
   // Prisma's groupBy can't span the Distribution -> Waqf relation, so
   // this is a plain fetch-then-reduce instead (founder-scale row counts
   // make that cheap) rather than the groupBy() platformSummary() uses.
+  // Routed through withFounderScope (2026-08-31 codebase audit finding)
+  // — the ownership scoping in the where-clause below was already
+  // correct on its own, but without the RLS session var set,
+  // founder_isolation was a silent no-op on this read.
   async founderSummary(
     founderId: string,
   ): Promise<{ waqfType: string; currency: string; totalAmount: Prisma.Decimal }[]> {
-    const rows = await prisma.distribution.findMany({
-      where: {
-        status: "paid",
-        deletedAt: null,
-        waqf: { foundation: { foundationFounders: { some: { founderId } } } },
-      },
-      select: { amount: true, currency: true, waqf: { select: { type: true } } },
-    });
+    const rows = await withFounderScope(founderId, (tx) =>
+      tx.distribution.findMany({
+        where: {
+          status: "paid",
+          deletedAt: null,
+          waqf: { foundation: { foundationFounders: { some: { founderId } } } },
+        },
+        select: { amount: true, currency: true, waqf: { select: { type: true } } },
+      }),
+    );
     const totals = new Map<string, Prisma.Decimal>();
     for (const row of rows) {
       const key = `${row.waqf.type}:${row.currency}`;

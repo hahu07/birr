@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { InvitationEmailAdapter, InvitationEmailContext } from "./invitation-email.adapter";
 import { SettingsService } from "../../../common/settings/settings.service";
 import { renderEmailTemplate } from "../../../common/email/notification-template";
+import { inRealDeployment, logDevEmailFallback } from "../../../common/email/dev-send-fallback";
 
 // Same lazy-client / SettingsService-first pattern as
 // founders/email/resend.adapter.ts — not consolidated into one shared
@@ -18,11 +19,7 @@ export class ResendInvitationEmailAdapter implements InvitationEmailAdapter {
 
   constructor(private readonly settings: SettingsService) {}
 
-  private async getResend(): Promise<Resend> {
-    const apiKey = await this.settings.get("resend", "API_KEY");
-    if (!apiKey) {
-      throw new Error("Resend API key is not configured.");
-    }
+  private async getResend(apiKey: string): Promise<Resend> {
     if (!this.client || apiKey !== this.cachedApiKey) {
       this.client = new Resend(apiKey);
       this.cachedApiKey = apiKey;
@@ -31,11 +28,19 @@ export class ResendInvitationEmailAdapter implements InvitationEmailAdapter {
   }
 
   async sendInvitationEmail(to: string, link: string, context: InvitationEmailContext): Promise<void> {
+    const apiKey = await this.settings.get("resend", "API_KEY");
     const from = await this.settings.get("resend", "FROM_ADDRESS");
-    if (!from) {
-      throw new Error("Resend from-address is not configured.");
+
+    // See dev-send-fallback.ts's own comment.
+    if (!apiKey || !from) {
+      if (inRealDeployment()) {
+        throw new Error(apiKey ? "Resend from-address is not configured." : "Resend API key is not configured.");
+      }
+      logDevEmailFallback("invitation email", to, `Accept invitation: ${link}`);
+      return;
     }
-    const resend = await this.getResend();
+
+    const resend = await this.getResend(apiKey);
     const surface = context.inviteeKind === "birr_staff" ? "Birr's Ops Console" : "the Birr Founder Portal";
     const { error } = await resend.emails.send({
       from,

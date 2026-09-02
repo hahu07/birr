@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsOptional, IsString } from "class-validator";
 import { prisma } from "@birr/db";
 
 export class UpsertCompliancePolicySetInput {
@@ -13,6 +13,14 @@ export class UpsertCompliancePolicySetInput {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Omitted defaults to `true` (schema default) on create, and leaves
+  // the existing value untouched on update — see this field's own
+  // schema comment for why the default is conservative rather than
+  // assuming no license is needed.
+  @IsOptional()
+  @IsBoolean()
+  requiresTrusteeLicense?: boolean;
 }
 
 @Injectable()

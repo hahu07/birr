@@ -72,13 +72,20 @@ export interface Waqf {
   waqfDeed?: { id: string; typedLegalName: string; deedText: string; signedAt: string } | null;
   // Present on GET /waqfs/:id only (not list()) — see
   // WaqfsService.withTrusteeLicenseStatus on the backend.
-  trusteeLicenseStatus?: TrusteeLicenseStatus | "unlicensed";
+  trusteeLicenseStatus?: JurisdictionLicenseStatus;
   // Present on GET /waqfs (list()) only — active causes registered/
   // selected for this waqf. See WaqfsService.list's _count include.
   causesCount?: number;
 }
 
 export type TrusteeLicenseStatus = "active" | "pending" | "suspended" | "expired";
+
+// What TrusteeLicensesService.statusForJurisdiction actually returns —
+// a superset of TrusteeLicenseStatus itself, since a jurisdiction can
+// also have no license row at all ("unlicensed") or be explicitly
+// exempt from needing one ("not_required" — see
+// CompliancePolicySet.requiresTrusteeLicense's own comment).
+export type JurisdictionLicenseStatus = TrusteeLicenseStatus | "unlicensed" | "not_required";
 
 export interface TrusteeLicense {
   id: string;
@@ -99,6 +106,7 @@ export interface CompliancePolicySet {
   frameworkName: string;
   referenceUrl: string | null;
   notes: string | null;
+  requiresTrusteeLicense: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -625,7 +633,7 @@ export interface ComplianceReport {
   governedActions: ComplianceReportGovernedAction[];
   auditLogs: ComplianceReportAuditLog[];
   policySet: CompliancePolicySet | null;
-  trusteeLicenseStatus: TrusteeLicenseStatus | "unlicensed";
+  trusteeLicenseStatus: JurisdictionLicenseStatus;
   generatedAt: string;
 }
 

@@ -25,9 +25,10 @@ import {
   DraftPurposeSuggestionInput,
 } from "./founders.service";
 import { WhatsAppVerificationService } from "./whatsapp/whatsapp-verification.service";
+import { MAX_SIZE_BYTES as MAX_LOGO_SIZE_BYTES } from "../foundations/logo-storage.service";
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
-import { setSessionCookie, clearSessionCookie, signSessionToken } from "../../common/auth/session";
+import { setSessionCookie, clearSessionCookie, signSessionToken, SESSION_COOKIE_NAME } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 class RequestWhatsAppOtpBody {
@@ -144,9 +145,12 @@ export class FoundersController {
   // Foundation + an optional logo, submitted together. multipart/form-data
   // via FileInterceptor; no `storage` option configured, so multer
   // defaults to memory storage (file.buffer, never touches disk before
-  // LogoStorageService validates it).
+  // LogoStorageService validates it). `limits.fileSize` matches
+  // LogoStorageService's own cap — without it, multer buffers the whole
+  // upload into memory before that service's size check ever runs (2026
+  // -08-31 codebase audit finding).
   @Post("establish")
-  @UseInterceptors(FileInterceptor("logo"))
+  @UseInterceptors(FileInterceptor("logo", { limits: { fileSize: MAX_LOGO_SIZE_BYTES } }))
   async establish(
     @Body() body: EstablishFounderAndFoundationInput,
     @UploadedFile() logo: Express.Multer.File | undefined,
@@ -198,13 +202,31 @@ export class FoundersController {
     }
   }
 
+  // Birr-staff only — unlike Foundations/Waqfs, a Founder has no "own
+  // scope" over the Founder roster itself (it isn't a list of things a
+  // Founder owns; it's Birr's client list). Same remediation pattern as
+  // the 2026-08-30 security audit fix on FoundationsController/
+  // WaqfsController: require a session cookie and a Birr-staff session,
+  // don't fall through to a founder branch since none is legitimate here.
   @Get()
-  list() {
+  async list(@Req() request: Request) {
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
+      throw new UnauthorizedException("This route is Birr-staff only.");
+    }
     return this.service.list();
   }
 
   @Get(":id")
-  async findById(@Param("id") id: string) {
+  async findById(@Param("id") id: string, @Req() request: Request) {
+    if (!request.cookies?.[SESSION_COOKIE_NAME]) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
+      throw new UnauthorizedException("This route is Birr-staff only.");
+    }
     const founder = await this.service.findById(id);
     if (!founder) throw new NotFoundException(`Founder "${id}" not found.`);
     return founder;

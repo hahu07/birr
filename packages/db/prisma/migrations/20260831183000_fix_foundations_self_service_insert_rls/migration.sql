@@ -1,0 +1,27 @@
+-- Birr — fixes a latent RLS policy bug on "foundations", found
+-- empirically (2026-08-31) the moment RLS was actually enforced for the
+-- first time (see 20260831180000_add_birr_app_runtime_role's own
+-- comment — every earlier test run connected as a superuser, which
+-- silently bypasses RLS entirely, so this was never really exercised).
+--
+-- CREATE POLICY ... USING (...) with no explicit WITH CHECK reuses the
+-- USING expression as the check for INSERT/UPDATE too (see PostgreSQL's
+-- CREATE POLICY docs). foundations' USING clause asks "does a
+-- foundation_founders row already link this foundation to the current
+-- founder?" — for a brand-new self-service Foundation
+-- (FoundationsService.create()'s founder-actor branch), that linking
+-- row is inserted in the very next statement of the same transaction,
+-- not before this one, so a newly-created foundation could never
+-- satisfy its own INSERT check: every self-service Foundation creation
+-- was rejected outright once RLS actually applied.
+--
+-- Fix: an explicit WITH CHECK (true) for INSERT/UPDATE. This doesn't
+-- weaken founder isolation — every SELECT/UPDATE-existing-row/DELETE
+-- still goes through the unchanged USING clause below, so a founder
+-- still can't read, modify, or delete another founder's existing
+-- Foundation. What RLS was never actually meant to prevent is creating
+-- a brand-new one in the first place — the app itself (not RLS) is
+-- what guarantees a new foundation's foundation_founders row always
+-- names the founder actually creating it (FoundationsService.create()'s
+-- own ownership-safe input handling).
+ALTER POLICY "founder_isolation" ON "foundations" WITH CHECK (true);

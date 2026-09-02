@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate, humanize } from "../../../lib/format";
 import { useFounderSession } from "../../../lib/founder-session";
+import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import type { FounderMembership, Invitation } from "../../../lib/types";
 import { Alert, Badge, Button, EmptyState, IconUsers, Input, Skeleton } from "@birr/ui";
 
@@ -40,6 +41,15 @@ export default function TeamPage() {
 
   const isPrimaryContact = members?.some((m) => m.user.id === user?.id && m.permissionLevel === "primary_contact");
   const pendingInvitations = invitations?.filter((i) => i.status === "pending") ?? [];
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — covers founder_membership.joined
+  // and invitation.sent, both of which link here.
+  useEffect(() => {
+    members?.forEach((m) => markNotificationsReadForEntity("FounderMembership", m.id));
+    pendingInvitations.forEach((i) => markNotificationsReadForEntity("Invitation", i.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members, invitations]);
 
   return (
     <div>

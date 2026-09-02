@@ -43,8 +43,8 @@ const GRADIENTS: Record<NonNullable<AuthSplitLayoutProps["tone"]>, string> = {
  */
 export function AuthSplitLayout({ children, eyebrow, headline, subcopy, tone = "founder" }: AuthSplitLayoutProps) {
   return (
-    <div className="flex min-h-screen bg-white">
-      <div className="flex w-full flex-col justify-center px-6 py-16 sm:px-12 lg:w-1/2 lg:px-20">
+    <div className="flex h-screen bg-white">
+      <div className="flex w-full flex-col justify-center overflow-y-auto px-6 py-8 sm:px-12 lg:w-1/2 lg:px-20">
         <div className="mx-auto w-full max-w-sm">{children}</div>
       </div>
 

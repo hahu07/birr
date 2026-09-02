@@ -18,6 +18,14 @@ name: birr
 # generating real values.
 
 services:
+  # POSTGRES_USER here becomes a Postgres SUPERUSER (the official image's
+  # own bootstrap behavior, not something this compose file opts into) —
+  # used only for running migrations (DDL) below, never by the running
+  # app. See 20260831180000_add_birr_app_runtime_role/migration.sql's own
+  # comment: a superuser unconditionally bypasses Row-Level Security and
+  # the audit_logs REVOKE, so connecting the app as "birr" would silently
+  # disable both of CLAUDE.md's DB-level fiduciary controls. The app
+  # connects as "birr_app" instead — see the backend service below.
   postgres:
     image: postgres:16-alpine
     environment:
@@ -70,7 +78,11 @@ services:
     ports:
       - "4000:4000"
     environment:
-      DATABASE_URL: postgresql://birr:birr_dev_password@postgres:5432/birr?schema=public
+      # Non-superuser runtime role (see postgres service's own comment
+      # above and the migration that creates it) — deliberately NOT the
+      # same "birr" role migrate/seed use, so RLS and the audit_logs
+      # REVOKE actually apply to every query the running app makes.
+      DATABASE_URL: postgresql://birr_app:birr_app_dev_password@postgres:5432/birr?schema=public
       BACKEND_PORT: 4000
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET}
@@ -132,5 +144,8 @@ volumes:
 #     whatever's in a developer's local .env.
 #   - Rotate packages/db/prisma/seed.ts's bootstrap platform_admin
 #     password immediately after first login.
+#   - Rotate both "birr" and "birr_app"'s Postgres passwords (ALTER ROLE
+#     ... WITH PASSWORD) — never reuse "birr_dev_password"/
+#     "birr_app_dev_password" outside a developer's own machine.
 #   - This compose file has no TLS termination — put a real reverse
 #     proxy/load balancer in front in any non-local environment.

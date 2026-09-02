@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate, humanize } from "../../../lib/format";
+import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { CompliancePolicySet, TrusteeLicense, TrusteeLicenseStatus } from "../../../lib/ops-types";
 import {
@@ -85,6 +86,13 @@ function TrusteeLicensesSection({ isAdmin }: { isAdmin: boolean }) {
     load();
   }, [load]);
 
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — covers trustee_license.expiring,
+  // which links here.
+  useEffect(() => {
+    licenses?.forEach((l) => markNotificationsReadForEntity("TrusteeLicense", l.id));
+  }, [licenses]);
+
   return (
     <section>
       <SectionHeader
@@ -114,7 +122,7 @@ function TrusteeLicensesSection({ isAdmin }: { isAdmin: boolean }) {
       {!error && licenses !== null && licenses.length === 0 && (
         <EmptyState
           title="No trustee licenses recorded yet"
-          description="Every jurisdiction Birr operates a waqf in should have a license status here."
+          description="Every jurisdiction where trustee licensing is actually required should have a status here — a jurisdiction marked 'no license required' below doesn't need one."
         />
       )}
 
@@ -287,6 +295,7 @@ function CompliancePolicySetsSection({ isAdmin }: { isAdmin: boolean }) {
             <TableRow>
               <TableHeaderCell>Jurisdiction</TableHeaderCell>
               <TableHeaderCell>Framework</TableHeaderCell>
+              <TableHeaderCell>Trustee license</TableHeaderCell>
               <TableHeaderCell>Reference</TableHeaderCell>
               <TableHeaderCell>Notes</TableHeaderCell>
             </TableRow>
@@ -296,6 +305,11 @@ function CompliancePolicySetsSection({ isAdmin }: { isAdmin: boolean }) {
               <TableRow key={p.id}>
                 <TableCell className="font-medium text-slate-900">{p.jurisdiction}</TableCell>
                 <TableCell className="text-slate-500">{p.frameworkName}</TableCell>
+                <TableCell>
+                  <Badge tone={p.requiresTrusteeLicense ? "neutral" : "success"}>
+                    {p.requiresTrusteeLicense ? "Required" : "Not required"}
+                  </Badge>
+                </TableCell>
                 <TableCell className="text-slate-500">
                   {p.referenceUrl ? (
                     <a
@@ -327,6 +341,7 @@ function CompliancePolicySetForm({ onSaved }: { onSaved: () => void }) {
   const [frameworkName, setFrameworkName] = useState("");
   const [referenceUrl, setReferenceUrl] = useState("");
   const [notes, setNotes] = useState("");
+  const [requiresTrusteeLicense, setRequiresTrusteeLicense] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -341,6 +356,7 @@ function CompliancePolicySetForm({ onSaved }: { onSaved: () => void }) {
           frameworkName,
           referenceUrl: referenceUrl || undefined,
           notes: notes || undefined,
+          requiresTrusteeLicense,
         }),
       });
       onSaved();
@@ -379,6 +395,15 @@ function CompliancePolicySetForm({ onSaved }: { onSaved: () => void }) {
           <label className="text-sm font-medium text-slate-700">Notes (optional)</label>
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
+        <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={requiresTrusteeLicense}
+            onChange={(e) => setRequiresTrusteeLicense(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+          />
+          Trustee license required here
+        </label>
         <Button type="submit" disabled={submitting}>
           {submitting ? "Saving…" : "Save"}
         </Button>

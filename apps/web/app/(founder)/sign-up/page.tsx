@@ -75,7 +75,7 @@ export default function SignUpPage() {
         </Link>
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+      <form onSubmit={handleSubmit} className="mt-5 space-y-2.5">
         {submitError && (
           <Alert tone="danger" title="Couldn't create your account">
             {submitError}
@@ -83,29 +83,29 @@ export default function SignUpPage() {
         )}
 
         <div>
-          <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-slate-700">
+          <label htmlFor="fullName" className="mb-1 block text-sm font-medium text-slate-700">
             Full name
           </label>
           <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
         </div>
         <div>
-          <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
+          <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
             Email
           </label>
           <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <p className="mt-1.5 text-xs text-slate-500">
+          <p className="mt-1 text-xs leading-snug text-slate-500">
             We'll send a verification link here — you'll need to confirm it before establishing a Foundation.
           </p>
         </div>
         <div>
-          <label htmlFor="username" className="mb-1.5 block text-sm font-medium text-slate-700">
+          <label htmlFor="username" className="mb-1 block text-sm font-medium text-slate-700">
             Username
           </label>
           <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
-          <p className="mt-1.5 text-xs text-slate-500">3-32 characters: letters, numbers, underscore, period, or hyphen.</p>
+          <p className="mt-1 text-xs leading-snug text-slate-500">3-32 characters: letters, numbers, underscore, period, or hyphen.</p>
         </div>
         <div>
-          <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700">
+          <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
             Password
           </label>
           <PasswordInput
@@ -114,10 +114,10 @@ export default function SignUpPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          <p className="mt-1.5 text-xs text-slate-500">At least 8 characters.</p>
+          <p className="mt-1 text-xs leading-snug text-slate-500">At least 8 characters.</p>
         </div>
         <div>
-          <label htmlFor="confirmPassword" className="mb-1.5 block text-sm font-medium text-slate-700">
+          <label htmlFor="confirmPassword" className="mb-1 block text-sm font-medium text-slate-700">
             Confirm password
           </label>
           <PasswordInput

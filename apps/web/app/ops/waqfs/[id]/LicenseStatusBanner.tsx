@@ -7,18 +7,22 @@
 // at, with a direct link to go fix it.
 import Link from "next/link";
 import { Alert } from "@birr/ui";
-import type { TrusteeLicenseStatus } from "../../../../lib/ops-types";
+import type { JurisdictionLicenseStatus } from "../../../../lib/ops-types";
 
 export function LicenseStatusBanner({
   status,
   jurisdiction,
 }: {
-  status: TrusteeLicenseStatus | "unlicensed" | undefined;
+  status: JurisdictionLicenseStatus | undefined;
   jurisdiction: string;
 }) {
-  if (!status || status === "active") return null;
+  // "not_required" alongside "active" — a jurisdiction Birr's
+  // compliance/legal staff have explicitly recorded as not needing a
+  // trustee license (see CompliancePolicySet.requiresTrusteeLicense) is
+  // the normal case here, not something to flag.
+  if (!status || status === "active" || status === "not_required") return null;
 
-  const copy: Record<Exclude<TrusteeLicenseStatus | "unlicensed", "active">, string> = {
+  const copy: Record<Exclude<JurisdictionLicenseStatus, "active" | "not_required">, string> = {
     unlicensed: `Birr has no recorded trustee license for jurisdiction "${jurisdiction}".`,
     pending: `Birr's trustee license for "${jurisdiction}" is still pending.`,
     suspended: `Birr's trustee license for "${jurisdiction}" is suspended.`,

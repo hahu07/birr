@@ -121,7 +121,12 @@ export class WaqfsService {
    * Foundation just by guessing/enumerating a foundationId.
    */
   async createSelfService(input: CreateWaqfInput & { founderId: string }) {
-    const waqf = await prisma.$transaction(async (tx) => {
+    // Routed through withFounderScope (2026-08-31 codebase audit finding)
+    // — the ownership check just below was already correct on its own,
+    // but without the RLS session var set, the founder_isolation policy
+    // was a silent no-op on this write, leaving only one of the two
+    // independent enforcement layers CLAUDE.md calls for actually engaged.
+    const waqf = await withFounderScope(input.founderId, async (tx) => {
       await assertFounderVerified(tx, input.founderId);
 
       const foundation = await tx.foundation.findFirst({
@@ -197,7 +202,9 @@ export class WaqfsService {
    * commitment) that this method deliberately does not support.
    */
   async increaseCorpusTarget(waqfId: string, founderId: string, newCorpusAmount: string) {
-    return prisma.$transaction(async (tx) => {
+    // Routed through withFounderScope — see createSelfService's own
+    // comment on this same fix (2026-08-31 codebase audit finding).
+    return withFounderScope(founderId, async (tx) => {
       await assertFounderVerified(tx, founderId);
 
       const waqf = await tx.waqf.findFirst({
@@ -267,9 +274,21 @@ export class WaqfsService {
    * every time instead of denormalizing onto the Waqf row. Additive
    * field, same posture as withTrusteeLicenseStatus above.
    */
-  private async attachAmountRaised<T extends { id: string }>(waqf: T) {
+  private async attachAmountRaised<T extends { id: string; corpusCurrency: string | null }>(waqf: T) {
+    // Scoped to the waqf's declared corpus currency (when set — every
+    // waqf created through createSelfService has one) so a stray
+    // off-currency Contribution can never blend into this total the way
+    // a plain unscoped sum would. ContributionsService.initiate() now
+    // rejects a mismatched currency on every payment, not just the
+    // first, so this filter should be a no-op in practice — kept as an
+    // independent second check on the read side, same reasoning as the
+    // corpus-floor currency check it mirrors.
     const result = await prisma.contribution.aggregate({
-      where: { waqfId: waqf.id, status: "confirmed" },
+      where: {
+        waqfId: waqf.id,
+        status: "confirmed",
+        ...(waqf.corpusCurrency ? { currency: waqf.corpusCurrency } : {}),
+      },
       _sum: { amount: true },
     });
     return { ...waqf, amountRaised: (result._sum.amount ?? new Prisma.Decimal(0)).toString() };

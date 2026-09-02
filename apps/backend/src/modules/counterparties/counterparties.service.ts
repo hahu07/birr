@@ -387,12 +387,25 @@ export class CounterpartiesService {
       orderBy: { name: "asc" },
     });
 
-    const grouped = await prisma.investment.groupBy({
-      by: ["counterpartyId"],
+    // A plain groupBy can't scope by each counterparty's own
+    // concentrationLimitCurrency (that needs a join through to each
+    // Investment's waqf, which groupBy doesn't support) — fetched as
+    // rows instead and reduced in JS. Same currency-scoping reasoning as
+    // exposure()/InvestmentsService.assertWithinConcentrationLimit: an
+    // unscoped sum would blend currencies into one meaningless number.
+    const investments = await prisma.investment.findMany({
       where: { counterpartyId: { in: counterparties.map((c) => c.id) }, status: "active" },
-      _sum: { allocatedAmount: true },
+      select: { counterpartyId: true, allocatedAmount: true, waqf: { select: { corpusCurrency: true } } },
     });
-    const totalInvestedById = new Map(grouped.map((g) => [g.counterpartyId, g._sum.allocatedAmount ?? new Prisma.Decimal(0)]));
+    const concentrationLimitCurrencyById = new Map(counterparties.map((c) => [c.id, c.concentrationLimitCurrency]));
+    const totalInvestedById = new Map<string, Prisma.Decimal>();
+    for (const i of investments) {
+      if (!i.counterpartyId) continue;
+      const limitCurrency = concentrationLimitCurrencyById.get(i.counterpartyId);
+      // Excludes only a KNOWN mismatch — see exposure()'s own comment.
+      if (limitCurrency && i.waqf.corpusCurrency && i.waqf.corpusCurrency !== limitCurrency) continue;
+      totalInvestedById.set(i.counterpartyId, (totalInvestedById.get(i.counterpartyId) ?? new Prisma.Decimal(0)).plus(i.allocatedAmount));
+    }
 
     return counterparties.map((c) => ({
       ...c,
@@ -410,11 +423,27 @@ export class CounterpartiesService {
     const counterparty = await prisma.counterparty.findUnique({ where: { id } });
     if (!counterparty) throw new NotFoundException(`Counterparty "${id}" not found.`);
 
-    const result = await prisma.investment.aggregate({
+    // Scoped to concentrationLimitCurrency, same reasoning as
+    // InvestmentsService.assertWithinConcentrationLimit — Investment has
+    // no currency field of its own (it inherits its waqf's
+    // corpusCurrency), so an unscoped sum would blend currencies into one
+    // meaningless raw number the way a prior version of this did.
+    const investments = await prisma.investment.findMany({
       where: { counterpartyId: id, status: "active" },
-      _sum: { allocatedAmount: true },
+      select: { allocatedAmount: true, waqf: { select: { corpusCurrency: true } } },
     });
-    const totalInvested = result._sum.allocatedAmount ?? new Prisma.Decimal(0);
+    // Excludes only a KNOWN currency mismatch (both currencies present
+    // and different) — see InvestmentsService.assertWithinConcentrationLimit's
+    // own comment on why a waqf with no corpusCurrency recorded counts
+    // toward this total rather than being excluded from it.
+    const totalInvested = investments
+      .filter(
+        (i) =>
+          !counterparty.concentrationLimitCurrency ||
+          !i.waqf.corpusCurrency ||
+          i.waqf.corpusCurrency === counterparty.concentrationLimitCurrency,
+      )
+      .reduce((sum, i) => sum.plus(i.allocatedAmount), new Prisma.Decimal(0));
 
     return {
       counterpartyId: id,

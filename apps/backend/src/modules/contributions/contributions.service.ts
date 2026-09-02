@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { prisma, Prisma, ContributionProvider } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
+import { withFounderScope } from "../../common/db/founder-scope";
 import { AssetsService } from "../assets/assets.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
@@ -56,9 +57,16 @@ export class ContributionsService {
     // all until now.
     await assertFounderVerified(prisma, input.founderId);
 
-    const waqf = await prisma.waqf.findFirst({
-      where: { id: input.waqfId, foundation: { foundationFounders: { some: { founderId: input.founderId } } } },
-    });
+    // Routed through withFounderScope (2026-08-31 codebase audit finding)
+    // — the ownership check below was already correct on its own, but
+    // without the RLS session var set, founder_isolation was a silent
+    // no-op on this read, leaving only one of the two independent
+    // enforcement layers CLAUDE.md calls for actually engaged.
+    const waqf = await withFounderScope(input.founderId, (tx) =>
+      tx.waqf.findFirst({
+        where: { id: input.waqfId, foundation: { foundationFounders: { some: { founderId: input.founderId } } } },
+      }),
+    );
     if (!waqf) {
       throw new ForbiddenException("This waqf fund doesn't belong to you.");
     }
@@ -71,6 +79,21 @@ export class ContributionsService {
     const minimum = await prisma.contributionMinimum.findUnique({ where: { currency: input.currency } });
     if (!minimum) {
       throw new BadRequestException(`No minimum contribution is configured for currency "${input.currency}".`);
+    }
+
+    // The corpus (and every contribution toward it) is only meaningful in
+    // the currency it was declared in — comparing amounts across
+    // currencies would mean comparing raw numbers with no FX conversion,
+    // silently wrong either way it could go, and `WaqfsService`'s
+    // amountRaised sum assumes every confirmed Contribution shares this
+    // one currency. Checked on every contribution, not just the first —
+    // a prior version of this check only ran when confirmedCount === 0,
+    // so a second/later top-up in a different currency slipped through
+    // unchecked and blended into amountRaised.
+    if (waqf.corpusCurrency && input.currency !== waqf.corpusCurrency) {
+      throw new BadRequestException(
+        `This waqf's corpus was declared in ${waqf.corpusCurrency} — contributions must be made in the same currency.`,
+      );
     }
 
     // A waqf's very first payment is floored by a percentage of its
@@ -99,15 +122,6 @@ export class ContributionsService {
         where: { waqfId: input.waqfId, status: "confirmed" },
       });
       if (confirmedCount === 0) {
-        // The corpus and its floor are only meaningful in the currency
-        // it was declared in — comparing a payment amount against it
-        // across currencies would be comparing raw numbers with no FX
-        // conversion, silently wrong either way it could go.
-        if (waqf.corpusCurrency && input.currency !== waqf.corpusCurrency) {
-          throw new BadRequestException(
-            `This waqf's corpus was declared in ${waqf.corpusCurrency} — the first payment must be made in the same currency.`,
-          );
-        }
         if (waqf.fundingPlan === "lump_sum") {
           firstPaymentPercent = new Prisma.Decimal(100);
         } else {
@@ -146,16 +160,38 @@ export class ContributionsService {
       payerEmail: input.payerEmail,
     });
 
-    const contribution = await prisma.contribution.create({
-      data: {
-        id,
-        waqfId: input.waqfId,
-        amount: input.amount,
-        currency: input.currency,
-        provider: input.provider,
-        providerReference: paymentResult.providerReference,
-        status: "pending",
-      },
+    // Audited in the same transaction as every other governed-entity
+    // create() in this codebase — a prior version created this row
+    // standalone with no audit_logs entry at all. The external
+    // createPayment() call above stays outside the transaction
+    // deliberately (a DB transaction shouldn't hold locks across a
+    // network round-trip to a payment provider). Routed through
+    // withFounderScope for the same RLS reason as the ownership check
+    // above.
+    const contribution = await withFounderScope(input.founderId, async (tx) => {
+      const contribution = await tx.contribution.create({
+        data: {
+          id,
+          waqfId: input.waqfId,
+          amount: input.amount,
+          currency: input.currency,
+          provider: input.provider,
+          providerReference: paymentResult.providerReference,
+          status: "pending",
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          waqfId: input.waqfId,
+          actorType: "founder_user",
+          actorFounderId: input.founderId,
+          action: "contribution.initiated",
+          entityType: "Contribution",
+          entityId: contribution.id,
+          after: contribution as any,
+        },
+      });
+      return contribution;
     });
 
     return { contribution, clientPayload: paymentResult.clientPayload };
@@ -196,7 +232,26 @@ export class ContributionsService {
     }
 
     if (result.status === "failed") {
-      const failed = await prisma.contribution.update({ where: { id: contribution.id }, data: { status: "failed" } });
+      // Transactional + audited, same as the confirmed path below — a
+      // prior version of this left a declined/reversed payment with zero
+      // audit trail of when or why it failed, so a disputed payment ("I
+      // have a bank receipt showing this cleared") had nothing to
+      // reconcile against but the current row state.
+      const failed = await prisma.$transaction(async (tx) => {
+        const failed = await tx.contribution.update({ where: { id: contribution.id }, data: { status: "failed" } });
+        await tx.auditLog.create({
+          data: {
+            waqfId: contribution.waqfId,
+            actorType: "system",
+            action: "contribution.failed",
+            entityType: "Contribution",
+            entityId: failed.id,
+            before: contribution as any,
+            after: failed as any,
+          },
+        });
+        return failed;
+      });
       this.notifyContributionOutcome(contribution.waqfId, "failed", failed).catch((err) => {
         console.error(`Failed to notify on failed contribution "${failed.id}":`, err);
       });
@@ -326,13 +381,19 @@ export class ContributionsService {
   // the foundationFounders join. Returns null (not throw) when the waqf
   // isn't found or isn't theirs — same indistinguishable-from-404
   // convention as every other founder-scoped read in this codebase.
+  // Routed through withFounderScope (2026-08-31 codebase audit finding)
+  // — the ownership check below was already correct on its own, but
+  // without the RLS session var set, founder_isolation was a silent
+  // no-op on this read.
   async listForWaqf(waqfId: string, founderId: string) {
-    const waqf = await prisma.waqf.findFirst({
-      where: { id: waqfId, foundation: { foundationFounders: { some: { founderId } } } },
-      select: { id: true },
+    return withFounderScope(founderId, async (tx) => {
+      const waqf = await tx.waqf.findFirst({
+        where: { id: waqfId, foundation: { foundationFounders: { some: { founderId } } } },
+        select: { id: true },
+      });
+      if (!waqf) return null;
+      return tx.contribution.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" } });
     });
-    if (!waqf) return null;
-    return prisma.contribution.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" } });
   }
 
   // Ops Console — Birr staff need to see the actual payment record
@@ -369,12 +430,16 @@ export class ContributionsService {
   // Founder Portal's own Overview page — confirmed-only total raised
   // across every waqf this founder has established (via the same
   // foundationFounders join listForWaqf() uses), grouped by currency.
+  // Routed through withFounderScope — see listForWaqf's own comment on
+  // this same fix (2026-08-31 codebase audit finding).
   async founderSummary(founderId: string): Promise<{ currency: string; totalAmount: Prisma.Decimal }[]> {
-    const grouped = await prisma.contribution.groupBy({
-      by: ["currency"],
-      where: { status: "confirmed", waqf: { foundation: { foundationFounders: { some: { founderId } } } } },
-      _sum: { amount: true },
-    });
+    const grouped = await withFounderScope(founderId, (tx) =>
+      tx.contribution.groupBy({
+        by: ["currency"],
+        where: { status: "confirmed", waqf: { foundation: { foundationFounders: { some: { founderId } } } } },
+        _sum: { amount: true },
+      }),
+    );
     return grouped.map((g) => ({ currency: g.currency, totalAmount: g._sum.amount ?? new Prisma.Decimal(0) }));
   }
 }

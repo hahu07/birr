@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Founder-facing and Ops Console surfaces are merged into this one
@@ -12,9 +14,14 @@ const nextConfig = {
   output: "standalone",
   // Without this, Turbopack infers the workspace root by walking up for
   // the nearest lockfile and can land on an unrelated one outside this
-  // repo, which crashes the dev server.
+  // repo, which crashes the dev server. fileURLToPath (not URL.pathname
+  // — that leaves a malformed leading slash before the drive letter on
+  // Windows, e.g. "/C:/Users/...", which itself crashed Turbopack with
+  // "Invalid distDirRoot: '.next' ... should not navigate out of the
+  // projectPath") is the cross-platform-correct way to turn a file: URL
+  // back into a real OS path.
   turbopack: {
-    root: new URL("../..", import.meta.url).pathname,
+    root: fileURLToPath(new URL("../..", import.meta.url)),
   },
 };
 export default nextConfig;

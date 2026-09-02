@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatDate, humanizePermissionKey } from "../../../../lib/format";
+import { markNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { WaqfGovernanceActivity } from "../../../../lib/types";
 import { Alert, Badge, Skeleton } from "@birr/ui";
 
@@ -22,6 +23,10 @@ export function GovernanceActivitySection({ waqfId }: { waqfId: string }) {
     apiFetchJson<WaqfGovernanceActivity[]>(`/governed-actions?waqfId=${waqfId}`)
       .then((data) => {
         if (!cancelled) setActivity(data);
+        // Fix for the notification read-state gap (see
+        // lib/notifications.ts's own comment) — covers
+        // governed_action.decided, which links to this waqf's page.
+        data.forEach((a) => markNotificationsReadForEntity("GovernedAction", a.id));
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");

@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate, humanize } from "../../../lib/format";
+import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { CauseCategory, CauseCategorySuggestion } from "../../../lib/ops-types";
 import {
@@ -522,6 +523,15 @@ function CauseSuggestionsQueue({ isAdmin, onApproved }: { isAdmin: boolean; onAp
   }, [load]);
 
   const pending = suggestions?.filter((s) => s.status === "pending") ?? [];
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — this queue IS the content
+  // cause_suggestion.pending's linkUrl points to.
+  useEffect(() => {
+    pending.forEach((s) => markNotificationsReadForEntity("CauseCategorySuggestion", s.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestions]);
+
   if (!error && suggestions !== null && pending.length === 0) return null;
 
   return (

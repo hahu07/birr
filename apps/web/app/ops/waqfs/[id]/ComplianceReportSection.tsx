@@ -33,6 +33,8 @@ const LICENSE_TONE: Record<ComplianceReport["trusteeLicenseStatus"], "success" |
   suspended: "warning",
   expired: "danger",
   unlicensed: "danger",
+  // Not a compliance gap — see CompliancePolicySet.requiresTrusteeLicense.
+  not_required: "success",
 };
 
 const GOVERNED_ACTION_STATUS_TONE: Record<

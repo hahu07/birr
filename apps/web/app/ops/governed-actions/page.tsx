@@ -8,6 +8,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { agentNickname, formatDate, humanize, humanizePermissionKey } from "../../../lib/format";
+import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { GovernedAction } from "../../../lib/ops-types";
 import {
@@ -84,6 +85,16 @@ export default function GovernedActionsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment): this queue IS the content
+  // governed_action.proposed's linkUrl points to — an officer viewing it
+  // here should mark that notification read the same way opening a
+  // message thread already does for message.received, not only via the
+  // bell dropdown.
+  useEffect(() => {
+    actions?.forEach((action) => markNotificationsReadForEntity("GovernedAction", action.id));
+  }, [actions]);
 
   // Derived from the already-fetched queue, not a separate fetch: how
   // many of today's pending decisions originate from an AI agent maker

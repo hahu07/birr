@@ -14,7 +14,11 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
   // this allowlist later is a one-line change here.
 };
 
-const MAX_SIZE_BYTES = 10 * 1024 * 1024; // documents run bigger than a 2MB logo
+// Exported so the controller's FilesInterceptor can enforce the same cap
+// at the multer layer (see messages.controller.ts) — see
+// LogoStorageService's own comment on why the app-layer check alone
+// doesn't bound memory use.
+export const MAX_SIZE_BYTES = 10 * 1024 * 1024; // documents run bigger than a 2MB logo
 
 // dist/modules/messages -> apps/backend/uploads/message-attachments.
 // Same plain local-disk convention as LogoStorageService — see that

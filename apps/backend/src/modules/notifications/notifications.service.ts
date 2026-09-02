@@ -171,4 +171,23 @@ export class NotificationsService {
       data: { readAt: new Date() },
     });
   }
+
+  /**
+   * Marks every unread notification pointing at one specific entity as
+   * read, for the caller's own notifications only. This is the generic
+   * fix for a bug class first found (and fixed one-off, per-type) on
+   * `message.received`: a notification's target content could be viewed
+   * directly (not through the bell dropdown) without ever marking
+   * `readAt`, leaving the unread badge stuck forever. Rather than
+   * reimplementing that fix per notification type, every page that
+   * renders a governed/financial/administrative entity directly calls
+   * this once, scoped to the entity(ies) it actually rendered — see each
+   * frontend call site for which relatedEntityType it uses.
+   */
+  async markReadForEntity(recipientUserId: string, relatedEntityType: string, relatedEntityId: string): Promise<void> {
+    await prisma.notification.updateMany({
+      where: { recipientUserId, relatedEntityType, relatedEntityId, readAt: null },
+      data: { readAt: new Date() },
+    });
+  }
 }

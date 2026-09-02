@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { prisma, Prisma, BeneficiaryKind, PayoutProvider } from "@birr/db";
+import { withFounderScope } from "../../common/db/founder-scope";
 import { NotificationsService } from "../notifications/notifications.service";
 import { BankDetailsInput } from "../beneficiaries/beneficiaries.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
@@ -97,18 +98,22 @@ export class BeneficiaryNominationsService {
    * metadata, not itself a fiduciary act" reasoning already established
    * for CauseCategorySuggestion, which this mirrors closely.
    */
+  // Routed through withFounderScope (2026-08-31 codebase audit finding)
+  // — the ownership check below was already correct on its own, but
+  // without the RLS session var set, founder_isolation was a silent
+  // no-op on this write.
   async propose(input: ProposeBeneficiaryNominationInput, founderId: string, userId: string) {
-    const waqf = await prisma.waqf.findFirst({
-      where: { id: input.waqfId, foundation: { foundationFounders: { some: { founderId } } } },
-    });
-    if (!waqf) throw new BadRequestException(`Waqf "${input.waqfId}" does not belong to you.`);
+    const nomination = await withFounderScope(founderId, async (tx) => {
+      const waqf = await tx.waqf.findFirst({
+        where: { id: input.waqfId, foundation: { foundationFounders: { some: { founderId } } } },
+      });
+      if (!waqf) throw new BadRequestException(`Waqf "${input.waqfId}" does not belong to you.`);
 
-    const cause = await prisma.waqfCause.findUnique({ where: { id: input.causeId } });
-    if (!cause || cause.waqfId !== input.waqfId) {
-      throw new BadRequestException(`Cause "${input.causeId}" does not belong to waqf "${input.waqfId}".`);
-    }
+      const cause = await tx.waqfCause.findUnique({ where: { id: input.causeId } });
+      if (!cause || cause.waqfId !== input.waqfId) {
+        throw new BadRequestException(`Cause "${input.causeId}" does not belong to waqf "${input.waqfId}".`);
+      }
 
-    const nomination = await prisma.$transaction(async (tx) => {
       const { bankDetails, ...rest } = input;
       const nomination = await tx.beneficiaryNomination.create({
         data: {
@@ -344,12 +349,16 @@ export class BeneficiaryNominationsService {
   // bank details for someone else doesn't mean they get to read them
   // back afterward, consistent with the "propose-and-confirm only, no
   // read-back" convention this feature already follows.
+  // Routed through withFounderScope — see propose()'s own comment on this
+  // same fix (2026-08-31 codebase audit finding).
   async listForFounder(waqfId: string, founderId: string) {
-    const nominations = await prisma.beneficiaryNomination.findMany({
-      where: { waqfId, proposedByFounderId: founderId },
-      orderBy: { createdAt: "desc" },
-      include: NOMINATION_INCLUDE,
-    });
+    const nominations = await withFounderScope(founderId, (tx) =>
+      tx.beneficiaryNomination.findMany({
+        where: { waqfId, proposedByFounderId: founderId },
+        orderBy: { createdAt: "desc" },
+        include: NOMINATION_INCLUDE,
+      }),
+    );
     return nominations.map(({ bankDetailsEncrypted, ...rest }) => rest);
   }
 }

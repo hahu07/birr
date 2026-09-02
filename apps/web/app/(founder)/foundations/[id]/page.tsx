@@ -15,6 +15,7 @@ import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatDate } from "../../../../lib/format";
 import { useFounderSession } from "../../../../lib/founder-session";
+import { markNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Foundation, FounderMembership, Invitation } from "../../../../lib/types";
 import { Alert, Badge, Button, EmptyState, IconLandmark, Skeleton } from "@birr/ui";
 import { InviteCoFounderForm } from "./InviteCoFounderForm";
@@ -55,6 +56,17 @@ export default function FoundationDetailPage() {
   const isPrimaryContact = members?.some((m) => m.user.id === user?.id && m.permissionLevel === "primary_contact");
   const pendingCoFounderInvitations =
     invitations?.filter((i) => i.status === "pending" && i.inviteeKind === "co_founder" && i.foundationId === foundationId) ?? [];
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — covers
+  // foundation.co_founder_joined, whose relatedEntityId is this same
+  // "foundationId:founderId" composite key (see InvitationsService's own
+  // notify() call).
+  useEffect(() => {
+    (foundation?.foundationFounders ?? []).forEach((ff) =>
+      markNotificationsReadForEntity("FoundationFounder", `${foundationId}:${ff.founder.id}`),
+    );
+  }, [foundation, foundationId]);
 
   return (
     <div>

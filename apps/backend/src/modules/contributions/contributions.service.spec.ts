@@ -263,6 +263,50 @@ describe("ContributionsService", () => {
     ).rejects.toThrow(/same currency/);
   });
 
+  // Regression coverage for the 2026-08-31 codebase audit finding: the
+  // currency check previously only ran when confirmedCount === 0, so a
+  // second (top-up) payment in a different currency than the declared
+  // corpus went completely unchecked and silently blended into
+  // WaqfsService's amountRaised sum. The fix moved the check outside the
+  // "first payment" gate so it applies to every contribution.
+  test("initiate() rejects a top-up (non-first) payment in a different currency than the declared corpus", async () => {
+    const waqf = await prisma.waqf.create({
+      data: {
+        name: "Contributions Spec Top-Up Currency Mismatch Waqf",
+        type: "asset",
+        jurisdiction: "AE",
+        foundationId,
+        fundingPlan: "installment",
+        corpusAmount: "10000",
+        corpusCurrency: "USD",
+      },
+    });
+    waqfIds.push(waqf.id);
+
+    const first = await service.initiate({
+      waqfId: waqf.id,
+      amount: "2500.00",
+      currency: "USD",
+      provider: "stripe",
+      founderId,
+    });
+    contributionIds.push(first.contribution.id);
+    stripeFake.nextWebhookResult = { providerReference: first.contribution.id, status: "confirmed" };
+    const confirmed = await service.handleWebhook("stripe", Buffer.from("{}"), {});
+    expect(confirmed?.status).toBe("confirmed");
+    if (confirmed?.assetId) assetIds.push(confirmed.assetId);
+
+    await expect(
+      service.initiate({
+        waqfId: waqf.id,
+        amount: "100.00",
+        currency: "EUR",
+        provider: "stripe",
+        founderId,
+      }),
+    ).rejects.toThrow(/same currency/);
+  });
+
   test("initiate() rejects when the founder's primary contact hasn't verified email + WhatsApp yet", async () => {
     const unverifiedUser = await prisma.user.create({
       data: { email: `unverified-${Date.now()}@example.test`, fullName: "Unverified Contact" },
@@ -310,6 +354,27 @@ describe("ContributionsService", () => {
 
     expect(result.contribution.status).toBe("pending");
     expect(result.contribution.providerReference).toBe(result.contribution.id);
+  });
+
+  // Regression coverage for the 2026-08-31 codebase audit finding: this
+  // creation previously wrote no audit_logs row at all, unlike every
+  // other governed-entity create() in this codebase.
+  test("initiate() writes an audit_logs row for the new pending Contribution", async () => {
+    const result = await service.initiate({
+      waqfId,
+      amount: "500.00",
+      currency: "USD",
+      provider: "stripe",
+      founderId,
+    });
+    contributionIds.push(result.contribution.id);
+
+    const logs = await prisma.auditLog.findMany({
+      where: { entityId: result.contribution.id, action: "contribution.initiated" },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].actorType).toBe("founder_user");
+    expect(logs[0].actorFounderId).toBe(founderId);
   });
 
   test("handleWebhook() rejects an invalid signature and makes no state changes", async () => {
@@ -405,6 +470,14 @@ describe("ContributionsService", () => {
 
     const waqf = await prisma.waqf.findUnique({ where: { id: freshWaqf.id } });
     expect((waqf as Waqf).status).toBe("draft");
+
+    // Regression coverage for the 2026-08-31 codebase audit finding: a
+    // declined/reversed payment previously flipped status to "failed"
+    // with zero audit trail of when or why.
+    const logs = await prisma.auditLog.findMany({ where: { entityId: failed!.id, action: "contribution.failed" } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].before).toMatchObject({ status: "pending" });
+    expect(logs[0].after).toMatchObject({ status: "failed" });
   });
 
   test("handleWebhook() is idempotent — replaying a confirmed webhook doesn't double-create an Asset", async () => {

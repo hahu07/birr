@@ -9,7 +9,8 @@
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate } from "../../../lib/format";
-import type { PortfolioCauseImpactUpdate } from "../../../lib/types";
+import { markNotificationsReadForEntity } from "../../../lib/notifications";
+import type { CauseCategorySuggestion, PortfolioCauseImpactUpdate } from "../../../lib/types";
 import { Alert, EmptyState, IconCheckCircle, Input, Skeleton, StatCard } from "@birr/ui";
 
 export default function ImpactPage() {
@@ -22,10 +23,36 @@ export default function ImpactPage() {
     apiFetchJson<PortfolioCauseImpactUpdate[]>("/cause-impact-updates")
       .then((data) => {
         if (!cancelled) setUpdates(data);
+        // Fix for the notification read-state gap (see
+        // lib/notifications.ts's own comment). cause_impact_update.logged's
+        // linkUrl actually points to /portfolio/{waqfId}, but this page
+        // renders the exact same CauseImpactUpdate rows (aggregated across
+        // every waqf) — viewing the entity here is just as real a "viewed
+        // it" as viewing it on the per-waqf page would be.
+        data.forEach((u) => markNotificationsReadForEntity("CauseImpactUpdate", u.id));
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");
       });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment). cause_suggestion.reviewed
+  // links here (there's nowhere more specific to send a founder once
+  // their own suggestion is decided), even though this page otherwise
+  // has nothing to do with CauseCategorySuggestion — fetched purely to
+  // mark those notifications read, not for display.
+  useEffect(() => {
+    let cancelled = false;
+    apiFetchJson<CauseCategorySuggestion[]>("/cause-category-suggestions")
+      .then((data) => {
+        if (cancelled) return;
+        data.filter((s) => s.status !== "pending").forEach((s) => markNotificationsReadForEntity("CauseCategorySuggestion", s.id));
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };

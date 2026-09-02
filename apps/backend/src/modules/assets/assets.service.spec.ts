@@ -9,6 +9,8 @@ describe("AssetsService", () => {
 
   let waqfId: string;
   let actorUserId: string;
+  let founderId: string;
+  let otherFounderId: string;
 
   beforeAll(async () => {
     // Fixture User/BirrStaff not cleaned up in afterAll — same reasoning
@@ -30,6 +32,15 @@ describe("AssetsService", () => {
     });
     waqfId = waqf.id;
     waqfIds.push(waqf.id);
+
+    // A second, unrelated Founder for listForFounder()'s own isolation
+    // test below — confirms a founder can never read another founder's
+    // assets by guessing/enumerating a waqfId.
+    const founder = await prisma.founder.create({ data: { name: "Assets Fixture Founder", kind: "institution" } });
+    founderId = founder.id;
+    await prisma.foundationFounder.create({ data: { foundationId: foundation.id, founderId } });
+    const otherFounder = await prisma.founder.create({ data: { name: "Assets Fixture Other Founder", kind: "institution" } });
+    otherFounderId = otherFounder.id;
   });
 
   afterAll(async () => {
@@ -69,6 +80,29 @@ describe("AssetsService", () => {
       action: "asset.created",
       actorType: "system",
       actorUserId: null,
+    });
+  });
+
+  // Regression coverage for the 2026-08-31 codebase audit finding:
+  // listForFounder() had no test at all, unlike its sibling
+  // WaqfCausesService.listForFounder/InvestmentsService.list — a
+  // regression dropping the ownership WHERE clause or RLS binding here
+  // would have gone undetected.
+  describe("listForFounder()", () => {
+    test("returns the waqf's own assets for the founder that owns it", async () => {
+      const asset = await service.create(
+        { waqfId, name: "Founder-Scoped Fixture Asset", category: "cash", estimatedValue: "75" },
+        { actorType: "birr_staff", actorUserId },
+      );
+      assetIds.push(asset.id);
+
+      const result = await service.listForFounder(waqfId, founderId);
+      expect(result?.map((a) => a.id)).toContain(asset.id);
+    });
+
+    test("returns null for a founder who doesn't own the waqf (isolation)", async () => {
+      const result = await service.listForFounder(waqfId, otherFounderId);
+      expect(result).toBeNull();
     });
   });
 });

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
+import { markNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Contribution, Waqf } from "../../../../lib/types";
 import {
   Alert,
@@ -41,6 +42,10 @@ export function ContributionsSection({ waqf, onCorpusIncreased }: { waqf: Waqf; 
     apiFetchJson<Contribution[]>(`/contributions?waqfId=${waqf.id}`)
       .then((data) => {
         if (!cancelled) setContributions(data);
+        // Fix for the notification read-state gap (see
+        // lib/notifications.ts's own comment) — this table is the only
+        // Founder-facing content contribution.confirmed/.failed point to.
+        data.forEach((c) => markNotificationsReadForEntity("Contribution", c.id));
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");

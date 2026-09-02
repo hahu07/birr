@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { VerificationEmailAdapter } from "./verification-email.adapter";
 import { SettingsService } from "../../../common/settings/settings.service";
 import { renderEmailTemplate } from "../../../common/email/notification-template";
+import { inRealDeployment, logDevEmailFallback } from "../../../common/email/dev-send-fallback";
 
 /**
  * Lazy client construction, same reasoning as StripeAdapter — the Resend
@@ -20,11 +21,7 @@ export class ResendVerificationEmailAdapter implements VerificationEmailAdapter 
 
   constructor(private readonly settings: SettingsService) {}
 
-  private async getResend(): Promise<Resend> {
-    const apiKey = await this.settings.get("resend", "API_KEY");
-    if (!apiKey) {
-      throw new Error("Resend API key is not configured.");
-    }
+  private async getResend(apiKey: string): Promise<Resend> {
     if (!this.client || apiKey !== this.cachedApiKey) {
       this.client = new Resend(apiKey);
       this.cachedApiKey = apiKey;
@@ -33,11 +30,22 @@ export class ResendVerificationEmailAdapter implements VerificationEmailAdapter 
   }
 
   async sendVerificationEmail(to: string, link: string): Promise<void> {
+    const apiKey = await this.settings.get("resend", "API_KEY");
     const from = await this.settings.get("resend", "FROM_ADDRESS");
-    if (!from) {
-      throw new Error("Resend from-address is not configured.");
+
+    // See dev-send-fallback.ts's own comment — a real deployment still
+    // fails loudly (unchanged from before this fallback existed);
+    // outside one, log the link a real email would have carried rather
+    // than blocking local development on live Resend credentials.
+    if (!apiKey || !from) {
+      if (inRealDeployment()) {
+        throw new Error(apiKey ? "Resend from-address is not configured." : "Resend API key is not configured.");
+      }
+      logDevEmailFallback("verification email", to, `Verify email: ${link}`);
+      return;
     }
-    const resend = await this.getResend();
+
+    const resend = await this.getResend(apiKey);
     const { error } = await resend.emails.send({
       from,
       to,

@@ -14,6 +14,7 @@ import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatDate, humanize } from "../../../../lib/format";
 import { STATUS_BADGE_BG, STATUS_ICON, STATUS_TONE } from "../../../../lib/portfolio";
+import { useMarkNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Waqf } from "../../../../lib/types";
 import { Alert, Badge, Card, DetailGrid, Skeleton } from "@birr/ui";
 import { ContributionsSection } from "./ContributionsSection";
@@ -41,6 +42,11 @@ export default function WaqfFundDetailPage() {
     setError(null);
     load();
   }, [load]);
+
+  // Fix for the notification read-state gap (see
+  // lib/notifications.ts's own comment) — covers waqf.activated and
+  // trustee_license.status_changed, both of which link here.
+  useMarkNotificationsReadForEntity("Waqf", waqf?.id);
 
   return (
     <div className="mx-auto max-w-4xl">

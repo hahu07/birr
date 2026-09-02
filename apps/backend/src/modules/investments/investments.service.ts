@@ -74,7 +74,7 @@ export class InvestmentsService {
     }
 
     await this.assertWithinRaised(input.waqfId, new Prisma.Decimal(input.allocatedAmount), tx);
-    await this.assertWithinConcentrationLimit(counterparty, new Prisma.Decimal(input.allocatedAmount), tx);
+    await this.assertWithinConcentrationLimit(counterparty, new Prisma.Decimal(input.allocatedAmount), waqf.corpusCurrency, tx);
 
     const investment = await tx.investment.create({ data: input });
     await tx.auditLog.create({
@@ -102,13 +102,19 @@ export class InvestmentsService {
     newAllocatedAmount: Prisma.Decimal | number | string,
     tx: Prisma.TransactionClient,
   ) {
-    const investment = await tx.investment.findUnique({ where: { id } });
+    const investment = await tx.investment.findUnique({ where: { id }, include: { waqf: { select: { corpusCurrency: true } } } });
     if (!investment) throw new NotFoundException(`Investment "${id}" not found.`);
     await this.assertWithinRaised(investment.waqfId, new Prisma.Decimal(newAllocatedAmount), tx, id);
     if (investment.counterpartyId) {
       const counterparty = await tx.counterparty.findUnique({ where: { id: investment.counterpartyId } });
       if (counterparty) {
-        await this.assertWithinConcentrationLimit(counterparty, new Prisma.Decimal(newAllocatedAmount), tx, id);
+        await this.assertWithinConcentrationLimit(
+          counterparty,
+          new Prisma.Decimal(newAllocatedAmount),
+          investment.waqf.corpusCurrency,
+          tx,
+          id,
+        );
       }
     }
     return tx.investment.update({
@@ -133,7 +139,22 @@ export class InvestmentsService {
     tx: Prisma.TransactionClient,
     excludeInvestmentId?: string,
   ): Promise<void> {
-    const raised = await tx.contribution.aggregate({ where: { waqfId, status: "confirmed" }, _sum: { amount: true } });
+    // Scoped to the waqf's declared corpus currency, same reasoning as
+    // WaqfsService.attachAmountRaised — Investment.allocatedAmount has no
+    // currency field of its own, so this ceiling implicitly assumes every
+    // confirmed Contribution counted here shares one currency. Without
+    // this filter, a stray off-currency Contribution would inflate (or
+    // deflate) the raw number this gate compares real money-movement
+    // against.
+    const waqf = await tx.waqf.findUnique({ where: { id: waqfId }, select: { corpusCurrency: true } });
+    const raised = await tx.contribution.aggregate({
+      where: {
+        waqfId,
+        status: "confirmed",
+        ...(waqf?.corpusCurrency ? { currency: waqf.corpusCurrency } : {}),
+      },
+      _sum: { amount: true },
+    });
     const amountRaised = raised._sum.amount ?? new Prisma.Decimal(0);
 
     const others = await tx.investment.findMany({
@@ -164,12 +185,28 @@ export class InvestmentsService {
    * own re-check convention.
    */
   private async assertWithinConcentrationLimit(
-    counterparty: { id: string; name: string; concentrationLimit: Prisma.Decimal | null },
+    counterparty: { id: string; name: string; concentrationLimit: Prisma.Decimal | null; concentrationLimitCurrency: string | null },
     additionalAmount: Prisma.Decimal,
+    additionalAmountCurrency: string | null,
     tx: Prisma.TransactionClient,
     excludeInvestmentId?: string,
   ): Promise<void> {
     if (!counterparty.concentrationLimit) return;
+    const limitCurrency = counterparty.concentrationLimitCurrency;
+    // The limit is denominated in one currency — Investment itself has no
+    // currency field (see this model's own schema comment), it inherits
+    // its waqf's corpusCurrency. Only skip/exclude on a KNOWN mismatch
+    // (both currencies present and different) — a waqf with no
+    // corpusCurrency recorded is treated as possibly the same currency,
+    // not excluded, since under-counting real exposure against a risk
+    // ceiling is the more dangerous failure direction than over-counting
+    // it (a null corpusCurrency shouldn't be a way to invest around this
+    // limit unchecked). No FX conversion exists anywhere in this
+    // codebase, so a *known* different currency genuinely has no
+    // meaningful ceiling to compare against here.
+    if (limitCurrency && additionalAmountCurrency && additionalAmountCurrency !== limitCurrency) {
+      return;
+    }
 
     const others = await tx.investment.findMany({
       where: {
@@ -177,9 +214,11 @@ export class InvestmentsService {
         status: "active",
         ...(excludeInvestmentId ? { id: { not: excludeInvestmentId } } : {}),
       },
-      select: { allocatedAmount: true },
+      select: { allocatedAmount: true, waqf: { select: { corpusCurrency: true } } },
     });
-    const alreadyInvested = others.reduce((sum, i) => sum.plus(i.allocatedAmount), new Prisma.Decimal(0));
+    const alreadyInvested = others
+      .filter((i) => !limitCurrency || !i.waqf.corpusCurrency || i.waqf.corpusCurrency === limitCurrency)
+      .reduce((sum, i) => sum.plus(i.allocatedAmount), new Prisma.Decimal(0));
 
     if (alreadyInvested.plus(additionalAmount).gt(counterparty.concentrationLimit)) {
       const available = counterparty.concentrationLimit.minus(alreadyInvested);
