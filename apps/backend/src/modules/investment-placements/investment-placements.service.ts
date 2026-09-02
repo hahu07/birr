@@ -108,8 +108,21 @@ export class InvestmentPlacementsService {
         },
       });
 
+      // Sorted by waqfId — InvestmentsService.createOne() below takes a
+      // SELECT ... FOR UPDATE lock on each leg's own waqf row (added for
+      // the same TOCTOU reasons as assertWithinRaised's own comment).
+      // Without a canonical order here, two concurrent placement creates
+      // targeting an overlapping set of waqfs in different
+      // caller-submitted orders could each hold one waqf's lock while
+      // waiting on the other's — a real Postgres deadlock, not just a
+      // slow retry. Iterating in one fixed order (regardless of the
+      // order the client submitted allocations in) means every
+      // transaction acquires these locks in the same relative sequence,
+      // which is what actually rules that out.
+      const sortedAllocations = [...input.allocations].sort((a, b) => a.waqfId.localeCompare(b.waqfId));
+
       const investments = [];
-      for (const allocation of input.allocations) {
+      for (const allocation of sortedAllocations) {
         const investment = await this.investmentsService.createOne(
           tx,
           {
