@@ -1,9 +1,15 @@
-# Typecheck, backend tests, a full build, and a dependency audit on
-# every push/PR to main. No lint job — nothing in this repo has a
-# `lint` script wired up yet (turbo.json declares the task, but every
-# package.json's own script is missing), so a lint step here would just
-# silently pass without checking anything; better to leave it out than
-# fake coverage.
+# Typecheck, lint, backend tests (with a coverage floor), frontend tests,
+# a migration-drift check, a full build, and a dependency audit on every
+# push/PR to main.
+#
+# 2026-09-08: web-test added — apps/web now has a real Vitest + React
+# Testing Library suite (see apps/web/vitest.config.mts), starting with
+# the governed-actions approval screen's two fiduciary-UX fixes.
+#
+# 2026-09-08: lint added — every workspace now has a real `lint` script
+# (flat-config ESLint, see the root eslint.config.base.mjs and each
+# workspace's own eslint.config.mjs) instead of turbo's long-declared but
+# unwired `lint` task silently doing nothing.
 #
 # Every command below was run and verified locally before being written
 # here (turbo run typecheck, the Jest suite against a real Postgres,
@@ -45,6 +51,67 @@ jobs:
       # apps/backend/Dockerfile's own comment on this.
       - run: pnpm --filter @birr/db exec prisma generate
       - run: pnpm typecheck
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # apps/backend's eslint.config.mjs enables a type-aware rule
+      # (no-floating-promises), which needs the generated Prisma client
+      # to resolve @birr/db's types — same reason typecheck needs this.
+      - run: pnpm --filter @birr/db exec prisma generate
+      - run: pnpm lint
+
+  migration-drift:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: birr
+          POSTGRES_PASSWORD: birr_dev_password
+          POSTGRES_DB: birr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U birr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # A separate, empty database purely as scratch space for Prisma to
+      # replay the migration history into before diffing it against
+      # schema.prisma — never touched by the app, distinct from the
+      # `birr` database `test`'s own job migrates for real.
+      - run: |
+          PGPASSWORD=birr_dev_password psql -h localhost -U birr -d birr -c "CREATE DATABASE birr_shadow;"
+      # Non-zero exit means schema.prisma was edited without a matching
+      # migration, or a migration file was edited after being committed
+      # — the DB and the migrations/ directory no longer agree on what
+      # the schema actually is.
+      - run: |
+          pnpm --filter @birr/db exec prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url postgresql://birr:birr_dev_password@localhost:5432/birr_shadow \
+            --exit-code
 
   test:
     runs-on: ubuntu-latest
@@ -102,9 +169,28 @@ jobs:
       # founder-isolation-rls.spec.ts assert nothing real: every query
       # would see every row regardless of whether the RLS policy is
       # correct, wrong, or entirely missing.
-      - run: pnpm --filter @birr/backend test
+      # --coverage enforces jest.config.js's coverageThreshold — a real,
+      # measured floor (see that file's own comment), not an invented one.
+      - run: pnpm --filter @birr/backend test -- --coverage
         env:
           DATABASE_URL: postgresql://birr_app:birr_app_dev_password@localhost:5432/birr?schema=public
+
+  web-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Vitest + React Testing Library — jsdom-based, no Postgres/backend
+      # needed (every API call the tested components make is mocked at
+      # the lib/api.ts boundary).
+      - run: pnpm --filter @birr/web test
 
   build:
     runs-on: ubuntu-latest

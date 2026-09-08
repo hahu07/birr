@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # One entry per workspace that carries its own package.json — pnpm
+  # workspaces don't need a special ecosystem value; Dependabot detects
+  # the pnpm-lock.yaml at the repo root and resolves each directory's
+  # dependencies against it. Weekly, matching this repo's own pace —
+  # nothing here deploys continuously today, so daily would just be
+  # noise nobody's watching.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/apps/backend"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/packages/db"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/packages/ui"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/services/agents"
+    schedule:
+      interval: "weekly"
+  # GitHub Actions themselves (actions/checkout, pnpm/action-setup, etc.
+  # in ci.yml) are a dependency too — same drift risk as any npm package.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

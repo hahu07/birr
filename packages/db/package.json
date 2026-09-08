@@ -10,6 +10,7 @@
     "migrate": "prisma migrate dev",
     "seed": "prisma db seed",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "backfill:foundations": "tsx scripts/backfill-foundations-and-causes.ts"
   },
   "prisma": {
