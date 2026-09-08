@@ -9,6 +9,7 @@ import {
   resolveFounderTeammateUserIds,
   resolveFounderRecipientUserIdsForFoundation,
 } from "../../common/notifications/resolve-founder-recipients";
+import { withFounderScope } from "../../common/db/founder-scope";
 
 const INVITATION_VALIDITY_DAYS = 7;
 const MIN_PASSWORD_LENGTH = 8;
@@ -495,26 +496,32 @@ export class InvitationsService {
   }
 
   // Founder-Portal — a primary contact's own view of who they've
-  // invited to their Foundation, pending or otherwise. No RLS-scoped
-  // withFounderScope needed here (unlike the entity read paths
-  // elsewhere): Invitation carries no waqf/founder-owned business data,
-  // just an email/role/status, and the WHERE clauses below are already
-  // exact-match on founderId/foundationId, which the controller derives
-  // from the session, never from client input.
+  // invited to their Foundation, pending or otherwise.
+  //
+  // Now wrapped in withFounderScope (2026-09-08 audit fix, reversing this
+  // method's own prior reasoning): invitations was the one founder
+  // -reachable table left out of the founder_isolation RLS expansion, with
+  // no comment marking that as deliberate — "the WHERE clause below is
+  // already exact-match" was true but meant RLS had nothing to actually
+  // catch if a future edit to this WHERE clause ever got it wrong. This
+  // costs nothing today and gives that second layer something real to
+  // enforce.
   //
   // co_founder invitations have no founderId (there's no existing
   // Founder to point at), so they'd otherwise never show up here for
   // the inviting founder — surfaced instead via the Foundation(s) this
   // founder is actually attached to.
   async listForFounder(founderId: string) {
-    const foundationFounders = await prisma.foundationFounder.findMany({
-      where: { founderId },
-      select: { foundationId: true },
-    });
-    const foundationIds = foundationFounders.map((ff) => ff.foundationId);
-    return prisma.invitation.findMany({
-      where: { OR: [{ founderId }, { foundationId: { in: foundationIds } }] },
-      orderBy: { createdAt: "desc" },
+    return withFounderScope(founderId, async (tx) => {
+      const foundationFounders = await tx.foundationFounder.findMany({
+        where: { founderId },
+        select: { foundationId: true },
+      });
+      const foundationIds = foundationFounders.map((ff) => ff.foundationId);
+      return tx.invitation.findMany({
+        where: { OR: [{ founderId }, { foundationId: { in: foundationIds } }] },
+        orderBy: { createdAt: "desc" },
+      });
     });
   }
 }

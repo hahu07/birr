@@ -30,7 +30,7 @@ describe("WaqfProceedsService", () => {
     waqfIds.push(waqf.id);
 
     const investment = await prisma.investment.create({
-      data: { waqfId, name: "Fixture Sukuk", instrumentType: "sukuk", allocatedAmount: "10000" },
+      data: { waqfId, name: "Fixture Sukuk", instrumentType: "sukuk", allocatedAmount: "10000", currency: "USD" },
     });
     investmentId = investment.id;
   });

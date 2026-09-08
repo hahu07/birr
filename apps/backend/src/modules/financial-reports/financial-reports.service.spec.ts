@@ -33,7 +33,6 @@ describe("FinancialReportsService", () => {
 
   let projectWaqfId: string;
   let projectCauseId: string;
-  let projectBeneficiaryId: string;
   let founderId: string;
   let otherFounderId: string;
   let staffUserId: string;
@@ -93,8 +92,6 @@ describe("FinancialReportsService", () => {
     const beneficiary = await prisma.beneficiary.create({
       data: { waqfId: projectWaqfId, causeId: cause.id, name: "Fixture Beneficiary", eligibilityCriteria: "N/A" },
     });
-    projectBeneficiaryId = beneficiary.id;
-
     // Direct insert, not through approve()/initiateDisbursement — this
     // spec is about FinancialReportsService's own composition, not the
     // payout lifecycle (that's DistributionsService's own, already

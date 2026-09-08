@@ -36,6 +36,7 @@ import { BeneficiaryNominationsModule } from "./modules/beneficiary-nominations/
 import { MessagesModule } from "./modules/messages/messages.module";
 import { FinancialReportsModule } from "./modules/financial-reports/financial-reports.module";
 import { HealthModule } from "./modules/health/health.module";
+import { BanksModule } from "./modules/banks/banks.module";
 import { PermissionGuard } from "./common/guards/permission.guard";
 import { StaffRoleGuard } from "./common/guards/staff-role.guard";
 import { SessionAuthGuard } from "./common/guards/session-auth.guard";
@@ -81,6 +82,7 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     MessagesModule,
     FinancialReportsModule,
     HealthModule,
+    BanksModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

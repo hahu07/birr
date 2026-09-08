@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsEnum, IsNumberString, IsString } from "class-validator";
 import { prisma, Prisma, AssetCategory } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -43,7 +43,18 @@ export class AssetsService {
   // write are still atomic even standalone.
   create(input: CreateAssetInput, actor: CreateAssetActor, tx?: Prisma.TransactionClient) {
     const run = async (client: Prisma.TransactionClient | typeof prisma) => {
-      const asset = await client.asset.create({ data: input });
+      // currency is always derived here, never client-supplied — see
+      // Asset.currency's own schema comment. This lookup also closes a
+      // real pre-existing gap: nothing before this validated waqfId
+      // actually referenced a real waqf at all.
+      const waqf = await client.waqf.findUnique({ where: { id: input.waqfId } });
+      if (!waqf) throw new NotFoundException(`Waqf "${input.waqfId}" not found.`);
+      if (!waqf.corpusCurrency) {
+        throw new BadRequestException(
+          `Waqf "${waqf.name}" has no declared corpus currency yet — set one before registering assets against it.`,
+        );
+      }
+      const asset = await client.asset.create({ data: { ...input, currency: waqf.corpusCurrency } });
       await client.auditLog.create({
         data: {
           waqfId: input.waqfId,

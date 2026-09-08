@@ -30,7 +30,7 @@ describe("InvestmentsService", () => {
       data: { name: "Investments Fixture Foundation" },
     });
     const waqf = await prisma.waqf.create({
-      data: { name: "Investments Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
+      data: { name: "Investments Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "USD" },
     });
     waqfId = waqf.id;
     waqfIds.push(waqf.id);
@@ -65,12 +65,14 @@ describe("InvestmentsService", () => {
     await prisma.$disconnect();
   });
 
-  test("create() writes the investment and a matching audit_logs record", async () => {
+  test("create() writes the investment and a matching audit_logs record, with currency derived from the waqf's own corpusCurrency", async () => {
     const investment = await service.create(
       { waqfId, name: "Fixture Investment", instrumentType: "sukuk", allocatedAmount: "1000", counterpartyId: activeCounterpartyId },
       actorUserId,
     );
     investmentIds.push(investment.id);
+    // Never client-supplied — see Investment.currency's own schema comment.
+    expect(investment.currency).toBe("USD");
 
     const logs = await prisma.auditLog.findMany({ where: { entityId: investment.id } });
     expect(logs).toHaveLength(1);
@@ -80,6 +82,21 @@ describe("InvestmentsService", () => {
       actorType: "birr_staff",
       actorUserId,
     });
+  });
+
+  test("create() rejects a waqf with no declared corpus currency yet", async () => {
+    const foundation = await prisma.foundation.create({ data: { name: "Investments No-Currency Fixture Foundation" } });
+    const noCurrencyWaqf = await prisma.waqf.create({
+      data: { name: "Investments No-Currency Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
+    });
+    waqfIds.push(noCurrencyWaqf.id);
+
+    await expect(
+      service.create(
+        { waqfId: noCurrencyWaqf.id, name: "Should Not Be Created", instrumentType: "sukuk", allocatedAmount: "100", counterpartyId: activeCounterpartyId },
+        actorUserId,
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 
   test("create() rejects an Investment against a non-Investment-type waqf", async () => {
@@ -165,10 +182,10 @@ describe("InvestmentsService", () => {
       const foundation = await prisma.foundation.create({ data: { name: "Investments Fixture Foundation (Concentration)" } });
       const [firstWaqf, secondWaqf] = await Promise.all([
         prisma.waqf.create({
-          data: { name: "Investments Fixture First Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
+          data: { name: "Investments Fixture First Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "USD" },
         }),
         prisma.waqf.create({
-          data: { name: "Investments Fixture Second Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
+          data: { name: "Investments Fixture Second Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "USD" },
         }),
       ]);
       firstWaqfId = firstWaqf.id;

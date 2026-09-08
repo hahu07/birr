@@ -53,14 +53,31 @@ export async function resolveBirrStaffFromSession(
  * from a Founder caller. Founder and staff sessions are now two
  * separate cookies (STAFF_SESSION_COOKIE_NAME vs SESSION_COOKIE_NAME —
  * see the former's own comment), so both can genuinely be present at
- * once in the same browser; WaqfsController/FoundationsController's
- * list()/findById() (and every other dual-purpose route) still check
- * this first and treat the request as a staff caller when it resolves,
- * falling back to the Founder cookie otherwise — an unchanged,
- * deliberate precedence, not a leftover ambiguity from the single-cookie
- * era.
+ * once in the same browser (e.g. Birr staff also testing their own
+ * Founder account) — WaqfsController/FoundationsController's
+ * list()/findById() (and every other dual-purpose route) check this
+ * first and treat the request as a staff caller when it resolves,
+ * falling back to the Founder cookie otherwise.
+ *
+ * That cookie-presence precedence used to be unconditional, which meant
+ * a Founder Portal page, called from a browser that also happened to
+ * hold a valid staff cookie, silently got the unscoped/staff view of a
+ * shared endpoint instead of its own founder-scoped one (found
+ * 2026-09-03 — a founder's onboarding page rendered an unrelated
+ * fixture waqf belonging to no one they'd established). Fixed at the
+ * one place every one of those ~20 call sites already goes through:
+ * apps/web/lib/api.ts now sends which portal a request is actually
+ * for as `x-birr-portal` (derived from the request path, not from
+ * which cookies exist), and a request explicitly marked "founder"
+ * short-circuits to false here without even attempting to resolve the
+ * staff cookie — regardless of whether one is present. A request with
+ * no header (any non-browser caller — the agent service, a script) or
+ * marked "ops" keeps the exact previous behavior.
  */
 export async function isBirrStaffSession(request: Request): Promise<boolean> {
+  if (request.headers?.["x-birr-portal"] === "founder") {
+    return false;
+  }
   try {
     await resolveBirrStaffFromSession(request);
     return true;

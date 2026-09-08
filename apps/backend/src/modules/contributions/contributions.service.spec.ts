@@ -67,7 +67,7 @@ describe("ContributionsService", () => {
     await prisma.foundationFounder.create({ data: { foundationId, founderId } });
 
     const waqf = await prisma.waqf.create({
-      data: { name: "Contributions Spec Waqf", type: "asset", jurisdiction: "AE", foundationId },
+      data: { name: "Contributions Spec Waqf", type: "asset", jurisdiction: "AE", foundationId, corpusCurrency: "USD" },
     });
     waqfId = waqf.id;
     waqfIds.push(waqf.id);

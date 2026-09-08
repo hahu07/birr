@@ -1,5 +1,5 @@
-import { prisma, Waqf, Beneficiary, Investment, Distribution } from "@birr/db";
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { prisma, Beneficiary, Investment, Distribution } from "@birr/db";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { GovernedActionsService } from "./governed-actions.service";
 import { AssetsService } from "../assets/assets.service";
@@ -64,7 +64,6 @@ describe("GovernedActionsService", () => {
   const waqfCauseIds: string[] = [];
 
   let makerUserId: string;
-  let checkerUserId: string;
   let assetCheckerUserId: string;
   let beneficiaryCheckerUserId: string;
   let investmentMakerUserId: string;
@@ -85,14 +84,6 @@ describe("GovernedActionsService", () => {
     makerUserId = makerUser.id;
     await prisma.birrStaff.create({
       data: { userId: makerUser.id, staffRole: "mutawalli_officer" },
-    });
-
-    const checkerUser = await prisma.user.create({
-      data: { email: `checker-${Date.now()}@example.com`, fullName: "Test Checker" },
-    });
-    checkerUserId = checkerUser.id;
-    await prisma.birrStaff.create({
-      data: { userId: checkerUser.id, staffRole: "legal_adviser" },
     });
 
     const assetCheckerUser = await prisma.user.create({
@@ -209,7 +200,7 @@ describe("GovernedActionsService", () => {
     });
     waqfIds.push(waqf.id);
     const asset = await prisma.asset.create({
-      data: { waqfId: waqf.id, name: "Audit Test Fixture Building", category: "real_estate", estimatedValue: "1000" },
+      data: { waqfId: waqf.id, name: "Audit Test Fixture Building", category: "real_estate", estimatedValue: "1000", currency: "USD" },
     });
     assetIds.push(asset.id);
 
@@ -237,7 +228,7 @@ describe("GovernedActionsService", () => {
     });
     waqfIds.push(waqf.id);
     const asset = await prisma.asset.create({
-      data: { waqfId: waqf.id, name: "Self Check Fixture Building", category: "real_estate", estimatedValue: "1000" },
+      data: { waqfId: waqf.id, name: "Self Check Fixture Building", category: "real_estate", estimatedValue: "1000", currency: "USD" },
     });
     assetIds.push(asset.id);
 
@@ -263,7 +254,7 @@ describe("GovernedActionsService", () => {
     });
     waqfIds.push(waqf.id);
     const asset = await prisma.asset.create({
-      data: { waqfId: waqf.id, name: "DB Constraint Fixture Building", category: "real_estate", estimatedValue: "1000" },
+      data: { waqfId: waqf.id, name: "DB Constraint Fixture Building", category: "real_estate", estimatedValue: "1000", currency: "USD" },
     });
     assetIds.push(asset.id);
 
@@ -309,7 +300,7 @@ describe("GovernedActionsService", () => {
     });
     waqfIds.push(waqf.id);
     const asset = await prisma.asset.create({
-      data: { waqfId: waqf.id, name: "Rejected Fixture Building", category: "real_estate", estimatedValue: "1000" },
+      data: { waqfId: waqf.id, name: "Rejected Fixture Building", category: "real_estate", estimatedValue: "1000", currency: "USD" },
     });
     assetIds.push(asset.id);
 
@@ -347,6 +338,7 @@ describe("GovernedActionsService", () => {
         name: "Fixture Building",
         category: "real_estate",
         estimatedValue: "100000",
+        currency: "USD",
       },
     });
     assetIds.push(asset.id);
@@ -554,6 +546,7 @@ describe("GovernedActionsService", () => {
         name: "Fixture Sukuk Holding",
         instrumentType: "sukuk",
         allocatedAmount: "50000",
+        currency: "USD",
       },
     });
     investmentIds.push(investment.id);
@@ -732,6 +725,146 @@ describe("GovernedActionsService", () => {
     expect(distributionLogs.some((l) => l.action === "distribution.approved")).toBe(true);
   });
 
+  test("decide(): two concurrent decisions on the same governed action — only one succeeds and the fulfillment handler runs exactly once", async () => {
+    // Regression test for the double-payout race: decide()'s pre-
+    // transaction status check alone can't stop two concurrent callers
+    // both reading "proposed" before either commits — the fix is the
+    // atomic claim (updateMany where status="proposed") inside the
+    // transaction. This proves it holds under real concurrency, not just
+    // sequential re-decision (already covered by the "already decided"
+    // test elsewhere in this file).
+    const waqf = await prisma.waqf.create({
+      data: { name: "Concurrent Decide Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId },
+    });
+    waqfIds.push(waqf.id);
+    const beneficiary = await prisma.beneficiary.create({
+      data: {
+        waqfId: waqf.id,
+        name: "Concurrent Decide Fixture Beneficiary",
+        eligibilityCriteria: "Fixture criteria",
+        ...paystackReadyBeneficiaryData(),
+      },
+    });
+    beneficiaryIds.push(beneficiary.id);
+    const cause = await prisma.waqfCause.create({
+      data: { waqfId: waqf.id, name: "Concurrent Decide Fixture Cause", allocatedAmount: "500" },
+    });
+    waqfCauseIds.push(cause.id);
+    const distribution = await prisma.distribution.create({
+      data: { waqfId: waqf.id, beneficiaryId: beneficiary.id, causeId: cause.id, amount: "500", currency: "USD" },
+    });
+    distributionIds.push(distribution.id);
+
+    const action = await service.propose({
+      permissionKey: "distribution.approve",
+      payload: { distributionId: distribution.id },
+      makerUserId,
+    });
+    governedActionIds.push(action.id);
+
+    // A second checker, distinct from distributionCheckerUserId — the
+    // race under test is two different people deciding at once, not one
+    // person double-clicking.
+    const secondChecker = await prisma.user.create({
+      data: { email: `distribution-checker-2-${Date.now()}@example.com`, fullName: "Test Second Distribution Checker" },
+    });
+    await prisma.birrStaff.create({ data: { userId: secondChecker.id, staffRole: "compliance_officer" } });
+
+    const outcomes = await Promise.allSettled([
+      service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true }),
+      service.decide({ governedActionId: action.id, checkerUserId: secondChecker.id, approve: true }),
+    ]);
+
+    const fulfilled = outcomes.filter((o) => o.status === "fulfilled");
+    const rejected = outcomes.filter((o): o is PromiseRejectedResult => o.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toBeInstanceOf(BadRequestException);
+
+    // The fulfillment handler (DistributionsService.approve, and its own
+    // audit write) must have run exactly once, not twice.
+    const distributionLogs = await auditLogsFor(distribution.id);
+    expect(distributionLogs.filter((l) => l.action === "distribution.approved")).toHaveLength(1);
+
+    // "approved" or already "disbursing" — decide() fires
+    // initiateDisbursement() fire-and-forget on approval (see its own
+    // comment), so which one we observe here is a timing detail, not
+    // part of what this test is proving.
+    const finalDistribution = await prisma.distribution.findUnique({ where: { id: distribution.id } });
+    expect(["approved", "disbursing"]).toContain(finalDistribution!.status);
+  });
+
+  test("distribution.approve: reject → status is rejected, audit-logged, and the cause's allocation is released", async () => {
+    // Regression coverage for the 2026-09-04 fix: rejecting a
+    // distribution.approve action used to leave the underlying
+    // Distribution stuck at "pending" forever (no handler ran on
+    // rejection at all), permanently occupying its cause's allocation
+    // ceiling with no way to release it. onReject now exists
+    // specifically to close that — this proves both the status flip and
+    // the actual real-world consequence (a second distribution can now
+    // fully use the freed allocation).
+    const waqf = await prisma.waqf.create({
+      data: { name: "Distribution Reject Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId },
+    });
+    waqfIds.push(waqf.id);
+    const beneficiary = await prisma.beneficiary.create({
+      data: {
+        waqfId: waqf.id,
+        name: "Distribution Reject Fixture Beneficiary",
+        eligibilityCriteria: "Fixture criteria",
+        ...paystackReadyBeneficiaryData(),
+      },
+    });
+    beneficiaryIds.push(beneficiary.id);
+    const cause = await prisma.waqfCause.create({
+      data: { waqfId: waqf.id, name: "Distribution Reject Fixture Cause", allocatedAmount: "500" },
+    });
+    waqfCauseIds.push(cause.id);
+    const distribution = await prisma.distribution.create({
+      data: { waqfId: waqf.id, beneficiaryId: beneficiary.id, causeId: cause.id, amount: "500", currency: "USD" },
+    });
+    distributionIds.push(distribution.id);
+
+    const action = await service.propose({
+      permissionKey: "distribution.approve",
+      payload: { distributionId: distribution.id },
+      makerUserId,
+    });
+    governedActionIds.push(action.id);
+
+    const result = await service.decide({
+      governedActionId: action.id,
+      checkerUserId: distributionCheckerUserId,
+      approve: false,
+    });
+
+    expect(result.governedAction.status).toBe("rejected");
+    expect(result.fulfillment?.entityType).toBe("Distribution");
+    const rejected = result.fulfillment?.after as Distribution;
+    expect(rejected.status).toBe("rejected");
+
+    const distributionLogs = await auditLogsFor(distribution.id);
+    expect(distributionLogs.some((l) => l.action === "distribution.rejected")).toBe(true);
+
+    // The real proof: with the 500 rejected, a fresh 500 distribution
+    // against the same cause now succeeds — it would have been rejected
+    // by assertWithinAllocation as over-ceiling if the first one were
+    // still silently "pending" and counted as committed.
+    const distributionsService = new DistributionsService(
+      beneficiariesService,
+      notificationsService,
+      createFakeStripePayoutAdapter() as any,
+      fakePaystackPayoutAdapter as any,
+      createFakeStablecoinPayoutAdapter() as any,
+    );
+    const second = await distributionsService.create(
+      { waqfId: waqf.id, beneficiaryId: beneficiary.id, causeId: cause.id, amount: "500", currency: "USD" },
+      makerUserId,
+    );
+    distributionIds.push(second.id);
+    expect(second.status).toBe("pending");
+  });
+
   test("distribution.approve: decide(approve: true) throws and the GovernedAction stays proposed when the beneficiary has incomplete payout details", async () => {
     // The core rollback guarantee this plan hinges on — a distribution
     // that can't actually be paid must never even reach "approved".
@@ -842,7 +975,7 @@ describe("GovernedActionsService", () => {
     });
     waqfIds.push(waqf.id);
     const asset = await prisma.asset.create({
-      data: { waqfId: waqf.id, name: "Fixture Building", category: "real_estate", estimatedValue: "1000" },
+      data: { waqfId: waqf.id, name: "Fixture Building", category: "real_estate", estimatedValue: "1000", currency: "USD" },
     });
     assetIds.push(asset.id);
 
@@ -863,7 +996,7 @@ describe("GovernedActionsService", () => {
     });
     waqfIds.push(waqf.id);
     const asset = await prisma.asset.create({
-      data: { waqfId: waqf.id, name: "List Test Fixture Building", category: "real_estate", estimatedValue: "1000" },
+      data: { waqfId: waqf.id, name: "List Test Fixture Building", category: "real_estate", estimatedValue: "1000", currency: "USD" },
     });
     assetIds.push(asset.id);
 
@@ -942,6 +1075,7 @@ describe("GovernedActionsService", () => {
         name: "FindById Test Fixture Building",
         category: "real_estate",
         estimatedValue: "1000",
+        currency: "USD",
       },
     });
     assetIds.push(asset.id);

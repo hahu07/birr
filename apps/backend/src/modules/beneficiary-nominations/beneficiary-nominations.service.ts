@@ -129,7 +129,7 @@ export class BeneficiaryNominationsService {
       });
       // bankDetailsEncrypted excluded from the audit snapshot — same
       // reasoning as BeneficiariesService.create's identical exclusion.
-      const { bankDetailsEncrypted, ...auditSafe } = nomination;
+      const { bankDetailsEncrypted: _bankDetailsEncrypted, ...auditSafe } = nomination;
       await tx.auditLog.create({
         data: {
           waqfId: input.waqfId,
@@ -370,6 +370,6 @@ export class BeneficiaryNominationsService {
         include: NOMINATION_INCLUDE,
       }),
     );
-    return nominations.map(({ bankDetailsEncrypted, ...rest }) => rest);
+    return nominations.map(({ bankDetailsEncrypted: _bankDetailsEncrypted, ...rest }) => rest);
   }
 }

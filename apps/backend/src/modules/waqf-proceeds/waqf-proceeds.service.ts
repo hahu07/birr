@@ -67,6 +67,25 @@ export class WaqfProceedsService {
           `Only Investment-type Waqf Funds record investment proceeds — "${waqf.name}" is ${waqf.type}.`,
         );
       }
+      // WaqfCause.allocatedAmount/proceedsAllocatedAmount carry no
+      // currency of their own (see DistributionsService
+      // .assertWithinAllocation's own comment on this same gap) — this
+      // pool is summed by sumForWaqf() and split across causes by
+      // allocateProceedsProportionally() as bare numbers, so a proceeds
+      // row in a different currency than the waqf's own corpus would
+      // silently inflate that ceiling as if it were the same money
+      // (found 2026-09-04, live: a Founder submitting a distribution in
+      // a mismatched currency against a ceiling actually computed in
+      // another). Anchoring every proceeds row to the one declared
+      // corpusCurrency, same as allocate()'s own poolCurrency
+      // resolution, is what keeps that ceiling meaningful. Waqfs with no
+      // declared corpusCurrency (legacy, predating the corpus-target
+      // feature) fall through unchecked — nothing to validate against.
+      if (waqf.corpusCurrency && waqf.corpusCurrency !== input.currency) {
+        throw new BadRequestException(
+          `This waqf's corpus is denominated in ${waqf.corpusCurrency} — proceeds must be recorded in that same currency, not ${input.currency}.`,
+        );
+      }
 
       if (input.investmentId) {
         const investment = await tx.investment.findFirst({

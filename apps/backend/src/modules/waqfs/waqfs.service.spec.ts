@@ -43,7 +43,6 @@ describe("WaqfsService", () => {
   let founderAId: string;
   let founderBId: string;
   let foundationAId: string;
-  let foundationBId: string;
   let waqfAId: string;
   let waqfBId: string;
 
@@ -70,7 +69,6 @@ describe("WaqfsService", () => {
     const foundationB = await prisma.foundation.create({
       data: { name: "Waqfs List Foundation B" },
     });
-    foundationBId = foundationB.id;
     await prisma.foundationFounder.create({
       data: { foundationId: foundationB.id, founderId: founderBId },
     });
@@ -382,7 +380,7 @@ describe("WaqfsService", () => {
 
     test("registering an asset flips assetRegistration to complete with the right count", async () => {
       const asset = await prisma.asset.create({
-        data: { waqfId: projectWaqfId, name: "Lifecycle Fixture Asset", category: "cash", estimatedValue: "100" },
+        data: { waqfId: projectWaqfId, name: "Lifecycle Fixture Asset", category: "cash", estimatedValue: "100", currency: "USD" },
       });
       const status = await service.getLifecycleStatus(projectWaqfId);
       expect(status!.stages.assetRegistration).toMatchObject({ status: "complete", count: 1 });
@@ -413,6 +411,7 @@ describe("WaqfsService", () => {
           counterpartyId: counterparty.id,
           instrumentType: "sukuk",
           allocatedAmount: "100",
+          currency: "USD",
         },
       });
 

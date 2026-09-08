@@ -62,7 +62,7 @@ function buildDraftTool(capture: { value?: DigestArgs }) {
   return tool(
     "draft_priority_digest",
     "Emit the final prioritized caseload digest for Birr staff to review. Call this once, as your last step, after reviewing the caseload and governed actions.",
-    { summary: z.string(), items: z.array(DigestItemSchema) },
+    DigestSchema.shape,
     async (args) => {
       capture.value = args;
       return { content: [{ type: "text", text: args.summary }] };

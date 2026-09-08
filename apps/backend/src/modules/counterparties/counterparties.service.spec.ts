@@ -34,7 +34,7 @@ describe("CounterpartiesService", () => {
 
   test("register() creates the row at pending_review and audit-logs it", async () => {
     const counterparty = await service.register(
-      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
       actorUserId,
     );
     counterpartyIds.push(counterparty.id);
@@ -79,7 +79,7 @@ describe("CounterpartiesService", () => {
 
   test("update() corrects the profile without touching status or shariahApprovedAt, and audit-logs it", async () => {
     const counterparty = await service.register(
-      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
       actorUserId,
     );
     counterpartyIds.push(counterparty.id);
@@ -107,7 +107,7 @@ describe("CounterpartiesService", () => {
 
   test("recordShariahApproval() sets the sign-off and rejects a second attempt", async () => {
     const counterparty = await service.register(
-      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
       actorUserId,
     );
     counterpartyIds.push(counterparty.id);
@@ -121,7 +121,7 @@ describe("CounterpartiesService", () => {
 
   test("recordShariahApproval() rejects a counterparty that isn't awaiting review", async () => {
     const counterparty = await service.register(
-      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
       actorUserId,
     );
     counterpartyIds.push(counterparty.id);
@@ -136,7 +136,7 @@ describe("CounterpartiesService", () => {
 
   test("setConcentrationLimit() sets the ceiling and audit-logs it", async () => {
     const counterparty = await service.register(
-      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
       actorUserId,
     );
     counterpartyIds.push(counterparty.id);
@@ -152,7 +152,7 @@ describe("CounterpartiesService", () => {
 
   test("suspend() is immediate (no maker-checker) and audit-logged", async () => {
     const counterparty = await service.register(
-      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
       actorUserId,
     );
     counterpartyIds.push(counterparty.id);
@@ -166,7 +166,7 @@ describe("CounterpartiesService", () => {
 
   test("suspend() keeps the existing Shariah approval intact — no fresh sign-off needed to reactivate", async () => {
     const counterparty = await service.register(
-      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
       actorUserId,
     );
     counterpartyIds.push(counterparty.id);
@@ -183,7 +183,7 @@ describe("CounterpartiesService", () => {
 
   test("blacklist() clears the Shariah approval, forcing a fresh one before reactivation", async () => {
     const counterparty = await service.register(
-      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+      { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
       actorUserId,
     );
     counterpartyIds.push(counterparty.id);
@@ -210,7 +210,7 @@ describe("CounterpartiesService", () => {
   describe("deregister()", () => {
     test("soft-deletes a never-used counterparty and audit-logs it", async () => {
       const counterparty = await service.register(
-        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
         actorUserId,
       );
       counterpartyIds.push(counterparty.id);
@@ -232,7 +232,7 @@ describe("CounterpartiesService", () => {
 
     test("rejects deregistering a counterparty that has any Investment referencing it", async () => {
       const counterparty = await service.register(
-        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
         actorUserId,
       );
       counterpartyIds.push(counterparty.id);
@@ -244,7 +244,7 @@ describe("CounterpartiesService", () => {
         data: { name: "Counterparties Deregister Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
       });
       await prisma.investment.create({
-        data: { waqfId: waqf.id, name: "Deregister Fixture Investment", instrumentType: "sukuk", allocatedAmount: "100", counterpartyId: counterparty.id },
+        data: { waqfId: waqf.id, name: "Deregister Fixture Investment", instrumentType: "sukuk", allocatedAmount: "100", currency: "USD", counterpartyId: counterparty.id },
       });
 
       await expect(service.deregister(counterparty.id, actorUserId)).rejects.toThrow(BadRequestException);
@@ -255,7 +255,7 @@ describe("CounterpartiesService", () => {
 
     test("rejects deregistering an already-deregistered counterparty", async () => {
       const counterparty = await service.register(
-        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
         actorUserId,
       );
       counterpartyIds.push(counterparty.id);
@@ -268,7 +268,7 @@ describe("CounterpartiesService", () => {
   describe("onboard() — gate 2, only reachable via a governed_action approval", () => {
     test("rejects onboarding with no Shariah approval recorded yet", async () => {
       const counterparty = await service.register(
-        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
         actorUserId,
       );
       counterpartyIds.push(counterparty.id);
@@ -283,7 +283,7 @@ describe("CounterpartiesService", () => {
 
     test("succeeds once Shariah approval is present, flipping status to active", async () => {
       const counterparty = await service.register(
-        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
         actorUserId,
       );
       counterpartyIds.push(counterparty.id);
@@ -303,7 +303,7 @@ describe("CounterpartiesService", () => {
   describe("exposure()", () => {
     test("sums active Investments across every waqf and computes remaining against the limit", async () => {
       const counterparty = await service.register(
-        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
         actorUserId,
       );
       counterpartyIds.push(counterparty.id);
@@ -314,7 +314,7 @@ describe("CounterpartiesService", () => {
         data: { name: "Counterparties Exposure Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
       });
       await prisma.investment.create({
-        data: { waqfId: waqf.id, name: "Exposure Fixture Investment", instrumentType: "sukuk", allocatedAmount: "4000", counterpartyId: counterparty.id },
+        data: { waqfId: waqf.id, name: "Exposure Fixture Investment", instrumentType: "sukuk", allocatedAmount: "4000", currency: "USD", counterpartyId: counterparty.id },
       });
 
       const exposure = await service.exposure(counterparty.id);
@@ -329,7 +329,7 @@ describe("CounterpartiesService", () => {
     // investment into a USD-denominated exposure figure.
     test("excludes an Investment in a different currency than the concentration limit from totalInvested", async () => {
       const counterparty = await service.register(
-        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
         actorUserId,
       );
       counterpartyIds.push(counterparty.id);
@@ -346,10 +346,10 @@ describe("CounterpartiesService", () => {
       ]);
       await Promise.all([
         prisma.investment.create({
-          data: { waqfId: usdWaqf.id, name: "USD Exposure Investment", instrumentType: "sukuk", allocatedAmount: "3000", counterpartyId: counterparty.id },
+          data: { waqfId: usdWaqf.id, name: "USD Exposure Investment", instrumentType: "sukuk", allocatedAmount: "3000", currency: "USD", counterpartyId: counterparty.id },
         }),
         prisma.investment.create({
-          data: { waqfId: sarWaqf.id, name: "SAR Exposure Investment", instrumentType: "sukuk", allocatedAmount: "9000", counterpartyId: counterparty.id },
+          data: { waqfId: sarWaqf.id, name: "SAR Exposure Investment", instrumentType: "sukuk", allocatedAmount: "9000", currency: "SAR", counterpartyId: counterparty.id },
         }),
       ]);
 
@@ -362,12 +362,12 @@ describe("CounterpartiesService", () => {
   describe("list()", () => {
     test("attaches totalInvested per row via a single groupBy, not per-row exposure() calls", async () => {
       const withInvestment = await service.register(
-        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
         actorUserId,
       );
       counterpartyIds.push(withInvestment.id);
       const withoutInvestment = await service.register(
-        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
         actorUserId,
       );
       counterpartyIds.push(withoutInvestment.id);
@@ -377,7 +377,7 @@ describe("CounterpartiesService", () => {
         data: { name: "Counterparties List Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
       });
       await prisma.investment.create({
-        data: { waqfId: waqf.id, name: "List Fixture Investment", instrumentType: "sukuk", allocatedAmount: "2500", counterpartyId: withInvestment.id },
+        data: { waqfId: waqf.id, name: "List Fixture Investment", instrumentType: "sukuk", allocatedAmount: "2500", currency: "USD", counterpartyId: withInvestment.id },
       });
 
       const results = await service.list();

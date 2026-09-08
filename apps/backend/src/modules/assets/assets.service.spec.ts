@@ -1,4 +1,5 @@
 import { prisma } from "@birr/db";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { AssetsService } from "./assets.service";
 
 describe("AssetsService", () => {
@@ -28,7 +29,7 @@ describe("AssetsService", () => {
       data: { name: "Assets Fixture Foundation" },
     });
     const waqf = await prisma.waqf.create({
-      data: { name: "Assets Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId: foundation.id },
+      data: { name: "Assets Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "USD" },
     });
     waqfId = waqf.id;
     waqfIds.push(waqf.id);
@@ -64,6 +65,41 @@ describe("AssetsService", () => {
       actorType: "birr_staff",
       actorUserId,
     });
+  });
+
+  test("create() derives currency from the waqf's own corpusCurrency, never client-supplied", async () => {
+    const asset = await service.create(
+      { waqfId, name: "Currency Derivation Fixture Asset", category: "cash", estimatedValue: "100" },
+      { actorType: "birr_staff", actorUserId },
+    );
+    assetIds.push(asset.id);
+    expect(asset.currency).toBe("USD");
+  });
+
+  test("create() rejects an unknown waqfId", async () => {
+    await expect(
+      service.create(
+        { waqfId: "00000000-0000-0000-0000-000000000000", name: "Orphan Fixture Asset", category: "cash", estimatedValue: "100" },
+        { actorType: "birr_staff", actorUserId },
+      ),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  test("create() rejects a waqf with no declared corpus currency yet", async () => {
+    const foundation = await prisma.foundation.create({
+      data: { name: "Assets No-Currency Fixture Foundation" },
+    });
+    const noCurrencyWaqf = await prisma.waqf.create({
+      data: { name: "Assets No-Currency Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId: foundation.id },
+    });
+    waqfIds.push(noCurrencyWaqf.id);
+
+    await expect(
+      service.create(
+        { waqfId: noCurrencyWaqf.id, name: "Should Not Be Created", category: "cash", estimatedValue: "100" },
+        { actorType: "birr_staff", actorUserId },
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 
   test("create() writes a matching audit_logs record for a system actor (webhook-triggered path)", async () => {

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsDateString, IsEmail, IsEnum, IsOptional, IsString, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { prisma, Prisma, BeneficiaryStatus, BeneficiaryKind, PayoutProvider } from "@birr/db";
@@ -151,7 +151,7 @@ export class BeneficiariesService {
       // snapshot — audit_logs has no access restriction beyond the
       // DB-role revoke CLAUDE.md already mandates, and a ciphertext
       // blob sitting there is needless exposure surface even encrypted.
-      const { bankDetailsEncrypted, ...auditSafe } = beneficiary;
+      const { bankDetailsEncrypted: _bankDetailsEncrypted, ...auditSafe } = beneficiary;
       await tx.auditLog.create({
         data: {
           waqfId: input.waqfId,
@@ -271,16 +271,52 @@ export class BeneficiariesService {
 
   // Raw — bankDetailsEncrypted stays as ciphertext. Internal callers
   // (e.g. GovernedActionsService.resolveWaqfId, which only needs
-  // .waqfId) use this directly; BeneficiariesController's HTTP-facing
-  // routes call withDecryptedBankDetails() explicitly on top of this
-  // for actual staff display — see that method's own comment.
+  // .waqfId) use this directly, unguarded — trusted internal fulfillment
+  // code, not an HTTP-facing PII read. BeneficiariesController's HTTP
+  // -facing routes call assertStaffCanAccessWaqf() themselves before
+  // calling this, then withDecryptedBankDetails() on top for display —
+  // see those methods' own comments.
   findById(id: string) {
     return prisma.beneficiary.findUnique({ where: { id } });
   }
 
-  list(waqfId?: string) {
+  // 2026-09-08 audit fix: any authenticated Birr staff member, regardless
+  // of role or caseload, could previously pull any beneficiary's decrypted
+  // bank details — no segregation-of-duties check existed at all on this
+  // read path. platform_admin is the one bootstrap/emergency-access
+  // exemption; every other role needs an active WaqfCaseAssignment on the
+  // waqf in question. Deliberately not extending this exemption to
+  // audit_committee/external_auditor/etc. — the audit finding used those
+  // roles as its example of the *problem*, and granting them a blanket
+  // bypass instead of scoping them to their actual caseload would be a
+  // policy call, not something to infer from the finding itself.
+  async assertStaffCanAccessWaqf(waqfId: string, staff: { id: string; staffRole: string }): Promise<void> {
+    if (staff.staffRole === "platform_admin") return;
+    const assignment = await prisma.waqfCaseAssignment.findFirst({
+      where: { waqfId, birrStaffId: staff.id, status: "active" },
+      select: { id: true },
+    });
+    if (!assignment) {
+      throw new ForbiddenException(
+        "You don't have an active case assignment for this waqf — beneficiary details are scoped to assigned staff.",
+      );
+    }
+  }
+
+  // waqfId given: caller (BeneficiariesController) has already asserted
+  // access via assertStaffCanAccessWaqf. waqfId omitted: rather than the
+  // previous firm-wide dump, scope to the caller's own active caseload —
+  // platform_admin keeps seeing everything, matching its role as the one
+  // exemption above.
+  list(waqfId: string | undefined, staff: { id: string; staffRole: string }) {
+    if (waqfId) {
+      return prisma.beneficiary.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" } });
+    }
+    if (staff.staffRole === "platform_admin") {
+      return prisma.beneficiary.findMany({ orderBy: { createdAt: "desc" } });
+    }
     return prisma.beneficiary.findMany({
-      where: waqfId ? { waqfId } : undefined,
+      where: { waqf: { caseAssignments: { some: { birrStaffId: staff.id, status: "active" } } } },
       orderBy: { createdAt: "desc" },
     });
   }

@@ -470,8 +470,13 @@ export class WaqfsService {
     const take = type || search ? 50 : undefined;
 
     if (!founderId) {
+      // Same reasoning as FoundationsService.list() — a Waqf whose own
+      // WaqfDeed (or its Foundation's FoundationDeed) blocks hard-delete
+      // can still end up orphaned (its Foundation has zero linked
+      // Founders). Excluded so the Ops Console list/Overview never
+      // counts a deed-locked husk as a fund Birr actually manages.
       const waqfs = await prisma.waqf.findMany({
-        where: { ...(type ? { type } : {}), ...searchWhere },
+        where: { foundation: { foundationFounders: { some: {} } }, ...(type ? { type } : {}), ...searchWhere },
         include: { foundation: { include: { foundationDeed: true } }, _count: { select: { waqfCauses: { where: { deletedAt: null } } } } },
         orderBy: { createdAt: "desc" },
         take,

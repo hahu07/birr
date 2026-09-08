@@ -45,6 +45,7 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
   let messageAttachmentAId: string;
   let foundationDeedAId: string;
   let causeImpactUpdateAId: string;
+  let invitationAId: string;
 
   beforeAll(async () => {
     const userA = await prisma.user.create({
@@ -80,12 +81,12 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
     beneficiaryAId = beneficiaryA.id;
 
     const assetA = await prisma.asset.create({
-      data: { waqfId: waqfAId, name: "RLS Fixture Asset A", category: "cash", estimatedValue: "100" },
+      data: { waqfId: waqfAId, name: "RLS Fixture Asset A", category: "cash", estimatedValue: "100", currency: "USD" },
     });
     assetAId = assetA.id;
 
     const investmentA = await prisma.investment.create({
-      data: { waqfId: waqfAId, name: "RLS Fixture Investment A", instrumentType: "sukuk", allocatedAmount: "100" },
+      data: { waqfId: waqfAId, name: "RLS Fixture Investment A", instrumentType: "sukuk", allocatedAmount: "100", currency: "USD" },
     });
     investmentAId = investmentA.id;
 
@@ -168,12 +169,30 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
       data: { waqfCauseId: waqfCauseAId, reportedByUserId: userAId, periodLabel: "2026 Q3", narrative: "fixture" },
     });
     causeImpactUpdateAId = causeImpactUpdateA.id;
+
+    // 2026-09-08 audit fix — invitations was the one founder-reachable
+    // table left out of the 2026-08-30 expansion above; this covers the
+    // founder_user-shaped case (founderId set directly). See that
+    // migration's own comment for the co_founder-shaped case (foundationId
+    // instead), already covered by the same policy's second OR branch.
+    const invitationA = await prisma.invitation.create({
+      data: {
+        inviteeKind: "founder_user",
+        email: `rls-fixture-invitee-${randomUUID()}@example.test`,
+        founderId: founderAId,
+        invitedBy: userAId,
+        token: randomUUID(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+    invitationAId = invitationA.id;
   });
 
   afterAll(async () => {
     // Children first, respecting FK order. Users/Founders left in place —
     // same convention as every other spec in this codebase (audit_logs
     // and other insert-only/immutable rows may reference them).
+    await prisma.invitation.deleteMany({ where: { id: invitationAId } });
     await prisma.messageAttachment.deleteMany({ where: { id: messageAttachmentAId } });
     await prisma.message.deleteMany({ where: { id: messageAId } });
     await prisma.causeImpactUpdate.deleteMany({ where: { id: causeImpactUpdateAId } });
@@ -209,6 +228,7 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
     ["foundation_deeds", () => foundationDeedAId],
     ["cause_impact_updates", () => causeImpactUpdateAId],
     ["message_attachments", () => messageAttachmentAId],
+    ["invitations", () => invitationAId],
   ] as [string, () => string][])(
     "%s: founder A's row is visible to founder A, invisible to founder B, at the RLS layer alone",
     async (table, getId) => {

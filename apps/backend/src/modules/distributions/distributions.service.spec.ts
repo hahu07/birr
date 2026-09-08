@@ -43,7 +43,9 @@ describe("DistributionsService", () => {
 
   let waqfAId: string;
   let waqfBId: string;
+  let waqfInvestmentId: string;
   let beneficiaryId: string;
+  let investmentBeneficiaryId: string;
   let causeOnWaqfAId: string;
   let causeOnWaqfBId: string;
   let actorUserId: string;
@@ -76,11 +78,28 @@ describe("DistributionsService", () => {
     waqfBId = waqfB.id;
     waqfIds.push(waqfB.id);
 
+    const waqfInvestment = await prisma.waqf.create({
+      data: { name: "Distributions Fixture Waqf Investment", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
+    });
+    waqfInvestmentId = waqfInvestment.id;
+    waqfIds.push(waqfInvestment.id);
+
     const beneficiary = await prisma.beneficiary.create({
       data: { waqfId: waqfAId, name: "Distributions Fixture Beneficiary", eligibilityCriteria: "Fixture", ...paystackReadyBeneficiaryData() },
     });
     beneficiaryId = beneficiary.id;
     beneficiaryIds.push(beneficiary.id);
+
+    const investmentBeneficiary = await prisma.beneficiary.create({
+      data: {
+        waqfId: waqfInvestmentId,
+        name: "Distributions Fixture Investment Beneficiary",
+        eligibilityCriteria: "Fixture",
+        ...paystackReadyBeneficiaryData(),
+      },
+    });
+    investmentBeneficiaryId = investmentBeneficiary.id;
+    beneficiaryIds.push(investmentBeneficiary.id);
 
     const causeOnA = await prisma.waqfCause.create({
       data: { waqfId: waqfAId, name: "Cause On Waqf A", allocatedAmount: "150" },
@@ -131,6 +150,53 @@ describe("DistributionsService", () => {
         actorUserId,
       ),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  // 2026-09-04 fix: a beneficiary nominated for one cause used to be
+  // payable from any cause on the same waqf — nothing cross-checked
+  // Beneficiary.causeId against the distribution's own causeId, even
+  // though eligibilityCriteria is written for that specific cause's
+  // purpose. beneficiaryId itself (used throughout this file) has no
+  // causeId on file — the legacy/undeclared case, which stays
+  // unchecked by design — so this exercises the actual new rule with a
+  // beneficiary that does have one.
+  test("create() rejects a distribution against a cause the beneficiary wasn't nominated for", async () => {
+    // Dedicated causes, not the shared causeOnWaqfAId fixture — several
+    // other tests in this file depend on that one's remaining headroom
+    // staying predictable.
+    const nominatedCause = await prisma.waqfCause.create({
+      data: { waqfId: waqfAId, name: "Beneficiary Mismatch Fixture Cause (Nominated)", allocatedAmount: "500" },
+    });
+    waqfCauseIds.push(nominatedCause.id);
+    const otherCause = await prisma.waqfCause.create({
+      data: { waqfId: waqfAId, name: "Beneficiary Mismatch Fixture Cause (Other)", allocatedAmount: "500" },
+    });
+    waqfCauseIds.push(otherCause.id);
+
+    const nominatedBeneficiary = await prisma.beneficiary.create({
+      data: {
+        waqfId: waqfAId,
+        causeId: nominatedCause.id,
+        name: "Cause-Nominated Fixture Beneficiary",
+        eligibilityCriteria: "Vetted specifically for the nominated cause",
+        ...paystackReadyBeneficiaryData(),
+      },
+    });
+    beneficiaryIds.push(nominatedBeneficiary.id);
+
+    await expect(
+      service.create(
+        { waqfId: waqfAId, beneficiaryId: nominatedBeneficiary.id, causeId: otherCause.id, amount: "10", currency: "USD" },
+        actorUserId,
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    // Exactly the cause they were nominated for still succeeds.
+    const distribution = await service.create(
+      { waqfId: waqfAId, beneficiaryId: nominatedBeneficiary.id, causeId: nominatedCause.id, amount: "10", currency: "USD" },
+      actorUserId,
+    );
+    distributionIds.push(distribution.id);
   });
 
   test("create() writes a matching audit_logs record", async () => {
@@ -290,7 +356,16 @@ describe("DistributionsService", () => {
       expect(committed._sum.amount?.toString()).toBe("60");
     });
 
-    test("ceiling is the sum of allocatedAmount (corpus) and proceedsAllocatedAmount (investment proceeds)", async () => {
+    // waqfAId is type "asset" — no proceeds concept exists for it in
+    // the real product (WaqfProceedsService only accepts Investment-type
+    // waqfs), but nothing stops a test fixture from setting
+    // proceedsAllocatedAmount directly, which is exactly what this
+    // exercises: for a non-Investment waqf, both pools still combine
+    // into one ceiling (see the Investment-only tests below for the
+    // 2026-09-04 reversal this test used to — incorrectly — claim to
+    // cover, back when assertWithinAllocation didn't branch on waqf type
+    // at all).
+    test("non-Investment waqf: ceiling is the sum of allocatedAmount and proceedsAllocatedAmount", async () => {
       const cause = await prisma.waqfCause.create({
         data: { waqfId: waqfAId, name: "Two Pools Cause", allocatedAmount: "60", proceedsAllocatedAmount: "40" },
       });
@@ -307,6 +382,34 @@ describe("DistributionsService", () => {
       // Exactly the combined total succeeds.
       const distribution = await service.create(
         { waqfId: waqfAId, beneficiaryId, causeId: cause.id, amount: "100", currency: "USD" },
+        actorUserId,
+      );
+      distributionIds.push(distribution.id);
+    });
+
+    // The 2026-09-04 reversal (see CLAUDE.md's own record): corpus is
+    // preserved principal for an Investment-type waqf, not itself
+    // distributable — only proceedsAllocatedAmount is a real ceiling
+    // there, regardless of how much corpus (allocatedAmount) is set.
+    test("Investment waqf: only proceedsAllocatedAmount counts toward the ceiling — corpus is excluded", async () => {
+      const cause = await prisma.waqfCause.create({
+        data: { waqfId: waqfInvestmentId, name: "Investment Cause", allocatedAmount: "1000", proceedsAllocatedAmount: "40" },
+      });
+      waqfCauseIds.push(cause.id);
+
+      // Corpus (1000) is NOT part of the ceiling here — only proceeds
+      // (40) is, so even a modest 41 against a cause with 1000 of
+      // corpus allocated still rejects.
+      await expect(
+        service.create(
+          { waqfId: waqfInvestmentId, beneficiaryId: investmentBeneficiaryId, causeId: cause.id, amount: "41", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      // Exactly the proceeds total succeeds, ignoring the much larger corpus figure.
+      const distribution = await service.create(
+        { waqfId: waqfInvestmentId, beneficiaryId: investmentBeneficiaryId, causeId: cause.id, amount: "40", currency: "USD" },
         actorUserId,
       );
       distributionIds.push(distribution.id);
@@ -584,6 +687,80 @@ describe("DistributionsService", () => {
       distributionIds.push(other.id);
 
       await expect(service.retryDisbursement(pending.id, actorUserId)).rejects.toThrow(BadRequestException);
+    });
+
+    // Regression tests for the double-payout race: each of the three
+    // methods below used to read status via a plain check and then write
+    // it unconditionally, so two genuinely concurrent callers could both
+    // pass the check and both proceed — for initiateDisbursement(), that
+    // meant two real Paystack payouts for one distribution. The fix is an
+    // atomic claim (updateMany with the expected current status in the
+    // WHERE clause); these prove it holds under real concurrency, not
+    // just the sequential idempotency the tests above already covered.
+
+    test("approve() — two concurrent approvals of the same pending distribution: only one succeeds", async () => {
+      const pending = await service.create(
+        { waqfId: waqfAId, beneficiaryId, causeId: payoutCauseId, amount: "1", currency: "NGN" },
+        actorUserId,
+      );
+      distributionIds.push(pending.id);
+
+      const outcomes = await Promise.allSettled([
+        prisma.$transaction((tx) => service.approve(pending.id, tx)),
+        prisma.$transaction((tx) => service.approve(pending.id, tx)),
+      ]);
+
+      const fulfilled = outcomes.filter((o) => o.status === "fulfilled");
+      const rejected = outcomes.filter((o): o is PromiseRejectedResult => o.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(BadRequestException);
+
+      const finalDistribution = await prisma.distribution.findUnique({ where: { id: pending.id } });
+      expect(finalDistribution!.status).toBe("approved");
+    });
+
+    test("initiateDisbursement() — two concurrent calls on the same approved distribution: only one reaches the payout adapter", async () => {
+      const pending = await service.create(
+        { waqfId: waqfAId, beneficiaryId, causeId: payoutCauseId, amount: "1", currency: "NGN" },
+        actorUserId,
+      );
+      distributionIds.push(pending.id);
+      await prisma.$transaction((tx) => service.approve(pending.id, tx));
+
+      await Promise.all([service.initiateDisbursement(pending.id), service.initiateDisbursement(pending.id)]);
+
+      // This is the assertion that actually proves the double-payout fix
+      // — a sequential-only test can't distinguish "idempotent" from
+      // "never raced in the first place".
+      expect(fakePaystackPayoutAdapter.calls).toHaveLength(1);
+
+      const updated = await prisma.distribution.findUnique({ where: { id: pending.id } });
+      expect(updated!.status).toBe("disbursing");
+    });
+
+    test("retryDisbursement() — two concurrent retries of the same failed distribution: only one reaches the payout adapter", async () => {
+      fakePaystackPayoutAdapter.shouldFail = true;
+      const pending = await service.create(
+        { waqfId: waqfAId, beneficiaryId, causeId: payoutCauseId, amount: "1", currency: "NGN" },
+        actorUserId,
+      );
+      distributionIds.push(pending.id);
+      await prisma.$transaction((tx) => service.approve(pending.id, tx));
+      await service.initiateDisbursement(pending.id);
+      const failed = await prisma.distribution.findUnique({ where: { id: pending.id } });
+      expect(failed!.status).toBe("payout_failed");
+
+      fakePaystackPayoutAdapter.shouldFail = false;
+      fakePaystackPayoutAdapter.calls = [];
+      const outcomes = await Promise.allSettled([
+        service.retryDisbursement(pending.id, actorUserId),
+        service.retryDisbursement(pending.id, actorUserId),
+      ]);
+
+      const fulfilled = outcomes.filter((o) => o.status === "fulfilled");
+      expect(fulfilled).toHaveLength(1);
+      expect(fakePaystackPayoutAdapter.calls).toHaveLength(1);
     });
 
     test("handlePayoutWebhook() flips disbursing -> paid on transfer.success and is idempotent on replay", async () => {

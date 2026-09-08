@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsEnum, IsOptional, IsString } from "class-validator";
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
 import { prisma, Prisma, CounterpartyType, CounterpartyStatus } from "@birr/db";
 
 export class RegisterCounterpartyInput {
@@ -20,9 +20,16 @@ export class RegisterCounterpartyInput {
   @IsString()
   address?: string;
 
-  @IsOptional()
+  // Required, with a real substance floor — this is the primary thing a
+  // shariah_board_member actually reads before recordShariahApproval.
+  // Used to be optional and unchecked for content, which left that
+  // review with nothing to go on (found 2026-09-04); update() below
+  // leaves it optional since a correction there is touching an already-
+  // reviewed or already-populated record, not a first-time intake gap.
   @IsString()
-  businessActivities?: string;
+  @IsNotEmpty()
+  @MinLength(20, { message: "businessActivities must describe what this counterparty actually does in enough detail for a Shariah review (at least 20 characters)." })
+  businessActivities!: string;
 
   @IsOptional()
   @IsString()
@@ -55,6 +62,13 @@ export class RegisterCounterpartyInput {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  // Not itself a judgment — just a fact (name/reference of any existing
+  // Shariah board or certification this counterparty already holds
+  // elsewhere) for the reviewer to weigh alongside businessActivities.
+  @IsOptional()
+  @IsString()
+  existingShariahCertification?: string;
 }
 
 // Everything about a counterparty's identity/profile that can change
@@ -110,6 +124,10 @@ export class UpdateCounterpartyInput {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  existingShariahCertification?: string;
 }
 
 export class SetConcentrationLimitInput {
@@ -424,24 +442,23 @@ export class CounterpartiesService {
     if (!counterparty) throw new NotFoundException(`Counterparty "${id}" not found.`);
 
     // Scoped to concentrationLimitCurrency, same reasoning as
-    // InvestmentsService.assertWithinConcentrationLimit — Investment has
-    // no currency field of its own (it inherits its waqf's
-    // corpusCurrency), so an unscoped sum would blend currencies into one
-    // meaningless raw number the way a prior version of this did.
+    // InvestmentsService.assertWithinConcentrationLimit — an unscoped sum
+    // would blend currencies into one meaningless raw number the way a
+    // prior version of this did.
     const investments = await prisma.investment.findMany({
       where: { counterpartyId: id, status: "active" },
-      select: { allocatedAmount: true, waqf: { select: { corpusCurrency: true } } },
+      select: { allocatedAmount: true, currency: true },
     });
     // Excludes only a KNOWN currency mismatch (both currencies present
     // and different) — see InvestmentsService.assertWithinConcentrationLimit's
-    // own comment on why a waqf with no corpusCurrency recorded counts
+    // own comment on why an investment with no currency recorded counts
     // toward this total rather than being excluded from it.
     const totalInvested = investments
       .filter(
         (i) =>
           !counterparty.concentrationLimitCurrency ||
-          !i.waqf.corpusCurrency ||
-          i.waqf.corpusCurrency === counterparty.concentrationLimitCurrency,
+          !i.currency ||
+          i.currency === counterparty.concentrationLimitCurrency,
       )
       .reduce((sum, i) => sum.plus(i.allocatedAmount), new Prisma.Decimal(0));
 

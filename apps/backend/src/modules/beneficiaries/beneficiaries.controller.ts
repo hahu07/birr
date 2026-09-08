@@ -15,7 +15,8 @@ export class BeneficiariesController {
   // GovernedActionsService.decide().
 
   @Post()
-  create(@Body() body: CreateBeneficiaryInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+  async create(@Body() body: CreateBeneficiaryInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    await this.service.assertStaffCanAccessWaqf(body.waqfId, staff);
     return this.service.create(body, staff.userId);
   }
 
@@ -26,17 +27,23 @@ export class BeneficiariesController {
   // payout-ready. Declared before ":id" for the same routing reason as
   // DistributionsController.summary().
   @Post(":id/payout-details")
-  setPayoutDetails(
+  async setPayoutDetails(
     @Param("id") id: string,
     @Body() body: SetPayoutDetailsInput,
     @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
   ) {
+    const existing = await this.service.findById(id);
+    if (!existing) throw new NotFoundException(`Beneficiary "${id}" not found.`);
+    await this.service.assertStaffCanAccessWaqf(existing.waqfId, staff);
     return this.service.setPayoutDetails(id, body, staff.userId);
   }
 
   @Get()
-  async list(@Query("waqfId") waqfId?: string) {
-    const beneficiaries = await this.service.list(waqfId);
+  async list(@Query("waqfId") waqfId: string | undefined, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    if (waqfId) {
+      await this.service.assertStaffCanAccessWaqf(waqfId, staff);
+    }
+    const beneficiaries = await this.service.list(waqfId, staff);
     return beneficiaries.map((b) => this.service.withDecryptedBankDetails(b));
   }
 
@@ -58,9 +65,10 @@ export class BeneficiariesController {
   }
 
   @Get(":id")
-  async findById(@Param("id") id: string) {
+  async findById(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     const beneficiary = await this.service.findById(id);
     if (!beneficiary) throw new NotFoundException(`Beneficiary "${id}" not found.`);
+    await this.service.assertStaffCanAccessWaqf(beneficiary.waqfId, staff);
     return this.service.withDecryptedBankDetails(beneficiary);
   }
 }

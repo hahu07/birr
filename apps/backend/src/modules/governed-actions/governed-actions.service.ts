@@ -103,6 +103,22 @@ interface GovernedActionHandler {
     payload: unknown,
     tx: Prisma.TransactionClient,
   ): Promise<FulfillmentResult>;
+  /**
+   * decide()-time, on rejection, inside the same transaction. Optional
+   * because most targets don't exist yet at proposal time (e.g.
+   * counterparty.onboard's Counterparty row stays exactly as it was —
+   * `pending_review`/`under_review` — whether its onboarding proposal is
+   * rejected or never proposed at all, nothing to release). Distribution
+   * is different: create() already makes a real row at `pending` before
+   * governance ever runs, so a rejection needs to move it off that
+   * status or it permanently occupies its cause's allocation ceiling
+   * forever with no other way to release it (found 2026-09-04, live —
+   * see DistributionsService.reject's own comment).
+   */
+  onReject?(
+    payload: unknown,
+    tx: Prisma.TransactionClient,
+  ): Promise<FulfillmentResult>;
 }
 
 @Injectable()
@@ -418,6 +434,18 @@ export class GovernedActionsService {
               after: distribution,
             };
           },
+          onReject: async (payload, tx) => {
+            const { distributionId } = payload as { distributionId: string };
+            const before = await tx.distribution.findUnique({ where: { id: distributionId } });
+            const distribution = await this.distributionsService.reject(distributionId, tx);
+            return {
+              auditAction: "distribution.rejected",
+              entityType: "Distribution",
+              entityId: distribution.id,
+              before,
+              after: distribution,
+            };
+          },
         },
       ],
     ]);
@@ -590,14 +618,27 @@ export class GovernedActionsService {
 
     const result = await prisma.$transaction(async (tx) => {
       const status = input.approve ? "approved" : "rejected";
-      const decided = await tx.governedAction.update({
-        where: { id: action.id },
+      // Atomic claim, not a plain update: the `status: "proposed"` in this
+      // WHERE clause is what actually closes the race the outer check above
+      // can't — two concurrent decide() calls both pass that outer read,
+      // but only one of these single-statement updates can match a row
+      // still "proposed", so only one caller proceeds to run the
+      // fulfillment handler below. The other gets count 0 and rolls back
+      // its whole transaction before any side effect fires.
+      const claim = await tx.governedAction.updateMany({
+        where: { id: action.id, status: "proposed" },
         data: {
           status,
           checkerUserId: input.checkerUserId,
           decidedAt: new Date(),
         },
       });
+      if (claim.count !== 1) {
+        throw new BadRequestException(
+          `Governed action "${action.id}" has already been decided.`,
+        );
+      }
+      const decided = await tx.governedAction.findUniqueOrThrow({ where: { id: action.id } });
 
       await tx.auditLog.create({
         data: {
@@ -613,10 +654,19 @@ export class GovernedActionsService {
       });
 
       let fulfillment: FulfillmentResult | undefined;
-      if (input.approve) {
-        const handler = this.handlers.get(action.permission.key);
-        if (handler) {
+      const handler = this.handlers.get(action.permission.key);
+      if (handler) {
+        // onReject is optional (most targets don't exist yet at proposal
+        // time, so rejection has nothing to release — see
+        // GovernedActionHandler.onReject's own comment); onApprove is
+        // required, so approval always has a handler to call once
+        // `handler` itself resolved.
+        if (input.approve) {
           fulfillment = await handler.onApprove(action.payload, tx);
+        } else if (handler.onReject) {
+          fulfillment = await handler.onReject(action.payload, tx);
+        }
+        if (fulfillment) {
           await tx.auditLog.create({
             data: {
               waqfId: action.waqfId,

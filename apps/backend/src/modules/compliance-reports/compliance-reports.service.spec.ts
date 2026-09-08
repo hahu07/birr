@@ -15,6 +15,7 @@ describe("ComplianceReportsService", () => {
   const governedActionIds: string[] = [];
 
   let requestedByUserId: string;
+  let checkerUserId: string;
   let waqfId: string;
   let permissionId: string;
 
@@ -25,6 +26,17 @@ describe("ComplianceReportsService", () => {
     requestedByUserId = requesterUser.id;
     await prisma.birrStaff.create({
       data: { userId: requesterUser.id, staffRole: "compliance_officer" },
+    });
+
+    // checker_required_once_decided (2026-09-08) requires a checkerUserId
+    // on any already-decided fixture row, distinct from makerUserId per
+    // checker_not_maker.
+    const checkerUser = await prisma.user.create({
+      data: { email: `compliance-checker-${Date.now()}@example.com`, fullName: "Test Checker" },
+    });
+    checkerUserId = checkerUser.id;
+    await prisma.birrStaff.create({
+      data: { userId: checkerUser.id, staffRole: "mutawalli_officer" },
     });
 
     // Every Waqf must belong to a Foundation now — this fixture doesn't
@@ -63,6 +75,7 @@ describe("ComplianceReportsService", () => {
         payload: { note: "fixture" },
         makerType: "human",
         makerUserId: requestedByUserId,
+        checkerUserId,
         status: "approved",
       },
     });

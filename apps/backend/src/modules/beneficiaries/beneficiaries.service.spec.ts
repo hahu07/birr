@@ -1,5 +1,5 @@
 import { prisma } from "@birr/db";
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { BeneficiariesService } from "./beneficiaries.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
 
@@ -65,6 +65,10 @@ describe("BeneficiariesService", () => {
   });
 
   afterAll(async () => {
+    // WaqfCaseAssignment rows created by the caseload-scoping tests below
+    // must go before the waqfs they reference (no cascade delete anywhere
+    // in this schema — see CLAUDE.md's soft-delete-only rule).
+    await prisma.waqfCaseAssignment.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.beneficiary.deleteMany({ where: { id: { in: beneficiaryIds } } });
     await prisma.waqfCause.deleteMany({ where: { id: { in: waqfCauseIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
@@ -271,6 +275,72 @@ describe("BeneficiariesService", () => {
       expect(logs).toHaveLength(1);
       expect((logs[0]!.before as any).bankDetailsEncrypted).toBeUndefined();
       expect((logs[0]!.after as any).bankDetailsEncrypted).toBeUndefined();
+    });
+  });
+
+  describe("assertStaffCanAccessWaqf() / list() caseload scoping", () => {
+    // 2026-09-08 audit fix regression coverage: a staff member with no
+    // relation to a waqf used to be able to pull its beneficiaries'
+    // decrypted bank details with no check at all.
+    test("rejects a staff member with no active case assignment on the waqf", async () => {
+      const unassignedUser = await prisma.user.create({
+        data: { email: `beneficiaries-unassigned-${Date.now()}@example.com`, fullName: "Unassigned Staff" },
+      });
+      const unassignedStaff = await prisma.birrStaff.create({
+        data: { userId: unassignedUser.id, staffRole: "external_auditor" },
+      });
+      await expect(
+        service.assertStaffCanAccessWaqf(waqfAId, { id: unassignedStaff.id, staffRole: unassignedStaff.staffRole }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    test("allows a staff member with an active case assignment on the waqf", async () => {
+      const assignedUser = await prisma.user.create({
+        data: { email: `beneficiaries-assigned-${Date.now()}@example.com`, fullName: "Assigned Staff" },
+      });
+      const assignedStaff = await prisma.birrStaff.create({
+        data: { userId: assignedUser.id, staffRole: "mutawalli_officer" },
+      });
+      await prisma.waqfCaseAssignment.create({
+        data: { waqfId: waqfAId, birrStaffId: assignedStaff.id, assignmentRole: "mutawalli_officer" },
+      });
+      await expect(
+        service.assertStaffCanAccessWaqf(waqfAId, { id: assignedStaff.id, staffRole: assignedStaff.staffRole }),
+      ).resolves.toBeUndefined();
+    });
+
+    test("always allows platform_admin, with no case assignment needed", async () => {
+      await expect(
+        service.assertStaffCanAccessWaqf(waqfAId, { id: "irrelevant-id", staffRole: "platform_admin" }),
+      ).resolves.toBeUndefined();
+    });
+
+    test("list() with no waqfId scopes to the caller's own active caseload, not every waqf firm-wide", async () => {
+      const caseloadUser = await prisma.user.create({
+        data: { email: `beneficiaries-caseload-${Date.now()}@example.com`, fullName: "Caseload Staff" },
+      });
+      const caseloadStaff = await prisma.birrStaff.create({
+        data: { userId: caseloadUser.id, staffRole: "mutawalli_officer" },
+      });
+      await prisma.waqfCaseAssignment.create({
+        data: { waqfId: waqfAId, birrStaffId: caseloadStaff.id, assignmentRole: "mutawalli_officer" },
+      });
+
+      const onA = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "Caseload Scoping — On A", eligibilityCriteria: "Fixture" },
+        actorUserId,
+      );
+      beneficiaryIds.push(onA.id);
+      const onB = await service.create(
+        { waqfId: waqfBId, causeId: causeOnWaqfBId, name: "Caseload Scoping — On B", eligibilityCriteria: "Fixture" },
+        actorUserId,
+      );
+      beneficiaryIds.push(onB.id);
+
+      const results = await service.list(undefined, { id: caseloadStaff.id, staffRole: caseloadStaff.staffRole });
+      const resultIds = results.map((b) => b.id);
+      expect(resultIds).toContain(onA.id);
+      expect(resultIds).not.toContain(onB.id);
     });
   });
 });

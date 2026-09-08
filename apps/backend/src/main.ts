@@ -4,12 +4,16 @@ import * as path from "path";
 import { randomUUID } from "crypto";
 import cookieParser from "cookie-parser";
 import { NestFactory } from "@nestjs/core";
-import { ValidationPipe } from "@nestjs/common";
+import { HttpException, ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { prisma } from "@birr/db";
 import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { NotificationsService } from "./modules/notifications/notifications.service";
 import { startTrusteeLicenseExpiryScheduler } from "./modules/trustee-licenses/trustee-license-expiry-scheduler";
+import { hasAnySessionCookie } from "./common/auth/session";
+import { isBirrStaffSession } from "./common/auth/current-birr-staff";
+import { resolveFounderFromSession } from "./common/auth/current-founder";
 
 // Payment-provider webhook routes need the exact raw request bytes to
 // verify a signature (each adapter's verifyAndParseWebhook recomputes
@@ -25,17 +29,71 @@ const WEBHOOK_PATHS = ["/webhooks/stripe", "/webhooks/paystack", "/webhooks/stab
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
 
-  // Serves uploaded Foundation logos (see
-  // modules/foundations/logo-storage.service.ts). Registered before the
-  // JSON/raw body-parser switch below — safe regardless of ordering
-  // since static GETs never carry a body, but keeping it first avoids
-  // any doubt about interaction with that split.
-  app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
-
   // Parses the httpOnly session cookie (see common/auth/session.ts).
   // Independent of the JSON/raw body-parser split below — cookie
-  // parsing only touches headers, never the body stream.
+  // parsing only touches headers, never the body stream. Registered
+  // before the /uploads mounts below (moved up from after them,
+  // 2026-09-08) since the message-attachments one now needs req.cookies
+  // to authorize a request.
   app.use(cookieParser());
+
+  // Foundation logos are meant to be public (shown on public marketing/
+  // waqf-types pages) — see modules/foundations/logo-storage.service.ts.
+  app.use("/uploads/logos", express.static(path.join(__dirname, "..", "uploads", "logos")));
+
+  // Message attachments are private Founder<->Birr-staff correspondence —
+  // NOT meant to be public. Until 2026-09-08 this sat under the same
+  // blanket `app.use("/uploads", express.static(...))` mount as the
+  // public logos above, so a UUID filename was the only thing standing
+  // between anyone and an attachment (flagged in
+  // message-attachment-storage.service.ts's own comment before this fix).
+  // Same authorization shape as MessagesController.list(): any signed-in
+  // Birr staff, or a Founder whose Foundation owns the parent message.
+  // This runs as raw Express middleware ahead of Nest's own request
+  // handling (like express.static itself), so NestJS exceptions don't
+  // apply here — errors are plain res.status().json(), not thrown.
+  app.use(
+    "/uploads/message-attachments",
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        if (!hasAnySessionCookie(req)) {
+          res.status(401).json({ message: "Not signed in." });
+          return;
+        }
+        const filename = path.basename(req.path);
+        const attachment = await prisma.messageAttachment.findFirst({
+          where: { url: { endsWith: `/${filename}` } },
+          select: { message: { select: { foundationId: true } } },
+        });
+        if (!attachment) {
+          res.status(404).json({ message: "Not found." });
+          return;
+        }
+        if (!(await isBirrStaffSession(req))) {
+          const founder = await resolveFounderFromSession(req);
+          const owns = await prisma.foundationFounder.findFirst({
+            where: { foundationId: attachment.message.foundationId, founderId: founder.id },
+            select: { founderId: true },
+          });
+          if (!owns) {
+            res.status(403).json({ message: "You don't have access to this attachment." });
+            return;
+          }
+        }
+        next();
+      } catch (err) {
+        // resolveFounderFromSession throws NestJS HttpExceptions, but
+        // this middleware runs ahead of Nest's own pipeline (no
+        // AllExceptionsFilter here) — translate the status ourselves
+        // rather than falling through to Express's default HTML error
+        // page for what's still just "not signed in"/"not found".
+        const status = err instanceof HttpException ? err.getStatus() : 500;
+        const message = err instanceof HttpException ? err.message : "Internal server error";
+        res.status(status).json({ message });
+      }
+    },
+    express.static(path.join(__dirname, "..", "uploads", "message-attachments")),
+  );
 
   // Correlation id: reuses an inbound x-request-id (e.g. from a load
   // balancer/proxy that already assigns one) or mints a fresh one,
@@ -142,4 +200,7 @@ async function bootstrap() {
   // rather than a governed-actions-style call site.
   startTrusteeLicenseExpiryScheduler(app.get(NotificationsService));
 }
-bootstrap();
+bootstrap().catch((err: unknown) => {
+  console.error("Fatal error during startup:", err);
+  process.exit(1);
+});

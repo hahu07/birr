@@ -66,14 +66,33 @@ export class DistributionsService {
   // non-negotiable — wrapped in a transaction so the create and its
   // audit row are atomic.
   async create(input: CreateDistributionInput, actorUserId: string) {
-    const cause = await prisma.waqfCause.findUnique({ where: { id: input.causeId } });
+    const [cause, waqf] = await Promise.all([
+      prisma.waqfCause.findUnique({ where: { id: input.causeId } }),
+      prisma.waqf.findUnique({ where: { id: input.waqfId } }),
+    ]);
     if (!cause || cause.waqfId !== input.waqfId) {
       throw new BadRequestException(
         `Cause "${input.causeId}" does not belong to waqf "${input.waqfId}".`,
       );
     }
+    // See assertWithinAllocation's own comment: allocatedAmount/
+    // proceedsAllocatedAmount carry no currency of their own, so
+    // whichever currency reaches assertWithinAllocation first silently
+    // becomes "the" currency for that cause's ceiling — a distribution
+    // in the wrong currency would pass that check comparing raw numbers
+    // as if e.g. USD and NGN were equivalent (found 2026-09-04, live).
+    // Anchoring to the waqf's own declared corpusCurrency here, before
+    // a mismatched currency ever gets the chance to lock in, closes
+    // that at its root. Waqfs with no declared corpusCurrency (legacy)
+    // fall through unchecked, same posture as allocate()'s own
+    // poolCurrency resolution.
+    if (waqf?.corpusCurrency && waqf.corpusCurrency !== input.currency) {
+      throw new BadRequestException(
+        `This waqf's corpus is denominated in ${waqf.corpusCurrency} — a distribution must use that same currency, not ${input.currency}.`,
+      );
+    }
     return prisma.$transaction(async (tx) => {
-      await this.assertBeneficiaryEligible(input.waqfId, input.beneficiaryId, tx);
+      await this.assertBeneficiaryEligible(input.waqfId, input.beneficiaryId, input.causeId, tx);
       await this.assertWithinAllocation(input.causeId, new Prisma.Decimal(input.amount), input.currency, tx);
       const distribution = await tx.distribution.create({ data: input });
       await tx.auditLog.create({
@@ -96,14 +115,19 @@ export class DistributionsService {
    * distribution.approve is a governed action (see schema.prisma's
    * comment on Distribution); the only caller is
    * GovernedActionsService's handler map, on approval, inside its own
-   * transaction. On a governed-action *rejection*, no fulfillment runs
-   * at all (the handler map is only invoked when the checker approves —
-   * same as every other entity), so a rejected distribution simply stays
-   * at `pending`.
+   * transaction. See reject() below for the rejection counterpart —
+   * unlike most governed actions, a Distribution row already exists at
+   * `pending` from create() time, so rejecting its approval has a real
+   * status to move it to, not just "nothing was ever created."
    */
   async approve(id: string, tx: Prisma.TransactionClient) {
     const distribution = await tx.distribution.findUnique({ where: { id } });
     if (!distribution) throw new NotFoundException(`Distribution "${id}" not found.`);
+    if (distribution.status !== "pending") {
+      throw new BadRequestException(
+        `Distribution "${id}" is ${distribution.status}, not pending — nothing to approve.`,
+      );
+    }
     // Payout-readiness gate — checked first, since it's the check a
     // checker will hit most often in practice, and throwing here rolls
     // back GovernedActionsService.decide()'s whole transaction, leaving
@@ -120,12 +144,63 @@ export class DistributionsService {
     // from "already committed" since it's added back as the amount being
     // (re-)confirmed. Same reasoning for beneficiary eligibility below:
     // status/expiry can change in that same gap.
-    await this.assertBeneficiaryEligible(distribution.waqfId, distribution.beneficiaryId, tx);
+    await this.assertBeneficiaryEligible(distribution.waqfId, distribution.beneficiaryId, distribution.causeId, tx);
     await this.assertWithinAllocation(distribution.causeId, distribution.amount, distribution.currency, tx, id);
-    return tx.distribution.update({
-      where: { id },
+    // Atomic claim (not a plain update): only one caller can flip a given
+    // "pending" row — the same class of race this method's status guard
+    // above already fast-fails on, closed for real here.
+    const claim = await tx.distribution.updateMany({
+      where: { id, status: "pending" },
       data: { status: "approved", approvedAt: new Date() },
     });
+    if (claim.count !== 1) {
+      throw new BadRequestException(
+        `Distribution "${id}" is ${distribution.status}, not pending — nothing to approve.`,
+      );
+    }
+    return tx.distribution.findUniqueOrThrow({ where: { id } });
+  }
+
+  /**
+   * The rejection counterpart to approve(). Only caller is
+   * GovernedActionsService's handler map, on rejection, inside its own
+   * transaction — same shape as onApprove's own fulfillment call, so a
+   * rejection gets exactly as real an audit trail as an approval does.
+   *
+   * Without this, a rejected distribution.approve action left the
+   * underlying Distribution row stuck at `pending` forever —
+   * assertWithinAllocation counts `pending` as a real, committed claim
+   * on the cause's ceiling (correctly so, for a distribution still
+   * awaiting a decision), so a rejected-but-never-updated row
+   * permanently occupied that share of the ceiling with no way to
+   * release it: no cancel/delete endpoint exists for a Distribution
+   * (CLAUDE.md: never hard-delete a governed record), and
+   * DistributionStatus.rejected existed in the schema but nothing ever
+   * set it (found 2026-09-04, live — a real distribution stuck exactly
+   * this way after a corpus-vs-proceeds ceiling change left it
+   * over-allocated).
+   */
+  async reject(id: string, tx: Prisma.TransactionClient) {
+    const distribution = await tx.distribution.findUnique({ where: { id } });
+    if (!distribution) throw new NotFoundException(`Distribution "${id}" not found.`);
+    if (distribution.status !== "pending") {
+      throw new BadRequestException(
+        `Distribution "${id}" is ${distribution.status}, not pending — nothing to reject.`,
+      );
+    }
+    // Same atomic-claim shape as approve() above, for the same reason —
+    // low real-world stakes on a rejection, but no reason to leave one
+    // sibling race-safe and the other not.
+    const claim = await tx.distribution.updateMany({
+      where: { id, status: "pending" },
+      data: { status: "rejected" },
+    });
+    if (claim.count !== 1) {
+      throw new BadRequestException(
+        `Distribution "${id}" is ${distribution.status}, not pending — nothing to reject.`,
+      );
+    }
+    return tx.distribution.findUniqueOrThrow({ where: { id } });
   }
 
   /**
@@ -161,24 +236,37 @@ export class DistributionsService {
    * action commits (fire-and-forget, post-commit — this makes a real
    * HTTP call, which must never happen inside a DB transaction), and
    * again from retryDisbursement() after a payout_failed row is reset
-   * back to "approved". Idempotency guard: only ever acts when the
-   * distribution's status is exactly "approved" — retryDisbursement
-   * flips payout_failed -> approved transactionally before calling this,
-   * so this method only ever needs the one precondition. Never throws
-   * past its own boundary — every real failure (a network error, a
-   * Paystack-side rejection) is caught and recorded as payout_failed,
-   * so callers only need to handle genuinely unexpected errors (e.g. a
-   * DB blip on the initial lookup).
+   * back to "approved". Never throws past its own boundary — every real
+   * failure (a network error, a Paystack-side rejection) is caught and
+   * recorded as payout_failed, so callers only need to handle genuinely
+   * unexpected errors (e.g. a DB blip on the initial lookup).
    *
-   * Not $transaction-wrapped: the HTTP call sits between the two
-   * possible outcomes, so status-write and audit-write happen as two
-   * separate statements, deliberately status-then-audit — on a crash
-   * between them, the worst case is "state changed, audit missing"
-   * (recoverable by inspection), not the reverse.
+   * Claims the row (approved -> disbursing) atomically *before* calling
+   * the payout adapter, not after — this used to write "disbursing" only
+   * on success, which left the window between reading "approved" and
+   * writing "disbursing" wide open around the real HTTP call: two
+   * concurrent callers (a raced decide(), or a retry racing the original
+   * fire-and-forget call) could both read "approved" and both fire a
+   * live payout. Claiming first means only one caller's updateMany can
+   * match a still-"approved" row; the other's `count` comes back 0 and
+   * it returns without ever touching the adapter. Not $transaction
+   * -wrapped past the claim: the HTTP call still sits outside any DB
+   * transaction (must never hold one open across a network call), so the
+   * claim-write, the outcome-write, and the audit-write are three
+   * separate statements — on a crash between them, the row is left
+   * "disbursing" with no outcome recorded yet, which is an accurate
+   * "we don't know if this succeeded" signal for manual reconciliation,
+   * not a silent "approved" row that a naive retry could pay again.
    */
   async initiateDisbursement(distributionId: string): Promise<void> {
     const distribution = await prisma.distribution.findUnique({ where: { id: distributionId } });
     if (!distribution || distribution.status !== "approved") return;
+
+    const claim = await prisma.distribution.updateMany({
+      where: { id: distributionId, status: "approved" },
+      data: { status: "disbursing" },
+    });
+    if (claim.count !== 1) return; // another caller already claimed this disbursement
 
     const bankDetails = await this.beneficiariesService.getDecryptedBankDetailsForPayout(distribution.beneficiaryId);
     const adapter = this.payoutAdapters.get("paystack")!; // assertPayoutReady already guaranteed paystack is the only reachable provider by the time a distribution reaches "approved"
@@ -192,7 +280,7 @@ export class DistributionsService {
       });
       const updated = await prisma.distribution.update({
         where: { id: distributionId },
-        data: { status: "disbursing", payoutProvider: "paystack", payoutReference: result.providerReference },
+        data: { payoutProvider: "paystack", payoutReference: result.providerReference },
       });
       await prisma.auditLog.create({
         data: {
@@ -244,10 +332,19 @@ export class DistributionsService {
         );
       }
       await this.assertWithinAllocation(distribution.causeId, distribution.amount, distribution.currency, tx, distributionId);
-      const updated = await tx.distribution.update({
-        where: { id: distributionId },
+      // Atomic claim: two rapid "Retry disbursement" clicks on the same
+      // failed row could otherwise both pass the check above and both go
+      // on to call initiateDisbursement() below.
+      const claim = await tx.distribution.updateMany({
+        where: { id: distributionId, status: "payout_failed" },
         data: { status: "approved", payoutError: null },
       });
+      if (claim.count !== 1) {
+        throw new BadRequestException(
+          `Distribution "${distributionId}" is not in a failed-payout state (status: ${distribution.status}).`,
+        );
+      }
+      const updated = await tx.distribution.findUniqueOrThrow({ where: { id: distributionId } });
       await tx.auditLog.create({
         data: {
           waqfId: distribution.waqfId,
@@ -356,10 +453,27 @@ export class DistributionsService {
    * Lazily checked here, not a scheduled job (CLAUDE.md: "start simple"
    * on scheduling) — same style as assertWithinAllocation's own
    * check-at-write-time posture rather than a background sweep.
+   *
+   * Also cross-checks `causeId` against the beneficiary's own
+   * `Beneficiary.causeId` — the cause they were actually nominated and
+   * vetted for (eligibilityCriteria is written *for that cause's
+   * purpose*, e.g. "widowed, no income" for Poverty Relief vs. "enrolled
+   * in school" for Education). Without this, nothing stopped a
+   * distribution against a *different* cause on the same waqf for the
+   * same beneficiary — same active status, same eligibility-expiry
+   * check passing regardless of which cause was picked in the form, so
+   * a beneficiary vetted for one cause's purpose could receive money
+   * earmarked for an entirely unrelated one (found 2026-09-04, live).
+   * `causeId` is nullable on Beneficiary (legacy rows predating this
+   * field being required — see that field's own schema comment); a
+   * beneficiary with none on file falls through unchecked, same
+   * "historical data, nothing to validate against" posture as
+   * corpusCurrency elsewhere in this file.
    */
   private async assertBeneficiaryEligible(
     waqfId: string,
     beneficiaryId: string,
+    causeId: string,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     const beneficiary = await tx.beneficiary.findUnique({ where: { id: beneficiaryId } });
@@ -372,6 +486,15 @@ export class DistributionsService {
     if (beneficiary.eligibilityExpiresAt && beneficiary.eligibilityExpiresAt < new Date()) {
       throw new BadRequestException(
         `Beneficiary "${beneficiary.name}"'s eligibility expired on ${beneficiary.eligibilityExpiresAt.toDateString()}.`,
+      );
+    }
+    if (beneficiary.causeId && beneficiary.causeId !== causeId) {
+      const [nominatedCause, requestedCause] = await Promise.all([
+        tx.waqfCause.findUnique({ where: { id: beneficiary.causeId }, select: { name: true } }),
+        tx.waqfCause.findUnique({ where: { id: causeId }, select: { name: true } }),
+      ]);
+      throw new BadRequestException(
+        `Beneficiary "${beneficiary.name}" was nominated for "${nominatedCause?.name ?? beneficiary.causeId}" — not eligible for a distribution against "${requestedCause?.name ?? causeId}".`,
       );
     }
   }
@@ -396,11 +519,11 @@ export class DistributionsService {
    * don't double-count the row being (re-)confirmed against itself.
    *
    * Scoped to `currency` — WaqfCause.allocatedAmount/proceedsAllocatedAmount
-   * carry no currency of their own (a pre-existing schema gap, not fixed
-   * here), so this treats the ceiling as denominated in whichever
-   * currency the cause's *first* committed distribution used, and
-   * locks every later distribution against the same cause to that same
-   * currency (2026-08-30 security audit fix — see
+   * still carry no currency of their own at the schema level, so this
+   * treats the ceiling as denominated in whichever currency the cause's
+   * *first* committed distribution used, and locks every later
+   * distribution against the same cause to that same currency
+   * (2026-08-30 security audit fix — see
    * docs/comprehensive-code-review-prompt.md). Deliberately NOT just
    * "sum same-currency commitments and ignore other currencies" —
    * that alone would let every distinct currency independently reach
@@ -413,6 +536,18 @@ export class DistributionsService {
    * (e.g. summaryByCause's own comment on why mixing currencies is
    * meaningless) without requiring an exchange-rate conversion, which
    * is out of scope for this fix.
+   *
+   * That still left one real hole until 2026-09-04: nothing stopped a
+   * *first* distribution itself from locking in a currency that doesn't
+   * actually match what the ceiling was computed in (the corpus, plus
+   * WaqfProceeds — both anchored to the waqf's own corpusCurrency), so
+   * e.g. a $25,000 USD distribution against a cause whose real ceiling
+   * was ₦25,000 would pass this check comparing raw numbers as if the
+   * two currencies were equivalent (found live, via a real Ops Console
+   * screenshot). create() now rejects a mismatched currency against
+   * waqf.corpusCurrency before it ever reaches here — see that method's
+   * own comment — so the lock this method applies should, from here on,
+   * only ever be locking in the currency that was already correct.
    */
   private async assertWithinAllocation(
     causeId: string,
@@ -429,7 +564,22 @@ export class DistributionsService {
     // concurrency, not just the comparison below on its own.
     await tx.$queryRaw`SELECT id FROM "waqf_causes" WHERE id = ${causeId} FOR UPDATE`;
     const cause = await tx.waqfCause.findUnique({ where: { id: causeId } });
-    const allocated = new Prisma.Decimal(cause?.allocatedAmount ?? 0).plus(cause?.proceedsAllocatedAmount ?? 0);
+    // Investment-type waqfs: corpus (allocatedAmount) is preserved
+    // principal, not itself distributable — only investment proceeds
+    // (proceedsAllocatedAmount) are real income available to spend,
+    // per classical waqf perpetuity (corpus preserved, only income
+    // spent). Reverses the 2026-08-27 decision that made corpus
+    // distributable for every type including Investment — see
+    // CLAUDE.md's 2026-09-04 update for the full history on this.
+    // Every other type has no proceeds concept at all
+    // (WaqfProceedsService only accepts Investment-type waqfs), so
+    // allocatedAmount stays their only, still fully distributable,
+    // pool — nothing changes for Asset/Project.
+    const waqf = cause ? await tx.waqf.findUnique({ where: { id: cause.waqfId }, select: { type: true } }) : null;
+    const allocated =
+      waqf?.type === "investment"
+        ? new Prisma.Decimal(cause?.proceedsAllocatedAmount ?? 0)
+        : new Prisma.Decimal(cause?.allocatedAmount ?? 0).plus(cause?.proceedsAllocatedAmount ?? 0);
 
     const committedWhere: Prisma.DistributionWhereInput = {
       causeId,

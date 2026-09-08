@@ -39,7 +39,6 @@ describe("InvitationsService", () => {
   let coFounderFounderAId: string;
   let coFounderInviterUserId: string;
   let unrelatedFounderId: string;
-  let preExistingWaqfId: string;
 
   beforeAll(async () => {
     const inviterUser = await prisma.user.create({
@@ -93,7 +92,6 @@ describe("InvitationsService", () => {
         foundationId: coFounderFoundationId,
       },
     });
-    preExistingWaqfId = waqf.id;
     waqfIds.push(waqf.id);
   });
 

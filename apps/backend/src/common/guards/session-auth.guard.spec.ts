@@ -1,4 +1,4 @@
-import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
+import { ExecutionContext, Type, UnauthorizedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { prisma } from "@birr/db";
 import { SessionAuthGuard } from "./session-auth.guard";
@@ -17,7 +17,7 @@ class PublicTestController {
   anyRoute() {}
 }
 
-function makeContext(handler: () => void, cls: Function, token?: string): ExecutionContext {
+function makeContext(handler: () => void, cls: Type<unknown>, token?: string): ExecutionContext {
   return {
     getHandler: () => handler,
     getClass: () => cls,

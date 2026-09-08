@@ -49,7 +49,7 @@ export class InvestmentsService {
    *
    * Restricted to Investment-type waqfs — only that type routes its
    * raised corpus into an investment venue at all; every other type
-   * (Asset/Project/Hybrid) goes directly toward its stated purpose, with
+   * (Asset/Project) goes directly toward its stated purpose, with
    * no investment step to register.
    */
   async createOne(
@@ -64,6 +64,13 @@ export class InvestmentsService {
         `Only Investment-type Waqf Funds route their corpus into investments — "${waqf.name}" is ${waqf.type}.`,
       );
     }
+    // currency is always derived from the waqf, never client-supplied —
+    // see Investment.currency's own schema comment.
+    if (!waqf.corpusCurrency) {
+      throw new BadRequestException(
+        `Waqf "${waqf.name}" has no declared corpus currency yet — set one before creating investments against it.`,
+      );
+    }
 
     const counterparty = await tx.counterparty.findUnique({ where: { id: input.counterpartyId } });
     if (!counterparty) throw new NotFoundException(`Counterparty "${input.counterpartyId}" not found.`);
@@ -76,7 +83,7 @@ export class InvestmentsService {
     await this.assertWithinRaised(input.waqfId, new Prisma.Decimal(input.allocatedAmount), tx);
     await this.assertWithinConcentrationLimit(counterparty, new Prisma.Decimal(input.allocatedAmount), waqf.corpusCurrency, tx);
 
-    const investment = await tx.investment.create({ data: input });
+    const investment = await tx.investment.create({ data: { ...input, currency: waqf.corpusCurrency } });
     await tx.auditLog.create({
       data: {
         waqfId: input.waqfId,
@@ -202,15 +209,14 @@ export class InvestmentsService {
     // across every waqf combined against one counterparty.
     await tx.$queryRaw`SELECT id FROM "counterparties" WHERE id = ${counterparty.id} FOR UPDATE`;
     const limitCurrency = counterparty.concentrationLimitCurrency;
-    // The limit is denominated in one currency — Investment itself has no
-    // currency field (see this model's own schema comment), it inherits
-    // its waqf's corpusCurrency. Only skip/exclude on a KNOWN mismatch
-    // (both currencies present and different) — a waqf with no
-    // corpusCurrency recorded is treated as possibly the same currency,
-    // not excluded, since under-counting real exposure against a risk
-    // ceiling is the more dangerous failure direction than over-counting
-    // it (a null corpusCurrency shouldn't be a way to invest around this
-    // limit unchecked). No FX conversion exists anywhere in this
+    // The limit is denominated in one currency. Only skip/exclude on a
+    // KNOWN mismatch (both currencies present and different) — an
+    // investment with no currency recorded (none should exist going
+    // forward — see Investment.currency's own schema comment — but a
+    // pre-migration row could in principle) is treated as possibly the
+    // same currency, not excluded, since under-counting real exposure
+    // against a risk ceiling is the more dangerous failure direction
+    // than over-counting it. No FX conversion exists anywhere in this
     // codebase, so a *known* different currency genuinely has no
     // meaningful ceiling to compare against here.
     if (limitCurrency && additionalAmountCurrency && additionalAmountCurrency !== limitCurrency) {
@@ -223,10 +229,10 @@ export class InvestmentsService {
         status: "active",
         ...(excludeInvestmentId ? { id: { not: excludeInvestmentId } } : {}),
       },
-      select: { allocatedAmount: true, waqf: { select: { corpusCurrency: true } } },
+      select: { allocatedAmount: true, currency: true },
     });
     const alreadyInvested = others
-      .filter((i) => !limitCurrency || !i.waqf.corpusCurrency || i.waqf.corpusCurrency === limitCurrency)
+      .filter((i) => !limitCurrency || !i.currency || i.currency === limitCurrency)
       .reduce((sum, i) => sum.plus(i.allocatedAmount), new Prisma.Decimal(0));
 
     if (alreadyInvested.plus(additionalAmount).gt(counterparty.concentrationLimit)) {

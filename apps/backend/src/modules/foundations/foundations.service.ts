@@ -155,7 +155,16 @@ export class FoundationsService {
    */
   list(founderId?: string) {
     if (!founderId) {
-      return prisma.foundation.findMany({ include: FOUNDATION_INCLUDE, orderBy: { createdAt: "desc" } });
+      // A Foundation whose FoundationDeed pins it against hard-delete
+      // (see purge-fixture-data.ts's own comment) can still end up with
+      // zero linked Founders — normal DB rows, not a real operating
+      // Foundation. Excluded here so the Ops Console list/Overview never
+      // counts a deed-locked husk as one Birr actually manages.
+      return prisma.foundation.findMany({
+        where: { foundationFounders: { some: {} } },
+        include: FOUNDATION_INCLUDE,
+        orderBy: { createdAt: "desc" },
+      });
     }
     return withFounderScope(founderId, (tx) =>
       tx.foundation.findMany({
