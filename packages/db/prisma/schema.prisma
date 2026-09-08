@@ -82,7 +82,6 @@ enum WaqfType {
   investment
   asset
   project
-  hybrid
 }
 
 enum WaqfStatus {
@@ -430,6 +429,7 @@ model Waqf {
   proceeds        WaqfProceeds[]
   beneficiaryNominations BeneficiaryNomination[]
 
+  @@index([foundationId])
   @@map("waqfs")
 }
 
@@ -551,6 +551,12 @@ model FoundationFounder {
   contributionNote String?
 
   @@id([foundationId, founderId])
+  // 2026-09-08 audit fix: every founder_isolation RLS policy across every
+  // founder-reachable table filters this table by founderId alone — the
+  // non-leading column of the composite PK above, unusable via that PK's
+  // index. Without this, every founder-scoped read anywhere drove an
+  // inefficient scan here.
+  @@index([founderId])
   @@map("foundation_founders")
 }
 
@@ -725,6 +731,8 @@ model CauseCategorySuggestion {
   resultingCategory   CauseCategory?        @relation(fields: [resultingCategoryId], references: [id])
   createdAt           DateTime              @default(now())
 
+  @@index([waqfId])
+  @@index([proposedByFounderId])
   @@map("cause_category_suggestions")
 }
 
@@ -784,6 +792,8 @@ model BeneficiaryNomination {
   resultingBeneficiary   Beneficiary? @relation(fields: [resultingBeneficiaryId], references: [id])
   createdAt              DateTime     @default(now())
 
+  @@index([waqfId])
+  @@index([proposedByFounderId])
   @@map("beneficiary_nominations")
 }
 
@@ -800,6 +810,11 @@ model WaqfCaseAssignment {
   closedAt       DateTime?
 
   @@unique([waqfId, birrStaffId, assignmentRole])
+  // 2026-09-08 audit fix: a lookup by birrStaffId alone (e.g. "which waqfs
+  // is this staff member assigned to," used by BeneficiariesService's
+  // caseload-scoped list()) can't use the unique index above efficiently
+  // — birrStaffId isn't its leading column.
+  @@index([birrStaffId])
   @@map("waqf_case_assignments")
 }
 
@@ -852,6 +867,9 @@ model GovernedAction {
   createdAt     DateTime             @default(now())
   decidedAt     DateTime?
 
+  @@index([waqfId])
+  @@index([status])
+  @@index([permissionId])
   @@map("governed_actions")
 }
 
@@ -868,6 +886,15 @@ model Asset {
   name           String
   category       AssetCategory
   estimatedValue Decimal
+  // 2026-09-08: previously a bare Decimal with no currency of its own
+  // (see Distribution.currency's own comment on this same gap, fixed
+  // there first). Always derived server-side from the waqf's own
+  // corpusCurrency at creation — never client-supplied — same implicit
+  // -shared-currency posture as WaqfCause's amounts. Existing rows
+  // backfilled from their waqf's corpusCurrency where known, 'USD' for
+  // the remainder (waqfs with no corpusCurrency of their own — see the
+  // migration).
+  currency       String
   status         AssetStatus   @default(active)
   disposedAt     DateTime?
   createdAt      DateTime      @default(now())
@@ -876,6 +903,7 @@ model Asset {
 
   contribution Contribution?
 
+  @@index([waqfId])
   @@map("assets")
 }
 
@@ -936,6 +964,7 @@ model Contribution {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
+  @@index([waqfId])
   @@map("contributions")
 }
 
@@ -1055,6 +1084,7 @@ model Beneficiary {
   // null for every staff-registered beneficiary.
   nomination    BeneficiaryNomination?
 
+  @@index([waqfId])
   @@map("beneficiaries")
 }
 
@@ -1069,6 +1099,11 @@ model Investment {
   name            String
   instrumentType  InvestmentInstrumentType
   allocatedAmount Decimal
+  // 2026-09-08: same fix, same reasoning as Asset.currency above — see
+  // that field's own comment. A bulk InvestmentPlacement can span
+  // several waqfs with different corpusCurrency values; each leg gets
+  // its own, from its own waqf, via InvestmentsService.createOne().
+  currency        String
   status          InvestmentStatus         @default(active)
   liquidatedAt    DateTime?
   // Nullable — no backfill for any pre-existing rows, same convention as
@@ -1091,6 +1126,7 @@ model Investment {
 
   proceeds WaqfProceeds[]
 
+  @@index([waqfId])
   @@map("investments")
 }
 
@@ -1183,6 +1219,16 @@ model Counterparty {
   shariahApprovedAt          DateTime?
   shariahApprovedByUserId    String?
   shariahApprovedByUser      User?               @relation("CounterpartyShariahApprover", fields: [shariahApprovedByUserId], references: [id])
+  // Factual supporting evidence for the Shariah reviewer, captured at
+  // registration alongside businessActivities (found 2026-09-04: that
+  // field was optional and a single line, so shariah_board_member had
+  // nothing substantive to actually review before recordShariahApproval
+  // — this and businessActivities becoming required are the fix, not a
+  // checklist bolted onto an still-empty intake). Name/reference of any
+  // Shariah board or certification this counterparty already holds
+  // elsewhere, if any — not itself a judgment, just a fact the reviewer
+  // can weigh.
+  existingShariahCertification String?
   // Risk & Compliance's ceiling on total exposure to this ONE counterparty
   // across every waqf combined — null means no limit configured yet.
   // Enforced in InvestmentsService.create() the same way
@@ -1225,6 +1271,7 @@ model WaqfProceeds {
   recordedByUser   User        @relation(fields: [recordedByUserId], references: [id])
   createdAt        DateTime    @default(now())
 
+  @@index([waqfId])
   @@map("waqf_proceeds")
 }
 
@@ -1273,6 +1320,8 @@ model Distribution {
   updatedAt     DateTime           @updatedAt
   deletedAt     DateTime?
 
+  @@index([waqfId])
+  @@index([causeId])
   @@map("distributions")
 }
 
@@ -1297,6 +1346,7 @@ model ConflictOfInterestDeclaration {
   reviewedByUser   User?     @relation("CoiReviewedBy", fields: [reviewedByUserId], references: [id])
   reviewedAt       DateTime?
 
+  @@index([waqfId])
   @@map("conflict_of_interest_declarations")
 }
 
@@ -1359,6 +1409,13 @@ model AuditLog {
   ipAddress      String?
   createdAt      DateTime  @default(now())
 
+  // 2026-09-08 audit fix: this table is append-only and ever-growing —
+  // a compliance export or an officer's per-waqf/per-entity history view
+  // was a full-scan away from becoming a real cost at any real volume.
+  @@index([waqfId])
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 
@@ -1417,6 +1474,8 @@ model Invitation {
   expiresAt     DateTime
   createdAt     DateTime         @default(now())
 
+  @@index([founderId])
+  @@index([foundationId])
   @@map("invitations")
 }
 
