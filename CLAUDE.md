@@ -81,6 +81,29 @@ ceiling, but each pool is still tracked, allocated, and enforced
 independently, preserving the corpus-vs-income distinction the
 2026-08-27 decision above was built on.
 
+**Update, 2026-09-04 — reversed, for Investment-type Waqf Funds only:
+corpus is no longer itself distributable.** `DistributionsService
+.assertWithinAllocation` now enforces `proceedsAllocatedAmount` alone
+as an Investment-type Cause's real ceiling — `allocatedAmount` (corpus)
+no longer counts toward what a distribution can draw against for that
+one type. This directly reverses the "every type including Investment"
+half of the 2026-08-27 decision above, back toward the classical waqf
+perpetuity reasoning that decision explicitly considered and overruled
+at the time (corpus preserved, only income spent) — raised again
+directly with the owner, who this time chose perpetuity over the
+original self-service-lever framing, at their explicit, informed
+decision on 2026-09-04. Asset and Project types are untouched by this:
+neither has a proceeds concept at all (`WaqfProceedsService` only
+accepts Investment-type waqfs), so `allocatedAmount` remains their
+only, and still fully distributable, pool — corpus preservation only
+ever applied to the classical invested-endowment case to begin with.
+One real consequence worth a founder-facing pass later, not done here:
+`WaqfCause.allocatedAmount` on an Investment-type waqf is now a corpus
+target/preservation record, not a spending ceiling — any Founder Portal
+copy still describing corpus allocation as "how much reaches your
+cause's beneficiaries" is only accurate for Asset/Project funds now,
+not Investment.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
@@ -117,7 +140,7 @@ independently, preserving the corpus-vs-income distinction the
 ## Core entities (build in this order)
 1. `users` (global accounts), `founders`, `founder_memberships`
 2. `birr_staff`, `roles`, `permissions`, `role_permissions`
-3. `waqfs` (type: Investment / Asset / Project / Hybrid), `waqf_founders`
+3. `waqfs` (type: Investment / Asset / Project), `waqf_founders`
    (join — a Project Waqf can have more than one Founder)
 4. `waqf_case_assignments` (which Birr staff serve which function on a
    given waqf — the caseload concept)
@@ -129,6 +152,17 @@ independently, preserving the corpus-vs-income distinction the
 8. Compliance report / audit export
 9. `audit_logs` (cross-cutting, not a "module" — every write path touches
    it) and `invitations` (discriminated by founder_user vs birr_staff)
+
+**Update, 2026-09-03 — `WaqfType` dropped `hybrid`.** A Founder can
+already establish as many separate Waqf Funds as they like under one
+Foundation, so a fund spanning more than one purpose was never actually
+distinct from just establishing two funds — a fourth type added a
+choice with no real behavior behind it. Owner's explicit decision;
+confirmed zero `waqfs` rows and zero `cause_categories
+.typicalWaqfTypes` entries used it before the enum value was dropped
+(`packages/db/prisma/migrations/20260903102618_remove_hybrid_waqf_type`).
+`WaqfType` is now Investment / Asset / Project everywhere — schema,
+Founder Portal's fund-type picker, Ops Console.
 
 ## Waqf lifecycle stages (for reference when scoping a milestone)
 Establishment → legal documentation → asset registration → governance

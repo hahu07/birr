@@ -38,8 +38,8 @@ Foundation *is* how the Founder agrees Birr becomes trustee over
 whatever gets established under it.
 
 **3. Waqf Fund.**
-The first Waqf Fund under that Foundation — one of four types
-(Investment / Asset / Project / Hybrid) — then a real contribution
+The first Waqf Fund under that Foundation — one of three types
+(Investment / Asset / Project) — then a real contribution
 (Stripe, Paystack, or a stablecoin) to fund it. The fund's status only
 flips to `active` once that first contribution actually confirms; step 4
 isn't reachable before that.

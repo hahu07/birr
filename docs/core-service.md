@@ -51,7 +51,6 @@ application code).
    - **Asset** — a physical thing (real estate, etc.) endowed directly.
    - **Project** — funding tied to a specific project; can have more
      than one Founder behind it.
-   - **Hybrid** — a mix of the above.
 4. **Accept contributions into a fund** — three payment rails are
    built: card payments (Stripe), regional payments (Paystack), and
    stablecoin.
