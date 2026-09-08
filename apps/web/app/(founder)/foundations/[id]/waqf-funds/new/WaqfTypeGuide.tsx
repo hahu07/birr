@@ -1,4 +1,4 @@
-// Reference panel next to the Waqf Fund establishment form — the four
+// Reference panel next to the Waqf Fund establishment form — the three
 // WaqfType values (schema.prisma) are Islamic-finance jargon a
 // first-time founder shouldn't be expected to already know. Plain-
 // language description + a concrete example per type, not legal or
@@ -6,7 +6,7 @@
 // matches what they actually have in mind.
 import { Card } from "@birr/ui";
 
-type WaqfType = "investment" | "asset" | "project" | "hybrid";
+type WaqfType = "investment" | "asset" | "project";
 
 const TYPE_GUIDE: Record<WaqfType, { label: string; description: string; example: string }> = {
   investment: {
@@ -25,12 +25,6 @@ const TYPE_GUIDE: Record<WaqfType, { label: string; description: string; example
     label: "Project",
     description: "The corpus funds a specific initiative directly, rather than being invested or held as property.",
     example: "Contributions fund building and running a well-drilling program across rural villages.",
-  },
-  hybrid: {
-    label: "Hybrid",
-    description:
-      "A combination of the above — e.g. an invested reserve alongside a property, or a project funded partly by both.",
-    example: "A foundation holds a rental property for steady income and invests the rest, together funding an orphan-sponsorship program.",
   },
 };
 

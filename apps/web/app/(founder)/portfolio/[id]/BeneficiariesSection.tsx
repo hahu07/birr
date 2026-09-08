@@ -8,8 +8,8 @@
 // BeneficiariesService.summaryForFounder's own comment.
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
-import type { BeneficiarySummary, WaqfCause } from "../../../../lib/types";
-import { Alert, Button, Input, Skeleton, StatCard } from "@birr/ui";
+import type { Bank, BeneficiarySummary, WaqfCause } from "../../../../lib/types";
+import { Alert, Button, Combobox, Input, Skeleton, StatCard } from "@birr/ui";
 
 export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
   const [summary, setSummary] = useState<BeneficiarySummary | null>(null);
@@ -140,12 +140,27 @@ function NominateBeneficiaryFormPanel({
   const [payoutProvider, setPayoutProvider] = useState<"paystack" | "stripe" | "stablecoin">("paystack");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
+  const [banksError, setBanksError] = useState(false);
 
   useEffect(() => {
     apiFetchJson<WaqfCause[]>(`/waqf-causes?waqfId=${waqfId}`)
       .then(setCauses)
       .catch(() => setCauses([]));
   }, [waqfId]);
+
+  // Loaded on demand, once, the first time the bank picker actually
+  // becomes visible — not on every mount, since most nominations never
+  // touch this section at all.
+  useEffect(() => {
+    if (!showBankDetails || banks.length > 0 || banksLoading) return;
+    setBanksLoading(true);
+    apiFetchJson<Bank[]>("/banks")
+      .then(setBanks)
+      .catch(() => setBanksError(true))
+      .finally(() => setBanksLoading(false));
+  }, [showBankDetails, banks.length, banksLoading]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -279,9 +294,25 @@ function NominateBeneficiaryFormPanel({
                 </option>
               </select>
             </div>
-            <div className="min-w-[10rem] space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Bank name</label>
-              <Input value={bankName} onChange={(e) => setBankName(e.target.value)} />
+            <div className="min-w-[14rem] space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">Bank</label>
+              {payoutProvider === "paystack" ? (
+                <>
+                  <Combobox
+                    options={banks.map((bank) => ({ value: bank.code, label: bank.name }))}
+                    value={bankCode}
+                    onChange={(code) => {
+                      setBankCode(code);
+                      setBankName(banks.find((bank) => bank.code === code)?.name ?? "");
+                    }}
+                    loading={banksLoading}
+                    placeholder="Search for a bank…"
+                  />
+                  {banksError && <p className="mt-1 text-xs text-red-600">Couldn&apos;t load the bank list — try again shortly.</p>}
+                </>
+              ) : (
+                <Input value={bankName} onChange={(e) => setBankName(e.target.value)} />
+              )}
             </div>
             <div className="min-w-[10rem] space-y-1.5">
               <label className="text-sm font-medium text-slate-700">Account number</label>
@@ -291,12 +322,6 @@ function NominateBeneficiaryFormPanel({
               <label className="text-sm font-medium text-slate-700">Account name</label>
               <Input value={accountName} onChange={(e) => setAccountName(e.target.value)} />
             </div>
-            {payoutProvider === "paystack" && (
-              <div className="min-w-[8rem] space-y-1.5">
-                <label className="text-sm font-medium text-slate-700">Bank code</label>
-                <Input value={bankCode} onChange={(e) => setBankCode(e.target.value)} placeholder="e.g. 058" />
-              </div>
-            )}
             <button
               type="button"
               className="text-xs text-slate-500 hover:underline"

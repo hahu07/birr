@@ -19,7 +19,7 @@ import type { Waqf } from "../../../../../../lib/types";
 import { Alert, Button, Card } from "@birr/ui";
 import { WaqfTypeGuide } from "./WaqfTypeGuide";
 
-const WAQF_TYPES = ["investment", "asset", "project", "hybrid"] as const;
+const WAQF_TYPES = ["investment", "asset", "project"] as const;
 
 const PROVIDERS = [
   { value: "stripe", label: "Card (international)", currencies: ["USD", "EUR", "GBP"] },
@@ -409,11 +409,17 @@ export function WaqfFundForm({
                       setAmount(e.target.value);
                       setAmountTouched(true);
                     }}
-                    readOnly={isFirstPayment && effectiveFundingPlan === "lump_sum"}
+                    // Only lock the field once there's an actual corpus to lock
+                    // it to (firstPaymentFloor > 0, same guard the helper text
+                    // below already uses) — without this, a draft waqf with no
+                    // corpusAmount recorded (nullable in the schema; see Waqf's
+                    // own comment) left the field permanently read-only on an
+                    // empty value, with no way to ever set or submit an amount.
+                    readOnly={isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0}
                     required
                     placeholder="0.00"
                     className={`w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
-                      isFirstPayment && effectiveFundingPlan === "lump_sum" ? "bg-slate-50" : "bg-white"
+                      isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0 ? "bg-slate-50" : "bg-white"
                     }`}
                   />
                   {isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0 && (

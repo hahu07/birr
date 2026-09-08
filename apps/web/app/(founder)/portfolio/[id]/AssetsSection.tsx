@@ -68,7 +68,7 @@ export function AssetsSection({ waqfId }: { waqfId: string }) {
               <TableRow key={asset.id}>
                 <TableCell className="font-medium text-slate-900">{asset.name}</TableCell>
                 <TableCell className="text-slate-500">{humanize(asset.category)}</TableCell>
-                <TableCell className="text-slate-500">{formatAmount(asset.estimatedValue)}</TableCell>
+                <TableCell className="text-slate-500">{asset.currency} {formatAmount(asset.estimatedValue)}</TableCell>
                 <TableCell>
                   <Badge tone={asset.status === "active" ? "success" : "neutral"}>{humanize(asset.status)}</Badge>
                 </TableCell>

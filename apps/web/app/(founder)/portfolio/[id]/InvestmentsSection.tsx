@@ -66,7 +66,7 @@ export function InvestmentsSection({ waqfId }: { waqfId: string }) {
               <TableRow key={investment.id}>
                 <TableCell className="font-medium text-slate-900">{investment.name}</TableCell>
                 <TableCell className="text-slate-500">{humanize(investment.instrumentType)}</TableCell>
-                <TableCell className="text-slate-500">{formatAmount(investment.allocatedAmount)}</TableCell>
+                <TableCell className="text-slate-500">{investment.currency} {formatAmount(investment.allocatedAmount)}</TableCell>
                 <TableCell>
                   <Badge tone={investment.status === "active" ? "success" : "neutral"}>
                     {humanize(investment.status)}

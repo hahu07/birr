@@ -145,6 +145,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
   const [registrationNumber, setRegistrationNumber] = useState("");
   const [address, setAddress] = useState("");
   const [businessActivities, setBusinessActivities] = useState("");
+  const [existingShariahCertification, setExistingShariahCertification] = useState("");
   const [website, setWebsite] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -167,7 +168,8 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
           jurisdiction,
           registrationNumber: registrationNumber || undefined,
           address: address || undefined,
-          businessActivities: businessActivities || undefined,
+          businessActivities,
+          existingShariahCertification: existingShariahCertification || undefined,
           website: website || undefined,
           contactName: contactName || undefined,
           contactEmail: contactEmail || undefined,
@@ -222,22 +224,42 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[16rem] flex-[2] space-y-1.5">
+        <div className="min-w-[16rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Address (optional)</label>
           <Input value={address} onChange={(e) => setAddress(e.target.value)} />
-        </div>
-        <div className="min-w-[16rem] flex-[2] space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Business activities (optional)</label>
-          <Input
-            value={businessActivities}
-            onChange={(e) => setBusinessActivities(e.target.value)}
-            placeholder="What this counterparty actually does"
-          />
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Website (optional)</label>
           <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
         </div>
+      </div>
+
+      {/* Required, not optional — this and existingShariahCertification
+          below are what a shariah_board_member actually has to go on
+          before recordShariahApproval. A one-line optional field here
+          used to leave that review with nothing substantive to read
+          (found 2026-09-04) — this is the fix, not a checklist added on
+          top of a still-empty intake. */}
+      <p className="pt-1 text-xs font-medium uppercase tracking-wide text-slate-400">Shariah review information</p>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-slate-700">Business activities</label>
+        <textarea
+          required
+          minLength={20}
+          rows={3}
+          value={businessActivities}
+          onChange={(e) => setBusinessActivities(e.target.value)}
+          placeholder="What this counterparty actually does, including its primary revenue sources — e.g. whether it earns interest, deals in a prohibited sector, or is otherwise Shariah-relevant. The Shariah Board reviews this before signing off."
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-slate-700">Existing Shariah certification (optional)</label>
+        <Input
+          value={existingShariahCertification}
+          onChange={(e) => setExistingShariahCertification(e.target.value)}
+          placeholder="Name/reference of any Shariah board or certification this counterparty already holds, if any"
+        />
       </div>
 
       <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Point of contact (optional)</p>

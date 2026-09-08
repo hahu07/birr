@@ -12,7 +12,8 @@ import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../../lib/api";
 import { formatDate } from "../../../../../lib/format";
 import type { Waqf } from "../../../../../lib/types";
-import { Alert, Button, Card, Skeleton } from "@birr/ui";
+import { Alert, Button, Skeleton } from "@birr/ui";
+import { DeedDocument } from "../../../DeedDocument";
 
 export default function WaqfDeedPage() {
   const params = useParams<{ id: string }>();
@@ -64,21 +65,15 @@ export default function WaqfDeedPage() {
       )}
 
       {!error && waqf?.waqfDeed && (
-        <Card className="mt-6">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Deed of Waqf</p>
-          <h1 className="mb-4 text-lg font-semibold text-slate-900">{waqf.name}</h1>
-
-          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-700">
-            {waqf.waqfDeed.deedText}
-          </pre>
-
-          <div className="mt-6 border-t border-slate-100 pt-4 text-sm text-slate-500">
-            <p>
-              Signed by <span className="font-medium text-slate-700">{waqf.waqfDeed.typedLegalName}</span> on{" "}
-              {formatDate(waqf.waqfDeed.signedAt)}.
-            </p>
-          </div>
-        </Card>
+        <div className="mt-6">
+          <DeedDocument
+            eyebrow="Deed of Waqf"
+            title={waqf.name}
+            deedText={waqf.waqfDeed.deedText}
+            signedBy={waqf.waqfDeed.typedLegalName}
+            signedAt={formatDate(waqf.waqfDeed.signedAt)}
+          />
+        </div>
       )}
     </div>
   );

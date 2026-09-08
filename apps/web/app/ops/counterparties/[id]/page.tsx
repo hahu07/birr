@@ -205,6 +205,13 @@ export default function CounterpartyDetailPage() {
           </div>
         )}
 
+        {counterparty.existingShariahCertification && (
+          <div className="mt-5 border-t border-slate-100 pt-5">
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Existing Shariah certification</p>
+            <p className="whitespace-pre-wrap text-sm text-slate-700">{counterparty.existingShariahCertification}</p>
+          </div>
+        )}
+
         {counterparty.notes && (
           <div className="mt-5 border-t border-slate-100 pt-5">
             <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Notes</p>
@@ -466,6 +473,7 @@ interface CounterpartyProfileInput {
   contactPhone?: string;
   regulatoryLicenseNumber?: string;
   regulatingAuthority?: string;
+  existingShariahCertification?: string;
 }
 
 function EditProfileForm({
@@ -489,6 +497,7 @@ function EditProfileForm({
   const [contactPhone, setContactPhone] = useState(counterparty.contactPhone ?? "");
   const [regulatoryLicenseNumber, setRegulatoryLicenseNumber] = useState(counterparty.regulatoryLicenseNumber ?? "");
   const [regulatingAuthority, setRegulatingAuthority] = useState(counterparty.regulatingAuthority ?? "");
+  const [existingShariahCertification, setExistingShariahCertification] = useState(counterparty.existingShariahCertification ?? "");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -503,6 +512,7 @@ function EditProfileForm({
       contactPhone: contactPhone || undefined,
       regulatoryLicenseNumber: regulatoryLicenseNumber || undefined,
       regulatingAuthority: regulatingAuthority || undefined,
+      existingShariahCertification: existingShariahCertification || undefined,
     });
   }
 
@@ -528,7 +538,20 @@ function EditProfileForm({
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-slate-700">Business activities</label>
-        <Input value={businessActivities} onChange={(e) => setBusinessActivities(e.target.value)} />
+        <textarea
+          rows={3}
+          value={businessActivities}
+          onChange={(e) => setBusinessActivities(e.target.value)}
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-slate-700">Existing Shariah certification</label>
+        <Input
+          value={existingShariahCertification}
+          onChange={(e) => setExistingShariahCertification(e.target.value)}
+          placeholder="Name/reference of any Shariah board or certification this counterparty already holds, if any"
+        />
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">

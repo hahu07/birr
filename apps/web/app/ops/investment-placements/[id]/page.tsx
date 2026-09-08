@@ -50,7 +50,14 @@ export default function InvestmentPlacementDetailPage() {
   }
 
   const activeInvestments = placement.investments.filter((i) => i.status === "active");
-  const total = activeInvestments.reduce((sum, i) => sum + Number(i.allocatedAmount), 0);
+  // A bulk placement can span waqfs with different corpusCurrency values
+  // (see this page's own top comment) — grouped per currency instead of
+  // one blended sum, which used to silently add e.g. NGN and USD amounts
+  // together into one meaningless figure.
+  const totalsByCurrency = new Map<string, number>();
+  for (const i of activeInvestments) {
+    totalsByCurrency.set(i.currency, (totalsByCurrency.get(i.currency) ?? 0) + Number(i.allocatedAmount));
+  }
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -71,7 +78,13 @@ export default function InvestmentPlacementDetailPage() {
       <Card className="mb-5">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-medium text-slate-700">
-            {formatAmount(total)} across {activeInvestments.length} fund{activeInvestments.length === 1 ? "" : "s"}
+            {[...totalsByCurrency.entries()].map(([currency, amount], i) => (
+              <span key={currency}>
+                {i > 0 && " · "}
+                {currency} {formatAmount(amount)}
+              </span>
+            ))}{" "}
+            across {activeInvestments.length} fund{activeInvestments.length === 1 ? "" : "s"}
           </p>
           <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setShowProceedsForm((v) => !v)}>
             {showProceedsForm ? "Cancel" : "Record proceeds for this placement"}
@@ -107,7 +120,7 @@ export default function InvestmentPlacementDetailPage() {
                   </Link>
                 </TableCell>
                 <TableCell className="text-slate-500">{i.waqf.foundation.name}</TableCell>
-                <TableCell className="text-slate-500">{formatAmount(i.allocatedAmount)}</TableCell>
+                <TableCell className="text-slate-500">{i.currency} {formatAmount(i.allocatedAmount)}</TableCell>
                 <TableCell className="text-slate-500">{humanize(i.status)}</TableCell>
               </TableRow>
             ))}
@@ -200,7 +213,7 @@ function RecordProceedsForm({
           <ul className="space-y-0.5 text-xs text-slate-600">
             {preview.map((p) => (
               <li key={p.waqfName}>
-                {p.waqfName}: {formatAmount(p.share.toFixed(2))} {currency}
+                {p.waqfName}: {formatAmount(p.share)} {currency}
               </li>
             ))}
           </ul>

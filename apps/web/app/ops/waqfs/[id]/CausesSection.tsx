@@ -14,11 +14,17 @@ import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
 export function CausesSection({
   waqfId,
   waqfType,
+  corpusCurrency,
   onChanged,
   proceedsVersion,
 }: {
   waqfId: string;
   waqfType: Waqf["type"];
+  // Every amount on this page is denominated in the waqf's own declared
+  // corpus currency (WaqfCause carries no currency of its own — see that
+  // model's schema comment) — same prop the founder-side sibling of this
+  // component already receives and displays.
+  corpusCurrency: string | null;
   onChanged: () => void;
   // Bumped by ProceedsSection whenever it records a new proceeds entry
   // — the backend now automatically re-runs the proportional
@@ -102,6 +108,7 @@ export function CausesSection({
           waqfId={waqfId}
           causes={causes}
           proceedsTotal={proceedsTotal}
+          corpusCurrency={corpusCurrency}
           onAllocated={() => {
             load();
             onChanged();
@@ -134,13 +141,14 @@ export function CausesSection({
                 {/* Founder self-service (see WaqfCausesService.allocate's
                     own comment) — read-only here, no staff write path. */}
                 <TableCell className="text-slate-500">
-                  {c.allocatedAmount !== null ? formatAmount(c.allocatedAmount) : "—"}
+                  {c.allocatedAmount !== null ? `${corpusCurrency ?? ""} ${formatAmount(c.allocatedAmount)}` : "—"}
                 </TableCell>
                 {showProceeds && (
                   <TableCell className="text-slate-500">
                     <ProceedsAllocationCell
                       cause={c}
                       available={proceedsAvailableExcluding(c.id)}
+                      corpusCurrency={corpusCurrency}
                       onChanged={() => {
                         load();
                         onChanged();
@@ -170,11 +178,13 @@ function AutoAllocateProportionallyBar({
   waqfId,
   causes,
   proceedsTotal,
+  corpusCurrency,
   onAllocated,
 }: {
   waqfId: string;
   causes: WaqfCause[];
   proceedsTotal: number | null;
+  corpusCurrency: string | null;
   onAllocated: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -206,9 +216,9 @@ function AutoAllocateProportionallyBar({
     <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-slate-500">
-          The {formatAmount(proceedsTotal)} recorded proceeds pool is split by each cause's own corpus allocation
-          ratio automatically whenever proceeds are recorded — use this to re-run it by hand (e.g. after adding a
-          new cause).
+          The {corpusCurrency} {formatAmount(proceedsTotal)} recorded proceeds pool is split by each cause's own
+          corpus allocation ratio automatically whenever proceeds are recorded — use this to re-run it by hand (e.g.
+          after adding a new cause).
         </p>
         <button
           type="button"
@@ -235,7 +245,9 @@ function AutoAllocateProportionallyBar({
                   <span>
                     {c.name} ({((weight / totalCorpusAllocated) * 100).toFixed(1)}% of corpus)
                   </span>
-                  <span className="font-medium text-slate-900">{formatAmount(share.toFixed(2))}</span>
+                  <span className="font-medium text-slate-900">
+                    {corpusCurrency} {formatAmount(share)}
+                  </span>
                 </li>
               );
             })}
@@ -265,10 +277,12 @@ function AutoAllocateProportionallyBar({
 function ProceedsAllocationCell({
   cause,
   available,
+  corpusCurrency,
   onChanged,
 }: {
   cause: WaqfCause;
   available: number | null;
+  corpusCurrency: string | null;
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -279,7 +293,9 @@ function ProceedsAllocationCell({
   if (!editing) {
     return (
       <div className="flex items-center gap-2">
-        <span>{cause.proceedsAllocatedAmount !== null ? formatAmount(cause.proceedsAllocatedAmount) : "—"}</span>
+        <span>
+          {cause.proceedsAllocatedAmount !== null ? `${corpusCurrency ?? ""} ${formatAmount(cause.proceedsAllocatedAmount)}` : "—"}
+        </span>
         <button
           type="button"
           className="text-xs font-medium text-primary-700 hover:underline"
@@ -332,7 +348,11 @@ function ProceedsAllocationCell({
           Cancel
         </button>
       </div>
-      {available !== null && <p className="text-[11px] text-slate-400">{formatAmount(Math.max(available, 0))} available</p>}
+      {available !== null && (
+        <p className="text-[11px] text-slate-400">
+          {corpusCurrency} {formatAmount(Math.max(available, 0))} available
+        </p>
+      )}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </form>
   );

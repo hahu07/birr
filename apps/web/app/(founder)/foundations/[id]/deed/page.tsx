@@ -13,7 +13,8 @@ import { apiFetchJson } from "../../../../../lib/api";
 import { formatDate } from "../../../../../lib/format";
 import { useMarkNotificationsReadForEntity } from "../../../../../lib/notifications";
 import type { Foundation } from "../../../../../lib/types";
-import { Alert, Button, Card, Skeleton } from "@birr/ui";
+import { Alert, Button, Skeleton } from "@birr/ui";
+import { DeedDocument } from "../../../DeedDocument";
 
 export default function FoundationDeedPage() {
   const params = useParams<{ id: string }>();
@@ -70,21 +71,15 @@ export default function FoundationDeedPage() {
       )}
 
       {!error && foundation?.foundationDeed && (
-        <Card className="mt-6">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Deed of Waqf</p>
-          <h1 className="mb-4 text-lg font-semibold text-slate-900">{foundation.name}</h1>
-
-          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-700">
-            {foundation.foundationDeed.deedText}
-          </pre>
-
-          <div className="mt-6 border-t border-slate-100 pt-4 text-sm text-slate-500">
-            <p>
-              Signed by <span className="font-medium text-slate-700">{foundation.foundationDeed.typedLegalName}</span>{" "}
-              on {formatDate(foundation.foundationDeed.signedAt)}.
-            </p>
-          </div>
-        </Card>
+        <div className="mt-6">
+          <DeedDocument
+            eyebrow="Deed of Waqf"
+            title={foundation.name}
+            deedText={foundation.foundationDeed.deedText}
+            signedBy={foundation.foundationDeed.typedLegalName}
+            signedAt={formatDate(foundation.foundationDeed.signedAt)}
+          />
+        </div>
       )}
     </div>
   );

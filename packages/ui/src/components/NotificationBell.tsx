@@ -40,6 +40,8 @@ export function NotificationBell({
 }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -48,8 +50,23 @@ export function NotificationBell({
         setOpen(false);
       }
     }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        toggleButtonRef.current?.focus();
+      }
+    }
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    // Moves focus into the panel the moment it opens — without this, a
+    // keyboard user who just activated the toggle button has no
+    // indication focus is still sitting on a now-hidden-behind-the-panel
+    // control.
+    panelRef.current?.focus();
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
   }, [open]);
 
   function toggle() {
@@ -59,23 +76,44 @@ export function NotificationBell({
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="group relative">
       <button
+        ref={toggleButtonRef}
         type="button"
         onClick={toggle}
         aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
-        className="relative flex h-9 w-9 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+        className="relative flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-md shadow-primary-900/25 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       >
-        <IconBell className="h-[19px] w-[19px]" />
+        <IconBell className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white">
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
       </button>
 
+      {/* Hover/focus label — same "floating action button + tooltip"
+          language as a chat-widget bubble, applied to Birr's own primary
+          color rather than borrowing WhatsApp's green, so it reads as
+          this product's own chrome, not a lookalike of the real WhatsApp
+          integration elsewhere in the app (OTP verification). CSS-only:
+          no JS state, hidden from screen readers since the button's own
+          aria-label already carries this information. */}
+      {!open && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute right-full top-1/2 mr-3 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white opacity-0 shadow-md transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100 motion-reduce:transition-none"
+        >
+          {unreadCount > 0 ? `${unreadCount > 9 ? "9+" : unreadCount} unread` : "Notifications"}
+        </span>
+      )}
+
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-slate-200 bg-white shadow-lg sm:w-96">
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          className="absolute right-0 z-20 mt-3 w-80 origin-top-right rounded-lg border border-slate-200 bg-white shadow-lg outline-none sm:w-96"
+        >
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
             <p className="text-sm font-semibold text-slate-800">Notifications</p>
             {unreadCount > 0 && (

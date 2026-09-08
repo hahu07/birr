@@ -42,7 +42,7 @@ export interface Waqf {
   id: string;
   foundationId: string;
   name: string;
-  type: "investment" | "asset" | "project" | "hybrid";
+  type: "investment" | "asset" | "project";
   purpose: string | null;
   jurisdiction: string;
   status: "draft" | "active" | "suspended" | "dissolved";
@@ -148,7 +148,7 @@ export interface CauseCategory {
   description: string | null;
   icon: string | null;
   sortOrder: number;
-  typicalWaqfTypes: ("investment" | "asset" | "project" | "hybrid")[];
+  typicalWaqfTypes: ("investment" | "asset" | "project")[];
   parentId: string | null;
   usageCount: number;
   createdAt: string;
@@ -162,6 +162,9 @@ export interface Asset {
   name: string;
   category: "real_estate" | "cash" | "securities" | "movable" | "intellectual_property" | "other";
   estimatedValue: string;
+  // Always the waqf's own corpusCurrency at creation time — see
+  // Asset.currency's own schema comment.
+  currency: string;
   status: "active" | "disposed";
   disposedAt: string | null;
   createdAt: string;
@@ -222,6 +225,9 @@ export interface Investment {
   name: string;
   instrumentType: InvestmentInstrumentType;
   allocatedAmount: string;
+  // Always the waqf's own corpusCurrency at creation time — see
+  // Investment.currency's own schema comment.
+  currency: string;
   status: "active" | "liquidated";
   liquidatedAt: string | null;
   counterpartyId: string | null;
@@ -280,6 +286,7 @@ export interface Counterparty {
   concentrationLimit: string | null;
   concentrationLimitCurrency: string | null;
   notes: string | null;
+  existingShariahCertification: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;

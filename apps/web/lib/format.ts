@@ -29,10 +29,23 @@ export function humanizePermissionKey(key: string): string {
     .join(" · ");
 }
 
-/** Thousands-separated display for a Decimal-as-string monetary amount, e.g. "125000" -> "125,000". */
+/** Currency-style display for a Decimal-as-string monetary amount, e.g. "125000" -> "125,000.00". */
 export function formatAmount(amount: string | number): string {
-  return Number(amount).toLocaleString();
+  return Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+// Shared between app/(founder)/DashboardOverview.tsx and app/ops/page.tsx's
+// waqf-status donut charts — both used to define this map locally with a
+// comment admitting they were "kept in sync by convention, not shared
+// import." String-literal keys (not either app's own Waqf type) so this
+// stays a plain presentational constant, not a cross-route-group type
+// dependency.
+export const WAQF_STATUS_CHART_COLOR: Record<"active" | "draft" | "suspended" | "dissolved", string> = {
+  active: "var(--color-primary-600)",
+  draft: "#94a3b8",
+  suspended: "var(--color-accent-500)",
+  dissolved: "#475569",
+};
 
 export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {

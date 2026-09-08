@@ -129,7 +129,7 @@ export function InvestmentsSection({
                 </TableCell>
                 <TableCell>{humanize(i.instrumentType)}</TableCell>
                 <TableCell className="text-slate-500">
-                  {formatAmount(i.allocatedAmount)}
+                  {i.currency} {formatAmount(i.allocatedAmount)}
                   {i.placementId && (
                     <Link
                       href={`/ops/investment-placements/${i.placementId}`}

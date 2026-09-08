@@ -28,7 +28,7 @@ export interface Waqf {
   foundationId: string;
   foundation: Foundation;
   name: string;
-  type: "investment" | "asset" | "project" | "hybrid";
+  type: "investment" | "asset" | "project";
   purpose: string | null;
   jurisdiction: string;
   status: "draft" | "active" | "suspended" | "dissolved";
@@ -57,6 +57,12 @@ export interface Waqf {
   // field was already in every response the Founder Portal receives but
   // had no type here.
   causesCount?: number;
+}
+
+/** GET /banks — Paystack's own Nigerian bank catalog, proxied and cached. */
+export interface Bank {
+  name: string;
+  code: string;
 }
 
 export interface WaqfCause {
@@ -142,6 +148,9 @@ export interface Asset {
   name: string;
   category: "real_estate" | "cash" | "securities" | "movable" | "intellectual_property" | "other";
   estimatedValue: string;
+  // Always the waqf's own corpusCurrency at creation time — see
+  // Asset.currency's own schema comment.
+  currency: string;
   status: "active" | "disposed";
   disposedAt: string | null;
   createdAt: string;
@@ -156,6 +165,9 @@ export interface Investment {
   name: string;
   instrumentType: "sukuk" | "equity_fund" | "real_estate_fund" | "murabaha" | "other";
   allocatedAmount: string;
+  // Always the waqf's own corpusCurrency at creation time — see
+  // Investment.currency's own schema comment.
+  currency: string;
   status: "active" | "liquidated";
   liquidatedAt: string | null;
   createdAt: string;

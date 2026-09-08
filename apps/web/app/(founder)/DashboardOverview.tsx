@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Founder, useFounderSession } from "../../lib/founder-session";
 import { apiFetchJson } from "../../lib/api";
-import { describeFounderKind, formatAmount, humanize } from "../../lib/format";
+import { describeFounderKind, formatAmount, humanize, WAQF_STATUS_CHART_COLOR } from "../../lib/format";
 import { countByStatus, groupByFoundation, STATUS_ICON, STATUS_STAT_TONE } from "../../lib/portfolio";
 import type { Waqf } from "../../lib/types";
 import {
@@ -30,18 +30,6 @@ import {
   StatCard,
 } from "@birr/ui";
 import type { DonutChartSegment } from "@birr/ui";
-
-// Chart colors — same three brand hues (primary/accent/violet) StatCard
-// tones already use, plus slate as the fourth neutral segment. Kept in
-// sync with WAQF_STATUS_COLOR in app/ops/page.tsx by convention, not by
-// a shared import — the two pages' status vocab already lives in two
-// separate places (this file's STATUS_STAT_TONE vs. ops's own map).
-const STATUS_CHART_COLOR: Record<Waqf["status"], string> = {
-  active: "var(--color-primary-600)",
-  draft: "#94a3b8",
-  suspended: "var(--color-accent-500)",
-  dissolved: "#475569",
-};
 
 interface CurrencyTotal {
   currency: string;
@@ -63,7 +51,6 @@ const WAQF_TYPE_LABEL: Record<Waqf["type"], string> = {
   investment: "Distributed via Investment funds",
   asset: "Distributed via Asset funds",
   project: "Distributed via Project funds",
-  hybrid: "Distributed via Hybrid funds",
 };
 
 export default function DashboardOverview() {
@@ -120,7 +107,7 @@ export default function DashboardOverview() {
     return (Object.keys(counts) as Waqf["status"][]).map((status) => ({
       label: humanize(status),
       value: counts[status] ?? 0,
-      color: STATUS_CHART_COLOR[status],
+      color: WAQF_STATUS_CHART_COLOR[status],
     }));
   }, [waqfs]);
 

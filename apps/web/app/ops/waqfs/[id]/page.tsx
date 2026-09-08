@@ -126,6 +126,7 @@ export default function WaqfDetailPage() {
         <CausesSection
           waqfId={id}
           waqfType={waqf.type}
+          corpusCurrency={waqf.corpusCurrency}
           onChanged={() => setCausesVersion((v) => v + 1)}
           proceedsVersion={proceedsVersion}
         />

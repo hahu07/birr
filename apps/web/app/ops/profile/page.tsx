@@ -108,7 +108,7 @@ function VerifyWhatsAppForm({ initialNumber }: { initialNumber: string | null })
               id="whatsappNumber"
               value={whatsappNumber}
               onChange={(e) => setWhatsappNumber(e.target.value)}
-              placeholder="+15551234567"
+              placeholder="+2348012345678"
               required
             />
             <p className="mt-1.5 text-xs text-slate-500">International format, including the + and country code.</p>

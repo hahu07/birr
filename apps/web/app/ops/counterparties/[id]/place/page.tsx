@@ -67,7 +67,6 @@ export default function PlaceInvestmentPage() {
         .catch((err: unknown) => setSearchError(err instanceof Error ? err.message : "Something went wrong."));
     }, 300);
     return () => clearTimeout(handle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, selected]);
 
   function addWaqf(w: Waqf) {

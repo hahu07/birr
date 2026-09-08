@@ -4,10 +4,32 @@
 // held or read client-side; see apps/backend/src/common/auth/session.ts.
 const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
+// Both route groups share this one fetch helper — and, since the
+// Founder Portal/Ops Console merge, both can carry a valid session
+// cookie in the same browser at once (e.g. Birr staff also testing
+// their own Founder account). Dual-purpose backend routes
+// (WaqfsController.list() and ~20 others — see
+// isBirrStaffSession's own comment) used to resolve that ambiguity by
+// treating any request with a valid staff cookie as a staff request,
+// even one made from a Founder Portal page — which let a Founder
+// Portal page silently render another Founder's/the platform's
+// unscoped data whenever the calling browser also held a staff
+// session (found 2026-09-03, via a founder onboarding page serving an
+// unrelated fixture waqf). Path alone reliably says which portal this
+// call is actually for, so send it as an explicit header rather than
+// leaving the backend to infer intent from cookie presence.
+function currentPortal(): "founder" | "ops" {
+  if (typeof window === "undefined") return "founder";
+  return window.location.pathname.startsWith("/ops") ? "ops" : "founder";
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
+  }
+  if (!headers.has("x-birr-portal")) {
+    headers.set("x-birr-portal", currentPortal());
   }
 
   return fetch(`${BASE_URL}${path}`, { ...init, credentials: "include", headers });

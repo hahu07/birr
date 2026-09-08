@@ -47,8 +47,16 @@ const NAV_ITEMS = [
 // founder session exists — none of these should ever be wrapped in the
 // authenticated sidebar shell (sign-up/verified are pre-session by
 // definition; sign-in is the existing case this list previously
-// hardcoded on its own).
+// hardcoded on its own). /waqf-types/ is marketing content reached from
+// the signed-out home page (see MarketingHome.tsx's summary cards) —
+// public the same way, and public regardless of an in-progress
+// founder's onboarding step too, or clicking through from "/" mid-
+// onboarding would bounce them back to their wizard step instead.
 const PUBLIC_ROUTES = ["/sign-in", "/sign-up", "/verified"];
+const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/"];
+function isPublicRoutePath(pathname: string) {
+  return PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
 
 // The one route that's public-OR-private depending on session, instead
 // of purely one or the other: a signed-out visitor sees the marketing
@@ -71,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, founder, loading, signOut } = useFounderSession();
-  const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+  const isPublicRoute = isPublicRoutePath(pathname);
   const isHomeRoute = pathname === HOME_ROUTE;
   const { status: onboarding, loading: onboardingLoading } = useOnboardingStatus(!loading && Boolean(user), pathname);
   const { notifications, unreadCount, loading: notificationsLoading, refresh, markRead, markAllRead } =
@@ -180,9 +188,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         pathname={pathname}
         unreadMessageCount={notifications.filter((n) => n.type === "message.received" && !n.readAt).length}
         onSignOut={handleSignOut}
+        className="print:hidden"
       />
       <div className="min-w-0 flex-1">
-        <header className="flex items-center justify-end border-b border-slate-200 bg-white px-4 py-2.5 sm:px-8">
+        <header className="flex items-center justify-end border-b border-slate-200 bg-white px-4 py-2.5 sm:px-8 print:hidden">
           <NotificationBell
             notifications={notifications}
             unreadCount={unreadCount}
@@ -193,7 +202,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             formatTimestamp={formatRelativeTime}
           />
         </header>
-        <main className="px-6 py-12 sm:px-10 sm:py-16">
+        <main className="px-6 py-12 sm:px-10 sm:py-16 print:p-0">
           {/* max-w-6xl, matching the Ops Console shell's own content
               width — max-w-4xl left a wide, empty margin on anything
               wider than a laptop screen. Pages with their own narrower
@@ -221,12 +230,14 @@ function Sidebar({
   pathname,
   unreadMessageCount,
   onSignOut,
+  className = "",
 }: {
   user: SessionUser;
   founder: Founder;
   pathname: string;
   unreadMessageCount: number;
   onSignOut: () => void;
+  className?: string;
 }) {
   return (
     // Collapses to an icon-only rail below `sm` (pure CSS, no added
@@ -238,7 +249,7 @@ function Sidebar({
     // brand chrome across both surfaces, not two different products.
     // "Calmer and less dense" (this file's own top comment) is expressed
     // in nav item count and spacing, not in withholding color.
-    <aside className="flex w-16 shrink-0 flex-col bg-gradient-to-b from-primary-950 via-primary-900 to-primary-900 sm:w-64">
+    <aside className={`flex w-16 shrink-0 flex-col bg-gradient-to-b from-primary-950 via-primary-900 to-primary-900 sm:w-64 ${className}`}>
       <div className="flex items-center justify-center gap-2.5 border-b border-white/10 bg-gradient-to-br from-accent-900/40 to-transparent px-2 py-6 sm:justify-start sm:px-6">
         <IconMark className="h-9 w-9 shrink-0" />
         <div className="hidden sm:block">

@@ -4,12 +4,10 @@
 // still pending: email is verified out-of-band (a link clicked in an
 // inbox, see app/verified/page.tsx), so this page shows a "check your
 // email" state until that's done, then the in-app WhatsApp phone/code
-// form. Never hardcodes the next route on success: app-shell.tsx alone
-// decides "what's next" off a fresh onboarding-status read, so a
-// step-reordering later needs one change, not N.
+// form.
 import { useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
-import { useOnboardingStatus } from "../../../../lib/onboarding";
+import { ROUTE_FOR_STEP, useOnboardingStatus } from "../../../../lib/onboarding";
 import { Alert, Button, Card, Input, Skeleton } from "@birr/ui";
 
 export default function VerifyPage() {
@@ -118,10 +116,15 @@ function VerifyWhatsAppForm() {
         method: "POST",
         body: JSON.stringify({ code }),
       });
-      // Success — app-shell.tsx re-reads onboarding status and routes
-      // onward on its own. A full reload is the simplest way to force
-      // that re-fetch immediately, matching /verified's own precedent.
-      window.location.reload();
+      // Full navigation straight to step 2's own route, not a reload of
+      // this one — app-shell's onboarding gate deliberately leaves an
+      // "earlier completed step" alone rather than bouncing it forward
+      // (so looking back at a finished step doesn't fight the URL),
+      // which means a same-URL reload right after JUST finishing this
+      // step would otherwise strand the founder here instead of
+      // advancing them (same fix as founder-foundation/page.tsx's own
+      // post-establish navigation, for the same reason).
+      window.location.href = ROUTE_FOR_STEP[2];
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setSubmitting(false);
@@ -152,7 +155,7 @@ function VerifyWhatsAppForm() {
               id="whatsappNumber"
               value={whatsappNumber}
               onChange={(e) => setWhatsappNumber(e.target.value)}
-              placeholder="+15551234567"
+              placeholder="+2348012345678"
               required
             />
             <p className="mt-1.5 text-xs text-slate-500">International format, including the + and country code.</p>

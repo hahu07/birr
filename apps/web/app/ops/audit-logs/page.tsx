@@ -142,7 +142,16 @@ export default function AuditLogsPage() {
                     <Fragment key={log.id}>
                       <TableRow
                         className="cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isExpanded}
                         onClick={() => setExpandedId(isExpanded ? null : log.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setExpandedId(isExpanded ? null : log.id);
+                          }
+                        }}
                       >
                         <TableCell className="whitespace-nowrap text-slate-500">
                           {formatDate(log.createdAt)}

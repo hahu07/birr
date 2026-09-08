@@ -17,3 +17,16 @@
 .ops-shell {
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
+/* MarketingHome's hero orbs — referenced via Tailwind's arbitrary
+   `animate-[float-slow_..]` utility, gated by the `motion-safe:` variant
+   at each call site so this never runs under prefers-reduced-motion. */
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(-2%, -6%);
+  }
+}

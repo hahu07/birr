@@ -21,7 +21,7 @@
 // only computed on GET /waqfs/:id, not the list.
 import { useEffect, useMemo, useState } from "react";
 import { apiFetchJson } from "../../lib/api";
-import { humanize, formatAmount } from "../../lib/format";
+import { humanize, formatAmount, WAQF_STATUS_CHART_COLOR } from "../../lib/format";
 import type { Foundation, Waqf } from "../../lib/ops-types";
 import {
   Alert,
@@ -54,22 +54,10 @@ const WAQF_STATUS_ICON: Record<Waqf["status"], typeof IconCheckCircle> = {
   dissolved: IconArchive,
 };
 
-// Chart colors — drawn from the same three brand hues (primary/accent/
-// violet) StatCard tones already use, plus slate as the fourth neutral
-// segment, so the donut legend reads as an extension of the tile colors
-// above it rather than an unrelated palette.
-const WAQF_STATUS_COLOR: Record<Waqf["status"], string> = {
-  active: "var(--color-primary-600)",
-  draft: "#94a3b8",
-  suspended: "var(--color-accent-500)",
-  dissolved: "#475569",
-};
-
 const WAQF_TYPE_COLOR: Record<Waqf["type"], string> = {
   investment: "var(--color-violet-600)",
   asset: "var(--color-primary-600)",
   project: "var(--color-accent-500)",
-  hybrid: "#64748b",
 };
 
 // GET /contributions/platform-summary and GET /distributions/platform-summary
@@ -134,7 +122,7 @@ export default function OpsConsoleHome() {
         acc[w.type] += 1;
         return acc;
       },
-      { investment: 0, asset: 0, project: 0, hybrid: 0 } as Record<Waqf["type"], number>,
+      { investment: 0, asset: 0, project: 0 } as Record<Waqf["type"], number>,
     );
     // Keyed by (type, currency), not currency alone — same reasoning as
     // the Distributed split above: an Investment waqf's corpus and a
@@ -156,7 +144,7 @@ export default function OpsConsoleHome() {
     return (Object.keys(stats.byStatus) as Waqf["status"][]).map((status) => ({
       label: humanize(status),
       value: stats.byStatus[status],
-      color: WAQF_STATUS_COLOR[status],
+      color: WAQF_STATUS_CHART_COLOR[status],
     }));
   }, [stats]);
 

@@ -73,6 +73,10 @@ export default function GovernedActionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [rowStates, setRowStates] = useState<Record<string, RowState>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Ids of actions whose payload has been expanded at least once this
+  // session — a checker must actually look at what they're deciding
+  // before Approve/Reject become clickable (see the render below).
+  const [viewedIds, setViewedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
   const load = useCallback(() => {
@@ -130,7 +134,14 @@ export default function GovernedActionsPage() {
       );
     }) ?? [];
 
-  async function decide(actionId: string, approve: boolean) {
+  async function decide(actionId: string, approve: boolean, permissionLabel: string) {
+    // Native confirm, deliberately not silent — approving or rejecting is
+    // final and audit-logged the moment the request lands (see the page
+    // header copy below), so a single misclick should have one more
+    // chance to be caught here.
+    if (!window.confirm(`${approve ? "Approve" : "Reject"} "${permissionLabel}"? This is final and will be recorded to the audit trail.`)) {
+      return;
+    }
     setRowStates((prev) => ({ ...prev, [actionId]: { status: "pending" } }));
     try {
       await apiFetchJson(`/governed-actions/${actionId}/decide`, {
@@ -238,6 +249,7 @@ export default function GovernedActionsPage() {
                 const isPending = rowState.status === "pending";
                 const isSuccess = rowState.status === "success";
                 const isExpanded = expandedId === action.id;
+                const hasBeenViewed = viewedIds.has(action.id);
                 // A human maker can never also be this row's checker — the
                 // DB constraint is the real enforcement, but making that
                 // impossible to attempt in the first place (rather than
@@ -252,7 +264,10 @@ export default function GovernedActionsPage() {
                       <TableCell className="max-w-xs">
                         <button
                           type="button"
-                          onClick={() => setExpandedId(isExpanded ? null : action.id)}
+                          onClick={() => {
+                            setExpandedId(isExpanded ? null : action.id);
+                            setViewedIds((prev) => (prev.has(action.id) ? prev : new Set(prev).add(action.id)));
+                          }}
                           className="flex w-full flex-col items-start gap-0.5 text-left"
                           aria-expanded={isExpanded}
                         >
@@ -330,23 +345,30 @@ export default function GovernedActionsPage() {
                             You proposed this
                           </span>
                         ) : (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="primary"
-                              className="px-3 py-1.5 text-xs"
-                              disabled={isPending}
-                              onClick={() => decide(action.id, true)}
-                            >
-                              Approve
-                            </Button>
-                            <Button
-                              variant="danger"
-                              className="px-3 py-1.5 text-xs"
-                              disabled={isPending}
-                              onClick={() => decide(action.id, false)}
-                            >
-                              Reject
-                            </Button>
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="primary"
+                                className="px-3 py-1.5 text-xs"
+                                disabled={isPending || !hasBeenViewed}
+                                title={!hasBeenViewed ? "Expand this row to review the payload before deciding." : undefined}
+                                onClick={() => decide(action.id, true, humanizePermissionKey(action.permission.key))}
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                variant="danger"
+                                className="px-3 py-1.5 text-xs"
+                                disabled={isPending || !hasBeenViewed}
+                                title={!hasBeenViewed ? "Expand this row to review the payload before deciding." : undefined}
+                                onClick={() => decide(action.id, false, humanizePermissionKey(action.permission.key))}
+                              >
+                                Reject
+                              </Button>
+                            </div>
+                            {!hasBeenViewed && (
+                              <span className="text-[11px] italic text-slate-400">Expand to review before deciding</span>
+                            )}
                           </div>
                         )}
                       </TableCell>

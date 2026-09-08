@@ -32,7 +32,7 @@ import {
 } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 
-const WAQF_TYPES: CauseCategory["typicalWaqfTypes"][number][] = ["investment", "asset", "project", "hybrid"];
+const WAQF_TYPES: CauseCategory["typicalWaqfTypes"][number][] = ["investment", "asset", "project"];
 
 // Sentinel select value distinct from any real category id, real UUIDs,
 // or "" (None/top-level) — picking it swaps the Parent category dropdown

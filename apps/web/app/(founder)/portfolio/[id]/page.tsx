@@ -21,6 +21,7 @@ import { ContributionsSection } from "./ContributionsSection";
 import { CausesSection } from "./CausesSection";
 import { AssetsSection } from "./AssetsSection";
 import { InvestmentsSection } from "./InvestmentsSection";
+import { ProceedsSection } from "./ProceedsSection";
 import { DistributionsSection } from "./DistributionsSection";
 import { BeneficiariesSection } from "./BeneficiariesSection";
 import { GovernanceActivitySection } from "./GovernanceActivitySection";
@@ -138,6 +139,7 @@ export default function WaqfFundDetailPage() {
                 its stated purpose (see InvestmentsService.create's own
                 comment, which enforces this server-side too). */}
             {waqf.type === "investment" && <InvestmentsSection waqfId={waqf.id} />}
+            {waqf.type === "investment" && <ProceedsSection waqfId={waqf.id} />}
             <DistributionsSection waqfId={waqf.id} />
             <BeneficiariesSection waqfId={waqf.id} />
             <GovernanceActivitySection waqfId={waqf.id} />
