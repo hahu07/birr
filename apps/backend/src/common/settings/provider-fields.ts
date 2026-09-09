@@ -36,6 +36,14 @@ export const PROVIDER_FIELDS: Record<string, ProviderFieldSpec[]> = {
     { key: "AUTH_TOKEN", label: "Auth token", secret: true },
     { key: "WHATSAPP_FROM_NUMBER", label: "WhatsApp from number", secret: false },
   ],
+  openai: [{ key: "API_KEY", label: "API key", secret: true }],
+  replicate: [{ key: "API_KEY", label: "API key", secret: true }],
+  // Not a real vendor — a pseudo-provider reusing this same generic
+  // storage/audit/UI mechanism to hold the one "which image provider is
+  // active" switch (see ImageGenerationService), rather than inventing
+  // a second settings concept for one string. Valid values today:
+  // "openai" or "replicate".
+  image_generation: [{ key: "ACTIVE_PROVIDER", label: "Active image provider (openai or replicate)", secret: false }],
 };
 
 const ENV_PREFIX_OVERRIDES: Record<string, string> = {

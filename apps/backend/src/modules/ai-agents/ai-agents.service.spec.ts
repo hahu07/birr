@@ -1,13 +1,16 @@
 import { prisma } from "@birr/db";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { AiAgentsService } from "./ai-agents.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
+import { AuthenticatedBirrStaff } from "../../common/auth/current-birr-staff";
 
 describe("AiAgentsService", () => {
   const service = new AiAgentsService(new AuditLogsService());
 
   let rasidAgentId: string;
   let rasidAgentName: string;
+  let bashirAgentId: string;
+  let publisherStaff: AuthenticatedBirrStaff;
 
   beforeAll(async () => {
     // Reuses the real seeded "rasid" agent row (packages/db/prisma/seed.ts)
@@ -19,6 +22,29 @@ describe("AiAgentsService", () => {
     if (!rasid) throw new Error('Seeded "rasid" AiAgent row not found — run `pnpm --filter @birr/db seed` first.');
     rasidAgentId = rasid.id;
     rasidAgentName = rasid.name;
+
+    const bashir = await prisma.aiAgent.findUnique({ where: { name: "bashir" } });
+    if (!bashir) throw new Error('Seeded "bashir" AiAgent row not found — run `pnpm --filter @birr/db seed` first.');
+    bashirAgentId = bashir.id;
+
+    // A legal_adviser fixture staff member — publishDraft() itself only
+    // trusts the caller already passed the controller's own
+    // @RequiresStaffRole(["legal_adviser", "compliance_officer"]) gate
+    // (tested separately at the controller level); this fixture exists
+    // so publishDraft()'s own draft-state checks can be tested with a
+    // realistic caller identity.
+    const publisherUser = await prisma.user.create({
+      data: { email: `ai-agents-publisher-${Date.now()}@example.com`, fullName: "Test Legal Adviser" },
+    });
+    const publisherBirrStaff = await prisma.birrStaff.create({
+      data: { userId: publisherUser.id, staffRole: "legal_adviser" },
+    });
+    publisherStaff = {
+      id: publisherBirrStaff.id,
+      userId: publisherUser.id,
+      staffRole: publisherBirrStaff.staffRole,
+      mfaEnabled: false,
+    };
   });
 
   // audit_logs is insert-only at the DB role level (UPDATE/DELETE
@@ -114,5 +140,70 @@ describe("AiAgentsService", () => {
     expect(data).toHaveProperty("caseAssignments");
     expect(Array.isArray(data.openGovernedActions)).toBe(true);
     expect(Array.isArray(data.caseAssignments)).toBe(true);
+  });
+
+  describe("publishDraft()", () => {
+    test("rejects a non-existent draft id", async () => {
+      await expect(service.publishDraft(`00000000-0000-0000-0000-${Date.now()}`, publisherStaff)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    test("rejects a draft that isn't Bashir's", async () => {
+      const bashir = await service.findByName("bashir");
+      const rasidDraft = await service.recordDraft(await service.findByName(rasidAgentName), {
+        action: "compliance_report.drafted",
+        entityType: "ComplianceReport",
+        entityId: `fixture-non-bashir-${Date.now()}`,
+        draft: { summary: "Not a Bashir draft." },
+      });
+      await expect(service.publishDraft(rasidDraft.id, publisherStaff)).rejects.toThrow(NotFoundException);
+      // Sanity: bashir's own id is a real row, not undefined, so the
+      // rejection above is actually exercising the name check and not
+      // failing earlier for an unrelated reason.
+      expect(bashir.id).toBe(bashirAgentId);
+    });
+
+    test("publishes a Bashir draft, recording who approved it", async () => {
+      const bashir = await service.findByName("bashir");
+      const entityId = `fixture-bashir-content-${Date.now()}`;
+      const draft = await service.recordDraft(bashir, {
+        action: "content.drafted",
+        entityType: "MarketingContent",
+        entityId,
+        draft: { contentType: "outreach_draft", title: "Fixture title", body: "Fixture body." },
+      });
+
+      const published = await service.publishDraft(draft.id, publisherStaff);
+
+      expect(published).toMatchObject({
+        actorType: "ai_agent",
+        actorAgentId: bashirAgentId,
+        action: "content.published",
+        entityType: "MarketingContent",
+        entityId,
+      });
+      expect(published.after).toMatchObject({
+        title: "Fixture title",
+        body: "Fixture body.",
+        publishedByStaffId: publisherStaff.userId,
+        publishedByName: "Test Legal Adviser",
+        publishedByRole: "legal_adviser",
+      });
+    });
+
+    test("rejects publishing the same draft a second time", async () => {
+      const bashir = await service.findByName("bashir");
+      const entityId = `fixture-bashir-double-publish-${Date.now()}`;
+      const draft = await service.recordDraft(bashir, {
+        action: "content.drafted",
+        entityType: "MarketingContent",
+        entityId,
+        draft: { contentType: "outreach_draft", title: "Fixture title", body: "Fixture body." },
+      });
+
+      await service.publishDraft(draft.id, publisherStaff);
+      await expect(service.publishDraft(draft.id, publisherStaff)).rejects.toThrow(BadRequestException);
+    });
   });
 });

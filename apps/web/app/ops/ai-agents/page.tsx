@@ -9,13 +9,15 @@
 // CLAUDE.md's graduation gate ("officers consistently act on its drafts
 // without correcting them") stays a human judgment call this page
 // surfaces evidence for, not one it makes automatically.
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { agentNickname, formatDate, humanize, humanizePermissionKey } from "../../../lib/format";
+import { useStaffSession } from "../../../lib/staff-session";
 import type { AiAgent, AiAgentDraft } from "../../../lib/ops-types";
 import {
   Alert,
   Badge,
+  Button,
   EmptyState,
   IconChevronDown,
   IconSparkle,
@@ -28,6 +30,11 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@birr/ui";
+
+// Matches AiAgentsController's own role gate on POST
+// /ai-agents/bashir/drafts/:draftId/publish — this only decides whether
+// to show the button, the backend is the real enforcement.
+const CAN_PUBLISH_ROLES = new Set(["legal_adviser", "compliance_officer"]);
 
 // Matches CLAUDE.md's Agentic AI graduation table exactly — static,
 // not derived, since no agent has actually graduated yet. The tooltip
@@ -171,7 +178,7 @@ export default function AiAgentsPage() {
                       <Badge tone={agent.status === "active" ? "info" : "neutral"}>{humanize(agent.status)}</Badge>
                     </TableCell>
                   </TableRow>
-                  {isExpanded && <AgentDraftsRow agentId={agent.id} />}
+                  {isExpanded && <AgentDraftsRow agentId={agent.id} agentName={agent.name} />}
                 </Fragment>
               );
             })}
@@ -182,42 +189,97 @@ export default function AiAgentsPage() {
   );
 }
 
-function AgentDraftsRow({ agentId }: { agentId: string }) {
+function AgentDraftsRow({ agentId, agentName }: { agentId: string; agentName: string }) {
+  const { staff } = useStaffSession();
+  const canPublish = !!staff && CAN_PUBLISH_ROLES.has(staff.staffRole);
+
   const [drafts, setDrafts] = useState<AiAgentDraft[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
+
+  const loadDrafts = useCallback(() => {
+    apiFetchJson<AiAgentDraft[]>(`/ai-agents/${agentId}/drafts`)
+      .then((data) => setDrafts(data))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
+  }, [agentId]);
 
   useEffect(() => {
-    let cancelled = false;
-    apiFetchJson<AiAgentDraft[]>(`/ai-agents/${agentId}/drafts`)
-      .then((data) => {
-        if (!cancelled) setDrafts(data);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [agentId]);
+    loadDrafts();
+  }, [loadDrafts]);
+
+  async function handlePublish(draftId: string) {
+    setPublishingId(draftId);
+    setPublishError(null);
+    try {
+      await apiFetchJson(`/ai-agents/${agentName}/drafts/${draftId}/publish`, { method: "POST" });
+      loadDrafts();
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setPublishingId(null);
+    }
+  }
+
+  // Bashir's drafts use title/body, not the generic summary shape every
+  // other agent's drafts use — see bashir.ts's own draft_marketing_content
+  // schema.
+  const publishedEntityIds = new Set(
+    (drafts ?? []).filter((d) => d.action === "content.published").map((d) => d.entityId),
+  );
 
   return (
     <TableRow tone="violet" className="hover:bg-transparent">
       <TableCell colSpan={7} className="bg-violet-50/60 py-3">
         {error && <p className="text-xs text-red-700">Couldn&apos;t load drafts: {error}</p>}
+        {publishError && <p className="mb-2 text-xs text-red-700">Couldn&apos;t publish: {publishError}</p>}
         {!error && drafts === null && <Skeleton className="h-16 w-full" />}
         {!error && drafts !== null && (
           <div className="space-y-2">
             {drafts.map((d) => {
-              const content = d.after as { summary?: string } | null;
+              const isBashirContent = agentName === "bashir" && (d.action === "content.drafted" || d.action === "content.published");
+              const content = d.after as { summary?: string; title?: string; body?: string; imageUrl?: string } | null;
+              const isPublished = d.action === "content.published";
+              const showPublishButton =
+                canPublish && agentName === "bashir" && d.action === "content.drafted" && !publishedEntityIds.has(d.entityId);
+
               return (
                 <div key={d.id} className="rounded-md border border-violet-200 bg-white px-3 py-2 text-xs">
                   <div className="mb-1 flex items-center justify-between gap-3">
-                    <span className="font-medium text-slate-700">{humanizePermissionKey(d.action)}</span>
+                    <span className="flex items-center gap-1.5 font-medium text-slate-700">
+                      {humanizePermissionKey(d.action)}
+                      {isPublished && <Badge tone="success">Published</Badge>}
+                    </span>
                     <span className="text-slate-400">{formatDate(d.createdAt)}</span>
                   </div>
-                  <p className="text-slate-600">
-                    {typeof content?.summary === "string" ? content.summary : JSON.stringify(d.after)}
-                  </p>
+                  {isBashirContent ? (
+                    <div>
+                      {content?.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element -- a generated image served from this backend's own /uploads mount, not an optimizable static asset
+                        <img
+                          src={content.imageUrl}
+                          alt=""
+                          className="mb-2 h-32 w-full rounded-md border border-violet-200 object-cover"
+                        />
+                      )}
+                      <p className="font-medium text-slate-700">{content?.title}</p>
+                      <p className="mt-0.5 line-clamp-3 text-slate-600">{content?.body}</p>
+                    </div>
+                  ) : (
+                    <p className="text-slate-600">
+                      {typeof content?.summary === "string" ? content.summary : JSON.stringify(d.after)}
+                    </p>
+                  )}
+                  {showPublishButton && (
+                    <Button
+                      variant="secondary"
+                      className="mt-2"
+                      disabled={publishingId === d.id}
+                      onClick={() => handlePublish(d.id)}
+                    >
+                      {publishingId === d.id ? "Publishing…" : "Publish"}
+                    </Button>
+                  )}
                 </div>
               );
             })}

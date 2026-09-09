@@ -1,11 +1,25 @@
 import { Body, Controller, Get, Headers, Param, Post } from "@nestjs/common";
+import { IsString } from "class-validator";
 import { AiAgentsService, DraftInput } from "./ai-agents.service";
+import { ImageGenerationService } from "./image-generation.service";
+import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { verifyAiAgentApiKey } from "../../common/auth/ai-agent-auth";
 import { Public } from "../../common/guards/public.decorator";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
+
+class GenerateImageInput {
+  @IsString()
+  prompt!: string;
+}
 
 @Controller("ai-agents")
 export class AiAgentsController {
-  constructor(private readonly service: AiAgentsService) {}
+  constructor(
+    private readonly service: AiAgentsService,
+    private readonly imageGeneration: ImageGenerationService,
+    private readonly auditLogs: AuditLogsService,
+  ) {}
 
   @Get()
   list() {
@@ -42,6 +56,31 @@ export class AiAgentsController {
     return this.service.caseDigestData();
   }
 
+  // Agent-authenticated, same shape as the two GET routes above — a
+  // cost-incurring external API call, so worth its own audit trail
+  // entry (action: "image.generated") for the same reason every other
+  // meaningful action here gets one, even though this route itself
+  // never touches governed_actions.
+  @Post(":name/generate-image")
+  @Public()
+  async generateImage(
+    @Param("name") name: string,
+    @Body() body: GenerateImageInput,
+    @Headers("x-agent-api-key") apiKey?: string,
+  ) {
+    const agent = await verifyAiAgentApiKey(name, apiKey);
+    const result = await this.imageGeneration.generate(body.prompt);
+    await this.auditLogs.write({
+      actorType: "ai_agent",
+      actorAgentId: agent.id,
+      action: "image.generated",
+      entityType: "GeneratedImage",
+      entityId: result.url,
+      after: { prompt: body.prompt, url: result.url },
+    });
+    return result;
+  }
+
   @Post(":name/drafts")
   @Public()
   async recordDraft(
@@ -51,5 +90,16 @@ export class AiAgentsController {
   ) {
     const agent = await verifyAiAgentApiKey(name, apiKey);
     return this.service.recordDraft(agent, body);
+  }
+
+  // BirrStaff-session-authenticated (no @Public()) — unlike the three
+  // agent-authenticated routes above. CLAUDE.md's own words for Bashir:
+  // "never auto-publishes... requires Legal/Compliance sign-off
+  // specifically, not just any Birr staff member" — deliberately no
+  // platform_admin override here, that would defeat the point.
+  @Post(":name/drafts/:draftId/publish")
+  @RequiresStaffRole(["legal_adviser", "compliance_officer"])
+  async publishDraft(@Param("draftId") draftId: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.service.publishDraft(draftId, staff);
   }
 }

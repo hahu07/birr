@@ -20,6 +20,9 @@ const PROVIDER_LABELS: Record<string, string> = {
   stablecoin: "Stablecoin gateway",
   resend: "Resend (email)",
   twilio: "Twilio (WhatsApp)",
+  openai: "OpenAI (image generation)",
+  replicate: "Replicate (image generation)",
+  image_generation: "Image generation — active provider",
 };
 
 export default function PlatformSettingsPage() {

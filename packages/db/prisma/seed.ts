@@ -14,8 +14,8 @@ const SEED_ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "ChangeMe123!";
 const SEED_ADMIN_FULL_NAME = "Platform Admin";
 
 // Only agents actually wired up in services/agents get a registry row —
-// seeding one for Kashif/Rashid/Munsif/Bashir would imply they're live
-// when they're still config-only scaffolding. Same dev/pilot-stage
+// seeding one for Kashif/Rashid/Munsif would imply they're live when
+// they're still config-only scaffolding. Same dev/pilot-stage
 // bootstrap-credential pattern as the admin above.
 //
 // Rafiq's shape is different from Rasid/Nazim's scheduled batch runs —
@@ -24,6 +24,12 @@ const SEED_ADMIN_FULL_NAME = "Platform Admin";
 // tick — but it still needs a real registry row so
 // audit_logs.actorAgentId has something to reference and it shows up
 // honestly on the AI Agents oversight page, same as any other agent.
+//
+// Bashir is real too (services/agents/src/agents/bashir.ts) — the only
+// one of the four originally-scaffolding agents not blocked on a
+// data-maturity gate (Kashif/Rashid/Munsif all need real
+// governed_actions/investment/beneficiary history this pre-pilot
+// deployment doesn't have yet).
 const agentSeeds = [
   {
     name: "rasid",
@@ -42,6 +48,12 @@ const agentSeeds = [
     taskType: "founder_onboarding",
     apiKeyEnvVar: "RAFIQ_API_KEY",
     defaultApiKey: "rafiq-dev-key-change-me",
+  },
+  {
+    name: "bashir",
+    taskType: "business_development",
+    apiKeyEnvVar: "BASHIR_API_KEY",
+    defaultApiKey: "bashir-dev-key-change-me",
   },
 ] as const;
 

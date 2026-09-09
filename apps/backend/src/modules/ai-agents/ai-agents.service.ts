@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsObject, IsOptional, IsString } from "class-validator";
 import { prisma, AiAgent } from "@birr/db";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
+import { AuthenticatedBirrStaff } from "../../common/auth/current-birr-staff";
 
 // Never select apiKeyHash onto a response body — same principle as
 // BirrStaffService's SAFE_USER_SELECT for User.passwordHash. list() had
@@ -46,6 +47,7 @@ export class DraftInput {
 const ALLOWED_DRAFT_ACTIONS: Record<string, string[]> = {
   rasid: ["compliance_report.drafted"],
   nazim: ["caseload_digest.drafted"],
+  bashir: ["content.drafted"],
 };
 
 @Injectable()
@@ -150,6 +152,56 @@ export class AiAgentsService {
       entityType: input.entityType,
       entityId: input.entityId,
       after: input.draft,
+    });
+  }
+
+  /**
+   * POST /ai-agents/bashir/drafts/:draftId/publish — the one publish
+   * path in this codebase (Bashir is the only agent CLAUDE.md requires
+   * this for: "never auto-publishes... published output should still
+   * write to audit_logs"). Staff-session-authenticated, role-gated to
+   * legal_adviser/compliance_officer at the controller
+   * (@RequiresStaffRole) — this method trusts that gate already ran and
+   * focuses on the draft-state checks only a lookup can answer.
+   */
+  async publishDraft(draftId: string, staff: AuthenticatedBirrStaff) {
+    const draft = await prisma.auditLog.findUnique({ where: { id: draftId } });
+    if (!draft || draft.actorType !== "ai_agent" || !draft.actorAgentId || draft.action !== "content.drafted") {
+      throw new NotFoundException("No matching Bashir draft found.");
+    }
+    const agent = await prisma.aiAgent.findUnique({ where: { id: draft.actorAgentId } });
+    if (!agent || agent.name !== "bashir") {
+      throw new NotFoundException("No matching Bashir draft found.");
+    }
+
+    const alreadyPublished = await prisma.auditLog.findFirst({
+      where: { actorAgentId: agent.id, action: "content.published", entityId: draft.entityId },
+    });
+    if (alreadyPublished) {
+      throw new BadRequestException("This draft has already been published.");
+    }
+
+    // AuthenticatedBirrStaff carries only id/userId/staffRole/mfaEnabled
+    // — no display name — so "who approved it" needs one small lookup
+    // before it can actually be attributable in the snapshot below.
+    const publishingUser = await prisma.user.findUniqueOrThrow({
+      where: { id: staff.userId },
+      select: { fullName: true },
+    });
+
+    return this.auditLogs.write({
+      waqfId: draft.waqfId ?? undefined,
+      actorType: "ai_agent",
+      actorAgentId: agent.id,
+      action: "content.published",
+      entityType: draft.entityType,
+      entityId: draft.entityId,
+      after: {
+        ...(draft.after as Record<string, unknown>),
+        publishedByStaffId: staff.userId,
+        publishedByName: publishingUser.fullName,
+        publishedByRole: staff.staffRole,
+      },
     });
   }
 }
