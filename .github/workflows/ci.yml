@@ -11,13 +11,12 @@
 # workspace's own eslint.config.mjs) instead of turbo's long-declared but
 # unwired `lint` task silently doing nothing.
 #
-# Every command below was run and verified locally before being written
-# here (turbo run typecheck, the Jest suite against a real Postgres,
-# and turbo run build — the same build each app's own Dockerfile
-# performs) — this workflow itself has NOT been executed by GitHub
-# Actions, since this repository has no git remote yet. Worth an actual
-# run against a real PR once one exists, not just trusted on the
-# strength of the local dry-runs.
+# 2026-09-09: deploy added — triggers Render (see render.yaml at the repo
+# root) only after every other job here has passed, and only on a push to
+# main. Render's own autoDeploy is off for all three services specifically
+# so this job is the only thing that can ship a commit — otherwise Render
+# would deploy the instant something's pushed, before this workflow even
+# finishes.
 
 name: CI
 
@@ -227,3 +226,18 @@ jobs:
       # on immediately), but a high/critical finding on a fiduciary
       # system's dependency tree should stop the build.
       - run: pnpm audit --audit-level=high
+
+  deploy:
+    needs: [typecheck, lint, migration-drift, test, web-test, build, dependency-audit]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      # Each hook is a per-service secret URL from Render's dashboard
+      # (service → Settings → Deploy Hook) — set once as a repo secret
+      # after the render.yaml Blueprint's services exist, never
+      # committed. -fsS: fail on a non-2xx response and stay silent on
+      # success, so a bad/rotated hook URL actually fails this job
+      # instead of looking green.
+      - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}"
+      - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WEB }}"
+      - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_AGENTS }}"

@@ -1,0 +1,189 @@
+# Render Blueprint — see .github/workflows/ci.yml's `deploy` job for how
+# this actually gets deployed: autoDeploy is off for every service below
+# so a push to main can't ship a commit before CI (typecheck/lint/tests/
+# build/dependency-audit) has actually passed. CI instead curls each
+# service's own Deploy Hook once every other job succeeds.
+#
+# One-time manual steps after connecting this Blueprint in Render's
+# dashboard (none of these are — or should be — committed to this repo):
+#   1. `birr-postgres`'s connectionString below is Render's own admin
+#      user (DDL-capable, analogous to local dev's `birr` role) — used
+#      ONLY for MIGRATE_DATABASE_URL. The first deploy's migration run
+#      creates the `birr_app` runtime role via
+#      20260831180000_add_birr_app_runtime_role/migration.sql, with that
+#      migration's own hardcoded dev password. Immediately after the
+#      first successful deploy, connect as the admin user and run
+#      `ALTER ROLE birr_app WITH PASSWORD '<a real generated secret>';`,
+#      then set birr-backend's DATABASE_URL (sync: false below) to a
+#      connection string using that role and password — never the admin
+#      connection string docker-compose.yml's own comment warns about
+#      this same distinction for local dev; it matters even more here.
+#   2. Fill in every `sync: false` env var below via the dashboard —
+#      provider credentials (Resend/Twilio/Stripe/Paystack/Coinbase),
+#      Rasid/Nazim's ai_agents API keys, and birr-backend's DATABASE_URL
+#      from step 1.
+#   3. Once all three services exist, copy each one's own Deploy Hook
+#      URL (service → Settings → Deploy Hook) into this repo's GitHub
+#      Actions secrets as RENDER_DEPLOY_HOOK_BACKEND/_WEB/_AGENTS.
+#
+# Region: frankfurt for all three services — the closest of Render's five
+# regions (Oregon/Ohio/Virginia/Frankfurt/Singapore) to Nigeria/West
+# Africa, the primary latency consideration raised when Render itself was
+# chosen over Fly.io/Railway (see that comparison — Fly.io has an actual
+# African region, but Render's cron/worker-as-first-class-type support
+# and flat predictable billing won out for a non-profit at pre-pilot
+# scale; this is the mitigation for the one real trade-off in that call).
+
+databases:
+  - name: birr-postgres
+    plan: starter
+    region: frankfurt
+    postgresMajorVersion: "16"
+
+services:
+  # ---- NestJS API — both apps/web and services/agents call this ----
+  - type: web
+    name: birr-backend
+    runtime: docker
+    dockerfilePath: ./apps/backend/Dockerfile
+    dockerContext: .
+    plan: starter
+    region: frankfurt
+    autoDeploy: false
+    healthCheckPath: /health
+    envVars:
+      # Render's own Docker port-detection is "usually" reliable per
+      # their docs, not guaranteed — set explicitly rather than depend
+      # on it. BACKEND_PORT is what apps/backend/src/main.ts actually
+      # reads (see that file).
+      - key: PORT
+        value: 4000
+      - key: BACKEND_PORT
+        value: 4000
+      - key: NODE_ENV
+        value: production
+      # Admin/DDL-capable connection — see the migration note at the top
+      # of this file. Only ever read by docker-entrypoint.sh's migrate
+      # step, never by the running app.
+      - key: MIGRATE_DATABASE_URL
+        fromDatabase:
+          name: birr-postgres
+          property: connectionString
+      # The app's real runtime connection — the birr_app role, set
+      # manually after the one-time ALTER ROLE step above. Deliberately
+      # NOT fromDatabase (that would give the running app the admin
+      # role's DDL privileges, defeating the RLS/audit_logs REVOKE
+      # posture 20260831180000_add_birr_app_runtime_role exists for).
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SETTINGS_ENCRYPTION_KEY
+        generateValue: true
+      # Both build verify-email/redirect links a human clicks from their
+      # own browser — Render's public hostname is deterministic from
+      # each service's own `name` below, so these are knowable up front
+      # as long as the service names in this file don't change.
+      - key: BACKEND_URL
+        value: https://birr-backend.onrender.com
+      - key: FOUNDER_PORTAL_URL
+        value: https://birr-web.onrender.com
+      # birr-agents is a private service — resolves by its own `name` on
+      # Render's internal network, with a fixed port set on that service
+      # below, so no fromService lookup is needed for the URL itself.
+      - key: AGENT_SERVICE_URL
+        value: http://birr-agents:4100
+      # The one shared secret between this service and birr-agents —
+      # generated once here, referenced (not re-generated) on the other
+      # side below, so both sides always agree.
+      - key: AGENT_SERVICE_INTERNAL_KEY
+        generateValue: true
+      # Provider credentials — unset means the relevant feature (email
+      # verification, WhatsApp OTP, payments) fails loudly with a clear
+      # error, same posture docker-compose.yml's own ${VAR:-} takes for
+      # local dev. Never a committed placeholder.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_ADDRESS
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM_NUMBER
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_WEBHOOK_SECRET
+        sync: false
+      - key: COINBASE_COMMERCE_API_KEY
+        sync: false
+      - key: COINBASE_COMMERCE_WEBHOOK_SECRET
+        sync: false
+      # Rasid/Nazim authenticate to this backend as their own ai_agents
+      # registry row (see apps/backend's ai-agents module) — the same
+      # keys services/agents holds below to send, not receive, these.
+      - key: RASID_API_KEY
+        sync: false
+      - key: NAZIM_API_KEY
+        sync: false
+
+  # ---- Merged Founder Portal + Ops Console (Next.js) ----
+  - type: web
+    name: birr-web
+    runtime: docker
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: .
+    plan: starter
+    region: frankfurt
+    autoDeploy: false
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      # Render passes every Docker-service envVar through as a matching
+      # --build-arg too, so this satisfies the Dockerfile's existing
+      # `ARG NEXT_PUBLIC_BACKEND_URL` (baked into the client bundle at
+      # build time — see that Dockerfile's own comment) with no extra
+      # wiring beyond just setting it here.
+      - key: NEXT_PUBLIC_BACKEND_URL
+        value: https://birr-backend.onrender.com
+
+  # ---- Agent Service — Rasid/Nazim's scheduled runs, Rafiq's on-demand
+  # draft-help endpoint. Private service: no public endpoint at all,
+  # matching services/agents/src/server.ts's own "never reachable from a
+  # browser, only the backend's own outbound call" design. ----
+  - type: pserv
+    name: birr-agents
+    runtime: docker
+    dockerfilePath: ./services/agents/Dockerfile
+    dockerContext: .
+    plan: starter
+    region: frankfurt
+    autoDeploy: false
+    envVars:
+      - key: PORT
+        value: 4100
+      - key: AGENT_SERVICE_PORT
+        value: 4100
+      - key: NODE_ENV
+        value: production
+      # Must match birr-backend's own AGENT_SERVICE_INTERNAL_KEY exactly
+      # — referenced from there, not independently generated, so the two
+      # services can never drift out of sync.
+      - key: AGENT_SERVICE_INTERNAL_KEY
+        fromService:
+          name: birr-backend
+          type: web
+          envVarKey: AGENT_SERVICE_INTERNAL_KEY
+      - key: BACKEND_URL
+        value: https://birr-backend.onrender.com
+      - key: RASID_API_KEY
+        sync: false
+      - key: NAZIM_API_KEY
+        sync: false

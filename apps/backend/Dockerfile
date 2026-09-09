@@ -60,10 +60,17 @@ COPY --from=pruner /app/out/full/ .
 # assumed — see this Dockerfile's own build history if this regresses.
 COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
 # The Prisma client @birr/db exports has to be generated before the
-# backend's own build can type-check against it — turbo's build task
-# depends on `^build`, but @birr/db has no build script (see its own
-# package.json), only `generate`, so this can't be left implicit.
+# backend's own build can type-check against it, and @birr/db's own
+# `tsc` build (main: "dist/index.js" in its package.json) has to produce
+# that dist/ before anything can `require("@birr/db")` at runtime —
+# turbo's build task depends on `^build`, but neither of these was ever
+# run standalone here, so this can't be left implicit. Confirmed the
+# hard way: without the build step, the container starts, builds, and
+# even boots partway before failing with MODULE_NOT_FOUND on @birr/db
+# the moment main.js actually requires it — never caught before because
+# nothing had actually run this image's real CMD end to end.
 RUN pnpm --filter @birr/db exec prisma generate
+RUN pnpm --filter @birr/db build
 RUN pnpm --filter @birr/backend build
 
 # ---- Runtime image ----
@@ -72,7 +79,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nestjs
 COPY --from=installer --chown=nestjs:nodejs /app .
+RUN chmod +x apps/backend/docker-entrypoint.sh
 USER nestjs
 ENV NODE_ENV=production
 EXPOSE 4000
+ENTRYPOINT ["apps/backend/docker-entrypoint.sh"]
 CMD ["node", "apps/backend/dist/main.js"]
