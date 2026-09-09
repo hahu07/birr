@@ -155,6 +155,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @birr/db exec prisma generate
+      # @birr/db's own package.json points `main` at `dist/index.js` —
+      # `prisma generate` above only produces the Prisma Client itself,
+      # not this package's own compiled JS. Every other job here reaches
+      # this via `pnpm typecheck`/`pnpm build` (turbo's `dependsOn:
+      # ["^build"]`), but this job calls `pnpm --filter @birr/backend
+      # test` directly, bypassing that dependency graph entirely — so
+      # without this explicit step, every spec's `import ... from
+      # "@birr/db"` fails with "Cannot find module '@birr/db'" (found
+      # 2026-09-09: every run back to at least 2026-09-02 was failing on
+      # exactly this, unnoticed since deploy — the only job depending on
+      # this one's success — was never gated on locally). Same gap
+      # apps/backend/Dockerfile's own comment already documents for the
+      # container build; this job needed the identical fix.
+      - run: pnpm --filter @birr/db build
       - run: pnpm --filter @birr/db exec prisma migrate deploy
       # Several specs (e.g. governed-actions.service.spec.ts, see its own
       # beforeAll comment) reuse the seeded roles/permissions/
