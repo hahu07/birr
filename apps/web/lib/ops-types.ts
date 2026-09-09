@@ -572,6 +572,31 @@ export interface AuditLogPage {
   nextCursor: string | null;
 }
 
+// sequence/previousHash/recordHash come from the hash-chain migration —
+// see AuditLogsService.verifyChain()/exportChain().
+export interface AuditLogChainRecord extends AuditLog {
+  sequence: number;
+  previousHash: string | null;
+  recordHash: string | null;
+}
+
+// GET /audit-logs/export
+export interface AuditLogExport {
+  exportedAt: string;
+  totalRecords: number;
+  chainHeadSequence: number | null;
+  chainHeadHash: string | null;
+  records: AuditLogChainRecord[];
+}
+
+// GET /audit-logs/verify — an empty issues array means the chain is
+// intact end to end.
+export interface AuditLogVerifyResult {
+  ok: boolean;
+  totalRecords: number;
+  issues: { sequence: number; id: string; issue: string }[];
+}
+
 export interface GovernedAction {
   id: string;
   waqfId: string | null;

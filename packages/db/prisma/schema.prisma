@@ -1440,6 +1440,21 @@ model AuditLog {
   ipAddress      String?
   createdAt      DateTime  @default(now())
 
+  // 2026-09-09 tamper-evidence: a strict insertion-order counter and a
+  // hash chain (each row's hash covers its own fields + the previous
+  // row's hash). Both hash fields are never set by application code — a
+  // BEFORE INSERT trigger fills them in unconditionally on every insert
+  // (see the add_audit_log_hash_chain migration). createdAt alone isn't
+  // a safe total order (same-millisecond ties are the reason the cursor
+  // pagination above exists); sequence is. Int, not BigInt — this table
+  // would need over two billion rows to overflow it, and BigInt breaks
+  // JSON.stringify on every existing endpoint that returns a raw
+  // AuditLog row (AiAgentsService.drafts(), ComplianceReportsService's
+  // export) the moment it's added as a plain scalar field.
+  sequence       Int       @unique @default(autoincrement())
+  previousHash   String?
+  recordHash     String?
+
   // 2026-09-08 audit fix: this table is append-only and ever-growing —
   // a compliance export or an officer's per-waqf/per-entity history view
   // was a full-scan away from becoming a real cost at any real volume.

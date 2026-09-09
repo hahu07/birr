@@ -91,4 +91,82 @@ describe("AuditLogsService", () => {
     expect(log.after).toBeNull();
     expect(log.ipAddress).toBeNull();
   });
+
+  describe("hash chain", () => {
+    // Confirms the add_audit_log_hash_chain migration's BEFORE INSERT
+    // trigger actually runs on every write() call, not just checking the
+    // shape of what write() returns.
+    test("write() links each new row to the previous one via previousHash/recordHash", async () => {
+      const first = await service.write({
+        actorType: "birr_staff",
+        actorUserId,
+        action: "test.chain_first",
+        entityType: "TestEntity",
+        entityId: "chain-fixture-1",
+      });
+      auditLogIds.push(first.id);
+
+      const second = await service.write({
+        actorType: "birr_staff",
+        actorUserId,
+        action: "test.chain_second",
+        entityType: "TestEntity",
+        entityId: "chain-fixture-2",
+      });
+      auditLogIds.push(second.id);
+
+      expect(first.recordHash).toBeTruthy();
+      expect(second.recordHash).toBeTruthy();
+      expect(second.recordHash).not.toBe(first.recordHash);
+      // The chain may have other writers between these two calls in a
+      // shared dev DB, so don't assert second.previousHash === first
+      // .recordHash directly — assert the weaker, still-meaningful
+      // invariant that sequence strictly increases and both are chained
+      // (non-null previousHash on the second write).
+      expect(second.sequence > first.sequence).toBe(true);
+      expect(second.previousHash).toBeTruthy();
+    });
+
+    // Pure round-trip check on verifyChain() itself — doesn't assert the
+    // whole table is clean (this spec shares a dev DB with everything
+    // else), just that verifyChain() runs and returns the expected shape.
+    test("verifyChain() returns a well-formed result", async () => {
+      const result = await service.verifyChain();
+      expect(typeof result.ok).toBe("boolean");
+      expect(result.totalRecords).toBeGreaterThan(0);
+      expect(Array.isArray(result.issues)).toBe(true);
+      expect(result.ok).toBe(result.issues.length === 0);
+    });
+
+    test("exportChain() returns records in ascending sequence order with a matching chain head", async () => {
+      const log = await service.write({
+        actorType: "birr_staff",
+        actorUserId,
+        action: "test.export_fixture",
+        entityType: "TestEntity",
+        entityId: "export-fixture-1",
+      });
+      auditLogIds.push(log.id);
+
+      const result = await service.exportChain();
+      expect(result.records.length).toBe(result.totalRecords);
+      expect(result.chainHeadSequence).toBe(result.records[result.records.length - 1]!.sequence);
+      expect(result.chainHeadHash).toBe(result.records[result.records.length - 1]!.recordHash);
+
+      for (let i = 1; i < result.records.length; i++) {
+        expect(result.records[i]!.sequence).toBeGreaterThan(result.records[i - 1]!.sequence);
+      }
+
+      const exported = result.records.find((r) => r.id === log.id);
+      expect(exported?.recordHash).toBe(log.recordHash);
+    });
+
+    test("exportChain() filters by waqfId when provided", async () => {
+      const result = await service.exportChain({ waqfId: "does-not-exist" });
+      expect(result.records).toHaveLength(0);
+      expect(result.totalRecords).toBe(0);
+      expect(result.chainHeadSequence).toBeNull();
+      expect(result.chainHeadHash).toBeNull();
+    });
+  });
 });
