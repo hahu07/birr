@@ -1,8 +1,9 @@
-import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { Request } from "express";
 import { AuthenticatedBirrStaff, resolveBirrStaffFromSession } from "../auth/current-birr-staff";
 import { IS_PUBLIC_KEY } from "./public.decorator";
+import { IS_MFA_EXEMPT_KEY } from "./mfa-exempt.decorator";
 
 /**
  * Default-deny floor for every route in the app: requires a valid
@@ -16,6 +17,13 @@ import { IS_PUBLIC_KEY } from "./public.decorator";
  * distributions, investments, waqf-causes, ai-agents, plus several
  * ungated read routes elsewhere) go unauthenticated before this guard
  * existed.
+ *
+ * 2026-09-08: also the actual enforcement point for mandatory MFA — a
+ * resolved session with mfaEnabled: false is rejected outright on any
+ * route not marked @MfaExempt() (enrollment itself, and GET /me so the
+ * frontend can even learn this). AppShell's redirect to /ops/mfa-setup
+ * is a UX convenience on top of this, same relationship it already has
+ * to the plain signed-out case.
  */
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
@@ -31,6 +39,14 @@ export class SessionAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const staff = await resolveBirrStaffFromSession(request);
     (request as Request & { birrStaff: AuthenticatedBirrStaff }).birrStaff = staff;
+
+    const isMfaExempt = this.reflector.getAllAndOverride<boolean>(IS_MFA_EXEMPT_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (!staff.mfaEnabled && !isMfaExempt) {
+      throw new ForbiddenException("Two-factor authentication setup is required before continuing.");
+    }
     return true;
   }
 }

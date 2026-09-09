@@ -239,7 +239,16 @@ model User {
   fullName                   String
   authProviderId             String?
   status                     UserStatus @default(invited)
+  // Existed as an unused placeholder from before this — never set,
+  // never checked. 2026-09-08: actually wired up, birr_staff only for
+  // now (mandatory there — see BirrStaffService.login's own comment).
+  // mfaSecretEncrypted is set (AES-256-GCM via EncryptionService, same
+  // reuse as ProviderCredential.encryptedValue) as soon as enrollment
+  // starts, before mfaEnabled flips true on confirmation — a
+  // not-yet-confirmed secret is inert either way, since nothing reads
+  // it until mfaEnabled is true.
   mfaEnabled                 Boolean    @default(false)
+  mfaSecretEncrypted         String?
   // Real password auth for the Founder Portal — see
   // apps/backend/src/common/auth/session.ts. passwordHash is nullable to
   // accommodate any future non-password-auth users (e.g. an eventual
@@ -290,8 +299,30 @@ model User {
   counterpartyShariahApprovals Counterparty[]                 @relation("CounterpartyShariahApprover")
   createdInvestmentPlacements  InvestmentPlacement[]
   sentMessages                 Message[]
+  mfaBackupCodes               MfaBackupCode[]
 
   @@map("users")
+}
+
+// Generated 10-at-a-time by BirrStaffService.confirmMfaEnrollment(),
+// shown to the staff member exactly once (the plaintext codes are never
+// stored — only codeHash, bcrypt, same as User.passwordHash). Each is
+// single-use (usedAt set on consumption via
+// BirrStaffService.verifyLoginMfaCode) — the recovery path for a lost
+// authenticator device, since MFA is mandatory and there's no
+// self-service disable (see User.mfaEnabled's own comment); a staff
+// member who loses both their device and every backup code needs a
+// platform_admin to call the break-glass BirrStaffService.resetMfa.
+model MfaBackupCode {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("mfa_backup_codes")
 }
 
 model Founder {

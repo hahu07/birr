@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { IsEmail, IsEnum, IsString } from "class-validator";
 import { prisma, BirrStaffRole } from "@birr/db";
 import { verifyUserPassword } from "../../common/auth/password-auth";
+import { EncryptionService } from "../../common/settings/encryption.service";
+import { MfaService } from "../../common/auth/mfa.service";
 
 export class CreateBirrStaffInput {
   @IsEmail()
@@ -45,6 +47,11 @@ const SAFE_USER_SELECT = {
 
 @Injectable()
 export class BirrStaffService {
+  constructor(
+    private readonly encryption: EncryptionService,
+    private readonly mfa: MfaService,
+  ) {}
+
   // Gated to platform_admin at the controller (@RequiresStaffRole) —
   // real staff onboarding goes through InvitationsService.accept(),
   // which sets a password and logs the invitee straight in. This method
@@ -96,7 +103,127 @@ export class BirrStaffService {
     if (!staff || staff.status !== "active") {
       throw new NotFoundException("No active Birr staff account for this user.");
     }
-    return { userId: user.id };
+    // mfaEnabled: false doesn't mean "skip MFA" — it means the caller
+    // (BirrStaffController.login) issues a real session anyway, and
+    // SessionAuthGuard then blocks everything except enrollment until
+    // it's set up. See that guard's own comment — MFA is mandatory, not
+    // opt-in.
+    return { userId: user.id, mfaEnabled: user.mfaEnabled };
+  }
+
+  /**
+   * The second step of login for an mfaEnabled account — called with
+   * the userId recovered from the short-lived MFA-pending cookie (see
+   * session.ts), never from client input directly. Tries a TOTP code
+   * first, then falls back to an unused backup code (single-use,
+   * consumed on match) — see MfaBackupCode's own schema comment on why
+   * that recovery path exists at all given MFA has no self-service
+   * disable.
+   */
+  async verifyLoginMfaCode(userId: string, code: string): Promise<void> {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.mfaEnabled || !user.mfaSecretEncrypted) {
+      throw new BadRequestException("MFA is not enabled for this account.");
+    }
+    const secret = this.encryption.decrypt(user.mfaSecretEncrypted);
+    if (this.mfa.verifyCode(secret, code)) return;
+
+    const unusedCodes = await prisma.mfaBackupCode.findMany({ where: { userId, usedAt: null } });
+    for (const candidate of unusedCodes) {
+      if (await this.mfa.compareBackupCode(code, candidate.codeHash)) {
+        await prisma.mfaBackupCode.update({ where: { id: candidate.id }, data: { usedAt: new Date() } });
+        return;
+      }
+    }
+    throw new UnauthorizedException("Incorrect code.");
+  }
+
+  /**
+   * Starts (or restarts) enrollment — generates a fresh secret and
+   * stores it encrypted, but doesn't flip mfaEnabled yet (see
+   * User.mfaSecretEncrypted's own comment: inert until confirmed).
+   * Re-callable: a staff member who scans the QR then closes the tab
+   * can just start again, overwriting the unconfirmed secret.
+   */
+  async startMfaEnrollment(userId: string) {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const { secretBase32, otpauthUri } = this.mfa.generateSecret(user.email);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { mfaSecretEncrypted: this.encryption.encrypt(secretBase32) },
+    });
+    const qrCodeDataUrl = await this.mfa.qrCodeDataUrl(otpauthUri);
+    return { qrCodeDataUrl, secretForManualEntry: secretBase32 };
+  }
+
+  /**
+   * Confirms enrollment: verifies the code actually matches the pending
+   * secret, then in one transaction enables MFA and issues backup
+   * codes. Returns the plaintext codes — the only time they're ever
+   * available; only their bcrypt hash is persisted (MfaBackupCode.codeHash).
+   */
+  async confirmMfaEnrollment(userId: string, code: string) {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.mfaSecretEncrypted) {
+      throw new BadRequestException("Start enrollment before confirming it.");
+    }
+    const secret = this.encryption.decrypt(user.mfaSecretEncrypted);
+    if (!this.mfa.verifyCode(secret, code)) {
+      throw new BadRequestException("Incorrect code — check your authenticator app and try again.");
+    }
+
+    const backupCodes = this.mfa.generateBackupCodes();
+    const hashedCodes = await this.mfa.hashBackupCodes(backupCodes);
+
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({ where: { id: userId }, data: { mfaEnabled: true } });
+      await tx.mfaBackupCode.createMany({
+        data: hashedCodes.map((codeHash) => ({ userId, codeHash })),
+      });
+      await tx.auditLog.create({
+        data: {
+          actorType: "birr_staff",
+          actorUserId: userId,
+          action: "birr_staff.mfa_enabled",
+          entityType: "User",
+          entityId: userId,
+          before: { mfaEnabled: user.mfaEnabled } as any,
+          after: { mfaEnabled: updated.mfaEnabled } as any,
+        },
+      });
+    });
+
+    return { backupCodes };
+  }
+
+  /**
+   * platform_admin-only break-glass path — see MfaBackupCode's own
+   * schema comment. Clears MFA state entirely and forces re-enrollment
+   * on next login; doesn't touch the account's password or status.
+   */
+  async resetMfa(staffId: string, actorUserId: string) {
+    const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true } });
+    if (!staff) throw new NotFoundException(`BirrStaff "${staffId}" not found.`);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: staff.userId },
+        data: { mfaEnabled: false, mfaSecretEncrypted: null },
+      });
+      await tx.mfaBackupCode.deleteMany({ where: { userId: staff.userId } });
+      await tx.auditLog.create({
+        data: {
+          actorType: "birr_staff",
+          actorUserId,
+          action: "birr_staff.mfa_reset",
+          entityType: "User",
+          entityId: staff.userId,
+          before: { mfaEnabled: staff.user.mfaEnabled } as any,
+          after: { mfaEnabled: false } as any,
+        },
+      });
+    });
+    return { ok: true };
   }
 
   /** GET /birr-staff/me — session bootstrap for the Ops Console. */

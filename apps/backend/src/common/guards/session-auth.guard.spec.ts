@@ -1,8 +1,9 @@
-import { ExecutionContext, Type, UnauthorizedException } from "@nestjs/common";
+import { ExecutionContext, ForbiddenException, Type, UnauthorizedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { prisma } from "@birr/db";
 import { SessionAuthGuard } from "./session-auth.guard";
 import { Public } from "./public.decorator";
+import { MfaExempt } from "./mfa-exempt.decorator";
 import { signSessionToken, STAFF_SESSION_COOKIE_NAME } from "../auth/session";
 
 class TestController {
@@ -10,6 +11,9 @@ class TestController {
 
   @Public()
   publicRoute() {}
+
+  @MfaExempt()
+  mfaExemptRoute() {}
 }
 
 @Public()
@@ -33,14 +37,27 @@ describe("SessionAuthGuard", () => {
   const publicController = new PublicTestController();
 
   let staffUserId: string;
+  let unenrolledStaffUserId: string;
 
   beforeAll(async () => {
+    // A normal, fully-set-up session — MFA already enrolled, same state
+    // every real staff member is in once mandatory enrollment is done.
     const user = await prisma.user.create({
-      data: { email: `session-auth-guard-${Date.now()}@example.test`, fullName: "Guard Spec Staff" },
+      data: { email: `session-auth-guard-${Date.now()}@example.test`, fullName: "Guard Spec Staff", mfaEnabled: true },
     });
     staffUserId = user.id;
     await prisma.birrStaff.create({
       data: { userId: user.id, staffRole: "compliance_officer" },
+    });
+
+    // mfaEnabled defaults to false — represents a real session that
+    // hasn't completed MFA enrollment yet.
+    const unenrolledUser = await prisma.user.create({
+      data: { email: `session-auth-guard-unenrolled-${Date.now()}@example.test`, fullName: "Guard Spec Unenrolled Staff" },
+    });
+    unenrolledStaffUserId = unenrolledUser.id;
+    await prisma.birrStaff.create({
+      data: { userId: unenrolledUser.id, staffRole: "compliance_officer" },
     });
   });
 
@@ -65,6 +82,16 @@ describe("SessionAuthGuard", () => {
 
   test("allows any route on a @Public() controller through with no session", async () => {
     const ctx = makeContext(publicController.anyRoute, PublicTestController, undefined);
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  test("rejects a non-exempt route for a session with mfaEnabled: false", async () => {
+    const ctx = makeContext(controller.noMetadata, TestController, signSessionToken(unenrolledStaffUserId));
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  test("allows an @MfaExempt() route through for a session with mfaEnabled: false", async () => {
+    const ctx = makeContext(controller.mfaExemptRoute, TestController, signSessionToken(unenrolledStaffUserId));
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
   });
 });

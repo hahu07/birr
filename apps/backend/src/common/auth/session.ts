@@ -75,6 +75,64 @@ export function clearStaffSessionCookie(res: Response): void {
   res.clearCookie(STAFF_SESSION_COOKIE_NAME, { path: "/" });
 }
 
+// The gap between "password verified" and "TOTP code verified" for an
+// mfaEnabled birr_staff account — BirrStaffController.login() issues
+// this instead of the real staff session when MFA is required, and
+// POST /birr-staff/login/mfa exchanges it for a real one on success.
+// Deliberately a separate cookie/token shape, not a half-populated real
+// session: a distinct `purpose` claim (checked on verify) means this
+// token can never be mistaken for — or silently accepted as — a real
+// session token even if someone tried, and its own short expiry means a
+// staff member who never finishes the MFA step doesn't leave a
+// long-lived credential sitting in their cookie jar the way the 7-day
+// real session would.
+export const MFA_PENDING_COOKIE_NAME = "birr_staff_mfa_pending";
+const MFA_PENDING_VALIDITY = "10m";
+
+interface MfaPendingTokenPayload {
+  userId: string;
+  purpose: "mfa_pending";
+}
+
+export function signMfaPendingToken(userId: string): string {
+  return jwt.sign(
+    { userId, purpose: "mfa_pending" } satisfies MfaPendingTokenPayload,
+    getSecret(),
+    { expiresIn: MFA_PENDING_VALIDITY },
+  );
+}
+
+/** Same "null on any failure" contract as verifySessionToken. */
+export function verifyMfaPendingToken(token: string): { userId: string } | null {
+  try {
+    const decoded = jwt.verify(token, getSecret());
+    if (typeof decoded === "string" || decoded.purpose !== "mfa_pending" || typeof decoded.userId !== "string") {
+      return null;
+    }
+    return { userId: decoded.userId };
+  } catch {
+    return null;
+  }
+}
+
+function mfaPendingCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 10 * 60 * 1000,
+    path: "/",
+  };
+}
+
+export function setMfaPendingCookie(res: Response, token: string): void {
+  res.cookie(MFA_PENDING_COOKIE_NAME, token, mfaPendingCookieOptions());
+}
+
+export function clearMfaPendingCookie(res: Response): void {
+  res.clearCookie(MFA_PENDING_COOKIE_NAME, { path: "/" });
+}
+
 /**
  * "Is *some* session present, Founder or Birr-staff" — the generic gate
  * every dual-purpose controller checks before calling isBirrStaffSession

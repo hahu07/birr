@@ -45,6 +45,12 @@ export default function StaffPage() {
   const [error, setError] = useState<string | null>(null);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [search, setSearch] = useState("");
+  const isAdmin = currentStaff?.staffRole === "platform_admin";
+  // Break-glass MFA reset (see BirrStaffService.resetMfa's own comment)
+  // — platform_admin only, so this state doesn't need the per-row
+  // extraction InvitationRow below uses for its own action.
+  const [resettingMfaId, setResettingMfaId] = useState<string | null>(null);
+  const [resetMfaError, setResetMfaError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -59,6 +65,26 @@ export default function StaffPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function handleResetMfa(s: BirrStaff) {
+    if (
+      !window.confirm(
+        `Reset two-factor authentication for ${s.user.fullName}? They'll be forced to re-enroll from scratch the next time they sign in, and their current backup codes stop working immediately.`,
+      )
+    ) {
+      return;
+    }
+    setResetMfaError(null);
+    setResettingMfaId(s.id);
+    try {
+      await apiFetchJson(`/birr-staff/${s.id}/mfa/reset`, { method: "POST" });
+      load();
+    } catch (err) {
+      setResetMfaError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setResettingMfaId(null);
+    }
+  }
 
   const pendingInvitations = invitations?.filter((i) => i.status === "pending") ?? [];
   const query = search.trim().toLowerCase();
@@ -93,6 +119,12 @@ export default function StaffPage() {
       {error && (
         <Alert tone="danger" title="Couldn't load staff" className="mb-6">
           {error}
+        </Alert>
+      )}
+
+      {resetMfaError && (
+        <Alert tone="danger" title="Couldn't reset MFA" className="mb-6">
+          {resetMfaError}
         </Alert>
       )}
 
@@ -132,6 +164,8 @@ export default function StaffPage() {
                       <TableHeaderCell>Email</TableHeaderCell>
                       <TableHeaderCell>Role</TableHeaderCell>
                       <TableHeaderCell>Status</TableHeaderCell>
+                      <TableHeaderCell>2FA</TableHeaderCell>
+                      {isAdmin && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -150,6 +184,25 @@ export default function StaffPage() {
                             {humanize(s.status)}
                           </Badge>
                         </TableCell>
+                        <TableCell>
+                          <Badge tone={s.user.mfaEnabled ? "success" : "warning"}>
+                            {s.user.mfaEnabled ? "Enrolled" : "Not enrolled"}
+                          </Badge>
+                        </TableCell>
+                        {isAdmin && (
+                          <TableCell className="text-right">
+                            {s.user.mfaEnabled && (
+                              <Button
+                                variant="danger"
+                                className="px-2.5 py-1 text-xs"
+                                disabled={resettingMfaId === s.id}
+                                onClick={() => handleResetMfa(s)}
+                              >
+                                {resettingMfaId === s.id ? "Resetting…" : "Reset MFA"}
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>

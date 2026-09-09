@@ -726,3 +726,15 @@ export interface FinancialReport {
   causeAllocations: { id: string; name: string; allocatedAmount: string | null; proceedsAllocatedAmount: string | null }[];
   generatedAt: string;
 }
+
+// POST /birr-staff/me/mfa/enroll — see BirrStaffService.startMfaEnrollment.
+export interface MfaEnrollmentStart {
+  qrCodeDataUrl: string;
+  secretForManualEntry: string;
+}
+
+// POST /birr-staff/me/mfa/enroll/confirm — backupCodes are plaintext and
+// shown exactly once; see MfaBackupCode's own schema comment.
+export interface MfaEnrollmentConfirm {
+  backupCodes: string[];
+}

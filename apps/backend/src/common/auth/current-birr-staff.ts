@@ -11,6 +11,9 @@ export interface AuthenticatedBirrStaff {
   id: string;
   userId: string;
   staffRole: string;
+  // See SessionAuthGuard's own comment — false blocks every route except
+  // the ones marked @MfaExempt() (enrollment itself, plus GET /me).
+  mfaEnabled: boolean;
 }
 
 /**
@@ -35,6 +38,7 @@ export async function resolveBirrStaffFromSession(
 
   const birrStaff = await prisma.birrStaff.findUnique({
     where: { userId: payload.userId },
+    include: { user: { select: { mfaEnabled: true } } },
   });
   if (!birrStaff || birrStaff.status !== "active") {
     throw new UnauthorizedException("Unknown or inactive Birr staff.");
@@ -44,6 +48,7 @@ export async function resolveBirrStaffFromSession(
     id: birrStaff.id,
     userId: birrStaff.userId,
     staffRole: birrStaff.staffRole,
+    mfaEnabled: birrStaff.user.mfaEnabled,
   };
 }
 

@@ -107,6 +107,12 @@ const NAV_GROUPS: {
 const PUBLIC_ROUTES = ["/ops/sign-in", "/ops/accept-invitation"];
 const HOME_ROUTE = "/ops";
 const SIGN_IN_ROUTE = "/ops/sign-in";
+// The forced-enrollment screen a signed-in staff member with
+// mfaEnabled: false is redirected to below — real enforcement is
+// SessionAuthGuard's own MFA check on the backend (see that guard's
+// comment); this redirect is the same UX-convenience layer the
+// sign-in redirect above already is for the plain signed-out case.
+const MFA_EXEMPT_ROUTES = ["/ops/mfa-setup"];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -115,6 +121,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   // usePathname() never includes the query string, so a plain equality
   // check is enough even for /accept-invitation?token=....
   const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+  const isMfaExemptRoute = MFA_EXEMPT_ROUTES.includes(pathname);
   const { notifications, unreadCount, loading: notificationsLoading, refresh, markRead, markAllRead } =
     useNotifications(!loading && Boolean(staff));
 
@@ -151,14 +158,21 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [loading, staff, isPublicRoute, router]);
 
-  if (isPublicRoute) {
+  useEffect(() => {
+    if (!loading && staff && !staff.user.mfaEnabled && !isMfaExemptRoute) {
+      router.replace("/ops/mfa-setup");
+    }
+  }, [loading, staff, isMfaExemptRoute, router]);
+
+  if (isPublicRoute || isMfaExemptRoute) {
     return <>{children}</>;
   }
 
-  if (loading || !staff) {
-    // Either still resolving the stored staff id, or about to be
-    // redirected to /sign-in by the effect above — render nothing
-    // conspicuous either way.
+  if (loading || !staff || !staff.user.mfaEnabled) {
+    // Still resolving, about to be redirected to /sign-in, or about to
+    // be redirected to /mfa-setup by one of the effects above — render
+    // nothing conspicuous (specifically: no authenticated nav chrome)
+    // in any of those cases.
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <p className="text-sm text-slate-400">Loading…</p>
