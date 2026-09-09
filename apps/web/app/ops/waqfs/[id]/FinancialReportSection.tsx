@@ -93,9 +93,9 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <div>
-              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Raised</p>
+              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Raised</p>
               {report.raised.length === 0 ? (
-                <p className="text-sm text-slate-400">Nothing confirmed yet.</p>
+                <p className="text-sm text-slate-500">Nothing confirmed yet.</p>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {report.raised.map((r) => (
@@ -107,9 +107,9 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
               )}
             </div>
             <div>
-              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Distributed</p>
+              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Distributed</p>
               {report.distributed.length === 0 ? (
-                <p className="text-sm text-slate-400">Nothing paid out yet.</p>
+                <p className="text-sm text-slate-500">Nothing paid out yet.</p>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {report.distributed.map((d) => (
@@ -123,11 +123,11 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
               By cause ({report.distributionsByCause.length})
             </p>
             {report.distributionsByCause.length === 0 ? (
-              <p className="text-sm text-slate-400">No paid distributions yet.</p>
+              <p className="text-sm text-slate-500">No paid distributions yet.</p>
             ) : (
               <Table>
                 <TableHead>
@@ -156,17 +156,17 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
 
           {report.proceeds && (
             <div>
-              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Investment proceeds</p>
+              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Investment proceeds</p>
               <p className="text-sm font-medium text-slate-900">{formatAmount(report.proceeds.total)} recorded</p>
             </div>
           )}
 
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
               Cause allocations ({report.causeAllocations.length})
             </p>
             {report.causeAllocations.length === 0 ? (
-              <p className="text-sm text-slate-400">No causes selected for this waqf yet.</p>
+              <p className="text-sm text-slate-500">No causes selected for this waqf yet.</p>
             ) : (
               <Table>
                 <TableHead>

@@ -175,7 +175,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     // in any of those cases.
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-slate-500">Loading…</p>
       </div>
     );
   }

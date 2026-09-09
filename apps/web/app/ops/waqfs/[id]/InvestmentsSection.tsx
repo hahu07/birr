@@ -133,7 +133,7 @@ export function InvestmentsSection({
                   {i.placementId && (
                     <Link
                       href={`/ops/investment-placements/${i.placementId}`}
-                      className="ml-1.5 text-xs text-slate-400 hover:text-primary-700"
+                      className="ml-1.5 text-xs text-slate-500 hover:text-primary-700"
                       title="Part of a bulk placement across multiple funds"
                     >
                       (placement →)
@@ -282,7 +282,7 @@ function InvestmentChangeAction({ investment, onProposed }: { investment: Invest
   const [error, setError] = useState<string | null>(null);
 
   if (proposed) {
-    return <span className="text-xs text-slate-400">Pending approval</span>;
+    return <span className="text-xs text-slate-500">Pending approval</span>;
   }
 
   if (!editing) {

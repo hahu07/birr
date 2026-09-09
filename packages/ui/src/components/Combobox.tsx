@@ -124,7 +124,7 @@ export function Combobox({
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className="w-full rounded-md border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+          className="w-full rounded-md border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
         />
         <IconChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
       </div>
@@ -135,9 +135,9 @@ export function Combobox({
           className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg"
         >
           {loading ? (
-            <li className="px-3 py-2 text-sm text-slate-400">Loading…</li>
+            <li className="px-3 py-2 text-sm text-slate-500">Loading…</li>
           ) : filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">No matches.</li>
+            <li className="px-3 py-2 text-sm text-slate-500">No matches.</li>
           ) : (
             filtered.map((option, i) => (
               <li

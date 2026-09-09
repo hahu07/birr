@@ -38,7 +38,7 @@ export function GovernanceActivitySection({ waqfId }: { waqfId: string }) {
 
   return (
     <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Governance activity</p>
+      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Governance activity</p>
       <p className="mb-3 text-sm text-slate-500">Decisions Birr's staff have made on this fund.</p>
 
       {error && (
@@ -73,7 +73,7 @@ export function GovernanceActivitySection({ waqfId }: { waqfId: string }) {
                 <Badge tone={a.status === "approved" ? "success" : "danger"}>
                   {a.status === "approved" ? "Approved" : "Rejected"}
                 </Badge>
-                <span className="whitespace-nowrap text-xs text-slate-400">
+                <span className="whitespace-nowrap text-xs text-slate-500">
                   {a.decidedAt ? formatDate(a.decidedAt) : formatDate(a.createdAt)}
                 </span>
               </div>

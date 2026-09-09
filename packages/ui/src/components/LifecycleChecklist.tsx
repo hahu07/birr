@@ -30,8 +30,8 @@ const STATUS_ICON_TONE = {
 const STATUS_TEXT_TONE = {
   complete: "text-slate-900",
   pending: "text-slate-700",
-  not_applicable: "text-slate-400",
-  not_available: "text-slate-400",
+  not_applicable: "text-slate-500",
+  not_available: "text-slate-500",
 } as const;
 
 /**
@@ -52,7 +52,7 @@ export function LifecycleChecklist({ rows, completedCount, trackableCount }: Lif
             <li key={row.key} className="flex items-center gap-3 px-4 py-2.5">
               <Icon className={`h-[18px] w-[18px] shrink-0 ${STATUS_ICON_TONE[row.status]}`} />
               <span className={`flex-1 text-sm font-medium ${STATUS_TEXT_TONE[row.status]}`}>{row.label}</span>
-              {row.detail && <span className="shrink-0 text-xs text-slate-400">{row.detail}</span>}
+              {row.detail && <span className="shrink-0 text-xs text-slate-500">{row.detail}</span>}
             </li>
           );
         })}

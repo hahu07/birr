@@ -217,13 +217,13 @@ export function DeedDocument({
         <div className="mt-12 border-t border-slate-200 pt-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Signed by</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Signed by</p>
               <p className="mt-1 text-base font-semibold text-slate-900" style={{ fontFamily: DEED_FONT }}>
                 {signedBy}
               </p>
             </div>
             <div className="sm:text-right">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Date</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Date</p>
               <p className="mt-1 text-sm text-slate-700">{signedAt}</p>
             </div>
           </div>

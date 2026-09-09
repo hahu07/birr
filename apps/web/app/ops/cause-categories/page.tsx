@@ -210,7 +210,7 @@ export default function CauseCategoriesPage() {
             <TableBody>
               {flattenCategoryTree(categories).map(({ category: c, depth }) => (
                 <TableRow key={c.id}>
-                  <TableCell className="text-slate-400">{c.sortOrder}</TableCell>
+                  <TableCell className="text-slate-500">{c.sortOrder}</TableCell>
                   <TableCell
                     className="font-medium text-slate-900"
                     style={depth > 0 ? { paddingLeft: `${1 + depth * 1.5}rem` } : undefined}
@@ -222,7 +222,7 @@ export default function CauseCategoriesPage() {
                   <TableCell className="max-w-md text-slate-500">{c.description ?? "—"}</TableCell>
                   <TableCell>
                     {c.typicalWaqfTypes.length === 0 ? (
-                      <span className="text-slate-400">Any</span>
+                      <span className="text-slate-500">Any</span>
                     ) : (
                       <div className="flex flex-wrap gap-1">
                         {c.typicalWaqfTypes.map((t) => (
@@ -480,7 +480,7 @@ function CauseCategoryForm({
 
       <div>
         <label className="mb-1.5 block text-sm font-medium text-slate-700">
-          Typical for <span className="font-normal text-slate-400">(optional — a UX hint only, never restricts who can pick this)</span>
+          Typical for <span className="font-normal text-slate-500">(optional — a UX hint only, never restricts who can pick this)</span>
         </label>
         <div className="flex flex-wrap gap-3">
           {WAQF_TYPES.map((type) => (

@@ -17,6 +17,12 @@
 # so this job is the only thing that can ship a commit — otherwise Render
 # would deploy the instant something's pushed, before this workflow even
 # finishes.
+#
+# 2026-09-09: agents-test added — services/agents (Rasid/Nazim/Bashir) had
+# zero test coverage until now; see its own jest.config.js and each
+# agent's *.spec.ts for the mocking strategy (runAgent + the backend HTTP
+# client are mocked, real tool-handler closures are not). Added to
+# deploy's own `needs` alongside every other job.
 
 name: CI
 
@@ -174,6 +180,24 @@ jobs:
         env:
           DATABASE_URL: postgresql://birr_app:birr_app_dev_password@localhost:5432/birr?schema=public
 
+  agents-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # No Postgres, no backend — every agent's own HTTP boundary
+      # (backend-client.ts's getJson/postJson) and the Claude Agent SDK
+      # boundary (sdk-runtime.ts's runAgent) are mocked; see each spec's
+      # own comment for why that's the right seam.
+      - run: pnpm --filter @birr/agents test
+
   web-test:
     runs-on: ubuntu-latest
     steps:
@@ -228,7 +252,7 @@ jobs:
       - run: pnpm audit --audit-level=high
 
   deploy:
-    needs: [typecheck, lint, migration-drift, test, web-test, build, dependency-audit]
+    needs: [typecheck, lint, migration-drift, test, agents-test, web-test, build, dependency-audit]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:

@@ -55,7 +55,7 @@ export default function WaqfFundingPage() {
   return (
     <div>
       <header className="mb-8">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Waqf Funding</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Waqf Funding</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Corpus &amp; installment rules</h1>
         <p className="mt-1 text-sm text-slate-500">
           The minimum total endowment a founder may declare per currency, the minimum for a single payment toward
@@ -154,7 +154,7 @@ function MinimumsCard({
 
   return (
     <Card>
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">{title}</p>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">{title}</p>
       <p className="mb-4 text-sm text-slate-500">{description}</p>
 
       {error && (
@@ -300,7 +300,7 @@ function InstallmentSettingsCard({
 
   return (
     <Card>
-      <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">Installment minimum</p>
+      <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">Installment minimum</p>
       <p className="mb-4 text-sm text-slate-500">
         The minimum percentage of a declared corpus an installment plan's first payment must cover — the rest can
         be paid anytime as a top-up.

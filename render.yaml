@@ -89,6 +89,14 @@ services:
         value: https://birr-backend.onrender.com
       - key: FOUNDER_PORTAL_URL
         value: https://birr-web.onrender.com
+      # main.ts's own CORS setup fails closed without this on any
+      # non-local deployment (deliberately — see that file's own
+      # comment) — every browser request from the real birr-web origin
+      # would otherwise be silently rejected. Both route groups
+      # ((founder) and ops) are served from this one Next.js deployment
+      # (apps/web), so a single origin covers both.
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://birr-web.onrender.com
       # birr-agents is a private service — resolves by its own `name` on
       # Render's internal network, with a fixed port set on that service
       # below, so no fromService lookup is needed for the URL itself.
@@ -99,6 +107,12 @@ services:
       # side below, so both sides always agree.
       - key: AGENT_SERVICE_INTERNAL_KEY
         generateValue: true
+      # Error tracking/APM — see apps/backend/src/instrument.ts's own
+      # comment. Unset means Sentry.init() is a no-op, same posture as
+      # every other optional integration here; nothing else depends on
+      # it being set.
+      - key: SENTRY_DSN
+        sync: false
       # Provider credentials — unset means the relevant feature (email
       # verification, WhatsApp OTP, payments) fails loudly with a clear
       # error, same posture docker-compose.yml's own ${VAR:-} takes for
@@ -146,6 +160,20 @@ services:
       # wiring beyond just setting it here.
       - key: NEXT_PUBLIC_BACKEND_URL
         value: https://birr-backend.onrender.com
+      # Server/edge-side Sentry — see apps/web/sentry.server.config.ts's
+      # own comment. Unset means a no-op, same as birr-backend's own
+      # SENTRY_DSN above.
+      - key: SENTRY_DSN
+        sync: false
+      # Browser-side Sentry — a SEPARATE var from the one above because
+      # only a NEXT_PUBLIC_-prefixed var gets baked into the client
+      # bundle at build time (see instrumentation-client.ts's own
+      # comment, and this Dockerfile's existing NEXT_PUBLIC_BACKEND_URL
+      # ARG for the same pattern). Render passes every envVar here
+      # through as a matching --build-arg too, so no extra wiring is
+      # needed beyond setting it.
+      - key: NEXT_PUBLIC_SENTRY_DSN
+        sync: false
 
   # ---- Agent Service — Rasid/Nazim's scheduled runs, Rafiq's on-demand
   # draft-help endpoint. Private service: no public endpoint at all,
@@ -189,4 +217,9 @@ services:
       - key: NAZIM_API_KEY
         sync: false
       - key: BASHIR_API_KEY
+        sync: false
+      # Same no-op-when-unset posture as birr-backend's own SENTRY_DSN
+      # above — see index.ts's own comment on why runOne()'s catch is
+      # the failure path this is actually for.
+      - key: SENTRY_DSN
         sync: false

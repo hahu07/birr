@@ -102,7 +102,7 @@ export default function OnboardingDeedPage() {
           )}
 
           <Card>
-            <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">Deed of waqf</p>
+            <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">Deed of waqf</p>
             <p className="text-sm text-slate-700">
               This deed records the establishment of <span className="font-medium">{foundation.name}</span>{" "}
               and appoints Birr as Mutawalli (trustee) over every Waqf Fund established under it — including funds
@@ -113,7 +113,7 @@ export default function OnboardingDeedPage() {
             </p>
             {hasActiveWaqf && (
               <div className="mt-4 border-t border-slate-100 pt-4">
-                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">
                   Waqf Fund(s) covered as of today
                 </p>
                 <ul className="space-y-1 text-sm text-slate-700">

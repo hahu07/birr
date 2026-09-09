@@ -59,7 +59,7 @@ export default function MfaSetupPage() {
         </div>
 
         <Card>
-          {step === "loading" && <p className="py-8 text-center text-sm text-slate-400">Setting up…</p>}
+          {step === "loading" && <p className="py-8 text-center text-sm text-slate-500">Setting up…</p>}
 
           {step === "error" && (
             <Alert tone="danger" title="Couldn't start two-factor setup">
@@ -86,7 +86,7 @@ export default function MfaSetupPage() {
                 />
               </div>
 
-              <p className="mt-4 text-center text-xs text-slate-400">
+              <p className="mt-4 text-center text-xs text-slate-500">
                 Can't scan it? Enter this code manually:
               </p>
               <p className="mt-1 break-all rounded-md bg-slate-100 px-3 py-2 text-center font-mono text-sm text-slate-700">

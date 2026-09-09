@@ -373,6 +373,55 @@ describe("GovernedActionsService", () => {
     expect(assetLogs.some((l) => l.action === "asset.disposed")).toBe(true);
   });
 
+  test("asset.dispose: approving a second, separate proposal against an already-disposed asset is rejected, not silently re-disposed", async () => {
+    // checkDuplicate only blocks a second *pending* proposal against the
+    // same asset — once the first is approved (no longer "proposed"),
+    // nothing at propose()-time stops a brand new proposal targeting the
+    // same, now-disposed asset. This is what actually proves
+    // AssetsService.dispose()'s own atomic claim, not checkDuplicate,
+    // is the real backstop here.
+    const waqf = await prisma.waqf.create({
+      data: { name: "Double Dispose Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId },
+    });
+    waqfIds.push(waqf.id);
+    const asset = await prisma.asset.create({
+      data: { waqfId: waqf.id, name: "Double Dispose Fixture Building", category: "real_estate", estimatedValue: "1000", currency: "USD" },
+    });
+    assetIds.push(asset.id);
+
+    const firstAction = await service.propose({
+      permissionKey: "asset.dispose",
+      payload: { assetId: asset.id },
+      makerUserId,
+    });
+    governedActionIds.push(firstAction.id);
+    await service.decide({ governedActionId: firstAction.id, checkerUserId: assetCheckerUserId, approve: true });
+
+    const disposedOnce = await prisma.asset.findUnique({ where: { id: asset.id } });
+    expect(disposedOnce?.status).toBe("disposed");
+    const firstDisposedAt = disposedOnce?.disposedAt;
+
+    // checkDuplicate finds nothing (firstAction is "approved", not
+    // "proposed"), so this second proposal is allowed to be created —
+    // the real protection has to be at decide()-time, inside dispose()
+    // itself.
+    const secondAction = await service.propose({
+      permissionKey: "asset.dispose",
+      payload: { assetId: asset.id },
+      makerUserId,
+    });
+    governedActionIds.push(secondAction.id);
+
+    await expect(
+      service.decide({ governedActionId: secondAction.id, checkerUserId: assetCheckerUserId, approve: true }),
+    ).rejects.toThrow(ConflictException);
+
+    // Not silently re-disposed — disposedAt is unchanged from the first,
+    // real disposal.
+    const stillDisposedOnce = await prisma.asset.findUnique({ where: { id: asset.id } });
+    expect(stillDisposedOnce?.disposedAt?.getTime()).toBe(firstDisposedAt?.getTime());
+  });
+
   test("founder_isolation RLS policy: a founder-scoped session only sees its own waqf", async () => {
     const founderA = await prisma.founder.create({
       data: { name: "RLS Founder A", kind: "institution" },
@@ -1089,8 +1138,50 @@ describe("GovernedActionsService", () => {
 
     const found = await service.findById(action.id);
     expect(found?.permission.key).toBe("asset.dispose");
+    // describeCurrentState: the asset hasn't been disposed yet, so this
+    // reflects its pre-decision state — proves findById() is actually
+    // computing it, not just echoing something from propose()'s payload.
+    expect(found?.currentState).toEqual({ status: "active", disposedAt: null });
 
     const missing = await service.findById("00000000-0000-0000-0000-000000000000");
     expect(missing).toBeNull();
+  });
+
+  test("findById(): currentState is null for a handler with no describeCurrentState (counterparty.onboard), and strips no PII it never selected for beneficiary.criteria_update", async () => {
+    const counterparty = await prisma.counterparty.create({
+      data: { name: `FindById Test Fixture Counterparty ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+    });
+    counterpartyIds.push(counterparty.id);
+    const onboardAction = await service.propose({
+      permissionKey: "counterparty.onboard",
+      payload: { counterpartyId: counterparty.id },
+      makerUserId,
+    });
+    governedActionIds.push(onboardAction.id);
+    const foundOnboard = await service.findById(onboardAction.id);
+    expect(foundOnboard?.currentState).toBeNull();
+
+    const waqf = await prisma.waqf.create({
+      data: { name: "FindById Criteria Test Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId },
+    });
+    waqfIds.push(waqf.id);
+    const beneficiary = await prisma.beneficiary.create({
+      data: {
+        waqfId: waqf.id,
+        name: "FindById Test Fixture Beneficiary",
+        eligibilityCriteria: "Original criteria",
+        bankDetailsEncrypted: "should-never-appear-in-currentState",
+      },
+    });
+    beneficiaryIds.push(beneficiary.id);
+    const criteriaAction = await service.propose({
+      permissionKey: "beneficiary.criteria_update",
+      payload: { beneficiaryId: beneficiary.id, newCriteria: "Updated criteria" },
+      makerUserId,
+    });
+    governedActionIds.push(criteriaAction.id);
+    const foundCriteria = await service.findById(criteriaAction.id);
+    expect(foundCriteria?.currentState).toEqual({ newCriteria: "Original criteria" });
+    expect(JSON.stringify(foundCriteria?.currentState)).not.toContain("should-never-appear-in-currentState");
   });
 });

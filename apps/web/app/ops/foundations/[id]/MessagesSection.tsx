@@ -69,7 +69,7 @@ export function MessagesSection({ foundationId }: { foundationId: string }) {
 
   return (
     <section>
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Messages</p>
+      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Messages</p>
       <p className="mb-3 text-sm text-slate-500">Direct communication with this Foundation's Founder team.</p>
 
       {error && (

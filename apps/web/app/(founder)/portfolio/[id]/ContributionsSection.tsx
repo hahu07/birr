@@ -63,7 +63,7 @@ export function ContributionsSection({ waqf, onCorpusIncreased }: { waqf: Waqf; 
     <div className="mt-5 border-t border-slate-100 pt-5">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Funding</p>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Funding</p>
           <p className="text-sm text-slate-500">
             {target
               ? `${humanize(waqf.fundingPlan)} — ${waqf.corpusCurrency} ${raised.toLocaleString()} of ${

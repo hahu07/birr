@@ -140,7 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     // /sign-in by the effect above — render nothing conspicuous either way.
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-slate-500">Loading…</p>
       </div>
     );
   }
@@ -148,7 +148,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (onboardingLoading || !onboarding) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-slate-500">Loading…</p>
       </div>
     );
   }
@@ -165,7 +165,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (!founder) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-slate-500">Loading…</p>
       </div>
     );
   }

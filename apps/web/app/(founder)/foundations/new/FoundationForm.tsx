@@ -82,7 +82,7 @@ export function FoundationForm({
             </div>
             <div>
               <label htmlFor="jurisdiction" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Jurisdiction <span className="font-normal text-slate-400">(optional)</span>
+                Jurisdiction <span className="font-normal text-slate-500">(optional)</span>
               </label>
               <Input
                 id="jurisdiction"

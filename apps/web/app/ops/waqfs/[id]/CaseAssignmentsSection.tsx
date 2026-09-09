@@ -113,7 +113,7 @@ export function CaseAssignmentsSection({ waqfId }: { waqfId: string }) {
                 <TableRow key={a.id}>
                   <TableCell className="font-medium text-slate-900">
                     {member?.user.fullName ?? "—"}
-                    {member && <p className="text-xs font-normal text-slate-400">{member.user.email}</p>}
+                    {member && <p className="text-xs font-normal text-slate-500">{member.user.email}</p>}
                   </TableCell>
                   <TableCell className="text-slate-500">{humanize(a.assignmentRole)}</TableCell>
                   <TableCell>

@@ -153,7 +153,7 @@ export default function AiAgentsPage() {
                           aria-expanded={isExpanded}
                         >
                           <IconChevronDown
-                            className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                            className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform ${isExpanded ? "rotate-180" : ""}`}
                           />
                           {agentNickname(agent.name)}
                         </button>
@@ -250,7 +250,7 @@ function AgentDraftsRow({ agentId, agentName }: { agentId: string; agentName: st
                       {humanizePermissionKey(d.action)}
                       {isPublished && <Badge tone="success">Published</Badge>}
                     </span>
-                    <span className="text-slate-400">{formatDate(d.createdAt)}</span>
+                    <span className="text-slate-500">{formatDate(d.createdAt)}</span>
                   </div>
                   {isBashirContent ? (
                     <div>

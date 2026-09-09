@@ -301,7 +301,7 @@ export default function OnboardingFounderFoundationPage() {
       {alreadyEstablished && (
         <div className="mt-6 space-y-4">
           <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Who established it</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Who established it</p>
             <p className="text-sm font-semibold text-slate-900">{alreadyEstablished.founderName}</p>
             <p className="mt-0.5 text-sm text-slate-500">
               {alreadyEstablished.kind === "institution"
@@ -311,7 +311,7 @@ export default function OnboardingFounderFoundationPage() {
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Foundation</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Foundation</p>
             <p className="text-sm font-semibold text-slate-900">{alreadyEstablished.foundationName}</p>
             <p className="mt-0.5 text-sm text-slate-500">
               {[alreadyEstablished.purpose, alreadyEstablished.jurisdiction].filter(Boolean).join(" · ")}
@@ -336,7 +336,7 @@ export default function OnboardingFounderFoundationPage() {
       <form onSubmit={handleSubmit} className="mt-6 grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
         <div className="space-y-6">
         <Card>
-          <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">Who is establishing</p>
+          <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">Who is establishing</p>
           <div className="space-y-4">
             <div>
               <label htmlFor="kind" className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -379,7 +379,7 @@ export default function OnboardingFounderFoundationPage() {
             )}
             <div>
               <label htmlFor="homeJurisdiction" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Home jurisdiction <span className="font-normal text-slate-400">(optional)</span>
+                Home jurisdiction <span className="font-normal text-slate-500">(optional)</span>
               </label>
               <Input
                 id="homeJurisdiction"
@@ -415,7 +415,7 @@ export default function OnboardingFounderFoundationPage() {
                         <button
                           type="button"
                           onClick={() => removeCoFounderRow(index)}
-                          className="shrink-0 text-xs font-medium text-slate-400 hover:text-slate-600"
+                          className="shrink-0 text-xs font-medium text-slate-500 hover:text-slate-600"
                           aria-label="Remove co-founder"
                         >
                           Remove
@@ -430,7 +430,7 @@ export default function OnboardingFounderFoundationPage() {
                   >
                     + Add another co-founder
                   </button>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-500">
                     Each will create their own Founder identity and gain full, equal access to this Foundation —
                     invited the moment it&apos;s established. You can also invite more later from the Foundation&apos;s
                     own page.
@@ -442,7 +442,7 @@ export default function OnboardingFounderFoundationPage() {
         </Card>
 
         <Card>
-          <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">Foundation</p>
+          <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">Foundation</p>
           <div className="space-y-4">
             <div>
               <label htmlFor="foundationName" className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -484,14 +484,14 @@ export default function OnboardingFounderFoundationPage() {
                 placeholder={'e.g. "Supporting Islamic education and orphan welfare across Northern Nigeria." This becomes part of the dedication itself.'}
                 className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               />
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-slate-500">
                 Rafiq, Birr's onboarding assistant, can draft a starting point — always yours to review and edit
                 before submitting.
               </p>
             </div>
             <div>
               <label htmlFor="jurisdiction" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Jurisdiction <span className="font-normal text-slate-400">(optional)</span>
+                Jurisdiction <span className="font-normal text-slate-500">(optional)</span>
               </label>
               <Input
                 id="jurisdiction"
@@ -502,7 +502,7 @@ export default function OnboardingFounderFoundationPage() {
             </div>
             <div>
               <label htmlFor="logo" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Logo <span className="font-normal text-slate-400">(optional)</span>
+                Logo <span className="font-normal text-slate-500">(optional)</span>
               </label>
               <div className="flex items-center gap-4">
                 {logoPreviewUrl ? (
@@ -513,7 +513,7 @@ export default function OnboardingFounderFoundationPage() {
                     className="h-16 w-16 shrink-0 rounded-md border border-slate-200 object-cover"
                   />
                 ) : (
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-dashed border-slate-300 text-xs text-slate-400">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-dashed border-slate-300 text-xs text-slate-500">
                     No logo
                   </div>
                 )}

@@ -27,7 +27,7 @@ export function DetailGrid({ items, columns = 3, className = "", ...props }: Det
     <div className={`grid grid-cols-2 gap-x-6 gap-y-4 ${columnClasses[columns]} ${className}`} {...props}>
       {items.map((item) => (
         <div key={item.label}>
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{item.label}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{item.label}</p>
           <p className="mt-1 text-sm font-medium text-slate-800">{item.value}</p>
         </div>
       ))}

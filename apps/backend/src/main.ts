@@ -1,3 +1,7 @@
+// Must be the literal first import — see instrument.ts's own comment on
+// why Sentry's auto-instrumentation needs to load before anything else.
+import "./instrument";
+import * as Sentry from "@sentry/nestjs";
 import * as express from "express";
 import type { Request, Response, NextFunction } from "express";
 import * as path from "path";
@@ -201,6 +205,7 @@ async function bootstrap() {
   startTrusteeLicenseExpiryScheduler(app.get(NotificationsService));
 }
 bootstrap().catch((err: unknown) => {
+  Sentry.captureException(err);
   console.error("Fatal error during startup:", err);
   process.exit(1);
 });

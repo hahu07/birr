@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsEnum, IsNumberString, IsString } from "class-validator";
 import { prisma, Prisma, AssetCategory } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -77,13 +77,29 @@ export class AssetsService {
    * Asset); the only caller is GovernedActionsService's handler map, on
    * approval, inside its own transaction.
    */
+  /**
+   * Atomic claim, not a plain update — checkDuplicate on asset.dispose's
+   * governed-actions handler only blocks a second *pending* proposal
+   * against the same asset; once one is approved and this runs, nothing
+   * stops a later, separate proposal from being approved against the
+   * same now-already-disposed asset (checkDuplicate's own
+   * status: "proposed" filter finds nothing, since the first one is now
+   * "approved"). Confirmed real, not theoretical. Same
+   * updateMany-then-count pattern this codebase already uses for this
+   * exact class of race elsewhere.
+   */
   async dispose(id: string, tx: Prisma.TransactionClient) {
     const asset = await tx.asset.findUnique({ where: { id } });
     if (!asset) throw new NotFoundException(`Asset "${id}" not found.`);
-    return tx.asset.update({
-      where: { id },
+
+    const { count } = await tx.asset.updateMany({
+      where: { id, status: { not: "disposed" } },
       data: { status: "disposed", disposedAt: new Date() },
     });
+    if (count !== 1) {
+      throw new ConflictException("This asset has already been disposed.");
+    }
+    return tx.asset.findUniqueOrThrow({ where: { id } });
   }
 
   findById(id: string) {

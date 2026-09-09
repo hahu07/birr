@@ -118,7 +118,7 @@ export function ComplianceReportSection({ waqfId }: { waqfId: string }) {
           />
 
           <div>
-            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Compliance framework</p>
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Compliance framework</p>
             {report.policySet ? (
               <div className="text-sm text-slate-700">
                 <p className="font-medium text-slate-900">{report.policySet.frameworkName}</p>
@@ -135,7 +135,7 @@ export function ComplianceReportSection({ waqfId }: { waqfId: string }) {
                 {report.policySet.notes && <p className="mt-1 text-slate-500">{report.policySet.notes}</p>}
               </div>
             ) : (
-              <p className="text-sm italic text-slate-400">
+              <p className="text-sm italic text-slate-500">
                 No compliance framework configured for &ldquo;{report.waqf.jurisdiction}&rdquo; yet — see
                 Jurisdictions.
               </p>
@@ -143,11 +143,11 @@ export function ComplianceReportSection({ waqfId }: { waqfId: string }) {
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
               Governed actions ({report.governedActions.length})
             </p>
             {report.governedActions.length === 0 ? (
-              <p className="text-sm text-slate-400">None on record for this waqf.</p>
+              <p className="text-sm text-slate-500">None on record for this waqf.</p>
             ) : (
               <Table>
                 <TableHead>
@@ -185,11 +185,11 @@ export function ComplianceReportSection({ waqfId }: { waqfId: string }) {
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
               Audit trail ({report.auditLogs.length})
             </p>
             {report.auditLogs.length === 0 ? (
-              <p className="text-sm text-slate-400">No audit log entries for this waqf yet.</p>
+              <p className="text-sm text-slate-500">No audit log entries for this waqf yet.</p>
             ) : (
               <ul className="max-h-96 space-y-2 overflow-y-auto text-sm print:max-h-none print:overflow-visible">
                 {report.auditLogs.map((log) => (
@@ -199,9 +199,9 @@ export function ComplianceReportSection({ waqfId }: { waqfId: string }) {
                   >
                     <span>
                       <span className="font-medium text-slate-800">{humanizePermissionKey(log.action)}</span>{" "}
-                      <span className="text-slate-400">·</span> {describeActor(log)}
+                      <span className="text-slate-500">·</span> {describeActor(log)}
                     </span>
-                    <span className="whitespace-nowrap text-xs text-slate-400">{formatDate(log.createdAt)}</span>
+                    <span className="whitespace-nowrap text-xs text-slate-500">{formatDate(log.createdAt)}</span>
                   </li>
                 ))}
               </ul>

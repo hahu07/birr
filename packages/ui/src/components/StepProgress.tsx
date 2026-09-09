@@ -65,7 +65,7 @@ export function StepProgress({ steps, currentIndex, onStepClick }: StepProgressP
                   ? "bg-primary-600 text-white"
                   : isCurrent
                     ? "bg-primary-50 text-primary-800 ring-2 ring-primary-600"
-                    : "bg-slate-100 text-slate-400"
+                    : "bg-slate-100 text-slate-500"
               }`}
             >
               {isComplete ? "✓" : index + 1}
@@ -74,7 +74,7 @@ export function StepProgress({ steps, currentIndex, onStepClick }: StepProgressP
           const stepLabel = (
             <span
               className={`whitespace-nowrap text-[11px] font-medium ${
-                isCurrent ? "text-primary-800" : isComplete ? "text-slate-600" : "text-slate-400"
+                isCurrent ? "text-primary-800" : isComplete ? "text-slate-600" : "text-slate-500"
               }`}
             >
               {label}

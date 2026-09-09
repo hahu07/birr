@@ -200,27 +200,27 @@ export default function CounterpartyDetailPage() {
 
         {counterparty.businessActivities && (
           <div className="mt-5 border-t border-slate-100 pt-5">
-            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Business activities</p>
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Business activities</p>
             <p className="whitespace-pre-wrap text-sm text-slate-700">{counterparty.businessActivities}</p>
           </div>
         )}
 
         {counterparty.existingShariahCertification && (
           <div className="mt-5 border-t border-slate-100 pt-5">
-            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Existing Shariah certification</p>
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Existing Shariah certification</p>
             <p className="whitespace-pre-wrap text-sm text-slate-700">{counterparty.existingShariahCertification}</p>
           </div>
         )}
 
         {counterparty.notes && (
           <div className="mt-5 border-t border-slate-100 pt-5">
-            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Notes</p>
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Notes</p>
             <p className="whitespace-pre-wrap text-sm text-slate-700">{counterparty.notes}</p>
           </div>
         )}
 
         <div className="mt-5 border-t border-slate-100 pt-5">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Exposure</p>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Exposure</p>
           {exposure && (
             <p className="text-sm text-slate-700">
               {formatAmount(exposure.totalInvested)} invested across every waqf combined
@@ -338,7 +338,7 @@ export default function CounterpartyDetailPage() {
             )}
           </div>
 
-          {placements === null && <p className="text-sm text-slate-400">Loading…</p>}
+          {placements === null && <p className="text-sm text-slate-500">Loading…</p>}
 
           {placements && placements.length === 0 && (
             <EmptyState

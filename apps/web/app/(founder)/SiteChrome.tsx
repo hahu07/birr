@@ -151,7 +151,7 @@ export function SiteFooter() {
           </Link>
         </div>
       </div>
-      <p className="mx-auto mt-6 max-w-6xl text-xs text-slate-400">
+      <p className="mx-auto mt-6 max-w-6xl text-xs text-slate-500">
         © {new Date().getFullYear()} Birr. Every governed action is recorded to an immutable audit trail.
       </p>
     </footer>

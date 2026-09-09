@@ -173,7 +173,7 @@ function DeclarationRow({
     <TableRow>
       <TableCell>
         <span className="font-medium text-slate-900">{declaration.birrStaff.user.fullName}</span>
-        <p className="text-xs text-slate-400">{humanize(declaration.birrStaff.staffRole)}</p>
+        <p className="text-xs text-slate-500">{humanize(declaration.birrStaff.staffRole)}</p>
       </TableCell>
       <TableCell className="text-slate-500">{declaration.waqf?.name ?? "General"}</TableCell>
       <TableCell className="max-w-xs truncate text-slate-500" title={declaration.declarationText}>
@@ -198,12 +198,12 @@ function DeclarationRow({
             </Button>
           </div>
         ) : declaration.reviewedByUser ? (
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-slate-500">
             by {declaration.reviewedByUser.fullName}
             {declaration.reviewedAt && ` · ${formatDate(declaration.reviewedAt)}`}
           </span>
         ) : declaration.status === "declared" ? (
-          <span className="text-xs text-slate-400">Awaiting a different reviewer</span>
+          <span className="text-xs text-slate-500">Awaiting a different reviewer</span>
         ) : null}
       </TableCell>
     </TableRow>

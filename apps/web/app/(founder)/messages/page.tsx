@@ -96,7 +96,7 @@ export default function FounderMessagesInboxPage() {
                     </p>
                   </div>
                 </div>
-                <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">
+                <span className="shrink-0 whitespace-nowrap text-xs text-slate-500">
                   {formatRelativeTime(row.lastMessage.createdAt)}
                 </span>
               </Link>

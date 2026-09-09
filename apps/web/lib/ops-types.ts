@@ -630,6 +630,13 @@ export interface GovernedAction {
   // proposer/date are otherwise indistinguishable without expanding
   // each one and comparing raw entity ids by hand.
   summary: string | null;
+  // Only present on the GET /governed-actions/:id single-record fetch
+  // (not list()) — see GovernedActionHandler.describeCurrentState's own
+  // comment on why this is computed lazily on expand rather than
+  // bundled into every list row. Null when the permission type has no
+  // describeCurrentState handler (e.g. counterparty.onboard) or its
+  // target has since been deleted.
+  currentState?: Record<string, unknown> | null;
 }
 
 // GET /compliance-reports/:waqfId — assembled fresh on every call

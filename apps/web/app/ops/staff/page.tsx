@@ -174,7 +174,7 @@ export default function StaffPage() {
                         <TableCell>
                           <span className="font-medium text-slate-900">{s.user.fullName}</span>
                           {s.id === currentStaff?.id && (
-                            <span className="ml-2 text-xs text-slate-400">(you)</span>
+                            <span className="ml-2 text-xs text-slate-500">(you)</span>
                           )}
                         </TableCell>
                         <TableCell className="text-slate-500">{s.user.email}</TableCell>

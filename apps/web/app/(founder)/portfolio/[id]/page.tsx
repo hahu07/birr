@@ -120,7 +120,7 @@ export default function WaqfFundDetailPage() {
             />
             {waqf.purpose && (
               <div className="mt-5 border-t border-slate-100 pt-5">
-                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Purpose</p>
+                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Purpose</p>
                 <p className="text-sm text-slate-700">{waqf.purpose}</p>
               </div>
             )}

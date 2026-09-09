@@ -252,7 +252,7 @@ function AutoAllocateProportionallyBar({
               );
             })}
           </ul>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-slate-500">
             Estimate — the server splits to the exact cent, this may differ by a cent from what's shown here.
           </p>
           <div className="flex gap-2">
@@ -349,7 +349,7 @@ function ProceedsAllocationCell({
         </button>
       </div>
       {available !== null && (
-        <p className="text-[11px] text-slate-400">
+        <p className="text-[11px] text-slate-500">
           {corpusCurrency} {formatAmount(Math.max(available, 0))} available
         </p>
       )}

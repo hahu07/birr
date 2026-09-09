@@ -164,7 +164,7 @@ export default function DashboardOverview() {
       )}
 
       <Card tone="primary" className="mb-8 p-5 shadow-none">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">About {founder.name}</p>
+        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">About {founder.name}</p>
         <DetailGrid
           columns={2}
           items={[
@@ -259,7 +259,7 @@ function Hero({
   error: string | null;
   foundationCount: number | null;
 }) {
-  const eyebrow = <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Waqf Overview</p>;
+  const eyebrow = <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Waqf Overview</p>;
 
   if (error) {
     return (

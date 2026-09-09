@@ -76,7 +76,7 @@ export default function OpsFoundationDetailPage() {
       </header>
 
       <div className="mb-8">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
           {waqfs?.length ?? 0} {waqfs?.length === 1 ? "waqf fund" : "waqf funds"}
         </p>
         <div className="space-y-1.5">

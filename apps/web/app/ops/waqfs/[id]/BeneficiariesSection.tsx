@@ -127,7 +127,7 @@ export function BeneficiariesSection({
                   <TableCell>
                     <Badge tone={b.status === "active" ? "success" : "neutral"}>{humanize(b.status)}</Badge>
                     {b.eligibilityExpiresAt && (
-                      <p className={`mt-0.5 text-[11px] ${expired ? "text-red-600" : "text-slate-400"}`}>
+                      <p className={`mt-0.5 text-[11px] ${expired ? "text-red-600" : "text-slate-500"}`}>
                         {expired ? "expired" : "expires"} {formatDate(b.eligibilityExpiresAt)}
                       </p>
                     )}
@@ -285,7 +285,7 @@ function BeneficiaryForm({
         </button>
       ) : (
         <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Bank details</p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Bank details</p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700">Payout provider</label>
@@ -376,7 +376,7 @@ function CriteriaUpdateAction({ beneficiary, onProposed }: { beneficiary: Benefi
   const [error, setError] = useState<string | null>(null);
 
   if (proposed) {
-    return <span className="text-xs text-slate-400">Criteria update pending approval</span>;
+    return <span className="text-xs text-slate-500">Criteria update pending approval</span>;
   }
 
   if (!editing) {

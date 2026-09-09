@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -24,4 +25,9 @@ const nextConfig = {
     root: fileURLToPath(new URL("../..", import.meta.url)),
   },
 };
-export default nextConfig;
+// No org/project/authToken configured here — this repo has no Sentry
+// account wired up yet (see SENTRY_DSN's own comment in .env.example).
+// Without an auth token the plugin just skips source-map upload with a
+// warning rather than failing the build; wire real values here once a
+// Sentry project exists if source-mapped stack traces are wanted.
+export default withSentryConfig(nextConfig, { silent: !process.env.CI });

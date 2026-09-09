@@ -39,22 +39,53 @@ import {
 // but a real improvement over what shipped before this: nothing. An
 // officer can at least see exactly what's being proposed, and cross
 // -reference an id elsewhere, instead of approving or rejecting blind.
-function PayloadDetails({ payload }: { payload: unknown }) {
+//
+// `currentState` is fetched lazily (GET /governed-actions/:id, only on
+// row-expand — see the caller) and is undefined while that fetch is in
+// flight or hasn't started, null once fetched for a handler with no
+// describeCurrentState (e.g. counterparty.onboard). Either way this
+// degrades to the plain payload-only rendering it replaced — a field
+// only gets the current → proposed treatment once a current value for
+// that exact key is actually known.
+function PayloadDetails({
+  payload,
+  currentState,
+}: {
+  payload: unknown;
+  currentState?: Record<string, unknown> | null;
+}) {
   if (payload === null || typeof payload !== "object") {
     return <span className="text-slate-500">{String(payload)}</span>;
   }
   const entries = Object.entries(payload as Record<string, unknown>);
   if (entries.length === 0) {
-    return <span className="text-slate-400">No additional details.</span>;
+    return <span className="text-slate-500">No additional details.</span>;
   }
+  const stringify = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value));
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
-      {entries.map(([key, value]) => (
-        <Fragment key={key}>
-          <dt className="font-medium text-slate-500">{humanize(key.replace(/([a-z])([A-Z])/g, "$1_$2"))}</dt>
-          <dd className="break-all font-mono text-slate-700">{typeof value === "string" ? value : JSON.stringify(value)}</dd>
-        </Fragment>
-      ))}
+      {entries.map(([key, value]) => {
+        const hasCurrent = currentState != null && Object.prototype.hasOwnProperty.call(currentState, key);
+        const proposedText = stringify(value);
+        const currentText = hasCurrent ? stringify(currentState![key]) : null;
+        const differs = hasCurrent && currentText !== proposedText;
+        return (
+          <Fragment key={key}>
+            <dt className="font-medium text-slate-500">{humanize(key.replace(/([a-z])([A-Z])/g, "$1_$2"))}</dt>
+            <dd className="break-all font-mono text-slate-700">
+              {differs ? (
+                <>
+                  <span className="text-slate-500 line-through">{currentText}</span>
+                  <span className="mx-1 text-slate-500">→</span>
+                  <span className="font-semibold text-primary-700">{proposedText}</span>
+                </>
+              ) : (
+                proposedText
+              )}
+            </dd>
+          </Fragment>
+        );
+      })}
     </dl>
   );
 }
@@ -73,6 +104,11 @@ export default function GovernedActionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [rowStates, setRowStates] = useState<Record<string, RowState>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Keyed by action id; absent while the GET /governed-actions/:id fetch
+  // for that row hasn't started or is still in flight — see
+  // PayloadDetails's own comment on why that degrades gracefully rather
+  // than needing a loading state of its own.
+  const [currentStates, setCurrentStates] = useState<Record<string, Record<string, unknown> | null>>({});
   // Ids of actions whose payload has been expanded at least once this
   // session — a checker must actually look at what they're deciding
   // before Approve/Reject become clickable (see the render below).
@@ -265,15 +301,27 @@ export default function GovernedActionsPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            setExpandedId(isExpanded ? null : action.id);
+                            const nowExpanded = !isExpanded;
+                            setExpandedId(nowExpanded ? action.id : null);
                             setViewedIds((prev) => (prev.has(action.id) ? prev : new Set(prev).add(action.id)));
+                            if (nowExpanded && !(action.id in currentStates)) {
+                              apiFetchJson<GovernedAction>(`/governed-actions/${action.id}`)
+                                .then((full) => {
+                                  setCurrentStates((prev) => ({ ...prev, [action.id]: full.currentState ?? null }));
+                                })
+                                .catch(() => {
+                                  // Diff is a nice-to-have on top of the payload, which
+                                  // already rendered — a failed fetch just means the
+                                  // row falls back to payload-only, not a page error.
+                                });
+                            }
                           }}
                           className="flex w-full flex-col items-start gap-0.5 text-left"
                           aria-expanded={isExpanded}
                         >
                           <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                             <IconChevronDown
-                              className={`h-3.5 w-3.5 shrink-0 self-center text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                              className={`h-3.5 w-3.5 shrink-0 self-center text-slate-500 transition-transform ${isExpanded ? "rotate-180" : ""}`}
                             />
                             <span className="break-words font-medium text-slate-900">
                               {humanizePermissionKey(action.permission.key)}
@@ -301,10 +349,10 @@ export default function GovernedActionsPage() {
                         {action.waqf?.name ??
                           (action.proposedFoundation ? (
                             <span className="text-slate-500">
-                              <span className="text-slate-400">Foundation:</span> {action.proposedFoundation.name}
+                              <span className="text-slate-500">Foundation:</span> {action.proposedFoundation.name}
                             </span>
                           ) : (
-                            <span className="italic text-slate-400">Not yet created</span>
+                            <span className="italic text-slate-500">Not yet created</span>
                           ))}
                       </TableCell>
                       <TableCell className="max-w-[10rem] truncate">
@@ -316,7 +364,7 @@ export default function GovernedActionsPage() {
                           {action.makerType === "ai_agent" ? (
                             <IconSparkle className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                           ) : (
-                            <IconUser className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            <IconUser className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                           )}
                           {action.makerType === "ai_agent"
                             ? (action.makerAgent ? agentNickname(action.makerAgent.name) : "Unregistered agent")
@@ -341,7 +389,7 @@ export default function GovernedActionsPage() {
                             {rowState.approved ? "Approved" : "Rejected"}
                           </span>
                         ) : isOwnProposal ? (
-                          <span className="text-xs italic text-slate-400" title="Maker-checker: you proposed this, so someone else must decide it.">
+                          <span className="text-xs italic text-slate-500" title="Maker-checker: you proposed this, so someone else must decide it.">
                             You proposed this
                           </span>
                         ) : (
@@ -367,7 +415,7 @@ export default function GovernedActionsPage() {
                               </Button>
                             </div>
                             {!hasBeenViewed && (
-                              <span className="text-[11px] italic text-slate-400">Expand to review before deciding</span>
+                              <span className="text-[11px] italic text-slate-500">Expand to review before deciding</span>
                             )}
                           </div>
                         )}
@@ -376,7 +424,7 @@ export default function GovernedActionsPage() {
                     {isExpanded && (
                       <TableRow className="hover:bg-transparent">
                         <TableCell colSpan={5} className="bg-slate-50 py-3">
-                          <PayloadDetails payload={action.payload} />
+                          <PayloadDetails payload={action.payload} currentState={currentStates[action.id]} />
                         </TableCell>
                       </TableRow>
                     )}

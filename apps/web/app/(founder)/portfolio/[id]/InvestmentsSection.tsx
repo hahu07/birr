@@ -30,7 +30,7 @@ export function InvestmentsSection({ waqfId }: { waqfId: string }) {
 
   return (
     <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Investments</p>
+      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Investments</p>
       <p className="mb-3 text-sm text-slate-500">How this fund's value is allocated.</p>
 
       {error && (

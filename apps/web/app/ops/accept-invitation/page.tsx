@@ -124,7 +124,7 @@ function AcceptInvitationContent() {
           <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start">
             <div className="space-y-6">
               <div className="rounded-lg border border-slate-200 bg-white p-5">
-                <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">Who is establishing</p>
+                <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">Who is establishing</p>
                 <div className="space-y-4">
                   <div>
                     <label htmlFor="founderKind" className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -167,7 +167,7 @@ function AcceptInvitationContent() {
                   )}
                   <div>
                     <label htmlFor="homeJurisdiction" className="mb-1.5 block text-sm font-medium text-slate-700">
-                      Home jurisdiction <span className="font-normal text-slate-400">(optional)</span>
+                      Home jurisdiction <span className="font-normal text-slate-500">(optional)</span>
                     </label>
                     <Input
                       id="homeJurisdiction"
@@ -180,7 +180,7 @@ function AcceptInvitationContent() {
               </div>
 
               <div className="rounded-lg border border-slate-200 bg-white p-5">
-                <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">Your account</p>
+                <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">Your account</p>
                 <div className="space-y-4">
                   <div>
                     <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-slate-700">

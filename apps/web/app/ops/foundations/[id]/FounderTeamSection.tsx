@@ -59,7 +59,7 @@ function FounderTeam({ founderId, founderName }: { founderId: string; founderNam
 
   return (
     <div>
-      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">{founderName} — team</p>
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">{founderName} — team</p>
       {error && (
         <Alert tone="danger" title="Couldn't load this team">
           {error}

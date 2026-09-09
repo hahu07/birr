@@ -102,7 +102,7 @@ export default function TeamPage() {
             >
               <div>
                 <p className="text-sm font-medium text-slate-900">
-                  {m.user.fullName} {m.user.id === user?.id && <span className="font-normal text-slate-400">(you)</span>}
+                  {m.user.fullName} {m.user.id === user?.id && <span className="font-normal text-slate-500">(you)</span>}
                 </p>
                 <p className="text-xs text-slate-500">{m.user.email}</p>
               </div>
@@ -117,7 +117,7 @@ export default function TeamPage() {
 
       {!error && pendingInvitations.length > 0 && (
         <div className="mt-8">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Pending invitations</p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Pending invitations</p>
           <div className="space-y-1.5">
             {pendingInvitations.map((inv) => (
               <PendingInvitationRow key={inv.id} invitation={inv} canRevoke={Boolean(isPrimaryContact)} onRevoked={load} />

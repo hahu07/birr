@@ -71,7 +71,7 @@ export function MessagesSection({ foundationId }: { foundationId: string }) {
 
   return (
     <div className="mt-8 border-t border-slate-100 pt-8">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Messages</p>
+      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Messages</p>
       <p className="mb-3 text-sm text-slate-500">Direct communication with Birr about this Foundation.</p>
 
       {error && (

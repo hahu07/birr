@@ -42,7 +42,7 @@ export function ProceedsSection({ waqfId }: { waqfId: string }) {
 
   return (
     <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Proceeds</p>
+      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Proceeds</p>
       <p className="mb-3 text-sm text-slate-500">
         Investment returns recorded over time — the corpus stays invested. Split across your selected causes
         proportionally, alongside your own corpus allocation.

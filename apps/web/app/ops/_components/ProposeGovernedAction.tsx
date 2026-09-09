@@ -53,7 +53,7 @@ export function ProposeGovernedActionButton({
   }
 
   if (proposed) {
-    return <span className="text-xs text-slate-400">Pending approval</span>;
+    return <span className="text-xs text-slate-500">Pending approval</span>;
   }
 
   return (

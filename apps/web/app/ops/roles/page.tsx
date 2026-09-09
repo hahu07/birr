@@ -194,7 +194,7 @@ export default function RolesPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-slate-900">{role.name}</p>
-                        <p className="font-mono text-[11px] text-slate-400">{role.key}</p>
+                        <p className="font-mono text-[11px] text-slate-500">{role.key}</p>
                       </div>
                       {isApex && <Badge tone="warning">Apex checker</Badge>}
                       {isReadOnly && <Badge tone="neutral">Read-only</Badge>}
@@ -203,11 +203,11 @@ export default function RolesPage() {
                     {role.description && <p className="text-xs text-slate-600">{role.description}</p>}
 
                     <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         Maker on
                       </p>
                       {makerOf.length === 0 ? (
-                        <p className="text-xs italic text-slate-400">Nothing.</p>
+                        <p className="text-xs italic text-slate-500">Nothing.</p>
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
                           {makerOf.map((rp) => (
@@ -223,11 +223,11 @@ export default function RolesPage() {
                     </div>
 
                     <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         Checker on
                       </p>
                       {checkerOf.length === 0 ? (
-                        <p className="text-xs italic text-slate-400">Nothing.</p>
+                        <p className="text-xs italic text-slate-500">Nothing.</p>
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
                           {checkerOf.map((rp) => (
@@ -243,7 +243,7 @@ export default function RolesPage() {
                     </div>
 
                     <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         Also has
                       </p>
                       <ul className="list-disc space-y-0.5 pl-4 text-xs text-slate-600">

@@ -124,7 +124,7 @@ export default function FoundationDetailPage() {
 
       {!error && foundation !== null && (
         <>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Co-founders</p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Co-founders</p>
           <div className="space-y-1.5">
             {(foundation.foundationFounders ?? []).map((ff) => (
               <div
@@ -139,7 +139,7 @@ export default function FoundationDetailPage() {
 
           {pendingCoFounderInvitations.length > 0 && (
             <div className="mt-8">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
                 Pending co-founder invitations
               </p>
               <div className="space-y-1.5">

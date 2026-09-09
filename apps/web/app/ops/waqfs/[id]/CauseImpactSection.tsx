@@ -107,7 +107,7 @@ export function CauseImpactSection({ waqfId, causesVersion }: { waqfId: string; 
                   <StatCard label={u.metricLabel ?? "Reported"} value={u.metricValue} tone="primary" />
                 )}
               </div>
-              <p className="mt-2 text-xs text-slate-400">
+              <p className="mt-2 text-xs text-slate-500">
                 Reported by {u.reportedByUser.fullName} · {formatDate(u.createdAt)}
               </p>
             </div>

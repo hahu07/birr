@@ -33,6 +33,12 @@ COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
 # here via --build-arg, not just at `docker run`.
 ARG NEXT_PUBLIC_BACKEND_URL=http://localhost:4000
 ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
+# Same build-time-bake reasoning as NEXT_PUBLIC_BACKEND_URL above —
+# empty default means the browser-side Sentry init in
+# instrumentation-client.ts stays a no-op until a real DSN is passed
+# via --build-arg.
+ARG NEXT_PUBLIC_SENTRY_DSN=""
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 RUN pnpm --filter @birr/web build
 
 # ---- Runtime image ----

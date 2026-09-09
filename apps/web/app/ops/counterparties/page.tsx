@@ -193,7 +193,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         </Alert>
       )}
 
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Identity</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Identity</p>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Name</label>
@@ -240,7 +240,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
           used to leave that review with nothing substantive to read
           (found 2026-09-04) — this is the fix, not a checklist added on
           top of a still-empty intake. */}
-      <p className="pt-1 text-xs font-medium uppercase tracking-wide text-slate-400">Shariah review information</p>
+      <p className="pt-1 text-xs font-medium uppercase tracking-wide text-slate-500">Shariah review information</p>
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-slate-700">Business activities</label>
         <textarea
@@ -262,7 +262,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         />
       </div>
 
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Point of contact (optional)</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Point of contact (optional)</p>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Contact name</label>
@@ -278,7 +278,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         </div>
       </div>
 
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Regulatory (optional)</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Regulatory (optional)</p>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Regulatory license number</label>

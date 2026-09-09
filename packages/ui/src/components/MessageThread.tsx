@@ -53,7 +53,7 @@ export function MessageThread({ messages, currentSenderType, onSend, sending, fo
   return (
     <div className="flex flex-col">
       <div className="mb-3 max-h-[28rem] space-y-3 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-4">
-        {messages.length === 0 && <p className="text-sm text-slate-400">No messages yet.</p>}
+        {messages.length === 0 && <p className="text-sm text-slate-500">No messages yet.</p>}
         {messages.map((m) => {
           const isOwn = m.senderType === currentSenderType;
           return (
@@ -63,7 +63,7 @@ export function MessageThread({ messages, currentSenderType, onSend, sending, fo
                   isOwn ? "bg-primary-600 text-white" : "border border-slate-200 bg-white text-slate-900"
                 }`}
               >
-                <div className={`mb-0.5 flex items-baseline gap-2 text-xs ${isOwn ? "text-primary-100" : "text-slate-400"}`}>
+                <div className={`mb-0.5 flex items-baseline gap-2 text-xs ${isOwn ? "text-primary-100" : "text-slate-500"}`}>
                   <span className="font-medium">{m.senderUser.fullName}</span>
                   <span>{formatTimestamp(m.createdAt)}</span>
                 </div>
@@ -103,7 +103,7 @@ export function MessageThread({ messages, currentSenderType, onSend, sending, fo
                 {f.name}
                 <button
                   type="button"
-                  className="text-slate-400 hover:text-slate-700"
+                  className="text-slate-500 hover:text-slate-700"
                   onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
                 >
                   ×

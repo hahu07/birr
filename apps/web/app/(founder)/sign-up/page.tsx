@@ -125,10 +125,8 @@ export default function SignUpPage() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
+            error={confirmPassword.length > 0 && password !== confirmPassword ? "Passwords don't match." : undefined}
           />
-          {confirmPassword.length > 0 && password !== confirmPassword && (
-            <p className="mt-1.5 text-xs text-red-600">Passwords don't match.</p>
-          )}
         </div>
 
         <label className="flex items-start gap-2.5 text-sm text-slate-600">

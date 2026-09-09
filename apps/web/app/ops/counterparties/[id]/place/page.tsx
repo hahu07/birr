@@ -140,7 +140,7 @@ export default function PlaceInvestmentPage() {
   }
 
   if (!counterparty) {
-    return <p className="text-sm text-slate-400">Loading…</p>;
+    return <p className="text-sm text-slate-500">Loading…</p>;
   }
 
   return (
@@ -227,13 +227,13 @@ export default function PlaceInvestmentPage() {
           {results !== null && (
             <div className="mb-4 max-h-56 space-y-1 overflow-y-auto rounded-md border border-slate-200 p-1.5">
               {results.length === 0 ? (
-                <p className="p-2 text-xs text-slate-400">No matching Investment-type Waqf Funds.</p>
+                <p className="p-2 text-xs text-slate-500">No matching Investment-type Waqf Funds.</p>
               ) : (
                 results.map((w) => (
                   <div key={w.id} className="flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-slate-50">
                     <span className="text-sm text-slate-700">
                       <span className="font-medium text-slate-900">{w.name}</span>
-                      <span className="text-slate-400"> · {w.foundation.name}</span>
+                      <span className="text-slate-500"> · {w.foundation.name}</span>
                       {w.corpusCurrency && (
                         <Badge tone="neutral" className="ml-2">
                           {w.corpusCurrency}
@@ -247,14 +247,14 @@ export default function PlaceInvestmentPage() {
                 ))
               )}
               {results.length >= 50 && (
-                <p className="p-2 text-[11px] text-slate-400">Showing the first 50 matches — refine your search to narrow further.</p>
+                <p className="p-2 text-[11px] text-slate-500">Showing the first 50 matches — refine your search to narrow further.</p>
               )}
             </div>
           )}
 
           <p className="mb-1 text-sm font-medium text-slate-700">Selected ({selected.length})</p>
           {selected.length === 0 ? (
-            <p className="text-sm text-slate-400">No funds selected yet — search above to add one.</p>
+            <p className="text-sm text-slate-500">No funds selected yet — search above to add one.</p>
           ) : (
             <div className="space-y-1">
               {selected.map((w) => {
@@ -267,7 +267,7 @@ export default function PlaceInvestmentPage() {
                   >
                     <div className="min-w-[12rem] flex-1">
                       <span className="text-sm font-medium text-slate-800">{w.name}</span>
-                      <span className="text-slate-400"> · {w.foundation.name}</span>
+                      <span className="text-slate-500"> · {w.foundation.name}</span>
                       {w.corpusCurrency && (
                         <Badge tone="neutral" className="ml-2">
                           {w.corpusCurrency}
@@ -284,7 +284,7 @@ export default function PlaceInvestmentPage() {
                         onChange={(e) => setAmounts((prev) => ({ ...prev, [w.id]: e.target.value }))}
                       />
                       {remaining !== undefined && (
-                        <p className={`text-[11px] ${remaining < 0 ? "text-red-600" : "text-slate-400"}`}>
+                        <p className={`text-[11px] ${remaining < 0 ? "text-red-600" : "text-slate-500"}`}>
                           {formatAmount(Math.max(remaining, 0))} uninvested
                         </p>
                       )}

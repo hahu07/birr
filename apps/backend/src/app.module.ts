@@ -1,6 +1,10 @@
 import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+// From @sentry/nestjs/setup specifically, not the package's main
+// entrypoint — see instrument.ts's own comment on why import order/
+// source matters for this SDK's auto-instrumentation.
+import { SentryGlobalFilter } from "@sentry/nestjs/setup";
 import { FoundersModule } from "./modules/founders/founders.module";
 import { FoundationsModule } from "./modules/foundations/foundations.module";
 import { BirrStaffModule } from "./modules/birr-staff/birr-staff.module";
@@ -85,6 +89,12 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     BanksModule,
   ],
   providers: [
+    // First in the list — captures unhandled request-path errors for
+    // Sentry before AllExceptionsFilter (registered separately in
+    // main.ts via useGlobalFilters) formats the response. A no-op
+    // reporter, not a no-op filter, when SENTRY_DSN is unset: it still
+    // rethrows every exception unchanged either way.
+    { provide: APP_FILTER, useClass: SentryGlobalFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     // Default-deny floor — must run before PermissionGuard/StaffRoleGuard
     // (Nest runs multiple APP_GUARDs in provider-registration order; all

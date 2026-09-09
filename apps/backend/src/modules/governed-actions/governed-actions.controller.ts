@@ -76,8 +76,20 @@ export class GovernedActionsController {
     return this.service.list({ status, waqfId });
   }
 
+  // Staff-only, same posture as list() above: this row's payload,
+  // maker/checker identities, and (as of the currentState field) the
+  // live entity state it would change are all internal governance
+  // detail no Founder-scoped check exists for below this point — unlike
+  // list()'s founder branch, there's no per-waqf ownership check to fall
+  // back to for a single action by id.
   @Get(":id")
-  async findById(@Param("id") id: string) {
+  async findById(@Param("id") id: string, @Req() request: Request) {
+    if (!hasAnySessionCookie(request)) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
+      throw new UnauthorizedException("Birr staff only.");
+    }
     const action = await this.service.findById(id);
     if (!action) throw new NotFoundException(`Governed action "${id}" not found.`);
     return action;

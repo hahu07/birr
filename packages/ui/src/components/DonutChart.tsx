@@ -64,7 +64,7 @@ export function DonutChart({ segments, size = 132, thickness = 20, centerLabel }
             <span className="ml-auto pl-3 font-semibold tabular-nums text-slate-900">{s.value}</span>
           </li>
         ))}
-        {visible.length === 0 && <li className="text-xs text-slate-400">No data yet</li>}
+        {visible.length === 0 && <li className="text-xs text-slate-500">No data yet</li>}
       </ul>
     </div>
   );

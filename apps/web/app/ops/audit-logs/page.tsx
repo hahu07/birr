@@ -249,7 +249,7 @@ export default function AuditLogsPage() {
                             {log.actorType === "ai_agent" ? (
                               <IconSparkle className="h-3.5 w-3.5 shrink-0 text-violet-500" />
                             ) : (
-                              <IconUser className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                              <IconUser className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                             )}
                             {actorLabel(log)}
                           </span>
@@ -258,10 +258,10 @@ export default function AuditLogsPage() {
                           <Badge tone={ACTOR_TONE[log.actorType]}>{log.action}</Badge>
                         </TableCell>
                         <TableCell className="text-slate-500">
-                          {log.entityType} <span className="text-slate-400">·</span>{" "}
+                          {log.entityType} <span className="text-slate-500">·</span>{" "}
                           <span className="font-mono text-xs">{log.entityId.slice(0, 8)}</span>
                         </TableCell>
-                        <TableCell className="text-right text-xs text-slate-400">
+                        <TableCell className="text-right text-xs text-slate-500">
                           {isExpanded ? "Hide" : "Details"}
                         </TableCell>
                       </TableRow>
@@ -270,7 +270,7 @@ export default function AuditLogsPage() {
                           <TableCell colSpan={5} className="bg-slate-50">
                             <div className="grid grid-cols-1 gap-4 py-2 sm:grid-cols-2">
                               <div>
-                                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                   Before
                                 </p>
                                 <pre className="max-h-64 overflow-auto rounded border border-slate-200 bg-white p-2.5 text-xs text-slate-700">
@@ -278,7 +278,7 @@ export default function AuditLogsPage() {
                                 </pre>
                               </div>
                               <div>
-                                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                   After
                                 </p>
                                 <pre className="max-h-64 overflow-auto rounded border border-slate-200 bg-white p-2.5 text-xs text-slate-700">

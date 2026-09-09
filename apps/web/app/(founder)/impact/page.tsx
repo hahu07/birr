@@ -131,7 +131,7 @@ export default function ImpactPage() {
                   <StatCard label={u.metricLabel ?? "Reported"} value={u.metricValue} tone="primary" />
                 )}
               </div>
-              <p className="mt-2 text-xs text-slate-400">{formatDate(u.createdAt)}</p>
+              <p className="mt-2 text-xs text-slate-500">{formatDate(u.createdAt)}</p>
             </div>
           ))}
         </div>

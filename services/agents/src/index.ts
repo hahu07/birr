@@ -6,6 +6,16 @@
 // the UI. That keeps the maker/checker enforcement in one place
 // (packages/db + apps/backend) instead of duplicated here.
 
+// First, same reasoning as apps/backend/src/instrument.ts — no-op when
+// SENTRY_DSN is unset. This is a plain Node process (no NestJS/Next.js
+// framework integration to auto-instrument), so init just needs to run
+// before anything that might throw, not before any particular import.
+import * as Sentry from "@sentry/node";
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  tracesSampleRate: 0.1,
+});
+
 import { rasid, run as runRasid } from "./agents/rasid";
 import { nazim, run as runNazim } from "./agents/nazim";
 import { kashif } from "./agents/kashif";
@@ -39,6 +49,13 @@ async function runOne(name: string): Promise<void> {
     await runner();
     console.log(`[${name}] run complete.`);
   } catch (err) {
+    // This, not main()'s own .catch() below, is the failure path
+    // CLAUDE.md's reliability concern is actually about — a bad
+    // scheduled agent run failing silently. runOne() never rethrows (the
+    // scheduler's tick() must keep running the other agents even if one
+    // fails), so without capturing here, main().catch() alone would
+    // never see this at all.
+    Sentry.captureException(err);
     console.error(`[${name}] run failed:`, err instanceof Error ? err.message : err);
   }
 }
@@ -81,6 +98,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+  Sentry.captureException(err);
   console.error(err);
   process.exit(1);
 });

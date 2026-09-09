@@ -128,7 +128,7 @@ export default function InvestmentPlacementDetailPage() {
         </Table>
 
         {new Set(placement.investments.map((i) => i.waqf.foundation.id)).size > 1 && (
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-slate-500">
             This placement pools money from {new Set(placement.investments.map((i) => i.waqf.foundation.id)).size}{" "}
             different Foundations — each fund's own share stays attributed to its own Foundation above; nothing here
             merges their money beyond sharing this one counterparty placement.
@@ -207,7 +207,7 @@ function RecordProceedsForm({
 
       {preview && (
         <div className="rounded-md border border-dashed border-slate-300 bg-white p-3">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">
             Estimated split across {preview.length} fund{preview.length === 1 ? "" : "s"}
           </p>
           <ul className="space-y-0.5 text-xs text-slate-600">
@@ -217,7 +217,7 @@ function RecordProceedsForm({
               </li>
             ))}
           </ul>
-          <p className="mt-1.5 text-[11px] text-slate-400">
+          <p className="mt-1.5 text-[11px] text-slate-500">
             Estimate only — the actual amounts recorded may differ by a cent due to rounding.
           </p>
         </div>

@@ -33,7 +33,7 @@ export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
   return (
     <div className="mt-5 border-t border-slate-100 pt-5">
       <div className="mb-1.5 flex flex-wrap items-start justify-between gap-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Beneficiaries</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Beneficiaries</p>
         {nominateState === "idle" && (
           <Button variant="secondary" className="shrink-0 px-3 py-1.5 text-xs" onClick={() => setNominateState("form")}>
             Nominate a beneficiary

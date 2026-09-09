@@ -289,7 +289,7 @@ export function WaqfFundForm({
                 </div>
                 <div>
                   <label htmlFor="purpose" className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Purpose <span className="font-normal text-slate-400">(optional)</span>
+                    Purpose <span className="font-normal text-slate-500">(optional)</span>
                   </label>
                   <textarea
                     id="purpose"
@@ -319,7 +319,7 @@ export function WaqfFundForm({
 
           {!waqfAlreadyExists && (
             <Card>
-              <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">Waqf Corpus</p>
+              <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">Waqf Corpus</p>
               <div className="space-y-4">
                 <div>
                   <label htmlFor="corpusAmount" className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -377,7 +377,7 @@ export function WaqfFundForm({
 
           {waqfAlreadyExists && progress && (
             <Card>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Funding progress</p>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Funding progress</p>
               <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                 <div className="h-full rounded-full bg-primary-600" style={{ width: `${progress.percent}%` }} />
               </div>
@@ -390,7 +390,7 @@ export function WaqfFundForm({
           )}
 
           <Card>
-            <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">
+            <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">
               {waqfAlreadyExists ? `Add funds to "${resolvedName}"` : "Declare and pay the first contribution"}
             </p>
             <div className="space-y-4">

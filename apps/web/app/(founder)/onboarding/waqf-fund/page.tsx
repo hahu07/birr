@@ -84,7 +84,7 @@ export default function OnboardingWaqfFundPage() {
 
       {completedWaqfs && (
         <div className="mt-6 space-y-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Already funded</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Already funded</p>
           {completedWaqfs.map((w) => (
             <div key={w.id} className="rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between gap-3">

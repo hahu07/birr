@@ -49,7 +49,7 @@ export default function PlatformSettingsPage() {
   return (
     <div>
       <header className="mb-8">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Platform Settings</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Platform Settings</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Provider credentials</h1>
         <p className="mt-1 text-sm text-slate-500">
           Stripe, Paystack, the stablecoin gateway, Resend, and Twilio credentials — configured here take effect
@@ -107,7 +107,7 @@ function ProviderCard({
 }) {
   return (
     <Card>
-      <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
       <div className="space-y-5">
         {fields.map((field) => (
           <FieldRow
@@ -178,7 +178,7 @@ function FieldRow({
           {field.label}
         </label>
         {field.configured && !editing && (
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-slate-500">
             {field.updatedByUser ? `Set by ${field.updatedByUser.fullName}` : "Set"}
             {field.updatedAt ? ` · ${formatDate(field.updatedAt)}` : ""}
           </span>

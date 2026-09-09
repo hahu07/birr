@@ -98,6 +98,17 @@ interface GovernedActionHandler {
    * itself) doesn't need one.
    */
   describePayload?(payload: unknown): Promise<string | null>;
+  /**
+   * findById()-time only, read-only: the entity's current field values
+   * for whichever fields this payload would change, so the Ops Console
+   * can render a current → proposed diff before a checker decides.
+   * Optional because a handler whose action *creates* its target rather
+   * than modifying an existing one (counterparty.onboard) has no
+   * "current state" to diff against. Reads via plain `prisma`, not a
+   * `tx` — this only ever runs outside decide()'s transaction, on a
+   * single row expand, never bundled into list().
+   */
+  describeCurrentState?(payload: unknown): Promise<Record<string, unknown> | null>;
   /** decide()-time, on approval, inside the same transaction. */
   onApprove(
     payload: unknown,
@@ -160,6 +171,11 @@ export class GovernedActionsService {
             const asset = await prisma.asset.findUnique({ where: { id: assetId } });
             return asset ? `${asset.name} (est. ${asset.estimatedValue})` : `Asset "${assetId}" not found.`;
           },
+          describeCurrentState: async (payload) => {
+            const { assetId } = payload as { assetId: string };
+            const asset = await prisma.asset.findUnique({ where: { id: assetId } });
+            return asset ? { status: asset.status, disposedAt: asset.disposedAt } : null;
+          },
           onApprove: async (payload, tx) => {
             const { assetId } = payload as { assetId: string };
             const before = await tx.asset.findUnique({ where: { id: assetId } });
@@ -200,6 +216,19 @@ export class GovernedActionsService {
             return beneficiary
               ? `${beneficiary.name}: "${newCriteria}"`
               : `Beneficiary "${beneficiaryId}" not found.`;
+          },
+          // Only the field this payload would change, not the full row —
+          // no bankDetailsEncrypted concern here since it's never selected
+          // in the first place (contrast with onApprove's before/after
+          // snapshots below, which read the full row for the audit log
+          // and must actively strip it).
+          describeCurrentState: async (payload) => {
+            const { beneficiaryId } = payload as { beneficiaryId: string };
+            const beneficiary = await prisma.beneficiary.findUnique({
+              where: { id: beneficiaryId },
+              select: { eligibilityCriteria: true },
+            });
+            return beneficiary ? { newCriteria: beneficiary.eligibilityCriteria } : null;
           },
           onApprove: async (payload, tx) => {
             const { beneficiaryId, newCriteria } = payload as {
@@ -257,6 +286,14 @@ export class GovernedActionsService {
               ? `${beneficiary.name} → ${newStatus}`
               : `Beneficiary "${beneficiaryId}" not found.`;
           },
+          describeCurrentState: async (payload) => {
+            const { beneficiaryId } = payload as { beneficiaryId: string };
+            const beneficiary = await prisma.beneficiary.findUnique({
+              where: { id: beneficiaryId },
+              select: { status: true },
+            });
+            return beneficiary ? { newStatus: beneficiary.status } : null;
+          },
           onApprove: async (payload, tx) => {
             const { beneficiaryId, newStatus } = payload as {
               beneficiaryId: string;
@@ -309,6 +346,14 @@ export class GovernedActionsService {
             return investment
               ? `${investment.name}: ${investment.allocatedAmount} → ${newAllocatedAmount}`
               : `Investment "${investmentId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { investmentId } = payload as { investmentId: string };
+            const investment = await prisma.investment.findUnique({
+              where: { id: investmentId },
+              select: { allocatedAmount: true },
+            });
+            return investment ? { newAllocatedAmount: investment.allocatedAmount } : null;
           },
           onApprove: async (payload, tx) => {
             const { investmentId, newAllocatedAmount } = payload as {
@@ -421,6 +466,14 @@ export class GovernedActionsService {
             return distribution
               ? `${distribution.currency} ${distribution.amount} → ${distribution.beneficiary.name} (${distribution.cause.name})`
               : `Distribution "${distributionId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { distributionId } = payload as { distributionId: string };
+            const distribution = await prisma.distribution.findUnique({
+              where: { id: distributionId },
+              select: { status: true, amount: true, currency: true },
+            });
+            return distribution ? { ...distribution } : null;
           },
           onApprove: async (payload, tx) => {
             const { distributionId } = payload as { distributionId: string };
@@ -869,7 +922,9 @@ export class GovernedActionsService {
     });
     if (!action) return null;
     const [withFoundation] = await this.attachProposedFoundations([action]);
-    return withFoundation;
+    const handler = this.handlers.get(action.permission.key);
+    const currentState = (await handler?.describeCurrentState?.(action.payload)) ?? null;
+    return { ...withFoundation, currentState };
   }
 
   /**

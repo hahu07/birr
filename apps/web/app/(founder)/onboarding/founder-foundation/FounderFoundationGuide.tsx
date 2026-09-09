@@ -51,7 +51,7 @@ export function FounderFoundationGuide({
 }) {
   return (
     <Card className="lg:sticky lg:top-6">
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">Founder type explained</p>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Founder type explained</p>
       <p className="mb-3 text-xs text-slate-500">Not legal advice — just a plain-language guide to help you pick.</p>
       <div className="space-y-3">
         {(Object.keys(KIND_GUIDE) as FounderKind[]).map((key) => {
@@ -76,7 +76,7 @@ export function FounderFoundationGuide({
 
       {kind === "institution" && (
         <>
-          <p className="mb-1 mt-5 text-xs font-medium uppercase tracking-wide text-slate-400">Institution type</p>
+          <p className="mb-1 mt-5 text-xs font-medium uppercase tracking-wide text-slate-500">Institution type</p>
           <div className="space-y-2">
             {(Object.keys(INSTITUTION_TYPE_GUIDE) as InstitutionType[]).map((key) => {
               const isSelected = key === institutionType;

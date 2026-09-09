@@ -31,7 +31,7 @@ const TYPE_GUIDE: Record<WaqfType, { label: string; description: string; example
 export function WaqfTypeGuide({ selected }: { selected: WaqfType }) {
   return (
     <Card className="lg:sticky lg:top-6">
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">Waqf types explained</p>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Waqf types explained</p>
       <p className="mb-3 text-xs text-slate-500">Not legal or Shariah advice — just a plain-language guide to help you pick.</p>
       <div className="space-y-3">
         {(Object.keys(TYPE_GUIDE) as WaqfType[]).map((key) => {

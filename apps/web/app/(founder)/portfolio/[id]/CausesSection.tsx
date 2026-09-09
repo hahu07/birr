@@ -136,7 +136,7 @@ export function CausesSection({
     <div className="mt-5 border-t border-slate-100 pt-5">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Causes</p>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Causes</p>
           <p className="text-sm text-slate-500">Pick which of Birr's standard causes apply to this fund.</p>
         </div>
         {suggestState === "idle" && (
@@ -240,7 +240,7 @@ export function CausesSection({
           )}
 
           {hasSplit && (
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
               Suggested for {humanize(waqfType)} funds
             </p>
           )}
@@ -253,7 +253,7 @@ export function CausesSection({
 
           {hasSplit && (
             <>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Other causes</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Other causes</p>
               <CauseCheckboxList
                 categories={otherCategories}
                 causes={causes}
@@ -267,7 +267,7 @@ export function CausesSection({
 
       {!error && catalogCauses.length > 0 && (
         <div className="mt-6 border-t border-slate-100 pt-5">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">Allocation</p>
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Allocation</p>
           <p className="mb-3 text-sm text-slate-500">
             How much of this fund's raised funds goes to each cause — and from there, to that cause's beneficiaries.
           </p>
@@ -320,7 +320,7 @@ export function CausesSection({
 
       {!error && customCauses.length > 0 && (
         <div className="mt-4">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">
             Added by Birr staff for this fund
           </p>
           <div className="space-y-1.5">
