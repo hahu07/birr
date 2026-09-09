@@ -20,8 +20,9 @@
 #      this same distinction for local dev; it matters even more here.
 #   2. Fill in every `sync: false` env var below via the dashboard —
 #      provider credentials (Resend/Twilio/Stripe/Paystack/Coinbase),
-#      Rasid/Nazim's ai_agents API keys, and birr-backend's DATABASE_URL
-#      from step 1.
+#      Rasid/Nazim/Bashir's ai_agents API keys (on birr-agents, not
+#      birr-backend — see that service's own comment on why), and
+#      birr-backend's DATABASE_URL from step 1.
 #   3. Once all three services exist, copy each one's own Deploy Hook
 #      URL (service → Settings → Deploy Hook) into this repo's GitHub
 #      Actions secrets as RENDER_DEPLOY_HOOK_BACKEND/_WEB/_AGENTS.
@@ -124,14 +125,6 @@ services:
         sync: false
       - key: COINBASE_COMMERCE_WEBHOOK_SECRET
         sync: false
-      # Rasid/Nazim authenticate to this backend as their own ai_agents
-      # registry row (see apps/backend's ai-agents module) — the same
-      # keys services/agents holds below to send, not receive, these.
-      - key: RASID_API_KEY
-        sync: false
-      - key: NAZIM_API_KEY
-        sync: false
-
   # ---- Merged Founder Portal + Ops Console (Next.js) ----
   - type: web
     name: birr-web
@@ -183,7 +176,17 @@ services:
           envVarKey: AGENT_SERVICE_INTERNAL_KEY
       - key: BACKEND_URL
         value: https://birr-backend.onrender.com
+      # Each agent authenticates *to* birr-backend as its own ai_agents
+      # registry row (bcrypt-compared against apiKeyHash — the backend
+      # itself never reads these as env vars, only this service does,
+      # via each agent file's own apiKey() function). Corrected
+      # 2026-09-09: these were previously (wrongly) listed on
+      # birr-backend instead, which never actually used them, and
+      # BASHIR_API_KEY was missing entirely since Bashir didn't exist
+      # yet when this file was first written.
       - key: RASID_API_KEY
         sync: false
       - key: NAZIM_API_KEY
+        sync: false
+      - key: BASHIR_API_KEY
         sync: false
