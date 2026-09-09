@@ -208,7 +208,11 @@ export interface FounderMembership {
   status: "active" | "revoked";
   createdAt: string;
   revokedAt: string | null;
-  user: { id: string; fullName: string; email: string };
+  // mfaEnabled: added for the Ops Console's staff-facing GET
+  // /founders/:id/members (FoundersService.listMembers backs both that
+  // and the self-service GET /founders/me/members with the same query
+  // shape) — harmless on the self-service side, just unused there.
+  user: { id: string; fullName: string; email: string; mfaEnabled: boolean };
 }
 
 // GET /invitations (founder-scoped) — invitations this Foundation's
@@ -340,4 +344,16 @@ export interface FinancialReport {
   proceeds: { total: string } | null;
   causeAllocations: { id: string; name: string; allocatedAmount: string | null; proceedsAllocatedAmount: string | null }[];
   generatedAt: string;
+}
+
+// Opt-in MFA (apps/backend's FoundersService) — same shape as the
+// birr_staff equivalents in ops-types.ts, just a separate declaration
+// since founder pages don't otherwise import from that file.
+export interface MfaEnrollmentStart {
+  qrCodeDataUrl: string;
+  secretForManualEntry: string;
+}
+
+export interface MfaEnrollmentConfirm {
+  backupCodes: string[];
 }

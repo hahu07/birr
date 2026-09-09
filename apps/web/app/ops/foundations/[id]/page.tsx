@@ -16,6 +16,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import type { Foundation, Waqf } from "../../../../lib/ops-types";
 import { Alert, Badge, IconLandmark, Skeleton } from "@birr/ui";
 import { MessagesSection } from "./MessagesSection";
+import { FounderTeamSection } from "./FounderTeamSection";
 
 export default function OpsFoundationDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -90,6 +91,10 @@ export default function OpsFoundationDetailPage() {
             </Link>
           ))}
         </div>
+      </div>
+
+      <div className="mt-8 border-t border-slate-100 pt-8">
+        <FounderTeamSection founders={foundation.foundationFounders.map((ff) => ff.founder)} />
       </div>
 
       <div className="mt-8 border-t border-slate-100 pt-8">

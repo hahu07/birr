@@ -13,6 +13,8 @@ import { prisma, FounderKind, InstitutionType } from "@birr/db";
 import { assertUserEmailVerified, assertUserWhatsAppVerified } from "../../common/auth/current-founder";
 import { ResendVerificationEmailAdapter } from "./email/resend.adapter";
 import { LogoStorageService } from "../foundations/logo-storage.service";
+import { EncryptionService } from "../../common/settings/encryption.service";
+import { MfaService } from "../../common/auth/mfa.service";
 
 const MIN_PASSWORD_LENGTH = 8;
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/;
@@ -114,6 +116,8 @@ export class FoundersService {
   constructor(
     private readonly emailAdapter: ResendVerificationEmailAdapter,
     private readonly logoStorage: LogoStorageService,
+    private readonly encryption: EncryptionService,
+    private readonly mfa: MfaService,
   ) {}
 
   // Bootstrap-scope note: this route is intentionally unauthenticated in
@@ -283,7 +287,120 @@ export class FoundersService {
     if (user.status === "suspended") {
       throw new UnauthorizedException("This account has been suspended.");
     }
-    return { userId: user.id };
+    // Opt-in, unlike birr_staff — mfaEnabled: false just means the
+    // caller (FoundersController.login) issues the real session
+    // directly, same as before this existed. See account/page.tsx's own
+    // comment on why nothing here forces enrollment.
+    return { userId: user.id, mfaEnabled: user.mfaEnabled };
+  }
+
+  /**
+   * The second step of login for a Founder who's opted into MFA —
+   * called with the userId recovered from the short-lived
+   * founder-MFA-pending cookie (see session.ts), never client input
+   * directly. Identical logic to BirrStaffService.verifyLoginMfaCode —
+   * TOTP first, then an unused single-use backup code.
+   */
+  async verifyLoginMfaCode(userId: string, code: string): Promise<void> {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.mfaEnabled || !user.mfaSecretEncrypted) {
+      throw new BadRequestException("MFA is not enabled for this account.");
+    }
+    const secret = this.encryption.decrypt(user.mfaSecretEncrypted);
+    if (this.mfa.verifyCode(secret, code)) return;
+
+    const unusedCodes = await prisma.mfaBackupCode.findMany({ where: { userId, usedAt: null } });
+    for (const candidate of unusedCodes) {
+      if (await this.mfa.compareBackupCode(code, candidate.codeHash)) {
+        await prisma.mfaBackupCode.update({ where: { id: candidate.id }, data: { usedAt: new Date() } });
+        return;
+      }
+    }
+    throw new UnauthorizedException("Incorrect code.");
+  }
+
+  /**
+   * Starts (or restarts) enrollment — a Founder's own choice, from
+   * their Account page, always while already fully signed in (unlike
+   * staff's forced pre-session enrollment, there's no exempt-route
+   * state to design around here). Doesn't flip mfaEnabled until
+   * confirmMfaEnrollment succeeds.
+   */
+  async startMfaEnrollment(userId: string) {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const { secretBase32, otpauthUri } = this.mfa.generateSecret(user.email);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { mfaSecretEncrypted: this.encryption.encrypt(secretBase32) },
+    });
+    const qrCodeDataUrl = await this.mfa.qrCodeDataUrl(otpauthUri);
+    return { qrCodeDataUrl, secretForManualEntry: secretBase32 };
+  }
+
+  /** Confirms enrollment — same shape as BirrStaffService.confirmMfaEnrollment, audit-logged as founder.mfa_enabled instead of birr_staff.mfa_enabled. */
+  async confirmMfaEnrollment(userId: string, code: string) {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!user.mfaSecretEncrypted) {
+      throw new BadRequestException("Start enrollment before confirming it.");
+    }
+    const secret = this.encryption.decrypt(user.mfaSecretEncrypted);
+    if (!this.mfa.verifyCode(secret, code)) {
+      throw new BadRequestException("Incorrect code — check your authenticator app and try again.");
+    }
+
+    const backupCodes = this.mfa.generateBackupCodes();
+    const hashedCodes = await this.mfa.hashBackupCodes(backupCodes);
+
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({ where: { id: userId }, data: { mfaEnabled: true } });
+      await tx.mfaBackupCode.createMany({
+        data: hashedCodes.map((codeHash) => ({ userId, codeHash })),
+      });
+      await tx.auditLog.create({
+        data: {
+          actorType: "founder_user",
+          actorUserId: userId,
+          action: "founder.mfa_enabled",
+          entityType: "User",
+          entityId: userId,
+          before: { mfaEnabled: user.mfaEnabled } as any,
+          after: { mfaEnabled: updated.mfaEnabled } as any,
+        },
+      });
+    });
+
+    return { backupCodes };
+  }
+
+  /**
+   * platform_admin-only break-glass path — a Founder who loses both
+   * their device and their backup codes has no self-service recovery
+   * (MFA has no self-service disable, same reasoning as the staff
+   * side). Clears MFA state entirely; doesn't touch password or status.
+   */
+  async resetMfa(userId: string, actorStaffUserId: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException(`User "${userId}" not found.`);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { mfaEnabled: false, mfaSecretEncrypted: null },
+      });
+      await tx.mfaBackupCode.deleteMany({ where: { userId } });
+      await tx.auditLog.create({
+        data: {
+          actorType: "birr_staff",
+          actorUserId: actorStaffUserId,
+          action: "founder.mfa_reset",
+          entityType: "User",
+          entityId: userId,
+          before: { mfaEnabled: user.mfaEnabled } as any,
+          after: { mfaEnabled: false } as any,
+        },
+      });
+    });
+    return { ok: true };
   }
 
   async verifyEmail(token: string) {
@@ -454,7 +571,7 @@ export class FoundersService {
       include: { founder: true },
     });
     return {
-      user: { id: user.id, email: user.email, fullName: user.fullName },
+      user: { id: user.id, email: user.email, fullName: user.fullName, mfaEnabled: user.mfaEnabled },
       founder: membership?.founder ?? null,
     };
   }
@@ -470,7 +587,7 @@ export class FoundersService {
   listMembers(founderId: string) {
     return prisma.founderMembership.findMany({
       where: { founderId },
-      include: { user: { select: { id: true, fullName: true, email: true } } },
+      include: { user: { select: { id: true, fullName: true, email: true, mfaEnabled: true } } },
       orderBy: { createdAt: "asc" },
     });
   }

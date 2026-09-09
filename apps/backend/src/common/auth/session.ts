@@ -133,6 +133,23 @@ export function clearMfaPendingCookie(res: Response): void {
   res.clearCookie(MFA_PENDING_COOKIE_NAME, { path: "/" });
 }
 
+// Founder-side counterpart — distinct name from MFA_PENDING_COOKIE_NAME
+// for the same reason SESSION_COOKIE_NAME/STAFF_SESSION_COOKIE_NAME are
+// split (a person can hold both a Founder and a staff session in the
+// same browser). signMfaPendingToken/verifyMfaPendingToken above are
+// already cookie-name-agnostic (they only carry userId + the
+// "mfa_pending" purpose claim), so they're reused as-is — only the
+// cookie name/set/clear differ.
+export const FOUNDER_MFA_PENDING_COOKIE_NAME = "birr_founder_mfa_pending";
+
+export function setFounderMfaPendingCookie(res: Response, token: string): void {
+  res.cookie(FOUNDER_MFA_PENDING_COOKIE_NAME, token, mfaPendingCookieOptions());
+}
+
+export function clearFounderMfaPendingCookie(res: Response): void {
+  res.clearCookie(FOUNDER_MFA_PENDING_COOKIE_NAME, { path: "/" });
+}
+
 /**
  * "Is *some* session present, Founder or Birr-staff" — the generic gate
  * every dual-purpose controller checks before calling isBirrStaffSession

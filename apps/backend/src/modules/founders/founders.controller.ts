@@ -27,9 +27,24 @@ import {
 import { WhatsAppVerificationService } from "./whatsapp/whatsapp-verification.service";
 import { MAX_SIZE_BYTES as MAX_LOGO_SIZE_BYTES } from "../foundations/logo-storage.service";
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
-import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
-import { setSessionCookie, clearSessionCookie, signSessionToken, hasAnySessionCookie } from "../../common/auth/session";
+import { isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
+import {
+  setSessionCookie,
+  clearSessionCookie,
+  signSessionToken,
+  hasAnySessionCookie,
+  setFounderMfaPendingCookie,
+  clearFounderMfaPendingCookie,
+  signMfaPendingToken,
+  verifyMfaPendingToken,
+  FOUNDER_MFA_PENDING_COOKIE_NAME,
+} from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
+
+class VerifyLoginMfaBody {
+  @IsString()
+  code!: string;
+}
 
 class RequestWhatsAppOtpBody {
   @IsString()
@@ -87,12 +102,81 @@ export class FoundersController {
   // Brute-force protection on a real credential, not just an OTP — a
   // tighter window than sign-up's since a login attempt is cheaper to
   // script than filling out a whole sign-up form.
+  // mfaEnabled branches: an opted-in account gets a short-lived
+  // MFA-pending cookie instead of a real session — see login/mfa below.
+  // An account that hasn't opted in gets the real session directly,
+  // exactly as before this existed — see account/page.tsx's own
+  // comment on why nothing here is mandatory, unlike birr_staff.
   @Post("login")
   @Throttle({ default: { limit: 10, ttl: 600_000 } })
   async login(@Body() body: LoginInput, @Res({ passthrough: true }) res: Response) {
-    const { userId } = await this.service.login(body);
+    const { userId, mfaEnabled } = await this.service.login(body);
+    if (mfaEnabled) {
+      setFounderMfaPendingCookie(res, signMfaPendingToken(userId));
+      return { ok: true, mfaRequired: true };
+    }
     setSessionCookie(res, signSessionToken(userId));
+    return { ok: true, mfaRequired: false };
+  }
+
+  // Step 2 of login for an mfaEnabled account. There's no real Founder
+  // session yet at this point, only the pending-MFA cookie login() just
+  // set — that cookie (not a client-supplied userId) is the only source
+  // of identity here. Mirrors BirrStaffController.verifyLoginMfa.
+  @Post("login/mfa")
+  @Throttle({ default: { limit: 10, ttl: 600_000 } })
+  async verifyLoginMfa(
+    @Body() body: VerifyLoginMfaBody,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const token = req.cookies?.[FOUNDER_MFA_PENDING_COOKIE_NAME];
+    const payload = token ? verifyMfaPendingToken(token) : null;
+    if (!payload) {
+      throw new UnauthorizedException("Your sign-in session expired — sign in again.");
+    }
+    await this.service.verifyLoginMfaCode(payload.userId, body.code);
+    clearFounderMfaPendingCookie(res);
+    setSessionCookie(res, signSessionToken(payload.userId));
     return { ok: true };
+  }
+
+  // Opt-in enrollment, started from the Account page — unlike
+  // birr_staff's equivalents these require an already-real session
+  // (resolveUserFromSession throws if there isn't one); there's no
+  // pre-session forced-enrollment state to design an exemption for here.
+  @Post("me/mfa/enroll")
+  async startMfaEnrollment(@Req() request: Request) {
+    const user = await resolveUserFromSession(request);
+    return this.service.startMfaEnrollment(user.id);
+  }
+
+  @Post("me/mfa/enroll/confirm")
+  async confirmMfaEnrollment(@Req() request: Request, @Body() body: VerifyLoginMfaBody) {
+    const user = await resolveUserFromSession(request);
+    return this.service.confirmMfaEnrollment(user.id, body.code);
+  }
+
+  // Staff-only break-glass, keyed by the individual User's own id — a
+  // deliberately different path shape from the ":id" routes above
+  // (which all mean a Founder id on this controller) to avoid exactly
+  // that ambiguity. Same manual hasAnySessionCookie + isBirrStaffSession
+  // pattern this controller already uses, since this file doesn't use
+  // @RequiresStaffRole anywhere, narrowed further to platform_admin
+  // specifically — same restriction that decorator would enforce.
+  @Post("members/:userId/mfa/reset")
+  async resetMfa(@Param("userId") userId: string, @Req() request: Request) {
+    if (!hasAnySessionCookie(request)) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
+      throw new UnauthorizedException("This route is Birr-staff only.");
+    }
+    const staff = await resolveBirrStaffFromSession(request);
+    if (staff.staffRole !== "platform_admin") {
+      throw new UnauthorizedException("Only a platform admin can reset a Founder's two-factor setup.");
+    }
+    return this.service.resetMfa(userId, staff.userId);
   }
 
   @Post("logout")
@@ -224,5 +308,27 @@ export class FoundersController {
     const founder = await this.service.findById(id);
     if (!founder) throw new NotFoundException(`Founder "${id}" not found.`);
     return founder;
+  }
+
+  // Staff-facing team list — a Founder can have more than one member
+  // (Team invites), and MFA is a property of an individual person, not
+  // the Founder org, so resetting "the Founder's MFA" doesn't even make
+  // sense without first knowing which specific person. Reuses
+  // listMembers() exactly as-is (its founderId-scoping isn't
+  // self-session-specific — GET /founders/me/members just calls it with
+  // the caller's own founderId). Declared last, same reason findById()
+  // above is: a dynamic ":id/..." prefix registered any earlier would
+  // shadow every static route above it (e.g. GET /founders/me/members
+  // itself) since Express matches routes in registration order, not by
+  // static-vs-dynamic specificity.
+  @Get(":id/members")
+  async membersForStaff(@Param("id") id: string, @Req() request: Request) {
+    if (!hasAnySessionCookie(request)) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
+      throw new UnauthorizedException("This route is Birr-staff only.");
+    }
+    return this.service.listMembers(id);
   }
 }

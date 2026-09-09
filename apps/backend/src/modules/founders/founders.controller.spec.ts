@@ -4,6 +4,15 @@ import { prisma } from "@birr/db";
 import { FoundersController } from "./founders.controller";
 import { FoundersService } from "./founders.service";
 import { signSessionToken, SESSION_COOKIE_NAME, STAFF_SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { EncryptionService } from "../../common/settings/encryption.service";
+import { MfaService } from "../../common/auth/mfa.service";
+
+// Needed for EncryptionService below — same guard
+// birr-staff.service.spec.ts/founders.service.spec.ts use for the same
+// reason.
+if (!process.env.SETTINGS_ENCRYPTION_KEY) {
+  process.env.SETTINGS_ENCRYPTION_KEY = "0".repeat(64);
+}
 
 function requestWithFounderCookie(token: string): Request {
   return { cookies: { [SESSION_COOKIE_NAME]: token } } as unknown as Request;
@@ -108,7 +117,10 @@ describe("FoundersController — list()/findById() are Birr-staff only", () => {
   // is touched, so a real FoundersService with unused constructor args is
   // fine here (its email/logo dependencies are never invoked by either
   // route).
-  const controller = new FoundersController(new FoundersService(undefined as never, undefined as never), undefined as never);
+  const controller = new FoundersController(
+    new FoundersService(undefined as never, undefined as never, undefined as never, undefined as never),
+    undefined as never,
+  );
 
   test("list() rejects a request with no session at all", async () => {
     await expect(controller.list(requestWithNoCookie())).rejects.toThrow(UnauthorizedException);
@@ -138,5 +150,65 @@ describe("FoundersController — list()/findById() are Birr-staff only", () => {
     const request = requestWithStaffCookie(signSessionToken(staffUserId));
     const result = await controller.findById(founderId, request);
     expect(result.id).toBe(founderId);
+  });
+});
+
+// resetMfa() is a real break-glass action (clears MFA state entirely,
+// no self-service undo) — this only exercises the role gate itself
+// (StaffRoleGuard-equivalent, written inline since this controller
+// doesn't use @RequiresStaffRole elsewhere), same scope
+// staff-role.guard.spec.ts gives the equivalent staff-side route. The
+// actual reset logic is covered by FoundersService's own MFA tests.
+describe("FoundersController — members/:userId/mfa/reset is platform_admin only", () => {
+  let platformAdminUserId: string;
+  let complianceOfficerUserId: string;
+  let targetUserId: string;
+
+  beforeAll(async () => {
+    const adminUser = await prisma.user.create({
+      data: { email: `founders-mfa-reset-admin-${Date.now()}@example.test`, fullName: "Reset Gate Admin" },
+    });
+    platformAdminUserId = adminUser.id;
+    await prisma.birrStaff.create({ data: { userId: adminUser.id, staffRole: "platform_admin" } });
+
+    const officerUser = await prisma.user.create({
+      data: { email: `founders-mfa-reset-officer-${Date.now()}@example.test`, fullName: "Reset Gate Officer" },
+    });
+    complianceOfficerUserId = officerUser.id;
+    await prisma.birrStaff.create({ data: { userId: officerUser.id, staffRole: "compliance_officer" } });
+
+    const targetUser = await prisma.user.create({
+      data: { email: `founders-mfa-reset-target-${Date.now()}@example.test`, fullName: "Reset Gate Target" },
+    });
+    targetUserId = targetUser.id;
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  const controller = new FoundersController(
+    new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService()),
+    undefined as never,
+  );
+
+  test("rejects a request with no session at all", async () => {
+    await expect(controller.resetMfa(targetUserId, requestWithNoCookie())).rejects.toThrow(UnauthorizedException);
+  });
+
+  test("rejects a Founder session", async () => {
+    const request = requestWithFounderCookie(signSessionToken(targetUserId));
+    await expect(controller.resetMfa(targetUserId, request)).rejects.toThrow(UnauthorizedException);
+  });
+
+  test("rejects a non-platform_admin staff session", async () => {
+    const request = requestWithStaffCookie(signSessionToken(complianceOfficerUserId));
+    await expect(controller.resetMfa(targetUserId, request)).rejects.toThrow(UnauthorizedException);
+  });
+
+  test("succeeds for a platform_admin session", async () => {
+    const request = requestWithStaffCookie(signSessionToken(platformAdminUserId));
+    const result = await controller.resetMfa(targetUserId, request);
+    expect(result).toEqual({ ok: true });
   });
 });

@@ -7,6 +7,7 @@ export interface SessionUser {
   id: string;
   email: string;
   fullName: string;
+  mfaEnabled: boolean;
 }
 
 export interface Founder {

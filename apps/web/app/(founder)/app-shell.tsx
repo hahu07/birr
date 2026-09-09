@@ -290,21 +290,27 @@ function Sidebar({
 
       <div className="border-t border-white/10 p-2 sm:p-4">
         <div className="flex items-center justify-center gap-3 rounded-md px-1 py-2 sm:justify-start sm:px-2">
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-400 to-accent-600 text-xs font-semibold text-accent-950"
-            title={user.fullName}
-          >
-            {initials(user.fullName)}
-          </div>
-          <div className="hidden min-w-0 flex-1 sm:block">
-            <p className="truncate text-sm font-medium text-white">{user.fullName}</p>
-            {/* The signed-in person, not the Foundation itself — now that
-                Team invites mean more than one person can share a
-                Founder account, showing founder.name here read as
-                "you're signed in as {founder.name}," which was only ever
-                true by coincidence for a lone individual founder. */}
-            <p className="truncate text-xs text-primary-200/70">{founder.name}</p>
-          </div>
+          {/* Only the identity portion is a link — kept as a sibling of
+              the sign-out button below, not a wrapper around it, so
+              sign-out stays its own independent control rather than a
+              button nested inside an anchor. */}
+          <Link href="/account" title="Account & security" className="flex min-w-0 flex-1 items-center gap-3 rounded-md transition-colors hover:opacity-80">
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-400 to-accent-600 text-xs font-semibold text-accent-950"
+              title={user.fullName}
+            >
+              {initials(user.fullName)}
+            </div>
+            <div className="hidden min-w-0 flex-1 sm:block">
+              <p className="truncate text-sm font-medium text-white">{user.fullName}</p>
+              {/* The signed-in person, not the Foundation itself — now that
+                  Team invites mean more than one person can share a
+                  Founder account, showing founder.name here read as
+                  "you're signed in as {founder.name}," which was only ever
+                  true by coincidence for a lone individual founder. */}
+              <p className="truncate text-xs text-primary-200/70">{founder.name}</p>
+            </div>
+          </Link>
           <button
             type="button"
             onClick={onSignOut}

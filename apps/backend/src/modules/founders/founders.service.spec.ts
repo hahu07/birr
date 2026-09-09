@@ -1,10 +1,31 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { compare } from "bcryptjs";
+import * as OTPAuth from "otpauth";
 import { prisma } from "@birr/db";
 import { FoundersService } from "./founders.service";
 import { ResendVerificationEmailAdapter } from "./email/resend.adapter";
 import { LogoStorageService } from "../foundations/logo-storage.service";
+import { EncryptionService } from "../../common/settings/encryption.service";
+import { MfaService } from "../../common/auth/mfa.service";
+
+// Needed for EncryptionService (MFA secret encryption) below — same
+// guard birr-staff.service.spec.ts uses for the same reason.
+if (!process.env.SETTINGS_ENCRYPTION_KEY) {
+  process.env.SETTINGS_ENCRYPTION_KEY = "0".repeat(64);
+}
+
+// Same helper as birr-staff.service.spec.ts's own — computes a real
+// TOTP code from a secret so enrollment/login tests can exercise the
+// actual verify path, not a mocked one.
+function codeFor(secretBase32: string): string {
+  return new OTPAuth.TOTP({
+    algorithm: "SHA1",
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(secretBase32),
+  }).generate();
+}
 
 // Users can't be deleted in afterAll (audit_logs references them and
 // this DB role has UPDATE/DELETE revoked on audit_logs), so every test
@@ -44,7 +65,7 @@ const FAKE_LOGO: Express.Multer.File = {
 
 describe("FoundersService.signUp / login / verifyEmail", () => {
   const emailAdapter = new FakeEmailAdapter();
-  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService());
+  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService(), new EncryptionService(), new MfaService());
 
   afterAll(async () => {
     // Users are left in place, same reasoning as every other spec in
@@ -288,7 +309,7 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
 
 describe("FoundersService.establishFounderAndFoundation", () => {
   const emailAdapter = new FakeEmailAdapter();
-  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService());
+  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService(), new EncryptionService(), new MfaService());
 
   afterAll(async () => {
     await prisma.$disconnect();
@@ -411,7 +432,7 @@ describe("FoundersService.establishFounderAndFoundation", () => {
 
 describe("FoundersService.getOnboardingStatus", () => {
   const emailAdapter = new FakeEmailAdapter();
-  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService());
+  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService(), new EncryptionService(), new MfaService());
 
   afterAll(async () => {
     // Deliberately no cleanup here, unlike other spec files' Foundation/
@@ -492,5 +513,98 @@ describe("FoundersService.getOnboardingStatus", () => {
     expect(status.currentStep).toBe("done");
     expect(status.steps.deedSigned.complete).toBe(true);
     expect(status.onboardingComplete).toBe(true);
+  });
+});
+
+// Opt-in, unlike birr_staff's mandatory MFA — nothing here forces
+// enrollment, so every test creates a fixture User directly rather than
+// going through signUp() (no Founder/Foundation needed at all for MFA
+// itself, which lives entirely on the User row).
+describe("FoundersService MFA", () => {
+  const service = new FoundersService(
+    undefined as never,
+    undefined as never,
+    new EncryptionService(),
+    new MfaService(),
+  );
+
+  let mfaUserId: string;
+  let actorStaffUserId: string;
+
+  beforeAll(async () => {
+    const user = await prisma.user.create({
+      data: { email: testEmail("mfa-founder"), fullName: "MFA Founder Fixture" },
+    });
+    mfaUserId = user.id;
+
+    // A platform_admin acting as the reset button's caller — resetMfa()
+    // itself doesn't check the role (the controller does), so any real
+    // User id is enough to prove actorUserId lands correctly on the
+    // audit log.
+    const actorUser = await prisma.user.create({
+      data: { email: testEmail("mfa-founder-admin-actor"), fullName: "MFA Reset Actor" },
+    });
+    actorStaffUserId = actorUser.id;
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  test("confirmMfaEnrollment() rejects a code that doesn't match the pending secret", async () => {
+    await service.startMfaEnrollment(mfaUserId);
+    await expect(service.confirmMfaEnrollment(mfaUserId, "000000")).rejects.toThrow(BadRequestException);
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: mfaUserId } });
+    expect(user.mfaEnabled).toBe(false);
+  }, 20000);
+
+  test("confirmMfaEnrollment() rejects confirming before enrollment has started", async () => {
+    const user = await prisma.user.create({
+      data: { email: testEmail("mfa-founder-unstarted"), fullName: "Unstarted MFA Founder" },
+    });
+    await expect(service.confirmMfaEnrollment(user.id, "123456")).rejects.toThrow(BadRequestException);
+  });
+
+  test("enrollment start -> confirm with a real code enables MFA and issues 10 usable backup codes", async () => {
+    const { secretForManualEntry } = await service.startMfaEnrollment(mfaUserId);
+    const { backupCodes } = await service.confirmMfaEnrollment(mfaUserId, codeFor(secretForManualEntry));
+
+    expect(backupCodes).toHaveLength(10);
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: mfaUserId } });
+    expect(user.mfaEnabled).toBe(true);
+
+    const logs = await prisma.auditLog.findMany({ where: { entityId: mfaUserId, action: "founder.mfa_enabled" } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ actorType: "founder_user", actorUserId: mfaUserId });
+
+    await expect(service.verifyLoginMfaCode(mfaUserId, codeFor(secretForManualEntry))).resolves.toBeUndefined();
+    await expect(service.verifyLoginMfaCode(mfaUserId, "000000")).rejects.toThrow(UnauthorizedException);
+
+    // A backup code works exactly once.
+    const backupCode = backupCodes[0]!;
+    await expect(service.verifyLoginMfaCode(mfaUserId, backupCode)).resolves.toBeUndefined();
+    await expect(service.verifyLoginMfaCode(mfaUserId, backupCode)).rejects.toThrow(UnauthorizedException);
+  }, 25000);
+
+  test("resetMfa() clears MFA state, deletes backup codes, and is audit-logged against the acting staff member", async () => {
+    const { secretForManualEntry } = await service.startMfaEnrollment(mfaUserId);
+    await service.confirmMfaEnrollment(mfaUserId, codeFor(secretForManualEntry));
+
+    await service.resetMfa(mfaUserId, actorStaffUserId);
+
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: mfaUserId } });
+    expect(user.mfaEnabled).toBe(false);
+    expect(user.mfaSecretEncrypted).toBeNull();
+
+    const remainingCodes = await prisma.mfaBackupCode.findMany({ where: { userId: mfaUserId } });
+    expect(remainingCodes).toHaveLength(0);
+
+    const logs = await prisma.auditLog.findMany({ where: { entityId: mfaUserId, action: "founder.mfa_reset" } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ actorType: "birr_staff", actorUserId: actorStaffUserId });
+  }, 25000);
+
+  test("resetMfa() rejects an unknown user id", async () => {
+    await expect(service.resetMfa(randomUUID(), actorStaffUserId)).rejects.toThrow(NotFoundException);
   });
 });

@@ -763,3 +763,15 @@ export interface MfaEnrollmentStart {
 export interface MfaEnrollmentConfirm {
   backupCodes: string[];
 }
+
+// GET /founders/:id/members — a Founder's team roster, staff-facing.
+// Used by the Ops Console's Foundation detail page to find the specific
+// person to target for a break-glass MFA reset (MFA is a property of
+// the individual User, not the Founder org, and a Founder can have more
+// than one member via Team invites).
+export interface FounderTeamMember {
+  id: string;
+  permissionLevel: "primary_contact" | "viewer" | "requester";
+  status: "active" | "revoked";
+  user: { id: string; fullName: string; email: string; mfaEnabled: boolean };
+}
