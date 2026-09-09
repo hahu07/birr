@@ -41,9 +41,19 @@ describe("MfaService", () => {
     await expect(service.compareBackupCode("wrong-code", hashed!)).resolves.toBe(false);
   });
 
-  test("qrCodeDataUrl() returns a PNG data URL", async () => {
-    const { otpauthUri } = service.generateSecret("checker@example.com");
-    const dataUrl = await service.qrCodeDataUrl(otpauthUri);
-    expect(dataUrl).toMatch(/^data:image\/png;base64,/);
-  });
+  // Explicit timeout: real PNG QR generation comfortably exceeds Jest's
+  // 5s default once a loaded/virtualized runner is running this
+  // alongside ~50 other test files in parallel — confirmed repeatedly,
+  // not a hang. Same reasoning as birr-staff.service.spec.ts's own
+  // explicit timeouts on its MFA tests, which hit this same cost via
+  // startMfaEnrollment().
+  test(
+    "qrCodeDataUrl() returns a PNG data URL",
+    async () => {
+      const { otpauthUri } = service.generateSecret("checker@example.com");
+      const dataUrl = await service.qrCodeDataUrl(otpauthUri);
+      expect(dataUrl).toMatch(/^data:image\/png;base64,/);
+    },
+    20000,
+  );
 });

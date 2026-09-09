@@ -81,12 +81,21 @@ describe("BirrStaffService", () => {
       mfaStaffId = staff.id;
     });
 
-    test("confirmMfaEnrollment() rejects a code that doesn't match the pending secret", async () => {
-      await service.startMfaEnrollment(mfaUserId);
-      await expect(service.confirmMfaEnrollment(mfaUserId, "000000")).rejects.toThrow(BadRequestException);
-      const user = await prisma.user.findUniqueOrThrow({ where: { id: mfaUserId } });
-      expect(user.mfaEnabled).toBe(false);
-    });
+    // Explicit timeout: startMfaEnrollment() does real QR PNG generation,
+    // which comfortably exceeds Jest's 5s default under a loaded/
+    // virtualized runner running this alongside ~50 other test files in
+    // parallel — confirmed repeatedly, not a hang. Same reasoning as the
+    // other two tests below.
+    test(
+      "confirmMfaEnrollment() rejects a code that doesn't match the pending secret",
+      async () => {
+        await service.startMfaEnrollment(mfaUserId);
+        await expect(service.confirmMfaEnrollment(mfaUserId, "000000")).rejects.toThrow(BadRequestException);
+        const user = await prisma.user.findUniqueOrThrow({ where: { id: mfaUserId } });
+        expect(user.mfaEnabled).toBe(false);
+      },
+      20000,
+    );
 
     test("confirmMfaEnrollment() rejects confirming before enrollment has started", async () => {
       const user = await prisma.user.create({
@@ -97,7 +106,10 @@ describe("BirrStaffService", () => {
 
     // Explicit timeout: bcrypt-hashing 10 backup codes plus QR generation
     // comfortably exceeds Jest's 5s default in a loaded/virtualized CI
-    // runner, even though none of it is actually hung.
+    // runner, even though none of it is actually hung. 15000 alone still
+    // intermittently timed out under the full backend suite's parallel
+    // worker contention — confirmed repeatedly (always passed in
+    // isolation) — 25000 gives real headroom instead of guessing again.
     test("enrollment start -> confirm with a real code enables MFA and issues 10 usable backup codes", async () => {
       const { secretForManualEntry } = await service.startMfaEnrollment(mfaUserId);
       const { backupCodes } = await service.confirmMfaEnrollment(mfaUserId, codeFor(secretForManualEntry));
@@ -120,8 +132,10 @@ describe("BirrStaffService", () => {
       const backupCode = backupCodes[0]!;
       await expect(service.verifyLoginMfaCode(mfaUserId, backupCode)).resolves.toBeUndefined();
       await expect(service.verifyLoginMfaCode(mfaUserId, backupCode)).rejects.toThrow(UnauthorizedException);
-    }, 15000);
+    }, 25000);
 
+    // Same reasoning as the test above — startMfaEnrollment() + confirmMfaEnrollment()
+    // do real QR generation + bcrypt hashing.
     test("resetMfa() clears MFA state, deletes backup codes, and is audit-logged", async () => {
       const { secretForManualEntry } = await service.startMfaEnrollment(mfaUserId);
       await service.confirmMfaEnrollment(mfaUserId, codeFor(secretForManualEntry));
@@ -138,6 +152,6 @@ describe("BirrStaffService", () => {
       const logs = await prisma.auditLog.findMany({ where: { entityId: mfaUserId, action: "birr_staff.mfa_reset" } });
       expect(logs).toHaveLength(1);
       expect(logs[0]).toMatchObject({ actorUserId });
-    }, 15000);
+    }, 25000);
   });
 });
