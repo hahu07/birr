@@ -37,7 +37,18 @@
 
 databases:
   - name: birr-postgres
-    plan: starter
+    # 2026-09-09: Render retired the old named instance tiers (Starter/
+    # Standard/Pro) for new databases in favor of explicit cpu-memory
+    # plan ids — "starter" above is rejected outright when connecting a
+    # fresh Blueprint ("legacy plans... no longer supported for new
+    # databases"). 0.1c-256mb carries the exact same specs the old
+    # Starter tier had (0.1 CPU / 256MB RAM) per Render's own legacy-
+    # instance-types doc, so it's the direct like-for-like replacement
+    # for the same non-profit/pre-pilot-scale reasoning this file's top
+    # comment already gives for picking the cheapest real tier — confirm
+    # the current price shown for it in Render's own dashboard plan
+    # picker before connecting, since that number isn't in this repo.
+    plan: 0.1c-256mb
     region: frankfurt
     postgresMajorVersion: "16"
 
@@ -48,7 +59,10 @@ services:
     runtime: docker
     dockerfilePath: ./apps/backend/Dockerfile
     dockerContext: .
-    plan: starter
+    # See birr-postgres's own comment above — Render retired "starter"
+    # for new services too; 0.5c-512mb has identical specs (0.5 CPU /
+    # 512MB) to the old web/private-service Starter tier.
+    plan: 0.5c-512mb
     region: frankfurt
     autoDeploy: false
     healthCheckPath: /health
@@ -145,7 +159,10 @@ services:
     runtime: docker
     dockerfilePath: ./apps/web/Dockerfile
     dockerContext: .
-    plan: starter
+    # See birr-postgres's own comment above — Render retired "starter"
+    # for new services too; 0.5c-512mb has identical specs (0.5 CPU /
+    # 512MB) to the old web/private-service Starter tier.
+    plan: 0.5c-512mb
     region: frankfurt
     autoDeploy: false
     envVars:
@@ -184,7 +201,10 @@ services:
     runtime: docker
     dockerfilePath: ./services/agents/Dockerfile
     dockerContext: .
-    plan: starter
+    # See birr-postgres's own comment above — Render retired "starter"
+    # for new services too; 0.5c-512mb has identical specs (0.5 CPU /
+    # 512MB) to the old web/private-service Starter tier.
+    plan: 0.5c-512mb
     region: frankfurt
     autoDeploy: false
     envVars:
