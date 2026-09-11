@@ -81,7 +81,11 @@ describe("VaultContributionsService", () => {
     );
     openVaultId = vault.id;
     vaultIds.push(vault.id);
-    await vaultsService.updateStatus(vault.id, "open", actorUserId);
+    // publish() is internal-only (the real caller is
+    // GovernedActionsService's vault.publish handler) — called directly
+    // here purely as fixture setup, same as every other spec's own
+    // "just needs an already-open vault" shortcut.
+    await prisma.$transaction((tx) => vaultsService.publish(vault.id, tx));
 
     const cause = await vaultsService.createCause({ vaultId: vault.id, name: "Water Wells" }, actorUserId);
     openVaultCauseId = cause.id;

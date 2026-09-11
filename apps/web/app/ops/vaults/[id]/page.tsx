@@ -18,6 +18,7 @@ import { VaultCausesSection } from "./VaultCausesSection";
 import { VaultInvestmentsSection } from "./VaultInvestmentsSection";
 import { VaultProceedsSection } from "./VaultProceedsSection";
 import { VaultDistributionsSection } from "./VaultDistributionsSection";
+import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 
 const STATUS_TONE: Record<VaultStatus, "success" | "warning" | "neutral" | "danger"> = {
   draft: "neutral",
@@ -28,8 +29,12 @@ const STATUS_TONE: Record<VaultStatus, "success" | "warning" | "neutral" | "dang
 
 // Mirrors ALLOWED_STATUS_TRANSITIONS in vaults.service.ts — the server
 // re-validates for real, this only decides which buttons to show.
+// draft -> open is deliberately absent here: unlike every other
+// transition, publishing a vault for the first time is the governed
+// "vault.publish" action (see StatusActions' own dedicated branch
+// below), not a direct PATCH one staff member can trigger alone.
 const NEXT_STATUSES: Record<VaultStatus, VaultStatus[]> = {
-  draft: ["open"],
+  draft: [],
   open: ["closed"],
   closed: ["open", "archived"],
   archived: [],
@@ -177,6 +182,24 @@ function StatusActions({ vault, onChanged }: { vault: Vault; onChanged: () => vo
   const [submitting, setSubmitting] = useState<VaultStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const next = NEXT_STATUSES[vault.status];
+
+  // Publishing a draft is the one status change that's governed — see
+  // NEXT_STATUSES' own comment. The real effect only happens once a
+  // different, eligible staff member approves it on the Approval Queue,
+  // which already renders any payload generically and needed no changes
+  // to pick this permission up.
+  if (vault.status === "draft") {
+    return (
+      <div className="shrink-0 text-right">
+        <ProposeGovernedActionButton
+          permissionKey="vault.publish"
+          payload={{ vaultId: vault.id }}
+          label="Propose publish"
+          onProposed={onChanged}
+        />
+      </div>
+    );
+  }
 
   if (next.length === 0) return null;
 

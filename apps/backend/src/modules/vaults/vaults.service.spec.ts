@@ -33,6 +33,14 @@ describe("VaultsService", () => {
     return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
   }
 
+  // publish() is internal-only — the real caller is
+  // GovernedActionsService's vault.publish handler, on approval, inside
+  // its own transaction (see that method's own comment). Fixture helper
+  // for every other test here that just needs an already-open vault.
+  function publishVault(vaultId: string) {
+    return prisma.$transaction((tx) => service.publish(vaultId, tx));
+  }
+
   test("create() writes the vault and an audit_logs record attributed to the calling birr_staff", async () => {
     const slug = uniqueSlug("ramadan-relief");
     const vault = await service.create(
@@ -62,19 +70,30 @@ describe("VaultsService", () => {
     ).rejects.toThrow(ConflictException);
   });
 
-  test("updateStatus(): draft -> open sets openedAt, and open -> draft is rejected as an invalid transition", async () => {
+  test("updateStatus(): draft -> open is rejected — publishing is the governed vault.publish action, not a direct staff call", async () => {
     const vault = await service.create(
       { name: "Status Test Vault", slug: uniqueSlug("status-test"), type: "project", currency: "USD", jurisdiction: "NG" },
       actorUserId,
     );
     vaultIds.push(vault.id);
+
+    await expect(service.updateStatus(vault.id, "open", actorUserId)).rejects.toThrow(BadRequestException);
+    await expect(service.updateStatus(vault.id, "draft", actorUserId)).rejects.toThrow(BadRequestException);
+  });
+
+  test("publish(): draft -> open sets openedAt, and rejects a vault that isn't draft", async () => {
+    const vault = await service.create(
+      { name: "Publish Test Vault", slug: uniqueSlug("publish-test"), type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
     expect(vault.openedAt).toBeNull();
 
-    const opened = await service.updateStatus(vault.id, "open", actorUserId);
+    const opened = await publishVault(vault.id);
     expect(opened.status).toBe("open");
     expect(opened.openedAt).not.toBeNull();
 
-    await expect(service.updateStatus(vault.id, "draft", actorUserId)).rejects.toThrow(BadRequestException);
+    await expect(publishVault(vault.id)).rejects.toThrow(BadRequestException);
   });
 
   test("updateStatus(): archived is only reachable from closed, not directly from open", async () => {
@@ -83,7 +102,7 @@ describe("VaultsService", () => {
       actorUserId,
     );
     vaultIds.push(vault.id);
-    await service.updateStatus(vault.id, "open", actorUserId);
+    await publishVault(vault.id);
 
     await expect(service.updateStatus(vault.id, "archived", actorUserId)).rejects.toThrow(BadRequestException);
 
@@ -112,7 +131,7 @@ describe("VaultsService", () => {
       actorUserId,
     );
     vaultIds.push(openVault.id);
-    await service.updateStatus(openVault.id, "open", actorUserId);
+    await publishVault(openVault.id);
 
     const openList = await service.listOpen();
     const openIds = openList.map((v) => v.id);

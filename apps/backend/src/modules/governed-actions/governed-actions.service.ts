@@ -519,10 +519,57 @@ export class GovernedActionsService {
       ],
       // ---- Vault handlers below — see schema.prisma's own Vault
       // section comment: a separate product from everything above, no
-      // Founder involved. All four are governed specifically because
+      // Founder involved. All five are governed specifically because
       // there's no Founder to hold the self-service half of these
       // decisions the way WaqfCause.allocatedAmount/Investment do, and
-      // it's public money. ----
+      // it's public money — vault.publish additionally because it's the
+      // moment Birr's brand starts soliciting the public at all (see
+      // VaultsService.publish's own comment). ----
+      [
+        "vault.publish",
+        {
+          resolveVaultId: async (payload) => {
+            const { vaultId } = payload as { vaultId: string };
+            return vaultId;
+          },
+          checkDuplicate: async (payload) => {
+            const { vaultId } = payload as { vaultId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "vault.publish" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["vaultId"], equals: vaultId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "A publish proposal for this vault is already awaiting a decision — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { vaultId } = payload as { vaultId: string };
+            const vault = await prisma.vault.findUnique({ where: { id: vaultId } });
+            return vault
+              ? `Publish "${vault.name}" — starts accepting public contributions.`
+              : `Vault "${vaultId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { vaultId } = payload as { vaultId: string };
+            const vault = await prisma.vault.findUnique({ where: { id: vaultId }, select: { status: true } });
+            return vault ? { ...vault } : null;
+          },
+          onApprove: async (payload, tx) => {
+            const { vaultId } = payload as { vaultId: string };
+            const before = await tx.vault.findUnique({ where: { id: vaultId } });
+            const vault = await this.vaultsService.publish(vaultId, tx);
+            return {
+              auditAction: "vault.published",
+              entityType: "Vault",
+              entityId: vault.id,
+              before,
+              after: vault,
+            };
+          },
+        },
+      ],
       [
         "vault.cause_allocate",
         {

@@ -34,9 +34,14 @@ export const permissions = [
   { key: "waqf.view", category: "waqf", requiresMakerChecker: false, description: "View waqf details. Not maker-checker gated." },
   { key: "compliance.report_export", category: "compliance", requiresMakerChecker: false, description: "Export a compliance report. Not maker-checker gated." },
   // Vault — a separate, staff-curated public-giving product (see
-  // schema.prisma's own Vault section comment). All four governed here
+  // schema.prisma's own Vault section comment). All five governed here
   // specifically because there's no Founder to hold the self-service
-  // half of the equivalent Waqf decisions, and it's public money.
+  // half of the equivalent Waqf decisions, and it's public money —
+  // vault.publish additionally because it's the moment Birr's brand
+  // starts soliciting the public at all (owner's explicit decision,
+  // 2026-09-11, closing a gap the original design flagged but left
+  // open for v1).
+  { key: "vault.publish", category: "vault", requiresMakerChecker: true, description: "Publish a draft vault, making it visible and open for public contributions." },
   { key: "vault.cause_allocate", category: "vault", requiresMakerChecker: true, description: "Allocate a vault's pooled contributions to one of its causes." },
   { key: "vault.proceeds_allocate", category: "vault", requiresMakerChecker: true, description: "Allocate an investment-style vault's recorded proceeds to one of its causes." },
   { key: "vault.investment_change", category: "vault", requiresMakerChecker: true, description: "Change a vault investment's allocation." },
@@ -57,6 +62,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "beneficiary.status_change": { canMaker: true },
     "counterparty.onboard": { canChecker: true },
     "waqf.view": { canMaker: true },
+    "vault.publish": { canMaker: true },
     "vault.cause_allocate": { canMaker: true },
     "vault.distribution_approve": { canMaker: true },
   },
@@ -72,6 +78,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "beneficiary.status_change": { canChecker: true },
     "counterparty.onboard": { canChecker: true },
     "waqf.view": { canMaker: true },
+    "vault.publish": { canChecker: true },
     "vault.cause_allocate": { canChecker: true },
     "vault.proceeds_allocate": { canChecker: true },
     "vault.investment_change": { canChecker: true },
@@ -111,6 +118,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "beneficiary.status_change": { canChecker: true },
     "compliance.report_export": { canMaker: true },
     "waqf.view": { canMaker: true },
+    "vault.publish": { canChecker: true },
     "vault.cause_allocate": { canChecker: true },
     "vault.proceeds_allocate": { canChecker: true },
     "vault.distribution_approve": { canChecker: true },

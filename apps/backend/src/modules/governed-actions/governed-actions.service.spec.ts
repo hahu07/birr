@@ -1210,11 +1210,13 @@ describe("GovernedActionsService", () => {
   });
 
   // Vault — a separate, staff-curated public-giving product (see
-  // schema.prisma's own Vault section comment). All four handlers below
+  // schema.prisma's own Vault section comment). All five handlers below
   // are governed specifically because there's no Founder here to hold
   // the self-service half of the equivalent Waqf decisions, and it's
-  // public money. Reuses this file's own seeded maker/checker fixtures:
-  // mutawalli_officer (makerUserId) is the seeded maker for
+  // public money — vault.publish additionally because it's the moment
+  // Birr's brand starts soliciting the public at all. Reuses this
+  // file's own seeded maker/checker fixtures: mutawalli_officer
+  // (makerUserId) is the seeded maker for vault.publish/
   // vault.cause_allocate/vault.distribution_approve; investment_committee
   // (investmentMakerUserId) for vault.proceeds_allocate/
   // vault.investment_change; compliance_officer (distributionCheckerUserId)
@@ -1249,6 +1251,61 @@ describe("GovernedActionsService", () => {
       });
       return { vault, cause };
     }
+
+    test("vault.publish: approve → status becomes open, openedAt is set, audit-logged", async () => {
+      const draftVault = await prisma.vault.create({
+        data: {
+          name: `Governed Actions Fixture Draft Vault ${randomUUID()}`,
+          slug: `governed-actions-fixture-draft-${randomUUID()}`,
+          type: "project",
+          currency: "USD",
+          jurisdiction: "NG",
+          createdByUserId: makerUserId,
+        },
+      });
+      vaultIds.push(draftVault.id);
+
+      const action = await service.propose({
+        permissionKey: "vault.publish",
+        payload: { vaultId: draftVault.id },
+        makerUserId,
+      });
+      governedActionIds.push(action.id);
+      expect(action.vaultId).toBe(draftVault.id);
+
+      const result = await service.decide({
+        governedActionId: action.id,
+        checkerUserId: distributionCheckerUserId,
+        approve: true,
+      });
+      expect(result.governedAction.status).toBe("approved");
+      expect(result.fulfillment?.entityType).toBe("Vault");
+
+      const updated = await prisma.vault.findUniqueOrThrow({ where: { id: draftVault.id } });
+      expect(updated.status).toBe("open");
+      expect(updated.openedAt).not.toBeNull();
+
+      const logs = await auditLogsFor(draftVault.id);
+      expect(logs.some((l) => l.action === "vault.published" && l.vaultId === draftVault.id)).toBe(true);
+    });
+
+    test("vault.publish: rejects a vault that isn't draft", async () => {
+      const { vault } = await createProjectVaultWithCause();
+      await prisma.vault.update({ where: { id: vault.id }, data: { status: "open", openedAt: new Date() } });
+
+      const action = await service.propose({
+        permissionKey: "vault.publish",
+        payload: { vaultId: vault.id },
+        makerUserId,
+      });
+      governedActionIds.push(action.id);
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true }),
+      ).rejects.toThrow(BadRequestException);
+      const stillProposed = await prisma.governedAction.findUniqueOrThrow({ where: { id: action.id } });
+      expect(stillProposed.status).toBe("proposed");
+    });
 
     test("vault.cause_allocate: approve → VaultCause.allocatedAmount is set, vaultId is derived (not client-supplied), both audit-logged", async () => {
       const { vault, cause } = await createProjectVaultWithCause();

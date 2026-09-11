@@ -64,9 +64,11 @@ export class CreateVaultCauseInput {
 // closed — a vault shouldn't disappear from "currently running" history
 // straight from open, so a staff member can't skip the "no longer
 // accepting new contributions but still visible/disbursing" step by
-// mistake.
+// mistake. draft -> open is deliberately NOT here — see publish() below:
+// unlike every other transition, that one requires the governed
+// vault.publish action, not a single staff member acting alone.
 const ALLOWED_STATUS_TRANSITIONS: Record<VaultStatus, VaultStatus[]> = {
-  draft: ["open"],
+  draft: [],
   open: ["closed"],
   closed: ["open", "archived"],
   archived: [],
@@ -79,8 +81,8 @@ export class VaultsService {
   /**
    * Birr-staff path — plain CRUD, not a governed_actions action, same
    * trust level as WaqfCausesService.create()'s own custom-cause
-   * registration. Starts at status: draft (see UpdateVaultStatusInput
-   * transition table below for how it later becomes visible/public).
+   * registration. Starts at status: draft — see publish() below for how
+   * it later becomes visible/public (a governed action, unlike this).
    */
   async create(input: CreateVaultInput, actorUserId: string) {
     try {
@@ -107,12 +109,10 @@ export class VaultsService {
   }
 
   /**
-   * draft -> open is what actually makes a vault appear on the public
-   * listing and start accepting contributions (see the public-facing
-   * VaultContributionsController, a later slice) — everything else here
-   * is plain staff CRUD, same trust level as create() above. See
-   * ALLOWED_STATUS_TRANSITIONS's own comment for why archived is only
-   * reachable from closed, not open.
+   * Plain staff CRUD, same trust level as create() above — draft -> open
+   * is deliberately excluded (see ALLOWED_STATUS_TRANSITIONS's own
+   * comment and publish() below). See that same comment for why
+   * archived is only reachable from closed, not open.
    */
   async updateStatus(id: string, newStatus: VaultStatus, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
@@ -120,11 +120,14 @@ export class VaultsService {
       if (!vault) throw new NotFoundException(`Vault "${id}" not found.`);
 
       if (!ALLOWED_STATUS_TRANSITIONS[vault.status].includes(newStatus)) {
-        throw new BadRequestException(
-          `Vault "${vault.name}" is "${vault.status}" — it can only move to one of: ${
-            ALLOWED_STATUS_TRANSITIONS[vault.status].join(", ") || "(nothing; this is a terminal status)"
-          }.`,
-        );
+        const allowed = ALLOWED_STATUS_TRANSITIONS[vault.status];
+        const guidance =
+          vault.status === "draft"
+            ? 'propose the "Publish" governed action instead'
+            : allowed.length > 0
+              ? `it can only move to one of: ${allowed.join(", ")}`
+              : "this is a terminal status";
+        throw new BadRequestException(`Vault "${vault.name}" is "${vault.status}" — ${guidance}.`);
       }
 
       const updated = await tx.vault.update({
@@ -150,6 +153,29 @@ export class VaultsService {
 
       return updated;
     });
+  }
+
+  /**
+   * Internal only — never exposed behind a public controller route.
+   * vault.publish is a governed action; the only caller is
+   * GovernedActionsService's handler map, on approval, inside its own
+   * transaction. draft -> open is the moment Birr's brand starts
+   * soliciting public money for a named cause — unlike every other
+   * status transition (closing, reopening, archiving an already-vetted,
+   * previously-public vault), a vault's very first publish requires
+   * maker-checker sign-off rather than one staff member acting alone.
+   * Raised directly with the owner as a gap the original design flagged
+   * but left open for v1; closed at their explicit direction
+   * (2026-09-11).
+   */
+  async publish(id: string, tx: Prisma.TransactionClient) {
+    const vault = await tx.vault.findFirst({ where: { id, deletedAt: null } });
+    if (!vault) throw new NotFoundException(`Vault "${id}" not found.`);
+    if (vault.status !== "draft") {
+      throw new BadRequestException(`Vault "${vault.name}" is "${vault.status}", not "draft" — nothing to publish.`);
+    }
+
+    return tx.vault.update({ where: { id }, data: { status: "open", openedAt: new Date() } });
   }
 
   /**
