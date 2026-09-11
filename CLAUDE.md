@@ -104,6 +104,31 @@ copy still describing corpus allocation as "how much reaches your
 cause's beneficiaries" is only accurate for Asset/Project funds now,
 not Investment.
 
+**Update, 2026-09-10/11 — Vault, a second product alongside everything
+above.** Everything in this "What this is" section up to here describes
+one product: a Founder establishes a Foundation and Waqf Fund(s),
+self-service, and Birr becomes Mutawalli over what they establish.
+Vault is a deliberately separate product built alongside it — a
+Birr-staff-curated public-giving campaign (e.g. "Ramadan Relief Vault")
+that anyone can give to directly, with no Founder, no Foundation, no
+deed, and no account of any kind involved. The owner's explicit,
+foundational instruction when this was built: the existing Founder
+system stays completely untouched; Vault caters to non-Founders as its
+own product, while reusing existing infrastructure (payment provider
+adapters, the `CauseCategory` catalog, the `governed_actions`
+maker-checker engine, the `Counterparty` registry) rather than
+duplicating any of it. Vault payouts go to a `Counterparty`
+(delivery/relief partner), not a new individual-beneficiary registry —
+pooled public giving is a different scale than a Founder's own vetted
+Beneficiaries; `VaultContribution` is a plain ledger row with no
+`Asset`-registry equivalent, since Vault money is fungible pooled cash,
+not an individually-valued asset. Vaults are created and curated
+**exclusively by Birr staff**, confirmed directly with the owner — never
+a Founder, and never a new self-service role. See `docs/core-service
+.md`'s own "Two products, one trustee" section for the full
+product-level explanation; this note exists so this section above isn't
+read as the complete picture of what Birr now is.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
@@ -116,10 +141,17 @@ not Investment.
   changes, beneficiary-criteria changes) go through `governed_actions`,
   with a DB check constraint that the checker is never the same person
   as the maker — enforced by the database, not application logic alone.
+  Vault's own six governed actions (publishing, cause/proceeds
+  allocation, investment change, distribution approval, contribution
+  refund) go through the exact same `governed_actions` table and the
+  same DB constraint — one shared engine, not a second copy for Vault.
 - **Founder/waqf isolation, not tenant isolation**: there is no per-org
   admin console to isolate. Isolation is scoped through `waqf_founders`
   and `founder_memberships` — a Founder sees only the waqf(s) they
-  established, nothing about any other Founder.
+  established, nothing about any other Founder. This doesn't apply to
+  Vault at all — there's no Founder to isolate from; a Vault is created
+  by staff and, once published, its existence and causes are public by
+  design, not scoped to anyone.
 - **AI is advisory only — enforced structurally, not by policy**: any AI
   agent may act as a *maker* on a governed action (propose, draft, flag)
   by writing to `governed_actions` via its own `ai_agents` registry
@@ -152,6 +184,12 @@ not Investment.
 8. Compliance report / audit export
 9. `audit_logs` (cross-cutting, not a "module" — every write path touches
    it) and `invitations` (discriminated by founder_user vs birr_staff)
+10. `vaults`, `vault_causes`, `vault_donors`, `vault_donor_thresholds`,
+    `vault_contributions`, `vault_investments`, `vault_proceeds`,
+    `vault_distributions` — Vault's own entities (see the "Update,
+    2026-09-10/11 — Vault" note above), parallel to the Waqf-side ones
+    above, never extending them. No `vault_founders`-style join table
+    exists or should be added — a Vault has no Founder to join to.
 
 **Update, 2026-09-03 — `WaqfType` dropped `hybrid`.** A Founder can
 already establish as many separate Waqf Funds as they like under one
