@@ -1,0 +1,222 @@
+"use client";
+
+// Distribution registration is plain CRUD (a draft payout to a
+// Counterparty, not an individual beneficiary — see the plan's own
+// "payouts go to Counterparty" framing decision) — approval is always
+// the vault.distribution_approve governed action, decided on the
+// Approval Queue page (never here).
+import { useCallback, useEffect, useState } from "react";
+import { apiFetchJson } from "../../../../lib/api";
+import { formatAmount, humanize } from "../../../../lib/format";
+import type { Counterparty, VaultCause, VaultDistribution } from "../../../../lib/ops-types";
+import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
+
+const STATUS_TONE: Record<VaultDistribution["status"], "success" | "warning" | "danger"> = {
+  pending: "warning",
+  approved: "warning",
+  disbursing: "warning",
+  paid: "success",
+  payout_failed: "danger",
+  rejected: "danger",
+};
+
+export function VaultDistributionsSection({
+  vaultId,
+  currency,
+  causes,
+}: {
+  vaultId: string;
+  currency: string;
+  causes: VaultCause[];
+}) {
+  const [distributions, setDistributions] = useState<VaultDistribution[] | null>(null);
+  const [activeCounterparties, setActiveCounterparties] = useState<Counterparty[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const load = useCallback(() => {
+    apiFetchJson<VaultDistribution[]>(`/vault-distributions?vaultId=${vaultId}`)
+      .then(setDistributions)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
+  }, [vaultId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    apiFetchJson<Counterparty[]>("/counterparties?status=active")
+      .then(setActiveCounterparties)
+      .catch(() => setActiveCounterparties([]));
+  }, []);
+
+  const causeName = (id: string) => causes.find((c) => c.id === id)?.name ?? "—";
+  const counterpartyName = (id: string) => activeCounterparties.find((c) => c.id === id)?.name ?? "—";
+
+  return (
+    <section>
+      <SectionHeader
+        title="Distributions"
+        description="Draft payouts to a relief/delivery partner — approving one is a maker-checker decision on the Approval Queue."
+        actionLabel={showForm ? "Cancel" : "Add distribution"}
+        onAction={() => setShowForm((v) => !v)}
+      />
+
+      {error && (
+        <Alert tone="danger" title="Couldn't load distributions" className="mb-4">
+          {error}
+        </Alert>
+      )}
+
+      {showForm &&
+        (causes.length === 0 || activeCounterparties.length === 0 ? (
+          <Alert tone="warning" title="Nothing to distribute to yet" className="mb-4">
+            A distribution needs at least one Cause on this vault and one active Counterparty — add those first.
+          </Alert>
+        ) : (
+          <DistributionForm
+            vaultId={vaultId}
+            currency={currency}
+            causes={causes}
+            counterparties={activeCounterparties}
+            onCreated={() => {
+              setShowForm(false);
+              load();
+            }}
+          />
+        ))}
+
+      {!error && distributions === null && <RowsSkeleton columns={5} />}
+
+      {!error && distributions !== null && distributions.length === 0 && !showForm && (
+        <EmptyState title="No distributions yet" description="Add one above once there's a partner to pay out to." />
+      )}
+
+      {!error && distributions !== null && distributions.length > 0 && (
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell>Counterparty</TableHeaderCell>
+              <TableHeaderCell>Cause</TableHeaderCell>
+              <TableHeaderCell>Amount</TableHeaderCell>
+              <TableHeaderCell>Status</TableHeaderCell>
+              <TableHeaderCell />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {distributions.map((d) => (
+              <TableRow key={d.id}>
+                <TableCell className="font-medium text-slate-900">{counterpartyName(d.counterpartyId)}</TableCell>
+                <TableCell className="text-slate-500">{causeName(d.vaultCauseId)}</TableCell>
+                <TableCell className="text-slate-500">
+                  {formatAmount(d.amount)} {d.currency}
+                </TableCell>
+                <TableCell>
+                  <Badge tone={STATUS_TONE[d.status]}>{humanize(d.status)}</Badge>
+                  {d.status === "payout_failed" && d.payoutError && (
+                    <p className="mt-1 max-w-[16rem] text-xs text-red-600">{d.payoutError}</p>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {d.status === "pending" && (
+                    <ProposeGovernedActionButton
+                      permissionKey="vault.distribution_approve"
+                      payload={{ vaultDistributionId: d.id }}
+                      label="Propose approval"
+                      onProposed={load}
+                    />
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </section>
+  );
+}
+
+function DistributionForm({
+  vaultId,
+  currency,
+  causes,
+  counterparties,
+  onCreated,
+}: {
+  vaultId: string;
+  currency: string;
+  causes: VaultCause[];
+  counterparties: Counterparty[];
+  onCreated: () => void;
+}) {
+  const [vaultCauseId, setVaultCauseId] = useState(causes[0]?.id ?? "");
+  const [counterpartyId, setCounterpartyId] = useState(counterparties[0]?.id ?? "");
+  const [amount, setAmount] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await apiFetchJson("/vault-distributions", {
+        method: "POST",
+        body: JSON.stringify({ vaultId, vaultCauseId, counterpartyId, amount, currency }),
+      });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+      {error && (
+        <Alert tone="danger" title="Couldn't add distribution">
+          {error}
+        </Alert>
+      )}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-slate-700">Counterparty</label>
+          <select
+            value={counterpartyId}
+            onChange={(e) => setCounterpartyId(e.target.value)}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          >
+            {counterparties.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-slate-700">Cause</label>
+          <select
+            value={vaultCauseId}
+            onChange={(e) => setVaultCauseId(e.target.value)}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          >
+            {causes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="w-32 space-y-1.5">
+          <label className="text-sm font-medium text-slate-700">Amount ({currency})</label>
+          <Input type="number" min="0" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </div>
+        <Button type="submit" disabled={submitting}>
+          {submitting ? "Adding…" : "Add"}
+        </Button>
+      </div>
+    </form>
+  );
+}

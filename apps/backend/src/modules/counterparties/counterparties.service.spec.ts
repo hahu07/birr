@@ -2,9 +2,10 @@ import { prisma } from "@birr/db";
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { CounterpartiesService } from "./counterparties.service";
+import { EncryptionService } from "../../common/settings/encryption.service";
 
 describe("CounterpartiesService", () => {
-  const service = new CounterpartiesService();
+  const service = new CounterpartiesService(new EncryptionService());
 
   const counterpartyIds: string[] = [];
   let actorUserId: string;

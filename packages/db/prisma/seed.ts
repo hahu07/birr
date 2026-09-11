@@ -1,6 +1,14 @@
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
-import { roles, permissions, rolePermissions, contributionMinimums, corpusMinimums, causeCategories } from "./seed-data";
+import {
+  roles,
+  permissions,
+  rolePermissions,
+  contributionMinimums,
+  corpusMinimums,
+  vaultDonorThresholds,
+  causeCategories,
+} from "./seed-data";
 
 const prisma = new PrismaClient();
 const BCRYPT_ROUNDS = 10;
@@ -114,6 +122,14 @@ async function main() {
     });
   }
 
+  for (const threshold of vaultDonorThresholds) {
+    await prisma.vaultDonorThreshold.upsert({
+      where: { currency: threshold.currency },
+      update: { thresholdAmount: threshold.thresholdAmount },
+      create: threshold,
+    });
+  }
+
   // Singleton — no natural unique key to upsert on, so this only ever
   // creates the row once; re-running the seed leaves an already-tuned
   // percentage alone rather than stomping it back to the default.
@@ -152,7 +168,7 @@ async function main() {
     create: { userId: adminUser.id, staffRole: "platform_admin" },
   });
 
-  console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums, ${corpusMinimums.length} corpus minimums, ${causeCategories.length} cause categories.`);
+  console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums, ${corpusMinimums.length} corpus minimums, ${vaultDonorThresholds.length} vault donor thresholds, ${causeCategories.length} cause categories.`);
   console.log(`Seeded bootstrap platform_admin: ${SEED_ADMIN_EMAIL} (password: ${SEED_ADMIN_PASSWORD}) — change this before any shared/non-local use.`);
 
   for (const agentSeed of agentSeeds) {

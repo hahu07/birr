@@ -52,8 +52,12 @@ const NAV_ITEMS = [
 // public the same way, and public regardless of an in-progress
 // founder's onboarding step too, or clicking through from "/" mid-
 // onboarding would bounce them back to their wizard step instead.
-const PUBLIC_ROUTES = ["/sign-in", "/sign-up", "/verified"];
-const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/"];
+// /vaults is the public "browse all open vaults" index and /vaults/
+// is the per-vault donation page (app/vaults/page.tsx and
+// app/vaults/[slug]/page.tsx) — no Founder session involved in either,
+// same reasoning as /waqf-types/.
+const PUBLIC_ROUTES = ["/sign-in", "/sign-up", "/verified", "/vaults"];
+const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/"];
 function isPublicRoutePath(pathname: string) {
   return PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }

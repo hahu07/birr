@@ -12,6 +12,9 @@ import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { InvestmentsService } from "../investments/investments.service";
 import { CounterpartiesService } from "../counterparties/counterparties.service";
 import { DistributionsService } from "../distributions/distributions.service";
+import { VaultsService } from "../vaults/vaults.service";
+import { VaultInvestmentsService } from "../vaults/vault-investments.service";
+import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -70,6 +73,16 @@ interface GovernedActionHandler {
   /** propose()-time: derive the real waqfId from the payload, never
    * trust a client-supplied one. */
   resolveWaqfId?(payload: unknown): Promise<string | undefined>;
+  /**
+   * Vault-scoped counterpart to resolveWaqfId above, for the Vault
+   * product's own four governed-action handlers — mutually exclusive
+   * with resolveWaqfId in practice (a given handler resolves one or the
+   * other, never both, since no entity belongs to both a Waqf and a
+   * Vault), but kept as a separate optional hook rather than unifying
+   * them under one "resolveScopeId" so each stays a plain, obviously
+   * correct one-liner in its own handler.
+   */
+  resolveVaultId?(payload: unknown): Promise<string | undefined>;
   /**
    * propose()-time, before the row is created: reject if an equivalent
    * proposal is already pending for this same target. A target entity's
@@ -143,6 +156,9 @@ export class GovernedActionsService {
     private readonly investmentsService: InvestmentsService,
     private readonly counterpartiesService: CounterpartiesService,
     private readonly distributionsService: DistributionsService,
+    private readonly vaultsService: VaultsService,
+    private readonly vaultInvestmentsService: VaultInvestmentsService,
+    private readonly vaultDistributionsService: VaultDistributionsService,
     private readonly notificationsService: NotificationsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
@@ -501,6 +517,232 @@ export class GovernedActionsService {
           },
         },
       ],
+      // ---- Vault handlers below — see schema.prisma's own Vault
+      // section comment: a separate product from everything above, no
+      // Founder involved. All four are governed specifically because
+      // there's no Founder to hold the self-service half of these
+      // decisions the way WaqfCause.allocatedAmount/Investment do, and
+      // it's public money. ----
+      [
+        "vault.cause_allocate",
+        {
+          resolveVaultId: async (payload) => {
+            const { vaultCauseId } = payload as { vaultCauseId: string };
+            const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId } });
+            return cause?.vaultId;
+          },
+          checkDuplicate: async (payload) => {
+            const { vaultCauseId } = payload as { vaultCauseId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "vault.cause_allocate" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["vaultCauseId"], equals: vaultCauseId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "A cause-allocation proposal for this vault cause is already awaiting a decision — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { vaultCauseId, newAllocatedAmount } = payload as { vaultCauseId: string; newAllocatedAmount: string | number };
+            const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId } });
+            return cause
+              ? `${cause.name}: ${cause.allocatedAmount ?? 0} → ${newAllocatedAmount}`
+              : `VaultCause "${vaultCauseId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { vaultCauseId } = payload as { vaultCauseId: string };
+            const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId }, select: { allocatedAmount: true } });
+            return cause ? { newAllocatedAmount: cause.allocatedAmount } : null;
+          },
+          onApprove: async (payload, tx) => {
+            const { vaultCauseId, newAllocatedAmount } = payload as { vaultCauseId: string; newAllocatedAmount: string | number };
+            const before = await tx.vaultCause.findUnique({ where: { id: vaultCauseId } });
+            const cause = await this.vaultsService.setCauseAllocation(vaultCauseId, newAllocatedAmount, tx);
+            return {
+              auditAction: "vault_cause.allocation_set",
+              entityType: "VaultCause",
+              entityId: cause.id,
+              before,
+              after: cause,
+            };
+          },
+        },
+      ],
+      [
+        "vault.proceeds_allocate",
+        {
+          resolveVaultId: async (payload) => {
+            const { vaultCauseId } = payload as { vaultCauseId: string };
+            const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId } });
+            return cause?.vaultId;
+          },
+          checkDuplicate: async (payload) => {
+            const { vaultCauseId } = payload as { vaultCauseId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "vault.proceeds_allocate" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["vaultCauseId"], equals: vaultCauseId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "A proceeds-allocation proposal for this vault cause is already awaiting a decision — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { vaultCauseId, newProceedsAllocatedAmount } = payload as {
+              vaultCauseId: string;
+              newProceedsAllocatedAmount: string | number;
+            };
+            const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId } });
+            return cause
+              ? `${cause.name}: ${cause.proceedsAllocatedAmount ?? 0} → ${newProceedsAllocatedAmount}`
+              : `VaultCause "${vaultCauseId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { vaultCauseId } = payload as { vaultCauseId: string };
+            const cause = await prisma.vaultCause.findUnique({
+              where: { id: vaultCauseId },
+              select: { proceedsAllocatedAmount: true },
+            });
+            return cause ? { newProceedsAllocatedAmount: cause.proceedsAllocatedAmount } : null;
+          },
+          onApprove: async (payload, tx) => {
+            const { vaultCauseId, newProceedsAllocatedAmount } = payload as {
+              vaultCauseId: string;
+              newProceedsAllocatedAmount: string | number;
+            };
+            const before = await tx.vaultCause.findUnique({ where: { id: vaultCauseId } });
+            const cause = await this.vaultsService.setCauseProceedsAllocation(vaultCauseId, newProceedsAllocatedAmount, tx);
+            return {
+              auditAction: "vault_cause.proceeds_allocation_set",
+              entityType: "VaultCause",
+              entityId: cause.id,
+              before,
+              after: cause,
+            };
+          },
+        },
+      ],
+      [
+        "vault.investment_change",
+        {
+          resolveVaultId: async (payload) => {
+            const { vaultInvestmentId } = payload as { vaultInvestmentId: string };
+            const investment = await prisma.vaultInvestment.findUnique({ where: { id: vaultInvestmentId } });
+            return investment?.vaultId;
+          },
+          checkDuplicate: async (payload) => {
+            const { vaultInvestmentId } = payload as { vaultInvestmentId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "vault.investment_change" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["vaultInvestmentId"], equals: vaultInvestmentId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "An allocation-change proposal for this vault investment is already awaiting a decision — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { vaultInvestmentId, newAllocatedAmount } = payload as {
+              vaultInvestmentId: string;
+              newAllocatedAmount: string | number;
+            };
+            const investment = await prisma.vaultInvestment.findUnique({ where: { id: vaultInvestmentId } });
+            return investment
+              ? `${investment.name}: ${investment.allocatedAmount} → ${newAllocatedAmount}`
+              : `VaultInvestment "${vaultInvestmentId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { vaultInvestmentId } = payload as { vaultInvestmentId: string };
+            const investment = await prisma.vaultInvestment.findUnique({
+              where: { id: vaultInvestmentId },
+              select: { allocatedAmount: true },
+            });
+            return investment ? { newAllocatedAmount: investment.allocatedAmount } : null;
+          },
+          onApprove: async (payload, tx) => {
+            const { vaultInvestmentId, newAllocatedAmount } = payload as {
+              vaultInvestmentId: string;
+              newAllocatedAmount: string | number;
+            };
+            const before = await tx.vaultInvestment.findUnique({ where: { id: vaultInvestmentId } });
+            const investment = await this.vaultInvestmentsService.changeAllocation(vaultInvestmentId, newAllocatedAmount, tx);
+            return {
+              auditAction: "vault_investment.allocation_changed",
+              entityType: "VaultInvestment",
+              entityId: investment.id,
+              before,
+              after: investment,
+            };
+          },
+        },
+      ],
+      [
+        "vault.distribution_approve",
+        {
+          resolveVaultId: async (payload) => {
+            const { vaultDistributionId } = payload as { vaultDistributionId: string };
+            const distribution = await prisma.vaultDistribution.findUnique({ where: { id: vaultDistributionId } });
+            return distribution?.vaultId;
+          },
+          checkDuplicate: async (payload) => {
+            const { vaultDistributionId } = payload as { vaultDistributionId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "vault.distribution_approve" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["vaultDistributionId"], equals: vaultDistributionId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "An approval proposal for this vault distribution is already awaiting a decision — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { vaultDistributionId } = payload as { vaultDistributionId: string };
+            const distribution = await prisma.vaultDistribution.findUnique({
+              where: { id: vaultDistributionId },
+              include: { counterparty: { select: { name: true } }, vaultCause: { select: { name: true } } },
+            });
+            return distribution
+              ? `${distribution.currency} ${distribution.amount} → ${distribution.counterparty.name} (${distribution.vaultCause.name})`
+              : `VaultDistribution "${vaultDistributionId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { vaultDistributionId } = payload as { vaultDistributionId: string };
+            const distribution = await prisma.vaultDistribution.findUnique({
+              where: { id: vaultDistributionId },
+              select: { status: true, amount: true, currency: true },
+            });
+            return distribution ? { ...distribution } : null;
+          },
+          onApprove: async (payload, tx) => {
+            const { vaultDistributionId } = payload as { vaultDistributionId: string };
+            const before = await tx.vaultDistribution.findUnique({ where: { id: vaultDistributionId } });
+            const distribution = await this.vaultDistributionsService.approve(vaultDistributionId, tx);
+            return {
+              auditAction: "vault_distribution.approved",
+              entityType: "VaultDistribution",
+              entityId: distribution.id,
+              before,
+              after: distribution,
+            };
+          },
+          onReject: async (payload, tx) => {
+            const { vaultDistributionId } = payload as { vaultDistributionId: string };
+            const before = await tx.vaultDistribution.findUnique({ where: { id: vaultDistributionId } });
+            const distribution = await this.vaultDistributionsService.reject(vaultDistributionId, tx);
+            return {
+              auditAction: "vault_distribution.rejected",
+              entityType: "VaultDistribution",
+              entityId: distribution.id,
+              before,
+              after: distribution,
+            };
+          },
+        },
+      ],
     ]);
   }
 
@@ -540,11 +782,13 @@ export class GovernedActionsService {
     const handler = this.handlers.get(input.permissionKey)!;
     await handler.checkDuplicate?.(input.payload);
     const waqfId = await handler.resolveWaqfId?.(input.payload);
+    const vaultId = await handler.resolveVaultId?.(input.payload);
 
     const action = await prisma.$transaction(async (tx) => {
       const action = await tx.governedAction.create({
         data: {
           waqfId,
+          vaultId,
           permissionId: permission.id,
           payload: input.payload as any,
           makerType: "human",
@@ -555,6 +799,7 @@ export class GovernedActionsService {
       await tx.auditLog.create({
         data: {
           waqfId,
+          vaultId,
           actorType: "birr_staff",
           actorUserId: input.makerUserId,
           action: "governed_action.proposed",
@@ -696,6 +941,7 @@ export class GovernedActionsService {
       await tx.auditLog.create({
         data: {
           waqfId: action.waqfId,
+          vaultId: action.vaultId,
           actorType: "birr_staff",
           actorUserId: input.checkerUserId,
           action: `governed_action.${status}`,
@@ -723,6 +969,7 @@ export class GovernedActionsService {
           await tx.auditLog.create({
             data: {
               waqfId: action.waqfId,
+              vaultId: action.vaultId,
               actorType: "birr_staff",
               actorUserId: input.checkerUserId,
               action: fulfillment.auditAction,
@@ -760,6 +1007,17 @@ export class GovernedActionsService {
       this.distributionsService.initiateDisbursement(result.fulfillment.entityId).catch((err) => {
         this.logger.error(
           `Failed to initiate disbursement for distribution "${result.fulfillment!.entityId}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      });
+    }
+    // Vault counterpart to the block above — same fire-and-forget,
+    // post-commit posture, same never-throws-past-its-own-boundary
+    // guarantee from VaultDistributionsService.initiateDisbursement.
+    if (input.approve && result.fulfillment?.entityType === "VaultDistribution") {
+      this.vaultDistributionsService.initiateDisbursement(result.fulfillment.entityId).catch((err) => {
+        this.logger.error(
+          `Failed to initiate disbursement for vault distribution "${result.fulfillment!.entityId}":`,
           err instanceof Error ? err.stack : String(err),
         );
       });

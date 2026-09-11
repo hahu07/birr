@@ -4,6 +4,8 @@ import { Request } from "express";
 import { ContributionProvider } from "@birr/db";
 import { ContributionsService } from "./contributions.service";
 import { DistributionsService } from "../distributions/distributions.service";
+import { VaultContributionsService } from "../vaults/vault-contributions.service";
+import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { hasAnySessionCookie } from "../../common/auth/session";
@@ -39,6 +41,8 @@ export class ContributionsController {
   constructor(
     private readonly service: ContributionsService,
     private readonly distributionsService: DistributionsService,
+    private readonly vaultContributionsService: VaultContributionsService,
+    private readonly vaultDistributionsService: VaultDistributionsService,
   ) {}
 
   // Self-service — same posture as POST /waqfs and POST /foundations,
@@ -153,8 +157,20 @@ export class ContributionsController {
     if (provider === "paystack") {
       const payoutResult = await this.distributionsService.handlePayoutWebhook(rawBody, headers);
       if (payoutResult !== null) return payoutResult;
+      // Vault counterpart to the payout parser above — same "returns
+      // null on wrong-event-family or bad signature" contract, so this
+      // safely falls through too.
+      const vaultPayoutResult = await this.vaultDistributionsService.handlePayoutWebhook(rawBody, headers);
+      if (vaultPayoutResult !== null) return vaultPayoutResult;
     }
 
-    return this.service.handleWebhook(provider, rawBody, headers);
+    const contributionResult = await this.service.handleWebhook(provider, rawBody, headers);
+    if (contributionResult !== null) return contributionResult;
+
+    // Same "verify again, look up by reference, null means not mine"
+    // contract as every participant in this chain above — see
+    // VaultContributionsService.handleWebhook's own comment. Last in
+    // the chain: nothing left to try after this.
+    return this.vaultContributionsService.handleWebhook(provider, rawBody, headers);
   }
 }

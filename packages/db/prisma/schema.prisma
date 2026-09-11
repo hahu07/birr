@@ -211,6 +211,14 @@ enum ActorType {
   founder_user
   system
   ai_agent
+  // An anonymous member of the public giving to a Vault — see that
+  // model's own top-of-section comment. None of the four values above
+  // correctly attribute this: `system` would blur "the platform did
+  // this" with "an anonymous donor did this," which matters for a
+  // compliance reconstruction later. AuditLog.actorDonorId (added
+  // alongside this) is this actor type's own identity FK, mirroring
+  // actorUserId/actorAgentId/actorFounderId.
+  public_donor
 }
 
 enum InviteeKind {
@@ -276,30 +284,32 @@ model User {
   updatedAt                  DateTime   @updatedAt
   deletedAt                  DateTime?
 
-  founderMemberships         FounderMembership[]             @relation("MembershipUser")
-  invitedMemberships         FounderMembership[]             @relation("MembershipInvitedBy")
-  birrStaff                  BirrStaff?
-  makerActions               GovernedAction[]                @relation("GovernedActionMaker")
-  checkerActions             GovernedAction[]                @relation("GovernedActionChecker")
-  auditLogs                  AuditLog[]
-  sentInvitations            Invitation[]                    @relation("InvitationInvitedBy")
-  coiDeclarations            ConflictOfInterestDeclaration[] @relation("CoiDeclaredBy")
-  coiReviews                 ConflictOfInterestDeclaration[] @relation("CoiReviewedBy")
-  whatsappOtps               WhatsAppOtp[]
-  signedWaqfDeeds            WaqfDeed[]
-  signedFoundationDeeds      FoundationDeed[]
-  updatedProviderCredentials ProviderCredential[]
-  proposedCauseSuggestions   CauseCategorySuggestion[]       @relation("CauseSuggestionProposedBy")
-  reviewedCauseSuggestions   CauseCategorySuggestion[]       @relation("CauseSuggestionReviewedBy")
-  proposedBeneficiaryNominations BeneficiaryNomination[]     @relation("BeneficiaryNominationProposedBy")
-  reviewedBeneficiaryNominations BeneficiaryNomination[]     @relation("BeneficiaryNominationReviewedBy")
-  causeImpactUpdates         CauseImpactUpdate[]
-  notifications              Notification[]
-  recordedWaqfProceeds       WaqfProceeds[]
-  counterpartyShariahApprovals Counterparty[]                 @relation("CounterpartyShariahApprover")
-  createdInvestmentPlacements  InvestmentPlacement[]
-  sentMessages                 Message[]
-  mfaBackupCodes               MfaBackupCode[]
+  founderMemberships             FounderMembership[]             @relation("MembershipUser")
+  invitedMemberships             FounderMembership[]             @relation("MembershipInvitedBy")
+  birrStaff                      BirrStaff?
+  makerActions                   GovernedAction[]                @relation("GovernedActionMaker")
+  checkerActions                 GovernedAction[]                @relation("GovernedActionChecker")
+  auditLogs                      AuditLog[]
+  sentInvitations                Invitation[]                    @relation("InvitationInvitedBy")
+  coiDeclarations                ConflictOfInterestDeclaration[] @relation("CoiDeclaredBy")
+  coiReviews                     ConflictOfInterestDeclaration[] @relation("CoiReviewedBy")
+  whatsappOtps                   WhatsAppOtp[]
+  signedWaqfDeeds                WaqfDeed[]
+  signedFoundationDeeds          FoundationDeed[]
+  updatedProviderCredentials     ProviderCredential[]
+  proposedCauseSuggestions       CauseCategorySuggestion[]       @relation("CauseSuggestionProposedBy")
+  reviewedCauseSuggestions       CauseCategorySuggestion[]       @relation("CauseSuggestionReviewedBy")
+  proposedBeneficiaryNominations BeneficiaryNomination[]         @relation("BeneficiaryNominationProposedBy")
+  reviewedBeneficiaryNominations BeneficiaryNomination[]         @relation("BeneficiaryNominationReviewedBy")
+  causeImpactUpdates             CauseImpactUpdate[]
+  notifications                  Notification[]
+  recordedWaqfProceeds           WaqfProceeds[]
+  counterpartyShariahApprovals   Counterparty[]                  @relation("CounterpartyShariahApprover")
+  createdInvestmentPlacements    InvestmentPlacement[]
+  sentMessages                   Message[]
+  mfaBackupCodes                 MfaBackupCode[]
+  createdVaults                  Vault[]
+  recordedVaultProceeds          VaultProceeds[]
 
   @@map("users")
 }
@@ -336,13 +346,13 @@ model Founder {
   updatedAt        DateTime         @updatedAt
   deletedAt        DateTime?
 
-  memberships        FounderMembership[]
-  foundationFounders FoundationFounder[]
-  invitations        Invitation[]
-  auditLogs          AuditLog[]
-  signedWaqfDeeds    WaqfDeed[]
-  signedFoundationDeeds FoundationDeed[]
-  causeSuggestions   CauseCategorySuggestion[]
+  memberships            FounderMembership[]
+  foundationFounders     FoundationFounder[]
+  invitations            Invitation[]
+  auditLogs              AuditLog[]
+  signedWaqfDeeds        WaqfDeed[]
+  signedFoundationDeeds  FoundationDeed[]
+  causeSuggestions       CauseCategorySuggestion[]
   beneficiaryNominations BeneficiaryNomination[]
 
   @@map("founders")
@@ -421,18 +431,18 @@ model RolePermission {
 }
 
 model Waqf {
-  id           String     @id @default(uuid())
+  id             String          @id @default(uuid())
   // Every Waqf must belong to a Foundation — see
   // foundations/foundations.service.ts for the only place a Waqf's
   // founder relationship is now established, transitively via
   // Foundation -> FoundationFounder -> Founder.
-  foundationId String
-  foundation   Foundation @relation(fields: [foundationId], references: [id])
-  name         String
-  type         WaqfType
-  purpose      String?
-  jurisdiction String
-  status       WaqfStatus @default(draft)
+  foundationId   String
+  foundation     Foundation      @relation(fields: [foundationId], references: [id])
+  name           String
+  type           WaqfType
+  purpose        String?
+  jurisdiction   String
+  status         WaqfStatus      @default(draft)
   // The declared total endowment target — nullable because every waqf
   // established before this feature has none (no backfill attempted;
   // see CorpusMinimum below for the admin-enforced floor on new
@@ -442,22 +452,22 @@ model Waqf {
   corpusAmount   Decimal?
   corpusCurrency String?
   fundingPlan    WaqfFundingPlan @default(lump_sum)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  deletedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
 
-  caseAssignments WaqfCaseAssignment[]
-  governedActions GovernedAction[]
-  coiDeclarations ConflictOfInterestDeclaration[]
-  assets          Asset[]
-  beneficiaries   Beneficiary[]
-  investments     Investment[]
-  distributions   Distribution[]
-  waqfCauses      WaqfCause[]
-  contributions   Contribution[]
-  waqfDeed        WaqfDeed?
-  causeSuggestions CauseCategorySuggestion[]
-  proceeds        WaqfProceeds[]
+  caseAssignments        WaqfCaseAssignment[]
+  governedActions        GovernedAction[]
+  coiDeclarations        ConflictOfInterestDeclaration[]
+  assets                 Asset[]
+  beneficiaries          Beneficiary[]
+  investments            Investment[]
+  distributions          Distribution[]
+  waqfCauses             WaqfCause[]
+  contributions          Contribution[]
+  waqfDeed               WaqfDeed?
+  causeSuggestions       CauseCategorySuggestion[]
+  proceeds               WaqfProceeds[]
   beneficiaryNominations BeneficiaryNomination[]
 
   @@index([foundationId])
@@ -600,16 +610,16 @@ model FoundationFounder {
 // here never rewrites or breaks history already on a waqf — it only
 // removes the option from what a Founder can newly pick.
 model CauseCategory {
-  id          String    @id @default(uuid())
-  name        String    @unique
-  description String?
+  id               String          @id @default(uuid())
+  name             String          @unique
+  description      String?
   // Single emoji glyph, e.g. "🎓" — visual identity in the Founder's
   // picker; no new asset pipeline needed for a handful of catalog rows.
-  icon        String?
+  icon             String?
   // Product team's own curated display order (ascending, ties broken by
   // name) — not creation order or alphabetical, since neither reflects
   // which causes Birr wants shown first.
-  sortOrder   Int       @default(0)
+  sortOrder        Int             @default(0)
   // Staff-curated, not derived from live selection stats — with so few
   // real waqfs established, usage-based "commonly picked for this type"
   // would be noise for a long while. A UX nudge only (the Founder's
@@ -627,15 +637,16 @@ model CauseCategory {
   // category with children is just a non-selectable grouping label in
   // the Founder's picker; one with none behaves exactly as every
   // category did before this existed.
-  parentId    String?
-  parent      CauseCategory?  @relation("CauseCategoryChildren", fields: [parentId], references: [id])
-  children    CauseCategory[] @relation("CauseCategoryChildren")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  parentId         String?
+  parent           CauseCategory?  @relation("CauseCategoryChildren", fields: [parentId], references: [id])
+  children         CauseCategory[] @relation("CauseCategoryChildren")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
 
-  waqfCauses WaqfCause[]
+  waqfCauses               WaqfCause[]
   resultingFromSuggestions CauseCategorySuggestion[]
+  vaultCauses              VaultCause[]
 
   @@map("cause_categories")
 }
@@ -656,13 +667,13 @@ model CauseCategory {
 // a case it doesn't cover (causeCategoryId left null, same as before this
 // model existed).
 model WaqfCause {
-  id              String         @id @default(uuid())
-  waqfId          String
-  waqf            Waqf           @relation(fields: [waqfId], references: [id])
-  causeCategoryId String?
-  causeCategory   CauseCategory? @relation(fields: [causeCategoryId], references: [id])
-  name            String
-  description     String?
+  id                      String         @id @default(uuid())
+  waqfId                  String
+  waqf                    Waqf           @relation(fields: [waqfId], references: [id])
+  causeCategoryId         String?
+  causeCategory           CauseCategory? @relation(fields: [causeCategoryId], references: [id])
+  name                    String
+  description             String?
   // How much of the waqf's live amountRaised (confirmed Contributions —
   // see WaqfCausesService.allocate's own comment) the Founder has
   // earmarked to this cause. Always drawn from amountRaised, for every
@@ -674,7 +685,7 @@ model WaqfCause {
   // DistributionsService.assertWithinAllocation() sums this together
   // with proceedsAllocatedAmount as the real ceiling, not just a
   // declared figure.
-  allocatedAmount Decimal?
+  allocatedAmount         Decimal?
   // How much of the waqf's recorded WaqfProceeds total (see
   // WaqfProceedsService.sumForWaqf) Birr staff has earmarked to this
   // cause — a second, additive pool on top of allocatedAmount above,
@@ -684,13 +695,13 @@ model WaqfCause {
   // self-service, unlike allocatedAmount: see
   // WaqfCausesService.allocateProceeds's own comment for why.
   proceedsAllocatedAmount Decimal?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  deletedAt       DateTime?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  deletedAt               DateTime?
 
-  beneficiaries Beneficiary[]
-  distributions Distribution[]
-  impactUpdates CauseImpactUpdate[]
+  beneficiaries          Beneficiary[]
+  distributions          Distribution[]
+  impactUpdates          CauseImpactUpdate[]
   beneficiaryNominations BeneficiaryNomination[]
 
   @@unique([waqfId, name])
@@ -707,19 +718,19 @@ model WaqfCause {
 // AuditLog/WaqfDeed: an honest history of what was reported when, not a
 // single mutable "current" figure.
 model CauseImpactUpdate {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   waqfCauseId      String
   waqfCause        WaqfCause @relation(fields: [waqfCauseId], references: [id])
   reportedByUserId String
-  reportedByUser   User     @relation(fields: [reportedByUserId], references: [id])
+  reportedByUser   User      @relation(fields: [reportedByUserId], references: [id])
   periodLabel      String
-  narrative        String   @db.Text
+  narrative        String    @db.Text
   // An optional single headline number ("340" / "students") — free text
   // for the unit rather than a fixed enum, since impact metrics vary
   // wildly by cause (students, liters of water, families housed...).
   metricValue      Int?
   metricLabel      String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
 
   @@map("cause_impact_updates")
 }
@@ -785,43 +796,43 @@ enum BeneficiaryNominationStatus {
 // waqfId here IS a real scope (a nomination is for one specific waqf's
 // beneficiary list, not a shared global catalog).
 model BeneficiaryNomination {
-  id                  String                       @id @default(uuid())
-  waqfId              String
-  waqf                Waqf                         @relation(fields: [waqfId], references: [id])
-  proposedByFounderId String
-  proposedByFounder   Founder                      @relation(fields: [proposedByFounderId], references: [id])
-  proposedByUserId    String
-  proposedByUser      User      @relation("BeneficiaryNominationProposedBy", fields: [proposedByUserId], references: [id])
+  id                     String                      @id @default(uuid())
+  waqfId                 String
+  waqf                   Waqf                        @relation(fields: [waqfId], references: [id])
+  proposedByFounderId    String
+  proposedByFounder      Founder                     @relation(fields: [proposedByFounderId], references: [id])
+  proposedByUserId       String
+  proposedByUser         User                        @relation("BeneficiaryNominationProposedBy", fields: [proposedByUserId], references: [id])
   // Nullable in the DB, required at the input-validation layer — same
   // convention as Beneficiary.causeId itself (see that field's own
   // comment).
-  causeId             String?
-  cause               WaqfCause?                   @relation(fields: [causeId], references: [id])
-  name                String
-  kind                BeneficiaryKind              @default(individual)
-  eligibilityCriteria String
-  phone               String?
-  email               String?
+  causeId                String?
+  cause                  WaqfCause?                  @relation(fields: [causeId], references: [id])
+  name                   String
+  kind                   BeneficiaryKind             @default(individual)
+  eligibilityCriteria    String
+  phone                  String?
+  email                  String?
   // Encrypted JSON, same shape/reasoning as Beneficiary.bankDetailsEncrypted
   // — a Founder-submitted nomination carries this straight through to
   // the resulting Beneficiary on approval, still never decrypted for
   // display back to the Founder.
-  bankDetailsEncrypted String?
+  bankDetailsEncrypted   String?
   // Same reasoning as Beneficiary.payoutProvider — carried through to
   // the resulting Beneficiary on approval, same as bank details.
-  payoutProvider       PayoutProvider?
-  status              BeneficiaryNominationStatus  @default(pending)
-  reviewedByUserId    String?
-  reviewedByUser      User?     @relation("BeneficiaryNominationReviewedBy", fields: [reviewedByUserId], references: [id])
-  reviewedAt          DateTime?
-  reviewNotes         String?
+  payoutProvider         PayoutProvider?
+  status                 BeneficiaryNominationStatus @default(pending)
+  reviewedByUserId       String?
+  reviewedByUser         User?                       @relation("BeneficiaryNominationReviewedBy", fields: [reviewedByUserId], references: [id])
+  reviewedAt             DateTime?
+  reviewNotes            String?
   // Set on approval — the real Beneficiary this nomination became.
   // eligibilityExpiresAt is deliberately NOT carried from a nomination
   // — it's a staff-only decision set after approval, not something a
   // Founder proposes (closer to a governance call than contact info).
-  resultingBeneficiaryId String?      @unique
-  resultingBeneficiary   Beneficiary? @relation(fields: [resultingBeneficiaryId], references: [id])
-  createdAt              DateTime     @default(now())
+  resultingBeneficiaryId String?                     @unique
+  resultingBeneficiary   Beneficiary?                @relation(fields: [resultingBeneficiaryId], references: [id])
+  createdAt              DateTime                    @default(now())
 
   @@index([waqfId])
   @@index([proposedByFounderId])
@@ -853,12 +864,12 @@ model WaqfCaseAssignment {
 // Munsif, Bashir. Every agent-initiated action must trace back to a
 // specific row here, never an undifferentiated "the AI."
 model AiAgent {
-  id        String        @id @default(uuid())
-  name      String        @unique
-  taskType  AgentTaskType
-  status    AgentStatus   @default(active)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id         String        @id @default(uuid())
+  name       String        @unique
+  taskType   AgentTaskType
+  status     AgentStatus   @default(active)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
   // How an agent authenticates to the backend — mirrors User.passwordHash.
   // Nullable: a registry row can exist (e.g. for future agents) before a
   // key is ever issued. See common/auth/ai-agent-auth.ts.
@@ -884,6 +895,13 @@ model GovernedAction {
   // disposal, distribution approval, etc.) is expected to set this.
   waqfId        String?
   waqf          Waqf?                @relation(fields: [waqfId], references: [id])
+  // Vault-scoped counterpart to waqfId above — nullable for the same
+  // reason (a governed action might belong to neither, e.g. a legacy
+  // waqf.create-shaped row), set by whichever handler in
+  // GovernedActionsService's map actually resolves one (resolveVaultId,
+  // mirroring resolveWaqfId).
+  vaultId       String?
+  vault         Vault?               @relation(fields: [vaultId], references: [id])
   permissionId  String
   permission    Permission           @relation(fields: [permissionId], references: [id])
   makerType     MakerType
@@ -1069,23 +1087,23 @@ model WhatsAppOtp {
 // action (see BeneficiariesService.updateCriteria's comment) — same
 // two-trust-level split as Asset above.
 model Beneficiary {
-  id                  String            @id @default(uuid())
-  waqfId              String
-  waqf                Waqf              @relation(fields: [waqfId], references: [id])
+  id                   String            @id @default(uuid())
+  waqfId               String
+  waqf                 Waqf              @relation(fields: [waqfId], references: [id])
   // Nullable in the DB (no backfill for pre-existing rows, same
   // convention as Investment.counterpartyId) — required going forward
   // at the input-validation layer instead (see
   // BeneficiariesService.CreateBeneficiaryInput and
   // BeneficiaryNominationsService.ProposeBeneficiaryNominationInput,
   // both of which drop @IsOptional() on this).
-  causeId             String?
-  cause               WaqfCause?        @relation(fields: [causeId], references: [id])
-  name                String
-  kind                BeneficiaryKind   @default(individual)
-  eligibilityCriteria String
-  status              BeneficiaryStatus @default(active)
-  phone               String?
-  email               String?
+  causeId              String?
+  cause                WaqfCause?        @relation(fields: [causeId], references: [id])
+  name                 String
+  kind                 BeneficiaryKind   @default(individual)
+  eligibilityCriteria  String
+  status               BeneficiaryStatus @default(active)
+  phone                String?
+  email                String?
   // Encrypted JSON {bankName, accountNumber, accountName, bankCode?} —
   // see common/settings/encryption.service.ts's EncryptionService
   // (reused as-is, not a second encryption utility). bankCode is
@@ -1105,9 +1123,9 @@ model Beneficiary {
   // Lazily checked, not a scheduled job — see
   // DistributionsService.assertBeneficiaryEligible.
   eligibilityExpiresAt DateTime?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  deletedAt           DateTime?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  deletedAt            DateTime?
 
   distributions Distribution[]
   // Set when this row was created via BeneficiaryNominationsService
@@ -1200,6 +1218,11 @@ enum CounterpartyType {
   // structures). Distinct from "other" so it's queryable/reportable on
   // its own, not lumped into a catch-all.
   business
+  // A Vault's delivery partner — an NGO, hospital, or relief agency that
+  // actually distributes pooled public donations on the ground. Distinct
+  // from every type above, which describe institutions a waqf *invests*
+  // with; this one only ever *receives* a VaultDistribution payout.
+  relief_partner
   other
 }
 
@@ -1228,28 +1251,28 @@ enum CounterpartyStatus {
 // unilateral compliance_officer action (speed over dual-control when
 // stopping a bad actor — see CounterpartiesService.suspend's own comment).
 model Counterparty {
-  id                         String              @id @default(uuid())
-  name                       String              @unique
-  institutionType            CounterpartyType
-  jurisdiction               String
-  status                     CounterpartyStatus  @default(pending_review)
+  id                           String             @id @default(uuid())
+  name                         String             @unique
+  institutionType              CounterpartyType
+  jurisdiction                 String
+  status                       CounterpartyStatus @default(pending_review)
   // Basic corporate identity — distinct from regulatoryLicenseNumber
   // below, which is specifically a financial-services license and
   // doesn't apply to a plain "business" counterparty with no such
   // license at all.
-  registrationNumber         String?
-  address                    String?
-  businessActivities         String?
-  website                    String?
-  contactName                String?
-  contactEmail               String?
-  contactPhone               String?
-  regulatoryLicenseNumber    String?
-  regulatingAuthority        String?
-  licenseExpiresAt           DateTime?
-  shariahApprovedAt          DateTime?
-  shariahApprovedByUserId    String?
-  shariahApprovedByUser      User?               @relation("CounterpartyShariahApprover", fields: [shariahApprovedByUserId], references: [id])
+  registrationNumber           String?
+  address                      String?
+  businessActivities           String?
+  website                      String?
+  contactName                  String?
+  contactEmail                 String?
+  contactPhone                 String?
+  regulatoryLicenseNumber      String?
+  regulatingAuthority          String?
+  licenseExpiresAt             DateTime?
+  shariahApprovedAt            DateTime?
+  shariahApprovedByUserId      String?
+  shariahApprovedByUser        User?              @relation("CounterpartyShariahApprover", fields: [shariahApprovedByUserId], references: [id])
   // Factual supporting evidence for the Shariah reviewer, captured at
   // registration alongside businessActivities (found 2026-09-04: that
   // field was optional and a single line, so shariah_board_member had
@@ -1265,15 +1288,29 @@ model Counterparty {
   // Enforced in InvestmentsService.create() the same way
   // WaqfCause.allocatedAmount is enforced in DistributionsService: a real
   // ceiling, not a decorative figure.
-  concentrationLimit         Decimal?
-  concentrationLimitCurrency String?
-  notes                      String?
-  createdAt                  DateTime            @default(now())
-  updatedAt                  DateTime            @updatedAt
-  deletedAt                  DateTime?
+  concentrationLimit           Decimal?
+  concentrationLimitCurrency   String?
+  // Vault distributions pay a Counterparty directly (a delivery/relief
+  // partner), not a Beneficiary — see VaultDistribution's own comment on
+  // why. Counterparty carried no bank-detail fields at all before this;
+  // both nullable, read only by the Vault payout path — every existing
+  // Counterparty row/behavior is unaffected. Same AES-256-GCM encrypted-
+  // JSON-blob shape as Beneficiary.bankDetailsEncrypted, via the same
+  // EncryptionService.
+  payoutBankDetailsEncrypted   String?
+  // Same "only Paystack payouts are supported today" constraint
+  // DistributionsService.assertPayoutReady already enforces for
+  // Beneficiary — mirrored here, not a new capability.
+  payoutProvider               PayoutProvider?
+  notes                        String?
+  createdAt                    DateTime           @default(now())
+  updatedAt                    DateTime           @updatedAt
+  deletedAt                    DateTime?
 
   investments          Investment[]
   investmentPlacements InvestmentPlacement[]
+  vaultInvestments     VaultInvestment[]
+  vaultDistributions   VaultDistribution[]
 
   @@map("counterparties")
 }
@@ -1312,16 +1349,16 @@ model WaqfProceeds {
 // comment). Unlike Asset/Beneficiary/Investment, a distribution is a
 // payout *to* someone, so it references both the Waqf and the Beneficiary.
 model Distribution {
-  id            String             @id @default(uuid())
-  waqfId        String
-  waqf          Waqf               @relation(fields: [waqfId], references: [id])
+  id              String             @id @default(uuid())
+  waqfId          String
+  waqf            Waqf               @relation(fields: [waqfId], references: [id])
   // Every payout must be traceable to a specific cause (the concrete
   // "individually trackable" requirement), not just to the fund.
-  causeId       String
-  cause         WaqfCause          @relation(fields: [causeId], references: [id])
-  beneficiaryId String
-  beneficiary   Beneficiary        @relation(fields: [beneficiaryId], references: [id])
-  amount        Decimal
+  causeId         String
+  cause           WaqfCause          @relation(fields: [causeId], references: [id])
+  beneficiaryId   String
+  beneficiary     Beneficiary        @relation(fields: [beneficiaryId], references: [id])
+  amount          Decimal
   // No currency existed anywhere on this model before — every monetary
   // field in this schema (Asset.estimatedValue, Investment.allocatedAmount,
   // this one) was a bare Decimal, and a waqf can receive contributions in
@@ -1329,9 +1366,9 @@ model Distribution {
   // across a waqf's distributions was previously meaningless. Fixed here
   // only, since this is the one entity the cause-level financial rollup
   // needs to sum; see the migration for the backfill on pre-existing rows.
-  currency      String
-  status        DistributionStatus @default(pending)
-  approvedAt    DateTime?
+  currency        String
+  status          DistributionStatus @default(pending)
+  approvedAt      DateTime?
   // Set together, at DistributionsService.initiateDisbursement() time —
   // the real payout rail this distribution was actually sent through
   // (only ever "paystack" today — see PayoutProvider's own comment) and
@@ -1339,7 +1376,7 @@ model Distribution {
   // row's own id — same "always the row's own id, echoed back by the
   // provider" convention as Contribution.providerReference.
   payoutProvider  PayoutProvider?
-  payoutReference String?          @unique
+  payoutReference String?            @unique
   // Set once a transfer.success webhook confirms the payout actually
   // landed — see handlePayoutWebhook.
   paidAt          DateTime?
@@ -1347,9 +1384,9 @@ model Distribution {
   // successful retryDisbursement(). Surfaced to staff so a payout_failed
   // row is actionable, not just a dead end.
   payoutError     String?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  deletedAt     DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
 
   @@index([waqfId])
   @@index([causeId])
@@ -1417,12 +1454,19 @@ model WaqfDeed {
 // table at the DB role level for the application's runtime connection —
 // do not rely on the application layer alone. See the raw-SQL migration.
 model AuditLog {
-  id             String    @id @default(uuid())
+  id             String      @id @default(uuid())
   waqfId         String?
+  // Vault-scoped counterpart to waqfId above, for the same reason —
+  // lets a compliance officer filter this table to one vault's activity
+  // directly, without joining through entityId. Not part of the hash-
+  // chain formula, matching waqfId's own exclusion (see
+  // audit_log_row_hash()'s own definition) — it's a relation, not actor
+  // identity, unlike actorDonorId below.
+  vaultId        String?
   actorUserId    String?
-  actorUser      User?     @relation(fields: [actorUserId], references: [id])
+  actorUser      User?       @relation(fields: [actorUserId], references: [id])
   actorAgentId   String?
-  actorAgent     AiAgent?  @relation(fields: [actorAgentId], references: [id])
+  actorAgent     AiAgent?    @relation(fields: [actorAgentId], references: [id])
   // Founders aren't User rows (no FounderMembership built yet — a
   // founder-portal session maps directly to a Founder record), so a
   // founder-initiated action (self-service Foundation/Waqf Fund
@@ -1430,7 +1474,14 @@ model AuditLog {
   // actorAgentId pattern rather than leaving actorType: founder_user
   // entries with no way to say *which* founder.
   actorFounderId String?
-  actorFounder   Founder?  @relation(fields: [actorFounderId], references: [id])
+  actorFounder   Founder?    @relation(fields: [actorFounderId], references: [id])
+  // Same reasoning as actorFounderId above, for actorType: public_donor
+  // (see that enum value's own comment) — a VaultDonor is neither a User
+  // nor a Founder. Included in the hash-chain formula alongside the
+  // other three actor FKs (see the migration that added this column for
+  // why the whole chain had to be recomputed, not just appended to).
+  actorDonorId   String?
+  actorDonor     VaultDonor? @relation(fields: [actorDonorId], references: [id])
   actorType      ActorType
   action         String
   entityType     String
@@ -1438,7 +1489,7 @@ model AuditLog {
   before         Json?
   after          Json?
   ipAddress      String?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime    @default(now())
 
   // 2026-09-09 tamper-evidence: a strict insertion-order counter and a
   // hash chain (each row's hash covers its own fields + the previous
@@ -1451,9 +1502,9 @@ model AuditLog {
   // JSON.stringify on every existing endpoint that returns a raw
   // AuditLog row (AiAgentsService.drafts(), ComplianceReportsService's
   // export) the moment it's added as a plain scalar field.
-  sequence       Int       @unique @default(autoincrement())
-  previousHash   String?
-  recordHash     String?
+  sequence     Int     @unique @default(autoincrement())
+  previousHash String?
+  recordHash   String?
 
   // 2026-09-08 audit fix: this table is append-only and ever-growing —
   // a compliance export or an officer's per-waqf/per-entity history view
@@ -1572,16 +1623,16 @@ enum TrusteeLicenseStatus {
 // as "not_required" from TrusteeLicensesService.statusForJurisdiction
 // regardless of whether a row exists here, never "unlicensed".
 model TrusteeLicense {
-  id                String               @id @default(uuid())
-  jurisdiction      String
-  status            TrusteeLicenseStatus @default(pending)
+  id                 String               @id @default(uuid())
+  jurisdiction       String
+  status             TrusteeLicenseStatus @default(pending)
   licensingAuthority String
-  licenseNumber     String?
-  issuedAt          DateTime?
-  expiresAt         DateTime?
-  notes             String?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  licenseNumber      String?
+  issuedAt           DateTime?
+  expiresAt          DateTime?
+  notes              String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@map("trustee_licenses")
 }
@@ -1620,4 +1671,289 @@ model CompliancePolicySet {
   updatedAt              DateTime @updatedAt
 
   @@map("compliance_policy_sets")
+}
+
+// ============================================================
+// Vault — a SEPARATE product from everything above. A Founder
+// establishes their own Foundation/Waqf and funds it themselves,
+// self-service, with Birr as Mutawalli over that specific relationship.
+// A Vault has no Founder at all: it's a Birr-staff-curated public
+// campaign (e.g. "Ramadan Relief Vault") supporting one or more
+// pre-identified causes, which anyone can donate into without ever
+// establishing a Foundation or signing a deed. Confirmed directly with
+// the owner: Vaults are created and curated EXCLUSIVELY by Birr staff —
+// never a Founder, never a new self-service role.
+//
+// This is the first of several vertical slices (see the approved plan
+// at the time this was built) — Vault + VaultCause staff-CRUD only for
+// now, deliberately not yet: public contributions/donor identity,
+// governed-action-gated allocation, investment/proceeds/distribution
+// machinery. Each lands as its own slice with its own migration,
+// matching CLAUDE.md's own "vertical slices... not whole modules in one
+// pass" guidance — this one doesn't touch AuditLog's hash-chain formula
+// or GovernedAction at all, since plain staff CRUD already uses the
+// existing actorType: birr_staff.
+// ============================================================
+
+enum VaultType {
+  investment
+  project
+}
+
+enum VaultStatus {
+  draft
+  open
+  closed
+  archived
+}
+
+// The top-level campaign object — deliberately NOT a Waqf. No Founder,
+// no Foundation, no funding-plan/installment-floor machinery (public
+// giving is open-ended, not a declared-corpus commitment), no deed.
+model Vault {
+  id              String      @id @default(uuid())
+  name            String
+  // Public-URL-friendly identifier for the donation page
+  // (/vaults/:slug) — unique, staff-set at creation, never derived
+  // implicitly from name so a later rename doesn't break an already-
+  // shared link.
+  slug            String      @unique
+  description     String?
+  type            VaultType
+  status          VaultStatus @default(draft)
+  // Single currency per vault — same no-cross-currency-blending
+  // assumption Waqf.corpusCurrency/Distribution.currency already make
+  // throughout this schema.
+  currency        String
+  // Display-only progress-bar figure — deliberately NOT wired into any
+  // enforcement, unlike Waqf's corpus/funding-plan fields.
+  targetAmount    Decimal?
+  // Same free-form-string convention as Waqf.jurisdiction, so
+  // CompliancePolicySet can key off it the same way.
+  jurisdiction    String
+  coverImageUrl   String?
+  createdByUserId String
+  createdByUser   User        @relation(fields: [createdByUserId], references: [id])
+  openedAt        DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  deletedAt       DateTime?
+
+  causes          VaultCause[]
+  contributions   VaultContribution[]
+  investments     VaultInvestment[]
+  proceeds        VaultProceeds[]
+  distributions   VaultDistribution[]
+  governedActions GovernedAction[]
+
+  @@map("vaults")
+}
+
+// Mirrors WaqfCause structurally (see that model's own comment for the
+// shared CauseCategory catalog convention this reuses) — allocatedAmount/
+// proceedsAllocatedAmount are left off THIS slice's migration
+// deliberately; they land in the governed-action slice, since (per the
+// approved plan) both move only via a governed action here, never
+// unilateral staff CRUD the way WaqfCause.allocatedAmount is for a
+// Founder's own waqf — there's no Founder to hold that self-service half
+// of the decision, and it's public money.
+model VaultCause {
+  id                      String         @id @default(uuid())
+  vaultId                 String
+  vault                   Vault          @relation(fields: [vaultId], references: [id])
+  causeCategoryId         String?
+  causeCategory           CauseCategory? @relation(fields: [causeCategoryId], references: [id])
+  name                    String
+  description             String?
+  // How much of the vault's pooled confirmed VaultContributions has been
+  // earmarked to this cause. Unlike WaqfCause.allocatedAmount (Founder
+  // self-service), this only ever moves via the vault.cause_allocate
+  // governed action — there's no Founder here to hold the self-service
+  // half of that decision, and it's public money (see this section's
+  // own top comment).
+  allocatedAmount         Decimal?
+  // Investment-style vaults only — how much of the vault's recorded
+  // VaultProceeds total has been earmarked to this cause, a second,
+  // additive pool on top of allocatedAmount above (same relationship as
+  // WaqfCause's own two fields). Only ever moves via the
+  // vault.proceeds_allocate governed action.
+  proceedsAllocatedAmount Decimal?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  deletedAt               DateTime?
+
+  contributions VaultContribution[]
+  distributions VaultDistribution[]
+
+  @@unique([vaultId, name])
+  @@map("vault_causes")
+}
+
+enum IdType {
+  passport
+  national_id
+  drivers_license
+  other
+}
+
+// The lightweight, non-Founder identity a public donor gets — no
+// password, no login, no relation to User/Founder at all, deliberately
+// not a second flavor of either. Found-or-created by email at
+// contribution time (VaultContributionsService.initiate), like guest
+// checkout. email is the one universal floor (required, not optional the
+// way Contribution.payerEmail is for the Founder flow, which already has
+// a session) — it's what ties repeat gifts from the same person
+// together and is how a receipt is even possible without an account.
+model VaultDonor {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  fullName          String?
+  phone             String?
+  country           String?
+  // Captured only when VaultDonorThreshold is crossed (single-
+  // transaction or cumulative — see VaultContributionsService's own
+  // comment on this AML check). idNumberEncrypted via EncryptionService,
+  // same AES-256-GCM reuse as Beneficiary.bankDetailsEncrypted.
+  idType            IdType?
+  idNumberEncrypted String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  contributions VaultContribution[]
+  auditLogs     AuditLog[]
+
+  @@map("vault_donors")
+}
+
+// Per-currency floor triggering the identity-capture requirement in
+// VaultContributionsService.initiate() — real table, not a hardcoded
+// constant, same "ops/finance-editable without a code change" reasoning
+// as ContributionMinimum.
+model VaultDonorThreshold {
+  id              String   @id @default(uuid())
+  currency        String   @unique
+  thresholdAmount Decimal
+  updatedAt       DateTime @updatedAt
+
+  @@map("vault_donor_thresholds")
+}
+
+// The public payment ledger row — mirrors Contribution, minus the
+// Asset-registry linkage (see the top-of-section comment on why: Vault
+// money is pooled fungible cash, not an individually-valued/disposable
+// asset the way a Founder's own waqf corpus is).
+model VaultContribution {
+  id                String               @id @default(uuid())
+  vaultId           String
+  vault             Vault                @relation(fields: [vaultId], references: [id])
+  // The donor's *stated preference* at the time of giving, captured for
+  // reporting only — it does NOT itself move VaultCause's enforceable
+  // allocation ceiling (that only ever moves via the vault.cause_allocate
+  // governed action, a later slice). Nullable: a donor may give to the
+  // vault generally, with no cause earmarked.
+  vaultCauseId      String?
+  vaultCause        VaultCause?          @relation(fields: [vaultCauseId], references: [id])
+  // Nullable — a donor who gives no email gets no VaultDonor row at all
+  // (see VaultContributionsService.findOrCreateDonor's own comment): no
+  // receipt, and no identity thread for the AML anti-structuring check
+  // to match repeat gifts against, an accepted tradeoff of allowing a
+  // fully anonymous contribution at all.
+  donorId           String?
+  donor             VaultDonor?          @relation(fields: [donorId], references: [id])
+  amount            Decimal
+  currency          String
+  provider          ContributionProvider
+  // Always this row's own id, echoed back by the provider — same
+  // convention as Contribution.providerReference.
+  providerReference String               @unique
+  status            ContributionStatus   @default(pending)
+  confirmedAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([vaultId])
+  @@index([donorId])
+  @@map("vault_contributions")
+}
+
+// Investment-style vaults only — mirrors Investment, vault-scoped
+// instead of waqf-scoped. Registration is plain staff CRUD, same
+// two-trust-level split Investment already has; only *changes* to
+// allocatedAmount are governed (vault.investment_change, mirroring
+// investment.change).
+model VaultInvestment {
+  id              String                   @id @default(uuid())
+  vaultId         String
+  vault           Vault                    @relation(fields: [vaultId], references: [id])
+  name            String
+  instrumentType  InvestmentInstrumentType
+  allocatedAmount Decimal
+  currency        String
+  status          InvestmentStatus         @default(active)
+  liquidatedAt    DateTime?
+  counterpartyId  String?
+  counterparty    Counterparty?            @relation(fields: [counterpartyId], references: [id])
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  deletedAt       DateTime?
+
+  proceeds VaultProceeds[]
+
+  @@index([vaultId])
+  @@map("vault_investments")
+}
+
+// Investment-style vaults only — mirrors WaqfProceeds exactly,
+// vault-scoped. Append-only by convention, same posture as WaqfProceeds
+// (no update/delete route — a correction is a new, possibly negative,
+// entry).
+model VaultProceeds {
+  id                String           @id @default(uuid())
+  vaultId           String
+  vault             Vault            @relation(fields: [vaultId], references: [id])
+  vaultInvestmentId String?
+  vaultInvestment   VaultInvestment? @relation(fields: [vaultInvestmentId], references: [id])
+  amount            Decimal
+  currency          String
+  description       String
+  recordedByUserId  String
+  recordedByUser    User             @relation(fields: [recordedByUserId], references: [id])
+  createdAt         DateTime         @default(now())
+
+  @@index([vaultId])
+  @@map("vault_proceeds")
+}
+
+// Mirrors Distribution, but pays a Counterparty instead of a
+// Beneficiary — see this section's own top comment on why (pooled
+// public giving realistically disbursed to a handful of delivery
+// partners, not individually-vetted named beneficiaries). Registration
+// (this model, created directly) is plain staff CRUD; approval is
+// always the vault.distribution_approve governed action, mirroring
+// distribution.approve exactly, including firing the same real-payout
+// (Paystack-only, today) disbursement flow post-commit.
+model VaultDistribution {
+  id              String             @id @default(uuid())
+  vaultId         String
+  vault           Vault              @relation(fields: [vaultId], references: [id])
+  vaultCauseId    String
+  vaultCause      VaultCause         @relation(fields: [vaultCauseId], references: [id])
+  counterpartyId  String
+  counterparty    Counterparty       @relation(fields: [counterpartyId], references: [id])
+  amount          Decimal
+  currency        String
+  status          DistributionStatus @default(pending)
+  approvedAt      DateTime?
+  payoutProvider  PayoutProvider?
+  payoutReference String?            @unique
+  paidAt          DateTime?
+  payoutError     String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+
+  @@index([vaultId])
+  @@index([vaultCauseId])
+  @@map("vault_distributions")
 }

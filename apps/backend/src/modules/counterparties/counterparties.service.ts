@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
-import { prisma, Prisma, CounterpartyType, CounterpartyStatus } from "@birr/db";
+import { prisma, Prisma, CounterpartyType, CounterpartyStatus, PayoutProvider } from "@birr/db";
+import { EncryptionService } from "../../common/settings/encryption.service";
 
 export class RegisterCounterpartyInput {
   @IsString()
@@ -138,8 +139,31 @@ export class SetConcentrationLimitInput {
   currency!: string;
 }
 
+// Only Paystack payouts exist anywhere in this codebase today (see
+// DistributionsService.assertPayoutReady's own comment) — payoutProvider
+// is still a real field, not hardcoded, so a second rail slots in later
+// without a schema change, same posture as Beneficiary.payoutProvider.
+export class SetPayoutDetailsInput {
+  @IsEnum(PayoutProvider)
+  payoutProvider!: PayoutProvider;
+
+  @IsString()
+  bankName!: string;
+
+  @IsString()
+  accountNumber!: string;
+
+  @IsString()
+  accountName!: string;
+
+  @IsString()
+  bankCode!: string;
+}
+
 @Injectable()
 export class CounterpartiesService {
+  constructor(private readonly encryption: EncryptionService) {}
+
   /**
    * Plain CRUD, gated to investment_committee (they source and vet
    * counterparty relationships day-to-day) — registering a candidate
@@ -276,6 +300,44 @@ export class CounterpartiesService {
           entityId: id,
           before: counterparty as any,
           after: updated as any,
+        },
+      });
+      return updated;
+    });
+  }
+
+  /**
+   * Where a Counterparty's own payout bank details get set — needed
+   * before VaultDistributionsService.approve() can succeed for any
+   * distribution paying this counterparty (see that service's own
+   * assertPayoutReady). Same AES-256-GCM encrypted-JSON-blob shape as
+   * Beneficiary.bankDetailsEncrypted, via the same EncryptionService —
+   * not a new pattern.
+   */
+  async setPayoutDetails(id: string, input: SetPayoutDetailsInput, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const counterparty = await tx.counterparty.findUnique({ where: { id } });
+      if (!counterparty) throw new NotFoundException(`Counterparty "${id}" not found.`);
+
+      const { payoutProvider, ...bankDetails } = input;
+      const updated = await tx.counterparty.update({
+        where: { id },
+        data: { payoutProvider, payoutBankDetailsEncrypted: this.encryption.encrypt(JSON.stringify(bankDetails)) },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorType: "birr_staff",
+          actorUserId,
+          action: "counterparty.payout_details_set",
+          entityType: "Counterparty",
+          entityId: id,
+          // Never logs the plaintext bank details, even in the audit
+          // trail — same PII-exclusion posture as
+          // WaqfCausesService/GovernedActionsService strip
+          // bankDetailsEncrypted from a Beneficiary snapshot everywhere
+          // it appears.
+          before: { payoutProvider: counterparty.payoutProvider },
+          after: { payoutProvider: updated.payoutProvider },
         },
       });
       return updated;

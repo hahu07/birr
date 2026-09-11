@@ -9,6 +9,7 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button, IconMark } from "@birr/ui";
+import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 
 // Four stops, not two-color interpolation across the full distance: a
 // straight primary-900 → violet-700 sRGB ramp passes through a
@@ -97,6 +98,7 @@ function useScrolled(thresholdPx = 8) {
 // nav without needing to know which page it's currently rendering.
 const NAV_LINKS = [
   { href: "/#how-it-works", label: "How it works" },
+  { href: "/vaults", label: "Support a cause" },
   { href: "/#governance", label: "Governance" },
   { href: "/#ai", label: "AI" },
 ];
@@ -134,26 +136,77 @@ export function SiteHeader() {
   );
 }
 
+const FOOTER_PLATFORM_LINKS = [
+  { href: "/#waqf-types", label: "What Birr manages" },
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/vaults", label: "Support a cause" },
+  { href: "/#governance", label: "Governance" },
+  { href: "/#ai", label: "AI" },
+];
+
+function FooterColumn({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{title}</p>
+      <ul className="mt-4 space-y-2.5">{children}</ul>
+    </div>
+  );
+}
+
 export function SiteFooter() {
   return (
-    <footer className="border-t border-slate-100 px-6 py-10 sm:px-8">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
-        <div className="flex items-center gap-2.5">
-          <IconMark className="h-7 w-7" />
-          <span className="text-sm font-medium text-slate-700">Birr — a digital trustee for Islamic waqf.</span>
-        </div>
-        <div className="flex items-center gap-6">
-          <Link href="/sign-in" className="text-sm font-medium text-slate-500 hover:text-slate-900">
-            Sign in
+    <footer className="border-t border-slate-100 px-6 pb-10 pt-16 sm:px-8">
+      <div className="mx-auto grid max-w-6xl gap-10 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="sm:col-span-2 lg:col-span-2">
+          <Link href="/" className="flex items-center gap-2.5">
+            <IconMark className="h-8 w-8" />
+            <span className="text-lg font-semibold tracking-tight text-slate-900">Birr</span>
           </Link>
-          <Link href="/sign-up" className="text-sm font-medium text-slate-500 hover:text-slate-900">
-            Sign up
-          </Link>
+          <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-500">
+            A digital trustee for Islamic waqf — establish your own Waqf Fund, or support one of Birr's own Vaults.
+            Every decision runs through the same maker-checker governance either way.
+          </p>
         </div>
+
+        <FooterColumn title="Platform">
+          {FOOTER_PLATFORM_LINKS.map((link) => (
+            <li key={link.href}>
+              <Link href={link.href} className="text-sm text-slate-600 hover:text-slate-900">
+                {link.label}
+              </Link>
+            </li>
+          ))}
+        </FooterColumn>
+
+        <FooterColumn title="Waqf Fund types">
+          {WAQF_TYPE_SLUGS.map((slug) => (
+            <li key={slug}>
+              <Link href={`/waqf-types/${slug}`} className="text-sm text-slate-600 hover:text-slate-900">
+                {WAQF_TYPE_CONTENT[slug].label}
+              </Link>
+            </li>
+          ))}
+        </FooterColumn>
+
+        <FooterColumn title="Account">
+          <li>
+            <Link href="/sign-up" className="text-sm text-slate-600 hover:text-slate-900">
+              Sign up
+            </Link>
+          </li>
+          <li>
+            <Link href="/sign-in" className="text-sm text-slate-600 hover:text-slate-900">
+              Sign in
+            </Link>
+          </li>
+        </FooterColumn>
       </div>
-      <p className="mx-auto mt-6 max-w-6xl text-xs text-slate-500">
-        © {new Date().getFullYear()} Birr. Every governed action is recorded to an immutable audit trail.
-      </p>
+
+      <div className="mx-auto mt-12 max-w-6xl border-t border-slate-100 pt-6">
+        <p className="text-xs text-slate-500">
+          © {new Date().getFullYear()} Birr. Every governed action is recorded to an immutable audit trail.
+        </p>
+      </div>
     </footer>
   );
 }

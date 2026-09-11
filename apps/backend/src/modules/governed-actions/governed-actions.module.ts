@@ -6,6 +6,7 @@ import { BeneficiariesModule } from "../beneficiaries/beneficiaries.module";
 import { InvestmentsModule } from "../investments/investments.module";
 import { CounterpartiesModule } from "../counterparties/counterparties.module";
 import { DistributionsModule } from "../distributions/distributions.module";
+import { VaultsModule } from "../vaults/vaults.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
@@ -15,6 +16,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
     InvestmentsModule,
     CounterpartiesModule,
     DistributionsModule,
+    VaultsModule,
     NotificationsModule,
   ],
   controllers: [GovernedActionsController],

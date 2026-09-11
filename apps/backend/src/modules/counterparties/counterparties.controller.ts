@@ -5,6 +5,7 @@ import {
   RegisterCounterpartyInput,
   UpdateCounterpartyInput,
   SetConcentrationLimitInput,
+  SetPayoutDetailsInput,
 } from "./counterparties.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
@@ -51,6 +52,20 @@ export class CounterpartiesController {
     @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
   ) {
     return this.service.setConcentrationLimit(id, body, staff.userId);
+  }
+
+  // Needed before VaultDistributionsService.approve() can succeed for
+  // any distribution paying this counterparty — see that service's own
+  // assertPayoutReady. mutawalli_officer, matching that role's general
+  // case-carrying-operational-detail posture elsewhere in this codebase.
+  @Put(":id/payout-details")
+  @RequiresStaffRole("mutawalli_officer")
+  setPayoutDetails(
+    @Param("id") id: string,
+    @Body() body: SetPayoutDetailsInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.service.setPayoutDetails(id, body, staff.userId);
   }
 
   @Post(":id/suspend")

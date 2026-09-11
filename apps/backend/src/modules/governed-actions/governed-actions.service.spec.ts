@@ -7,6 +7,10 @@ import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { InvestmentsService } from "../investments/investments.service";
 import { CounterpartiesService } from "../counterparties/counterparties.service";
 import { DistributionsService } from "../distributions/distributions.service";
+import { VaultsService } from "../vaults/vaults.service";
+import { VaultProceedsService } from "../vaults/vault-proceeds.service";
+import { VaultInvestmentsService } from "../vaults/vault-investments.service";
+import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import {
   FakePaystackPayoutAdapter,
   createFakeStripePayoutAdapter,
@@ -43,7 +47,7 @@ describe("GovernedActionsService", () => {
     new AssetsService(),
     beneficiariesService,
     new InvestmentsService(),
-    new CounterpartiesService(),
+    new CounterpartiesService(encryption),
     new DistributionsService(
       beneficiariesService,
       notificationsService,
@@ -51,6 +55,9 @@ describe("GovernedActionsService", () => {
       fakePaystackPayoutAdapter as any,
       createFakeStablecoinPayoutAdapter() as any,
     ),
+    new VaultsService(new VaultProceedsService()),
+    new VaultInvestmentsService(),
+    new VaultDistributionsService(encryption, fakePaystackPayoutAdapter as any),
     notificationsService,
   );
 
@@ -62,6 +69,11 @@ describe("GovernedActionsService", () => {
   const counterpartyIds: string[] = [];
   const distributionIds: string[] = [];
   const waqfCauseIds: string[] = [];
+  const vaultIds: string[] = [];
+  const vaultCauseIds: string[] = [];
+  const vaultInvestmentIds: string[] = [];
+  const vaultDistributionIds: string[] = [];
+  const vaultDonorIds: string[] = [];
 
   let makerUserId: string;
   let assetCheckerUserId: string;
@@ -174,6 +186,18 @@ describe("GovernedActionsService", () => {
     await prisma.asset.deleteMany({ where: { id: { in: assetIds } } });
     await prisma.beneficiary.deleteMany({ where: { id: { in: beneficiaryIds } } });
     await prisma.investment.deleteMany({ where: { id: { in: investmentIds } } });
+    // Vault side — same FK-safe ordering reasoning as the Waqf side
+    // above: VaultDistribution/VaultInvestment (RESTRICT on vaultId)
+    // before VaultCause (RESTRICT on vaultId) before Vault; VaultDonor
+    // has no incoming RESTRICT from anything left standing once
+    // VaultContribution rows created via the real flow tests are gone.
+    await prisma.vaultDistribution.deleteMany({ where: { id: { in: vaultDistributionIds } } });
+    await prisma.vaultInvestment.deleteMany({ where: { id: { in: vaultInvestmentIds } } });
+    await prisma.vaultProceeds.deleteMany({ where: { vaultId: { in: vaultIds } } });
+    await prisma.vaultContribution.deleteMany({ where: { vaultId: { in: vaultIds } } });
+    await prisma.vaultCause.deleteMany({ where: { id: { in: vaultCauseIds } } });
+    await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
+    await prisma.vaultDonor.deleteMany({ where: { id: { in: vaultDonorIds } } });
     await prisma.counterparty.deleteMany({ where: { id: { in: counterpartyIds } } });
     await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
@@ -658,7 +682,7 @@ describe("GovernedActionsService", () => {
     // beneficiaryCheckerUserId is seeded as shariah_board_member (see
     // beforeAll above) — reused here for the Shariah sign-off itself,
     // not as a governed-action checker.
-    await new CounterpartiesService().recordShariahApproval(counterparty.id, beneficiaryCheckerUserId);
+    await new CounterpartiesService(encryption).recordShariahApproval(counterparty.id, beneficiaryCheckerUserId);
 
     const result = await service.decide({
       governedActionId: action.id,
@@ -1183,5 +1207,257 @@ describe("GovernedActionsService", () => {
     const foundCriteria = await service.findById(criteriaAction.id);
     expect(foundCriteria?.currentState).toEqual({ newCriteria: "Original criteria" });
     expect(JSON.stringify(foundCriteria?.currentState)).not.toContain("should-never-appear-in-currentState");
+  });
+
+  // Vault — a separate, staff-curated public-giving product (see
+  // schema.prisma's own Vault section comment). All four handlers below
+  // are governed specifically because there's no Founder here to hold
+  // the self-service half of the equivalent Waqf decisions, and it's
+  // public money. Reuses this file's own seeded maker/checker fixtures:
+  // mutawalli_officer (makerUserId) is the seeded maker for
+  // vault.cause_allocate/vault.distribution_approve; investment_committee
+  // (investmentMakerUserId) for vault.proceeds_allocate/
+  // vault.investment_change; compliance_officer (distributionCheckerUserId)
+  // and audit_committee (assetCheckerUserId) as seeded checkers.
+  describe("Vault governed actions", () => {
+    async function createProjectVaultWithCause() {
+      const vault = await prisma.vault.create({
+        data: {
+          name: `Governed Actions Fixture Vault ${randomUUID()}`,
+          slug: `governed-actions-fixture-${randomUUID()}`,
+          type: "project",
+          currency: "USD",
+          jurisdiction: "NG",
+          createdByUserId: makerUserId,
+        },
+      });
+      vaultIds.push(vault.id);
+      const cause = await prisma.vaultCause.create({ data: { vaultId: vault.id, name: "Fixture Cause" } });
+      vaultCauseIds.push(cause.id);
+      const donor = await prisma.vaultDonor.create({ data: { email: `governed-actions-vault-donor-${randomUUID()}@example.com` } });
+      vaultDonorIds.push(donor.id);
+      await prisma.vaultContribution.create({
+        data: {
+          vaultId: vault.id,
+          donorId: donor.id,
+          amount: "1000",
+          currency: "USD",
+          provider: "paystack",
+          providerReference: `governed-actions-vault-contrib-${randomUUID()}`,
+          status: "confirmed",
+        },
+      });
+      return { vault, cause };
+    }
+
+    test("vault.cause_allocate: approve → VaultCause.allocatedAmount is set, vaultId is derived (not client-supplied), both audit-logged", async () => {
+      const { vault, cause } = await createProjectVaultWithCause();
+
+      const action = await service.propose({
+        permissionKey: "vault.cause_allocate",
+        payload: { vaultCauseId: cause.id, newAllocatedAmount: "600" },
+        makerUserId,
+      });
+      governedActionIds.push(action.id);
+      expect(action.vaultId).toBe(vault.id);
+
+      const result = await service.decide({
+        governedActionId: action.id,
+        checkerUserId: distributionCheckerUserId,
+        approve: true,
+      });
+      expect(result.governedAction.status).toBe("approved");
+      expect(result.fulfillment?.entityType).toBe("VaultCause");
+
+      const updated = await prisma.vaultCause.findUniqueOrThrow({ where: { id: cause.id } });
+      expect(updated.allocatedAmount?.toString()).toBe("600");
+
+      const logs = await auditLogsFor(cause.id);
+      expect(logs.some((l) => l.action === "vault_cause.allocation_set" && l.vaultId === vault.id)).toBe(true);
+    });
+
+    test("vault.cause_allocate: rejects allocating more than the vault's confirmed pool", async () => {
+      const { cause } = await createProjectVaultWithCause();
+      const action = await service.propose({
+        permissionKey: "vault.cause_allocate",
+        payload: { vaultCauseId: cause.id, newAllocatedAmount: "999999" },
+        makerUserId,
+      });
+      governedActionIds.push(action.id);
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true }),
+      ).rejects.toThrow(BadRequestException);
+      const stillProposed = await prisma.governedAction.findUniqueOrThrow({ where: { id: action.id } });
+      expect(stillProposed.status).toBe("proposed");
+    });
+
+    test("vault.proceeds_allocate: approve → VaultCause.proceedsAllocatedAmount is set (investment-style vault only)", async () => {
+      const vault = await prisma.vault.create({
+        data: {
+          name: `Governed Actions Fixture Investment Vault ${randomUUID()}`,
+          slug: `governed-actions-fixture-inv-${randomUUID()}`,
+          type: "investment",
+          currency: "USD",
+          jurisdiction: "NG",
+          createdByUserId: makerUserId,
+        },
+      });
+      vaultIds.push(vault.id);
+      const cause = await prisma.vaultCause.create({ data: { vaultId: vault.id, name: "Investment Fixture Cause" } });
+      vaultCauseIds.push(cause.id);
+      await prisma.vaultProceeds.create({
+        data: { vaultId: vault.id, amount: "300", currency: "USD", description: "Fixture return", recordedByUserId: makerUserId },
+      });
+
+      const action = await service.propose({
+        permissionKey: "vault.proceeds_allocate",
+        payload: { vaultCauseId: cause.id, newProceedsAllocatedAmount: "300" },
+        makerUserId: investmentMakerUserId,
+      });
+      governedActionIds.push(action.id);
+
+      const result = await service.decide({
+        governedActionId: action.id,
+        checkerUserId: distributionCheckerUserId,
+        approve: true,
+      });
+      expect(result.governedAction.status).toBe("approved");
+
+      const updated = await prisma.vaultCause.findUniqueOrThrow({ where: { id: cause.id } });
+      expect(updated.proceedsAllocatedAmount?.toString()).toBe("300");
+    });
+
+    test("vault.investment_change: approve → VaultInvestment.allocatedAmount is updated, vaultId is derived", async () => {
+      const vault = await prisma.vault.create({
+        data: {
+          name: `Governed Actions Fixture Investment Change Vault ${randomUUID()}`,
+          slug: `governed-actions-fixture-inv-change-${randomUUID()}`,
+          type: "investment",
+          currency: "USD",
+          jurisdiction: "NG",
+          createdByUserId: makerUserId,
+        },
+      });
+      vaultIds.push(vault.id);
+      const donor = await prisma.vaultDonor.create({ data: { email: `governed-actions-inv-change-donor-${randomUUID()}@example.com` } });
+      vaultDonorIds.push(donor.id);
+      await prisma.vaultContribution.create({
+        data: {
+          vaultId: vault.id,
+          donorId: donor.id,
+          amount: "2000",
+          currency: "USD",
+          provider: "paystack",
+          providerReference: `governed-actions-inv-change-contrib-${randomUUID()}`,
+          status: "confirmed",
+        },
+      });
+      const counterparty = await prisma.counterparty.create({
+        data: { name: `Governed Actions Vault Investment Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", status: "active" },
+      });
+      counterpartyIds.push(counterparty.id);
+      const investment = await prisma.vaultInvestment.create({
+        data: { vaultId: vault.id, name: "Fixture Vault Investment", instrumentType: "sukuk", allocatedAmount: "500", currency: "USD", counterpartyId: counterparty.id },
+      });
+      vaultInvestmentIds.push(investment.id);
+
+      const action = await service.propose({
+        permissionKey: "vault.investment_change",
+        payload: { vaultInvestmentId: investment.id, newAllocatedAmount: "800" },
+        makerUserId: investmentMakerUserId,
+      });
+      governedActionIds.push(action.id);
+      expect(action.vaultId).toBe(vault.id);
+
+      const result = await service.decide({
+        governedActionId: action.id,
+        checkerUserId: assetCheckerUserId,
+        approve: true,
+      });
+      expect(result.governedAction.status).toBe("approved");
+
+      const updated = await prisma.vaultInvestment.findUniqueOrThrow({ where: { id: investment.id } });
+      expect(updated.allocatedAmount.toString()).toBe("800");
+    });
+
+    test("vault.distribution_approve: approve → status is approved, vaultId is derived, both audit-logged; reject → status is rejected", async () => {
+      const { vault, cause } = await createProjectVaultWithCause();
+      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "1000" } });
+      const counterparty = await prisma.counterparty.create({
+        data: {
+          name: `Governed Actions Vault Distribution Fixture Partner ${randomUUID()}`,
+          institutionType: "relief_partner",
+          jurisdiction: "NG",
+          status: "active",
+          payoutProvider: "paystack",
+          payoutBankDetailsEncrypted: encryption.encrypt(
+            JSON.stringify({ bankName: "Test Bank", accountNumber: "0123456789", accountName: "Test Relief Partner", bankCode: "058" }),
+          ),
+        },
+      });
+      counterpartyIds.push(counterparty.id);
+      const distribution = await prisma.vaultDistribution.create({
+        data: { vaultId: vault.id, vaultCauseId: cause.id, counterpartyId: counterparty.id, amount: "200", currency: "USD" },
+      });
+      vaultDistributionIds.push(distribution.id);
+
+      const approveAction = await service.propose({
+        permissionKey: "vault.distribution_approve",
+        payload: { vaultDistributionId: distribution.id },
+        makerUserId,
+      });
+      governedActionIds.push(approveAction.id);
+      expect(approveAction.vaultId).toBe(vault.id);
+
+      const result = await service.decide({
+        governedActionId: approveAction.id,
+        checkerUserId: distributionCheckerUserId,
+        approve: true,
+      });
+      expect(result.governedAction.status).toBe("approved");
+      expect(result.fulfillment?.entityType).toBe("VaultDistribution");
+
+      const approved = await prisma.vaultDistribution.findUniqueOrThrow({ where: { id: distribution.id } });
+      expect(["approved", "disbursing"]).toContain(approved.status); // fire-and-forget initiateDisbursement may already have advanced it
+
+      // A second, separate distribution against the same cause, rejected.
+      const secondDistribution = await prisma.vaultDistribution.create({
+        data: { vaultId: vault.id, vaultCauseId: cause.id, counterpartyId: counterparty.id, amount: "50", currency: "USD" },
+      });
+      vaultDistributionIds.push(secondDistribution.id);
+      const rejectAction = await service.propose({
+        permissionKey: "vault.distribution_approve",
+        payload: { vaultDistributionId: secondDistribution.id },
+        makerUserId,
+      });
+      governedActionIds.push(rejectAction.id);
+      const rejectResult = await service.decide({
+        governedActionId: rejectAction.id,
+        checkerUserId: distributionCheckerUserId,
+        approve: false,
+      });
+      expect(rejectResult.governedAction.status).toBe("rejected");
+      const rejected = await prisma.vaultDistribution.findUniqueOrThrow({ where: { id: secondDistribution.id } });
+      expect(rejected.status).toBe("rejected");
+    });
+
+    test("checkDuplicate: propose() rejects a second proposal while one is already pending for the same vault cause allocation", async () => {
+      const { cause } = await createProjectVaultWithCause();
+      const first = await service.propose({
+        permissionKey: "vault.cause_allocate",
+        payload: { vaultCauseId: cause.id, newAllocatedAmount: "100" },
+        makerUserId,
+      });
+      governedActionIds.push(first.id);
+
+      await expect(
+        service.propose({
+          permissionKey: "vault.cause_allocate",
+          payload: { vaultCauseId: cause.id, newAllocatedAmount: "200" },
+          makerUserId,
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
   });
 });

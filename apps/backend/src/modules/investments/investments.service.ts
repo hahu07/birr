@@ -195,6 +195,14 @@ export class InvestmentsService {
    * only once you opt in" posture as most admin-configurable ceilings in
    * this codebase). `excludeInvestmentId` mirrors assertWithinRaised's
    * own re-check convention.
+   *
+   * Also sums VaultInvestment rows against this same counterparty —
+   * 2026-09-10, added alongside the Vault product. A counterparty's real
+   * exposure ceiling doesn't care whether the money came from a
+   * Founder's own waqf or a public Vault; VaultInvestmentsService's own
+   * mirror of this method sums both tables for the identical reason, so
+   * this one has to as well or the check only catches over-concentration
+   * from one direction.
    */
   private async assertWithinConcentrationLimit(
     counterparty: { id: string; name: string; concentrationLimit: Prisma.Decimal | null; concentrationLimitCurrency: string | null },
@@ -223,22 +231,28 @@ export class InvestmentsService {
       return;
     }
 
-    const others = await tx.investment.findMany({
-      where: {
-        counterpartyId: counterparty.id,
-        status: "active",
-        ...(excludeInvestmentId ? { id: { not: excludeInvestmentId } } : {}),
-      },
-      select: { allocatedAmount: true, currency: true },
-    });
-    const alreadyInvested = others
+    const [others, vaultOthers] = await Promise.all([
+      tx.investment.findMany({
+        where: {
+          counterpartyId: counterparty.id,
+          status: "active",
+          ...(excludeInvestmentId ? { id: { not: excludeInvestmentId } } : {}),
+        },
+        select: { allocatedAmount: true, currency: true },
+      }),
+      tx.vaultInvestment.findMany({
+        where: { counterpartyId: counterparty.id, status: "active" },
+        select: { allocatedAmount: true, currency: true },
+      }),
+    ]);
+    const alreadyInvested = [...others, ...vaultOthers]
       .filter((i) => !limitCurrency || !i.currency || i.currency === limitCurrency)
       .reduce((sum, i) => sum.plus(i.allocatedAmount), new Prisma.Decimal(0));
 
     if (alreadyInvested.plus(additionalAmount).gt(counterparty.concentrationLimit)) {
       const available = counterparty.concentrationLimit.minus(alreadyInvested);
       throw new BadRequestException(
-        `Only ${available.isNegative() ? 0 : available} of "${counterparty.name}"'s ${counterparty.concentrationLimit} concentration limit is unused (across every waqf combined).`,
+        `Only ${available.isNegative() ? 0 : available} of "${counterparty.name}"'s ${counterparty.concentrationLimit} concentration limit is unused (across every waqf and vault combined).`,
       );
     }
   }

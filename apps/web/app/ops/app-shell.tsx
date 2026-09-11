@@ -16,6 +16,7 @@ import { humanize, formatRelativeTime } from "../../lib/format";
 import { useNotifications } from "../../lib/notifications";
 import type { WaqfCaseAssignment } from "../../lib/ops-types";
 import {
+  IconArchive,
   IconBriefcase,
   IconClipboardCheck,
   IconFileText,
@@ -72,6 +73,7 @@ const NAV_GROUPS: {
     items: [
       { href: "/ops/foundations", label: "Foundations", icon: IconLandmark },
       { href: "/ops/waqfs", label: "Waqf Funds", icon: IconBriefcase },
+      { href: "/ops/vaults", label: "Vaults", icon: IconArchive },
       { href: "/ops/counterparties", label: "Counterparties", icon: IconLandmark },
       { href: "/ops/cause-categories", label: "Cause Categories", icon: IconSparkle },
     ],

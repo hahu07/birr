@@ -33,6 +33,14 @@ export const permissions = [
   { key: "counterparty.onboard", category: "counterparty", requiresMakerChecker: true, description: "Approve a counterparty (or its reactivation) to receive waqf investment money." },
   { key: "waqf.view", category: "waqf", requiresMakerChecker: false, description: "View waqf details. Not maker-checker gated." },
   { key: "compliance.report_export", category: "compliance", requiresMakerChecker: false, description: "Export a compliance report. Not maker-checker gated." },
+  // Vault — a separate, staff-curated public-giving product (see
+  // schema.prisma's own Vault section comment). All four governed here
+  // specifically because there's no Founder to hold the self-service
+  // half of the equivalent Waqf decisions, and it's public money.
+  { key: "vault.cause_allocate", category: "vault", requiresMakerChecker: true, description: "Allocate a vault's pooled contributions to one of its causes." },
+  { key: "vault.proceeds_allocate", category: "vault", requiresMakerChecker: true, description: "Allocate an investment-style vault's recorded proceeds to one of its causes." },
+  { key: "vault.investment_change", category: "vault", requiresMakerChecker: true, description: "Change a vault investment's allocation." },
+  { key: "vault.distribution_approve", category: "vault", requiresMakerChecker: true, description: "Approve a vault distribution to a delivery-partner counterparty." },
 ] as const;
 
 // role key -> permission key -> { canMaker, canChecker }
@@ -49,6 +57,8 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "beneficiary.status_change": { canMaker: true },
     "counterparty.onboard": { canChecker: true },
     "waqf.view": { canMaker: true },
+    "vault.cause_allocate": { canMaker: true },
+    "vault.distribution_approve": { canMaker: true },
   },
   // Apex checker across every maker-checker gated permission — the Board
   // is the last line of sign-off, distinct from (and above) the
@@ -62,6 +72,10 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "beneficiary.status_change": { canChecker: true },
     "counterparty.onboard": { canChecker: true },
     "waqf.view": { canMaker: true },
+    "vault.cause_allocate": { canChecker: true },
+    "vault.proceeds_allocate": { canChecker: true },
+    "vault.investment_change": { canChecker: true },
+    "vault.distribution_approve": { canChecker: true },
   },
   investment_committee: {
     "asset.dispose": { canChecker: true },
@@ -73,12 +87,15 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     // exist first) confirm.
     "counterparty.onboard": { canMaker: true },
     "waqf.view": { canMaker: true },
+    "vault.proceeds_allocate": { canMaker: true },
+    "vault.investment_change": { canMaker: true },
   },
   shariah_board_member: {
     "beneficiary.criteria_update": { canChecker: true },
     "beneficiary.status_change": { canChecker: true },
     "counterparty.onboard": { canChecker: true },
     "waqf.view": { canMaker: true },
+    "vault.distribution_approve": { canChecker: true },
   },
   audit_committee: {
     "asset.dispose": { canChecker: true },
@@ -86,6 +103,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "counterparty.onboard": { canChecker: true },
     "compliance.report_export": { canMaker: true },
     "waqf.view": { canMaker: true },
+    "vault.investment_change": { canChecker: true },
   },
   compliance_officer: {
     "distribution.approve": { canChecker: true },
@@ -93,6 +111,9 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "beneficiary.status_change": { canChecker: true },
     "compliance.report_export": { canMaker: true },
     "waqf.view": { canMaker: true },
+    "vault.cause_allocate": { canChecker: true },
+    "vault.proceeds_allocate": { canChecker: true },
+    "vault.distribution_approve": { canChecker: true },
   },
   legal_adviser: {
     "waqf.view": { canMaker: true },
@@ -122,6 +143,26 @@ export const contributionMinimums = [
   { currency: "USDC", minAmount: "100" },
   { currency: "USDT", minAmount: "100" },
   { currency: "NGN", minAmount: "150000" },
+] as const;
+
+// VaultContributionsService's AML anti-structuring guard (see that
+// service's findOrCreateDonor comment) — crossing this, per currency,
+// requires the public donor's name and ID. Previously unseeded entirely,
+// meaning the check was a silent no-op in any fresh environment; these
+// are starting placeholders, same "finance/compliance should tune per
+// jurisdiction" caveat as every other minimum/threshold here.
+// USDC/USDT are deliberately an order of magnitude below the fiat
+// rails, not the same figure scaled by exchange rate like NGN's own row
+// above — the owner's explicit decision (2026-09-11) to compensate for
+// that rail being harder to unwind after the fact than a card or bank
+// reversal (see StablecoinAdapter's own "receive-only" comment).
+export const vaultDonorThresholds = [
+  { currency: "USD", thresholdAmount: "10000" },
+  { currency: "EUR", thresholdAmount: "10000" },
+  { currency: "GBP", thresholdAmount: "10000" },
+  { currency: "NGN", thresholdAmount: "15000000" },
+  { currency: "USDC", thresholdAmount: "1000" },
+  { currency: "USDT", thresholdAmount: "1000" },
 ] as const;
 
 // Enforced in WaqfsService.create() when a founder declares a corpus —

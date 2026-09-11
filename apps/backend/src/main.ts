@@ -45,6 +45,11 @@ async function bootstrap() {
   // waqf-types pages) — see modules/foundations/logo-storage.service.ts.
   app.use("/uploads/logos", express.static(path.join(__dirname, "..", "uploads", "logos")));
 
+  // Same public-by-design posture as Foundation logos above — a Vault's
+  // cover is meant to be shown on the public homepage's "Support a
+  // cause" cards. See modules/vaults/vault-cover-storage.service.ts.
+  app.use("/uploads/vault-covers", express.static(path.join(__dirname, "..", "uploads", "vault-covers")));
+
   // Message attachments are private Founder<->Birr-staff correspondence —
   // NOT meant to be public. Until 2026-09-08 this sat under the same
   // blanket `app.use("/uploads", express.static(...))` mount as the

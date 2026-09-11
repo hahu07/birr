@@ -105,6 +105,36 @@ export interface CauseCategory {
   parentId: string | null;
 }
 
+// Vault — a separate, staff-curated public-giving product, no Founder
+// involved (see packages/db/prisma/schema.prisma's own Vault section
+// comment). Only the public-facing fields the homepage's "Support a
+// cause" teaser needs — the Ops Console has its own, fuller copy in
+// app/ops/lib/ops-types.ts.
+export interface Vault {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  type: "investment" | "project";
+  currency: string;
+  targetAmount: string | null;
+  jurisdiction: string;
+  coverImageUrl: string | null;
+  // Only present from GET /vaults/by-slug/:slug and GET /vaults/:id —
+  // both include it directly (see VaultsService.findBySlug/findById's
+  // own `include`), which is what the public donation page reads
+  // instead of a second call to the staff-only GET /vaults/:id/causes.
+  causes?: VaultCause[];
+}
+
+export interface VaultCause {
+  id: string;
+  vaultId: string;
+  causeCategoryId: string | null;
+  name: string;
+  description: string | null;
+}
+
 export interface CauseImpactUpdate {
   id: string;
   waqfCauseId: string;

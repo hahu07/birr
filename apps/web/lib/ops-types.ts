@@ -782,3 +782,89 @@ export interface FounderTeamMember {
   status: "active" | "revoked";
   user: { id: string; fullName: string; email: string; mfaEnabled: boolean };
 }
+
+// ============================================================
+// Vault — a separate, staff-curated public-giving product, no Founder
+// involved at all. See packages/db/prisma/schema.prisma's own Vault
+// section comment for the full reasoning.
+// ============================================================
+
+export type VaultType = "investment" | "project";
+export type VaultStatus = "draft" | "open" | "closed" | "archived";
+
+export interface Vault {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  type: VaultType;
+  status: VaultStatus;
+  currency: string;
+  targetAmount: string | null;
+  jurisdiction: string;
+  coverImageUrl: string | null;
+  createdByUserId: string;
+  openedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Only present from findById (GET /vaults/:id), which includes causes.
+  causes?: VaultCause[];
+}
+
+export interface VaultCause {
+  id: string;
+  vaultId: string;
+  causeCategoryId: string | null;
+  name: string;
+  description: string | null;
+  // Only ever moves via the vault.cause_allocate governed action — no
+  // Founder self-service equivalent exists for a Vault. See
+  // VaultCause's own schema comment.
+  allocatedAmount: string | null;
+  // Investment-style vaults only — only ever moves via the
+  // vault.proceeds_allocate governed action.
+  proceedsAllocatedAmount: string | null;
+  createdAt: string;
+  deletedAt: string | null;
+}
+
+export interface VaultInvestment {
+  id: string;
+  vaultId: string;
+  name: string;
+  instrumentType: InvestmentInstrumentType;
+  allocatedAmount: string;
+  currency: string;
+  status: "active" | "liquidated";
+  liquidatedAt: string | null;
+  counterpartyId: string | null;
+  createdAt: string;
+}
+
+export interface VaultProceeds {
+  id: string;
+  vaultId: string;
+  vaultInvestmentId: string | null;
+  amount: string;
+  currency: string;
+  description: string;
+  recordedByUserId: string;
+  createdAt: string;
+}
+
+export interface VaultDistribution {
+  id: string;
+  vaultId: string;
+  vaultCauseId: string;
+  counterpartyId: string;
+  amount: string;
+  currency: string;
+  status: "pending" | "approved" | "disbursing" | "paid" | "payout_failed" | "rejected";
+  approvedAt: string | null;
+  payoutProvider: PayoutProvider | null;
+  payoutReference: string | null;
+  paidAt: string | null;
+  payoutError: string | null;
+  createdAt: string;
+}
