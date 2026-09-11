@@ -1797,6 +1797,21 @@ enum IdType {
   other
 }
 
+// A dedicated sub-lifecycle for VaultContribution.refundStatus, not an
+// extension of the shared ContributionStatus (pending/confirmed/failed,
+// also used by the Founder-side Contribution) — same reasoning
+// VaultDistribution already established with its own DistributionStatus
+// rather than overloading ContributionStatus: refund processing needs
+// its own async, retry-safe state machine (requested -> processing ->
+// refunded/failed), which has nothing to do with whether the original
+// payment itself completed.
+enum VaultRefundStatus {
+  requested
+  processing
+  refunded
+  failed
+}
+
 // The lightweight, non-Founder identity a public donor gets — no
 // password, no login, no relation to User/Founder at all, deliberately
 // not a second flavor of either. Found-or-created by email at
@@ -1844,33 +1859,61 @@ model VaultDonorThreshold {
 // money is pooled fungible cash, not an individually-valued/disposable
 // asset the way a Founder's own waqf corpus is).
 model VaultContribution {
-  id                String               @id @default(uuid())
-  vaultId           String
-  vault             Vault                @relation(fields: [vaultId], references: [id])
+  id                 String               @id @default(uuid())
+  vaultId            String
+  vault              Vault                @relation(fields: [vaultId], references: [id])
   // The donor's *stated preference* at the time of giving, captured for
   // reporting only — it does NOT itself move VaultCause's enforceable
   // allocation ceiling (that only ever moves via the vault.cause_allocate
   // governed action, a later slice). Nullable: a donor may give to the
   // vault generally, with no cause earmarked.
-  vaultCauseId      String?
-  vaultCause        VaultCause?          @relation(fields: [vaultCauseId], references: [id])
+  vaultCauseId       String?
+  vaultCause         VaultCause?          @relation(fields: [vaultCauseId], references: [id])
   // Nullable — a donor who gives no email gets no VaultDonor row at all
   // (see VaultContributionsService.findOrCreateDonor's own comment): no
   // receipt, and no identity thread for the AML anti-structuring check
   // to match repeat gifts against, an accepted tradeoff of allowing a
   // fully anonymous contribution at all.
-  donorId           String?
-  donor             VaultDonor?          @relation(fields: [donorId], references: [id])
-  amount            Decimal
-  currency          String
-  provider          ContributionProvider
+  donorId            String?
+  donor              VaultDonor?          @relation(fields: [donorId], references: [id])
+  amount             Decimal
+  currency           String
+  provider           ContributionProvider
   // Always this row's own id, echoed back by the provider — same
   // convention as Contribution.providerReference.
-  providerReference String               @unique
-  status            ContributionStatus   @default(pending)
-  confirmedAt       DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  providerReference  String               @unique
+  // The provider's own charge/payment identifier — distinct from
+  // providerReference above (which is always *our* id, echoed back to
+  // us). Needed to actually call a refund API later: Stripe's Refund
+  // API takes a PaymentIntent id, not the Checkout Session id we
+  // otherwise track, so this is captured from the webhook at
+  // confirmation time (see StripeAdapter.verifyAndParseWebhook).
+  // Paystack's refund endpoint accepts providerReference directly, so
+  // this stays null for that rail; always null for stablecoin, which
+  // has no automated refund API at all (see StablecoinAdapter's own
+  // comment on why that rail's reversal is necessarily manual).
+  providerPaymentId  String?
+  status             ContributionStatus   @default(pending)
+  confirmedAt        DateTime?
+  // Staff-flagged for review — see VaultContributionsService.hold's own
+  // comment. Independent of status/refundStatus below: a held
+  // contribution is still "confirmed" (the payment itself completed),
+  // just paused pending review — release() clears both fields, moving
+  // back to normal.
+  heldAt             DateTime?
+  heldReason         String?
+  // The refund sub-lifecycle — see VaultRefundStatus's own comment.
+  // Null means no refund has ever been requested for this contribution.
+  refundStatus       VaultRefundStatus?
+  refundedAt         DateTime?
+  // The provider's refund confirmation id when the rail supports an
+  // automated reversal; null when it was recorded as refunded but the
+  // actual money movement was necessarily manual (stablecoin — see
+  // StablecoinAdapter's own comment).
+  refundReference    String?
+  refundFailedReason String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@index([vaultId])
   @@index([donorId])

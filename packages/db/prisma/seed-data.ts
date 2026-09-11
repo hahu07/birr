@@ -46,6 +46,13 @@ export const permissions = [
   { key: "vault.proceeds_allocate", category: "vault", requiresMakerChecker: true, description: "Allocate an investment-style vault's recorded proceeds to one of its causes." },
   { key: "vault.investment_change", category: "vault", requiresMakerChecker: true, description: "Change a vault investment's allocation." },
   { key: "vault.distribution_approve", category: "vault", requiresMakerChecker: true, description: "Approve a vault distribution to a delivery-partner counterparty." },
+  // Reversing a confirmed public gift — symmetrically the same class of
+  // decision as vault.distribution_approve above (real money moving),
+  // gated the same way. Part of the in-platform hold/refund workflow
+  // (owner's explicit decision, 2026-09-11) replacing "staff fix it
+  // manually through the provider's own dashboard" with an auditable,
+  // maker-checker-gated decision inside Birr's own system.
+  { key: "vault.contribution_refund", category: "vault", requiresMakerChecker: true, description: "Refund a confirmed vault contribution." },
 ] as const;
 
 // role key -> permission key -> { canMaker, canChecker }
@@ -83,6 +90,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.proceeds_allocate": { canChecker: true },
     "vault.investment_change": { canChecker: true },
     "vault.distribution_approve": { canChecker: true },
+    "vault.contribution_refund": { canChecker: true },
   },
   investment_committee: {
     "asset.dispose": { canChecker: true },
@@ -122,6 +130,11 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.cause_allocate": { canChecker: true },
     "vault.proceeds_allocate": { canChecker: true },
     "vault.distribution_approve": { canChecker: true },
+    // Maker, not checker, here — compliance is the role that actually
+    // holds a contribution for review (see VaultContributionsService
+    // .hold's own role gate) and is best placed to propose reversing
+    // it; the Board (above) is the independent checker.
+    "vault.contribution_refund": { canMaker: true },
   },
   legal_adviser: {
     "waqf.view": { canMaker: true },

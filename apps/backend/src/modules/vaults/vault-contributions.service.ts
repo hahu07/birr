@@ -9,6 +9,11 @@ import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { StablecoinAdapter } from "../contributions/providers/stablecoin.adapter";
 import { ResendVaultReceiptEmailAdapter } from "./email/resend-vault-receipt.adapter";
 
+export class HoldVaultContributionInput {
+  @IsString()
+  reason!: string;
+}
+
 export class InitiateVaultContributionInput {
   @IsString()
   vaultId!: string;
@@ -277,7 +282,11 @@ export class VaultContributionsService {
     const confirmed = await prisma.$transaction(async (tx) => {
       const confirmed = await tx.vaultContribution.update({
         where: { id: contribution.id },
-        data: { status: "confirmed", confirmedAt: new Date() },
+        data: {
+          status: "confirmed",
+          confirmedAt: new Date(),
+          providerPaymentId: result.providerPaymentId ?? contribution.providerPaymentId,
+        },
       });
       await tx.auditLog.create({
         data: {
@@ -323,5 +332,170 @@ export class VaultContributionsService {
 
   findById(id: string) {
     return prisma.vaultContribution.findUnique({ where: { id } });
+  }
+
+  listByVault(vaultId: string) {
+    return prisma.vaultContribution.findMany({ where: { vaultId }, orderBy: { createdAt: "desc" }, include: { donor: true } });
+  }
+
+  /**
+   * Staff-only (compliance_officer, see the controller's own route
+   * guard) — flags an already-confirmed contribution for review without
+   * moving any money. Independent of status: a held contribution is
+   * still "confirmed" underneath, just paused pending review. Plain
+   * CRUD, not governed — same trust level as a Vault status transition
+   * that doesn't touch money (see VaultsService.updateStatus), unlike
+   * the actual refund below.
+   */
+  async hold(id: string, reason: string, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const contribution = await tx.vaultContribution.findFirst({ where: { id } });
+      if (!contribution) throw new NotFoundException(`VaultContribution "${id}" not found.`);
+      if (contribution.status !== "confirmed") {
+        throw new BadRequestException(`Only a confirmed contribution can be held (this one is "${contribution.status}").`);
+      }
+      if (contribution.heldAt) {
+        throw new BadRequestException("This contribution is already held.");
+      }
+
+      const held = await tx.vaultContribution.update({ where: { id }, data: { heldAt: new Date(), heldReason: reason } });
+      await tx.auditLog.create({
+        data: {
+          vaultId: contribution.vaultId,
+          actorType: "birr_staff",
+          actorUserId,
+          action: "vault_contribution.held",
+          entityType: "VaultContribution",
+          entityId: id,
+          before: contribution as any,
+          after: held as any,
+        },
+      });
+      return held;
+    });
+  }
+
+  /** Reverses hold() — same trust level, same reasoning. */
+  async release(id: string, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const contribution = await tx.vaultContribution.findFirst({ where: { id } });
+      if (!contribution) throw new NotFoundException(`VaultContribution "${id}" not found.`);
+      if (!contribution.heldAt) {
+        throw new BadRequestException("This contribution isn't currently held.");
+      }
+
+      const released = await tx.vaultContribution.update({ where: { id }, data: { heldAt: null, heldReason: null } });
+      await tx.auditLog.create({
+        data: {
+          vaultId: contribution.vaultId,
+          actorType: "birr_staff",
+          actorUserId,
+          action: "vault_contribution.hold_released",
+          entityType: "VaultContribution",
+          entityId: id,
+          before: contribution as any,
+          after: released as any,
+        },
+      });
+      return released;
+    });
+  }
+
+  /**
+   * Internal only — never exposed behind a public controller route.
+   * vault.contribution_refund is a governed action; the only caller is
+   * GovernedActionsService's handler map, on approval, inside its own
+   * transaction. Only records the decision here — the real external
+   * refund call happens separately in initiateRefund() below, fired
+   * fire-and-forget after this transaction commits, same "approve
+   * records the decision, a later step does the actual money movement"
+   * split as VaultDistributionsService.approve()/initiateDisbursement().
+   */
+  async requestRefund(id: string, tx: Prisma.TransactionClient) {
+    const contribution = await tx.vaultContribution.findFirst({ where: { id } });
+    if (!contribution) throw new NotFoundException(`VaultContribution "${id}" not found.`);
+    if (contribution.status !== "confirmed") {
+      throw new BadRequestException(`Only a confirmed contribution can be refunded (this one is "${contribution.status}").`);
+    }
+    if (contribution.refundStatus) {
+      throw new BadRequestException(`A refund has already been ${contribution.refundStatus} for this contribution.`);
+    }
+
+    return tx.vaultContribution.update({ where: { id }, data: { refundStatus: "requested" } });
+  }
+
+  /**
+   * Fire-and-forget follow-up from GovernedActionsService, same shape as
+   * VaultDistributionsService.initiateDisbursement — an atomic claim
+   * (requested -> processing) before the real external call, so a retry
+   * or a race can't fire the same refund twice. Never throws past its
+   * own boundary; a real failure is caught and recorded as
+   * refundStatus: "failed" internally, same posture as that method.
+   *
+   * Not every rail can reverse a payment automatically — adapter.refund
+   * is optional (StablecoinAdapter has none, see its own comment on why
+   * a crypto payment has no reversible API call this platform can
+   * invoke, and never even collects the payer's wallet address to send
+   * funds back to). For those, this still records the contribution as
+   * refunded with a null refundReference: the actual money movement is
+   * understood to happen manually, off-platform, and the point of this
+   * workflow is giving staff an auditable in-system record of that
+   * decision, not that every rail can be reversed by an API call.
+   */
+  async initiateRefund(id: string): Promise<void> {
+    const contribution = await prisma.vaultContribution.findUnique({ where: { id } });
+    if (!contribution || contribution.refundStatus !== "requested") return;
+
+    const claim = await prisma.vaultContribution.updateMany({
+      where: { id, refundStatus: "requested" },
+      data: { refundStatus: "processing" },
+    });
+    if (claim.count !== 1) return;
+
+    const adapter = this.adapters.get(contribution.provider);
+    try {
+      let refundReference: string | null = null;
+      if (adapter?.refund) {
+        const result = await adapter.refund({
+          providerReference: contribution.providerReference,
+          providerPaymentId: contribution.providerPaymentId,
+          amount: contribution.amount.toString(),
+          currency: contribution.currency,
+        });
+        refundReference = result.refundReference;
+      }
+
+      const refunded = await prisma.vaultContribution.update({
+        where: { id },
+        data: { refundStatus: "refunded", refundedAt: new Date(), refundReference },
+      });
+      await prisma.auditLog.create({
+        data: {
+          vaultId: contribution.vaultId,
+          actorType: "system",
+          action: "vault_contribution.refunded",
+          entityType: "VaultContribution",
+          entityId: id,
+          before: contribution as any,
+          after: refunded as any,
+        },
+      });
+    } catch (err) {
+      const failed = await prisma.vaultContribution.update({
+        where: { id },
+        data: { refundStatus: "failed", refundFailedReason: err instanceof Error ? err.message : String(err) },
+      });
+      await prisma.auditLog.create({
+        data: {
+          vaultId: contribution.vaultId,
+          actorType: "system",
+          action: "vault_contribution.refund_failed",
+          entityType: "VaultContribution",
+          entityId: id,
+          before: contribution as any,
+          after: failed as any,
+        },
+      });
+    }
   }
 }

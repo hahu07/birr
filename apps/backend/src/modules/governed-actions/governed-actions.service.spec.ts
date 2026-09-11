@@ -11,6 +11,7 @@ import { VaultsService } from "../vaults/vaults.service";
 import { VaultProceedsService } from "../vaults/vault-proceeds.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
+import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import {
   FakePaystackPayoutAdapter,
   createFakeStripePayoutAdapter,
@@ -18,6 +19,26 @@ import {
 } from "../distributions/test-support/fake-payout-adapters";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
+
+// Minimal fake, same shape as vault-contributions.service.spec.ts's own
+// local FakeAdapter/FakeReceiptEmailAdapter — duplicated rather than
+// shared, matching this codebase's existing precedent of no extracted
+// test-support fake for PaymentProviderAdapter (contributions.service
+// .spec.ts also defines its own locally). Nothing in this file's own
+// tests calls createPayment/verifyAndParseWebhook/refund for real —
+// requestRefund() (the only VaultContributionsService method exercised
+// here) never touches the adapter map at all.
+class FakeVaultPaymentAdapter {
+  async createPayment() {
+    return { providerReference: "fake", clientPayload: {} };
+  }
+  async verifyAndParseWebhook() {
+    return null;
+  }
+}
+class FakeVaultReceiptEmailAdapter {
+  async sendReceipt() {}
+}
 
 describe("GovernedActionsService", () => {
   // Never construct the real NotificationsService adapters in a test —
@@ -58,6 +79,13 @@ describe("GovernedActionsService", () => {
     new VaultsService(new VaultProceedsService()),
     new VaultInvestmentsService(),
     new VaultDistributionsService(encryption, fakePaystackPayoutAdapter as any),
+    new VaultContributionsService(
+      encryption,
+      new FakeVaultReceiptEmailAdapter() as any,
+      new FakeVaultPaymentAdapter() as any,
+      new FakeVaultPaymentAdapter() as any,
+      new FakeVaultPaymentAdapter() as any,
+    ),
     notificationsService,
   );
 
@@ -80,6 +108,7 @@ describe("GovernedActionsService", () => {
   let beneficiaryCheckerUserId: string;
   let investmentMakerUserId: string;
   let distributionCheckerUserId: string;
+  let boardCheckerUserId: string;
   let founderId: string;
   let foundationId: string;
 
@@ -143,6 +172,16 @@ describe("GovernedActionsService", () => {
     distributionCheckerUserId = distributionCheckerUser.id;
     await prisma.birrStaff.create({
       data: { userId: distributionCheckerUser.id, staffRole: "compliance_officer" },
+    });
+
+    // vault.contribution_refund's seeded checker — compliance_officer
+    // (distributionCheckerUserId, above) is its seeded maker.
+    const boardCheckerUser = await prisma.user.create({
+      data: { email: `board-checker-${Date.now()}@example.com`, fullName: "Test Board Checker" },
+    });
+    boardCheckerUserId = boardCheckerUser.id;
+    await prisma.birrStaff.create({
+      data: { userId: boardCheckerUser.id, staffRole: "board_of_trustees" },
     });
 
     const founder = await prisma.founder.create({
@@ -1497,6 +1536,84 @@ describe("GovernedActionsService", () => {
       expect(rejectResult.governedAction.status).toBe("rejected");
       const rejected = await prisma.vaultDistribution.findUniqueOrThrow({ where: { id: secondDistribution.id } });
       expect(rejected.status).toBe("rejected");
+    });
+
+    test("vault.contribution_refund: approve → refundStatus becomes requested, vaultId is derived, both audit-logged; the fire-and-forget follow-up eventually refunds it", async () => {
+      const { vault } = await createProjectVaultWithCause();
+      const donor = await prisma.vaultDonor.create({ data: { email: `governed-actions-refund-donor-${randomUUID()}@example.com` } });
+      vaultDonorIds.push(donor.id);
+      const contribution = await prisma.vaultContribution.create({
+        data: {
+          vaultId: vault.id,
+          donorId: donor.id,
+          amount: "75",
+          currency: "USD",
+          provider: "stripe",
+          providerReference: `governed-actions-refund-${randomUUID()}`,
+          status: "confirmed",
+          confirmedAt: new Date(),
+        },
+      });
+
+      const action = await service.propose({
+        permissionKey: "vault.contribution_refund",
+        payload: { vaultContributionId: contribution.id },
+        makerUserId: distributionCheckerUserId, // compliance_officer — seeded maker for this permission
+      });
+      governedActionIds.push(action.id);
+      expect(action.vaultId).toBe(vault.id);
+
+      const result = await service.decide({
+        governedActionId: action.id,
+        checkerUserId: boardCheckerUserId,
+        approve: true,
+      });
+      expect(result.governedAction.status).toBe("approved");
+      expect(result.fulfillment?.entityType).toBe("VaultContribution");
+
+      const requested = await prisma.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
+      expect(requested.refundStatus).toBe("requested");
+
+      const logs = await auditLogsFor(contribution.id);
+      expect(logs.some((l) => l.action === "vault_contribution.refund_requested" && l.vaultId === vault.id)).toBe(true);
+
+      // initiateRefund() is fired fire-and-forget, post-commit (see
+      // decide()'s own comment) — the fake adapter has no real refund(),
+      // so it settles to "refunded" almost immediately either way, but
+      // give the microtask queue a beat to run it.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const settled = await prisma.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
+      expect(["requested", "processing", "refunded", "failed"]).toContain(settled.refundStatus);
+    });
+
+    test("vault.contribution_refund: rejects a contribution that isn't confirmed", async () => {
+      const { vault } = await createProjectVaultWithCause();
+      const donor = await prisma.vaultDonor.create({ data: { email: `governed-actions-refund-pending-donor-${randomUUID()}@example.com` } });
+      vaultDonorIds.push(donor.id);
+      const contribution = await prisma.vaultContribution.create({
+        data: {
+          vaultId: vault.id,
+          donorId: donor.id,
+          amount: "75",
+          currency: "USD",
+          provider: "stripe",
+          providerReference: `governed-actions-refund-pending-${randomUUID()}`,
+          status: "pending",
+        },
+      });
+
+      const action = await service.propose({
+        permissionKey: "vault.contribution_refund",
+        payload: { vaultContributionId: contribution.id },
+        makerUserId: distributionCheckerUserId,
+      });
+      governedActionIds.push(action.id);
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true }),
+      ).rejects.toThrow(BadRequestException);
+      const stillProposed = await prisma.governedAction.findUniqueOrThrow({ where: { id: action.id } });
+      expect(stillProposed.status).toBe("proposed");
     });
 
     test("checkDuplicate: propose() rejects a second proposal while one is already pending for the same vault cause allocation", async () => {

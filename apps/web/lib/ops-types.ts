@@ -868,3 +868,28 @@ export interface VaultDistribution {
   payoutError: string | null;
   createdAt: string;
 }
+
+export interface VaultContribution {
+  id: string;
+  vaultId: string;
+  vaultCauseId: string | null;
+  donorId: string | null;
+  donor: { id: string; email: string; fullName: string | null } | null;
+  amount: string;
+  currency: string;
+  provider: "stripe" | "paystack" | "stablecoin";
+  status: "pending" | "confirmed" | "failed";
+  confirmedAt: string | null;
+  // Independent of status above — a held contribution is still
+  // "confirmed", just paused pending review. See
+  // VaultContributionsService.hold's own comment.
+  heldAt: string | null;
+  heldReason: string | null;
+  // The refund sub-lifecycle — null means no refund has ever been
+  // requested. See VaultRefundStatus's own schema comment.
+  refundStatus: "requested" | "processing" | "refunded" | "failed" | null;
+  refundedAt: string | null;
+  refundReference: string | null;
+  refundFailedReason: string | null;
+  createdAt: string;
+}

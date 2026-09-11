@@ -18,6 +18,7 @@ import { VaultCausesSection } from "./VaultCausesSection";
 import { VaultInvestmentsSection } from "./VaultInvestmentsSection";
 import { VaultProceedsSection } from "./VaultProceedsSection";
 import { VaultDistributionsSection } from "./VaultDistributionsSection";
+import { VaultContributionsSection } from "./VaultContributionsSection";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 
 const STATUS_TONE: Record<VaultStatus, "success" | "warning" | "neutral" | "danger"> = {
@@ -119,6 +120,7 @@ export default function VaultDetailPage() {
           </>
         )}
         <VaultDistributionsSection vaultId={id} currency={vault.currency} causes={causes} />
+        <VaultContributionsSection vaultId={id} currency={vault.currency} />
       </div>
     </div>
   );

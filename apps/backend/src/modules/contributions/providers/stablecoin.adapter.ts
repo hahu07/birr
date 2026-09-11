@@ -40,6 +40,18 @@ interface CommerceWebhookEnvelope {
  * I can't hit with a live account is exactly where documentation drift
  * is most likely.
  */
+// Deliberately does NOT implement PaymentProviderAdapter.refund() — a
+// confirmed crypto payment has no reversible "refund" API call the way
+// a card charge does, and this platform never even collects the
+// payer's own wallet address to send funds back to (the donor pays a
+// gateway-generated deposit address, not one Birr controls or can trace
+// back to them without them supplying it separately). Reversing one is
+// necessarily a manual, off-platform action; VaultContributionsService
+// .initiateRefund still records the decision as refunded once staff
+// have completed that manual step, since the whole point of an
+// in-platform refund workflow is an auditable record of the decision,
+// not that this system can literally push the money back for every
+// rail.
 @Injectable()
 export class StablecoinAdapter implements PaymentProviderAdapter {
   readonly provider = "stablecoin" as const;

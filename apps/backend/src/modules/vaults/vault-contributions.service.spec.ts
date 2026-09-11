@@ -8,6 +8,8 @@ import {
   CreatePaymentInput,
   CreatePaymentResult,
   PaymentProviderAdapter,
+  RefundInput,
+  RefundResult,
   WebhookResult,
 } from "../contributions/providers/payment-provider.interface";
 
@@ -16,11 +18,36 @@ class FakeAdapter implements PaymentProviderAdapter {
   readonly provider = "stripe" as const;
   nextCreatePaymentResult: CreatePaymentResult | null = null;
   nextWebhookResult: WebhookResult | null = null;
+  nextRefundError: Error | null = null;
+  refundCalls: RefundInput[] = [];
 
   async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult> {
     return this.nextCreatePaymentResult ?? { providerReference: input.reference, clientPayload: {} };
   }
 
+  async verifyAndParseWebhook(): Promise<WebhookResult | null> {
+    return this.nextWebhookResult;
+  }
+
+  async refund(input: RefundInput): Promise<RefundResult> {
+    this.refundCalls.push(input);
+    if (this.nextRefundError) throw this.nextRefundError;
+    return { refundReference: `fake-refund-${input.providerReference}` };
+  }
+}
+
+// No refund() at all — same shape as the real StablecoinAdapter, used to
+// test the "this rail has no automated refund API" path (see that
+// adapter's own comment on why). Otherwise configurable the same way as
+// FakeAdapter above.
+class FakeAdapterWithoutRefund implements Omit<PaymentProviderAdapter, "refund"> {
+  readonly provider = "stablecoin" as const;
+  nextCreatePaymentResult: CreatePaymentResult | null = null;
+  nextWebhookResult: WebhookResult | null = null;
+
+  async createPayment(input: CreatePaymentInput): Promise<CreatePaymentResult> {
+    return this.nextCreatePaymentResult ?? { providerReference: input.reference, clientPayload: {} };
+  }
   async verifyAndParseWebhook(): Promise<WebhookResult | null> {
     return this.nextWebhookResult;
   }
@@ -44,7 +71,7 @@ class FakeReceiptEmailAdapter {
 describe("VaultContributionsService", () => {
   const stripeFake = new FakeAdapter();
   const paystackFake = new FakeAdapter();
-  const stablecoinFake = new FakeAdapter();
+  const stablecoinFake = new FakeAdapterWithoutRefund();
   const receiptEmail = new FakeReceiptEmailAdapter();
   const service = new VaultContributionsService(
     new EncryptionService(),
@@ -413,5 +440,157 @@ describe("VaultContributionsService", () => {
         donorEmail: uniqueEmail("unknown-vault"),
       }),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  describe("hold() / release()", () => {
+    async function confirmedContribution() {
+      const result = await service.initiate({
+        vaultId: openVaultId,
+        amount: "200.00",
+        currency: "USD",
+        provider: "stripe",
+        donorEmail: uniqueEmail("hold-release"),
+      });
+      vaultContributionIds.push(result.contribution.id);
+      stripeFake.nextWebhookResult = { providerReference: result.contribution.providerReference, status: "confirmed" };
+      const confirmed = await service.handleWebhook("stripe", Buffer.from("{}"), {});
+      return confirmed!;
+    }
+
+    test("hold() flags a confirmed contribution, audit-logged; release() clears it, audit-logged", async () => {
+      const contribution = await confirmedContribution();
+
+      const held = await service.hold(contribution.id, "Suspected structuring", actorUserId);
+      expect(held.heldAt).not.toBeNull();
+      expect(held.heldReason).toBe("Suspected structuring");
+      expect(held.status).toBe("confirmed"); // unaffected — held is independent of payment status
+
+      let logs = await prisma.auditLog.findMany({ where: { entityId: contribution.id, action: "vault_contribution.held" } });
+      expect(logs).toHaveLength(1);
+
+      const released = await service.release(contribution.id, actorUserId);
+      expect(released.heldAt).toBeNull();
+      expect(released.heldReason).toBeNull();
+
+      logs = await prisma.auditLog.findMany({ where: { entityId: contribution.id, action: "vault_contribution.hold_released" } });
+      expect(logs).toHaveLength(1);
+    });
+
+    test("hold() rejects a contribution that isn't confirmed, and a second hold on an already-held one", async () => {
+      const result = await service.initiate({
+        vaultId: openVaultId,
+        amount: "200.00",
+        currency: "USD",
+        provider: "stripe",
+        donorEmail: uniqueEmail("hold-pending"),
+      });
+      vaultContributionIds.push(result.contribution.id);
+
+      await expect(service.hold(result.contribution.id, "premature", actorUserId)).rejects.toThrow(BadRequestException);
+
+      const contribution = await confirmedContribution();
+      await service.hold(contribution.id, "first hold", actorUserId);
+      await expect(service.hold(contribution.id, "second hold", actorUserId)).rejects.toThrow(BadRequestException);
+    });
+
+    test("release() rejects a contribution that isn't currently held", async () => {
+      const contribution = await confirmedContribution();
+      await expect(service.release(contribution.id, actorUserId)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("requestRefund() / initiateRefund()", () => {
+    async function confirmedContribution(provider: "stripe" | "stablecoin" = "stripe") {
+      const result = await service.initiate({
+        vaultId: openVaultId,
+        amount: "200.00",
+        currency: "USD",
+        provider,
+        donorEmail: uniqueEmail("refund"),
+      });
+      vaultContributionIds.push(result.contribution.id);
+      const webhookResult: WebhookResult = { providerReference: result.contribution.providerReference, status: "confirmed" };
+      if (provider === "stripe") {
+        stripeFake.nextWebhookResult = webhookResult;
+      } else {
+        stablecoinFake.nextWebhookResult = webhookResult;
+      }
+      const confirmed = await service.handleWebhook(provider, Buffer.from("{}"), {});
+      return confirmed!;
+    }
+
+    test("requestRefund() sets refundStatus to requested; rejects a non-confirmed contribution and a duplicate request", async () => {
+      const contribution = await confirmedContribution();
+
+      const requested = await prisma.$transaction((tx) => service.requestRefund(contribution.id, tx));
+      expect(requested.refundStatus).toBe("requested");
+
+      await expect(prisma.$transaction((tx) => service.requestRefund(contribution.id, tx))).rejects.toThrow(BadRequestException);
+
+      const pendingResult = await service.initiate({
+        vaultId: openVaultId,
+        amount: "200.00",
+        currency: "USD",
+        provider: "stripe",
+        donorEmail: uniqueEmail("refund-pending"),
+      });
+      vaultContributionIds.push(pendingResult.contribution.id);
+      await expect(
+        prisma.$transaction((tx) => service.requestRefund(pendingResult.contribution.id, tx)),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    test("initiateRefund() calls the adapter's real refund() for a rail that supports it, records refundReference, audit-logged", async () => {
+      const contribution = await confirmedContribution("stripe");
+      await prisma.$transaction((tx) => service.requestRefund(contribution.id, tx));
+
+      await service.initiateRefund(contribution.id);
+
+      const refunded = await prisma.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
+      expect(refunded.refundStatus).toBe("refunded");
+      expect(refunded.refundedAt).not.toBeNull();
+      expect(refunded.refundReference).toBe(`fake-refund-${contribution.providerReference}`);
+      expect(stripeFake.refundCalls.some((c) => c.providerReference === contribution.providerReference)).toBe(true);
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: contribution.id, action: "vault_contribution.refunded" } });
+      expect(logs).toHaveLength(1);
+    });
+
+    test("initiateRefund() is claimed atomically — calling it twice only refunds once", async () => {
+      const contribution = await confirmedContribution("stripe");
+      await prisma.$transaction((tx) => service.requestRefund(contribution.id, tx));
+
+      await Promise.all([service.initiateRefund(contribution.id), service.initiateRefund(contribution.id)]);
+
+      const calls = stripeFake.refundCalls.filter((c) => c.providerReference === contribution.providerReference);
+      expect(calls).toHaveLength(1);
+    });
+
+    test("initiateRefund() records refundStatus: failed when the adapter's refund() throws", async () => {
+      const contribution = await confirmedContribution("stripe");
+      await prisma.$transaction((tx) => service.requestRefund(contribution.id, tx));
+
+      stripeFake.nextRefundError = new Error("Card issuer declined the refund");
+      await service.initiateRefund(contribution.id);
+      stripeFake.nextRefundError = null;
+
+      const failed = await prisma.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
+      expect(failed.refundStatus).toBe("failed");
+      expect(failed.refundFailedReason).toBe("Card issuer declined the refund");
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: contribution.id, action: "vault_contribution.refund_failed" } });
+      expect(logs).toHaveLength(1);
+    });
+
+    test("initiateRefund() on a rail with no refund() (stablecoin) still records refunded, with a null refundReference", async () => {
+      const contribution = await confirmedContribution("stablecoin");
+      await prisma.$transaction((tx) => service.requestRefund(contribution.id, tx));
+
+      await service.initiateRefund(contribution.id);
+
+      const refunded = await prisma.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
+      expect(refunded.refundStatus).toBe("refunded");
+      expect(refunded.refundReference).toBeNull();
+    });
   });
 });

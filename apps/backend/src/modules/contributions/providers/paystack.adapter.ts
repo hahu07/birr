@@ -3,6 +3,8 @@ import {
   CreatePaymentInput,
   CreatePaymentResult,
   PaymentProviderAdapter,
+  RefundInput,
+  RefundResult,
   WebhookResult,
 } from "./payment-provider.interface";
 import { SettingsService } from "../../../common/settings/settings.service";
@@ -11,6 +13,12 @@ import { verifyPaystackSignature } from "../../../common/payments/verify-paystac
 interface PaystackInitializeResponse {
   status: boolean;
   data?: { authorization_url: string; access_code: string; reference: string };
+  message?: string;
+}
+
+interface PaystackRefundResponse {
+  status: boolean;
+  data?: { id: number; transaction: { reference: string } };
   message?: string;
 }
 
@@ -91,5 +99,25 @@ export class PaystackAdapter implements PaymentProviderAdapter {
       return { providerReference: event.data.reference, status: "failed" };
     }
     return null;
+  }
+
+  // Unlike Stripe, Paystack's refund endpoint accepts the original
+  // transaction reference directly — no separate payment-intent-style
+  // id needed (input.providerPaymentId is always null for this rail).
+  async refund(input: RefundInput): Promise<RefundResult> {
+    const secretKey = await this.settings.get("paystack", "SECRET_KEY");
+    if (!secretKey) {
+      throw new ServiceUnavailableException("Refunds via Paystack aren't available right now.");
+    }
+    const res = await fetch(`${this.baseUrl}/refund`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ transaction: input.providerReference }),
+    });
+    const body = (await res.json()) as PaystackRefundResponse;
+    if (!res.ok || !body.status) {
+      throw new Error(`Paystack refund failed: ${body.message ?? res.statusText}`);
+    }
+    return { refundReference: body.data?.id != null ? String(body.data.id) : input.providerReference };
   }
 }

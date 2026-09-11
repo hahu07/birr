@@ -1,9 +1,11 @@
-import { Injectable, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import Stripe from "stripe";
 import {
   CreatePaymentInput,
   CreatePaymentResult,
   PaymentProviderAdapter,
+  RefundInput,
+  RefundResult,
   WebhookResult,
 } from "./payment-provider.interface";
 import { SettingsService } from "../../../common/settings/settings.service";
@@ -105,7 +107,13 @@ export class StripeAdapter implements PaymentProviderAdapter {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
       if (!session.client_reference_id) return null;
-      return { providerReference: session.client_reference_id, status: "confirmed" };
+      // payment_intent is a plain string id here (no `expand` used on
+      // session creation) — captured now because it's the only handle a
+      // later refund() call has; a Checkout Session id itself isn't
+      // refundable via Stripe's API.
+      const providerPaymentId =
+        typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+      return { providerReference: session.client_reference_id, status: "confirmed", providerPaymentId };
     }
     if (event.type === "checkout.session.expired") {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -113,5 +121,16 @@ export class StripeAdapter implements PaymentProviderAdapter {
       return { providerReference: session.client_reference_id, status: "failed" };
     }
     return null;
+  }
+
+  async refund(input: RefundInput): Promise<RefundResult> {
+    if (!input.providerPaymentId) {
+      throw new BadRequestException(
+        "No Stripe payment reference is on file for this contribution — it may predate refund support.",
+      );
+    }
+    const stripe = await this.getStripe();
+    const refund = await stripe.refunds.create({ payment_intent: input.providerPaymentId });
+    return { refundReference: refund.id };
   }
 }

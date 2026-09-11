@@ -15,6 +15,7 @@ import { DistributionsService } from "../distributions/distributions.service";
 import { VaultsService } from "../vaults/vaults.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
+import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -159,6 +160,7 @@ export class GovernedActionsService {
     private readonly vaultsService: VaultsService,
     private readonly vaultInvestmentsService: VaultInvestmentsService,
     private readonly vaultDistributionsService: VaultDistributionsService,
+    private readonly vaultContributionsService: VaultContributionsService,
     private readonly notificationsService: NotificationsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
@@ -790,6 +792,65 @@ export class GovernedActionsService {
           },
         },
       ],
+      // Reversing a confirmed public gift is symmetrically the same
+      // class of decision as vault.distribution_approve above (real
+      // money moving), and gated the same way — see
+      // VaultContributionsService.requestRefund's own comment on why
+      // this only records the decision here; the real external refund
+      // call happens in initiateRefund(), fired fire-and-forget below,
+      // after this transaction commits.
+      [
+        "vault.contribution_refund",
+        {
+          resolveVaultId: async (payload) => {
+            const { vaultContributionId } = payload as { vaultContributionId: string };
+            const contribution = await prisma.vaultContribution.findUnique({ where: { id: vaultContributionId } });
+            return contribution?.vaultId;
+          },
+          checkDuplicate: async (payload) => {
+            const { vaultContributionId } = payload as { vaultContributionId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "vault.contribution_refund" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["vaultContributionId"], equals: vaultContributionId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "A refund proposal for this contribution is already awaiting a decision — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { vaultContributionId } = payload as { vaultContributionId: string };
+            const contribution = await prisma.vaultContribution.findUnique({
+              where: { id: vaultContributionId },
+              include: { donor: { select: { email: true } }, vault: { select: { name: true } } },
+            });
+            return contribution
+              ? `Refund ${contribution.currency} ${contribution.amount} to ${contribution.donor?.email ?? "an anonymous donor"} for "${contribution.vault.name}".`
+              : `VaultContribution "${vaultContributionId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { vaultContributionId } = payload as { vaultContributionId: string };
+            const contribution = await prisma.vaultContribution.findUnique({
+              where: { id: vaultContributionId },
+              select: { status: true, heldAt: true, refundStatus: true },
+            });
+            return contribution ? { ...contribution } : null;
+          },
+          onApprove: async (payload, tx) => {
+            const { vaultContributionId } = payload as { vaultContributionId: string };
+            const before = await tx.vaultContribution.findUnique({ where: { id: vaultContributionId } });
+            const contribution = await this.vaultContributionsService.requestRefund(vaultContributionId, tx);
+            return {
+              auditAction: "vault_contribution.refund_requested",
+              entityType: "VaultContribution",
+              entityId: contribution.id,
+              before,
+              after: contribution,
+            };
+          },
+        },
+      ],
     ]);
   }
 
@@ -1065,6 +1126,17 @@ export class GovernedActionsService {
       this.vaultDistributionsService.initiateDisbursement(result.fulfillment.entityId).catch((err) => {
         this.logger.error(
           `Failed to initiate disbursement for vault distribution "${result.fulfillment!.entityId}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      });
+    }
+    // Same fire-and-forget, post-commit posture, same never-throws-past-
+    // its-own-boundary guarantee from
+    // VaultContributionsService.initiateRefund.
+    if (input.approve && result.fulfillment?.entityType === "VaultContribution") {
+      this.vaultContributionsService.initiateRefund(result.fulfillment.entityId).catch((err) => {
+        this.logger.error(
+          `Failed to initiate refund for vault contribution "${result.fulfillment!.entityId}":`,
           err instanceof Error ? err.stack : String(err),
         );
       });

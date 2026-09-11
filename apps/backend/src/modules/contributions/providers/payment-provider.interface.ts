@@ -25,7 +25,33 @@ export interface CreatePaymentResult {
   clientPayload: unknown;
 }
 
-export type WebhookResult = { providerReference: string; status: "confirmed" | "failed" };
+export type WebhookResult = {
+  providerReference: string;
+  status: "confirmed" | "failed";
+  /** The provider's own charge/payment id, when this webhook event
+   * carries one — needed later to call a refund API (see RefundInput's
+   * own comment). Omitted where the rail's refund call doesn't need it
+   * (Paystack refunds by providerReference directly). */
+  providerPaymentId?: string;
+};
+
+export interface RefundInput {
+  /** Always present — our own reference, which is what Paystack's
+   * refund endpoint accepts directly. */
+  providerReference: string;
+  /** Stripe-specific: the PaymentIntent id captured from the webhook
+   * (see WebhookResult.providerPaymentId) — Stripe's Refund API can't
+   * act on a Checkout Session id, only a PaymentIntent or Charge id.
+   * Null for rails that don't need it. */
+  providerPaymentId: string | null;
+  amount: string;
+  currency: string;
+}
+
+export interface RefundResult {
+  /** The provider's own refund confirmation id. */
+  refundReference: string;
+}
 
 export interface PaymentProviderAdapter {
   readonly provider: ContributionProvider;
@@ -39,4 +65,13 @@ export interface PaymentProviderAdapter {
    * routes, which are never founder-session-authenticated.
    */
   verifyAndParseWebhook(rawBody: Buffer, headers: Record<string, string | undefined>): Promise<WebhookResult | null>;
+  /**
+   * Optional — not every rail can reverse a payment automatically.
+   * Omitted entirely by StablecoinAdapter (see that adapter's own
+   * comment on why a crypto payment has no reversible "refund" API call
+   * this platform can invoke). VaultContributionsService.initiateRefund
+   * checks for this method's presence before calling it, and still
+   * records the refund decision either way.
+   */
+  refund?(input: RefundInput): Promise<RefundResult>;
 }
