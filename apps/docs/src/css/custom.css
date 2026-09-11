@@ -1,0 +1,26 @@
+/**
+ * Brand palette lifted directly from packages/ui/src/styles.css (the
+ * actual app's own primary/accent tokens) so this docs site reads as
+ * the same product, not a generic Docusaurus default.
+ */
+:root {
+  --ifm-color-primary: #135e4b;
+  --ifm-color-primary-dark: #114f40;
+  --ifm-color-primary-darker: #0f4a3c;
+  --ifm-color-primary-darkest: #0c3d31;
+  --ifm-color-primary-light: #156d58;
+  --ifm-color-primary-lighter: #17755d;
+  --ifm-color-primary-lightest: #1c8b6f;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] {
+  --ifm-color-primary: #45ac8e;
+  --ifm-color-primary-dark: #2f9d7c;
+  --ifm-color-primary-darker: #2c9374;
+  --ifm-color-primary-darkest: #24795f;
+  --ifm-color-primary-light: #5bb99e;
+  --ifm-color-primary-lighter: #66bfa5;
+  --ifm-color-primary-lightest: #8bcfba;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
