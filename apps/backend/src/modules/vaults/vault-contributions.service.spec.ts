@@ -261,18 +261,35 @@ describe("VaultContributionsService", () => {
 
   describe("AML identity-capture threshold", () => {
     let currency: string;
+    // A second currency/vault pair — needed to test that the threshold
+    // check now accumulates across currencies, not just within one (a
+    // single vault only ever accepts its own one currency, so this is
+    // the only way to give in two currencies as the same donor).
+    let currencyB: string;
+    let secondVaultId: string;
 
     beforeAll(async () => {
       currency = `AML${Date.now() % 100000}`;
       await prisma.contributionMinimum.create({ data: { currency, minAmount: "10" } });
       await prisma.vaultDonorThreshold.create({ data: { currency, thresholdAmount: "1000" } });
       await prisma.vault.update({ where: { id: openVaultId }, data: { currency } });
+
+      currencyB = `AMLB${Date.now() % 100000}`;
+      await prisma.contributionMinimum.create({ data: { currency: currencyB, minAmount: "10" } });
+      await prisma.vaultDonorThreshold.create({ data: { currency: currencyB, thresholdAmount: "500" } });
+      const secondVault = await vaultsService.create(
+        { name: "Second Currency Fixture Vault", slug: `second-currency-${Date.now()}`, type: "project", currency: currencyB, jurisdiction: "NG" },
+        actorUserId,
+      );
+      secondVaultId = secondVault.id;
+      vaultIds.push(secondVault.id);
+      await prisma.$transaction((tx) => vaultsService.publish(secondVault.id, tx));
     });
 
     afterAll(async () => {
       await prisma.vault.update({ where: { id: openVaultId }, data: { currency: "USD" } });
-      await prisma.vaultDonorThreshold.deleteMany({ where: { currency } });
-      await prisma.contributionMinimum.deleteMany({ where: { currency } });
+      await prisma.vaultDonorThreshold.deleteMany({ where: { currency: { in: [currency, currencyB] } } });
+      await prisma.contributionMinimum.deleteMany({ where: { currency: { in: [currency, currencyB] } } });
     });
 
     test("a single contribution at or above the threshold requires donorFullName/idType/idNumber", async () => {
@@ -342,6 +359,48 @@ describe("VaultContributionsService", () => {
         idNumber: "P987654321",
       });
       vaultContributionIds.push(second.contribution.id);
+    });
+
+    test("giving across two different currencies (two vaults) accumulates toward the same donor's compliance threshold", async () => {
+      const email = uniqueEmail("cross-currency");
+
+      // 60% of currency A's threshold (1000/1000 -> 600 = 0.6) — well
+      // under it alone, exactly like the single-currency case above.
+      const first = await service.initiate({
+        vaultId: openVaultId,
+        amount: "600",
+        currency,
+        provider: "stripe",
+        donorEmail: email,
+      });
+      vaultContributionIds.push(first.contribution.id);
+      await prisma.vaultContribution.update({ where: { id: first.contribution.id }, data: { status: "confirmed" } });
+
+      // 60% of currency B's threshold (500) — also under it alone. A
+      // purely per-currency check would let this through; combined
+      // with the 0.6 already used in currency A, this donor has used
+      // 1.2x their compliance headroom overall.
+      await expect(
+        service.initiate({
+          vaultId: secondVaultId,
+          amount: "300",
+          currency: currencyB,
+          provider: "stripe",
+          donorEmail: email,
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      const identified = await service.initiate({
+        vaultId: secondVaultId,
+        amount: "300",
+        currency: currencyB,
+        provider: "stripe",
+        donorEmail: email,
+        donorFullName: "Cross Currency Donor",
+        idType: "passport",
+        idNumber: "CC123456",
+      });
+      vaultContributionIds.push(identified.contribution.id);
     });
 
     test("once identified, a later contribution from the same donor doesn't require re-identification", async () => {

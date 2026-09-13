@@ -167,44 +167,77 @@ export class VaultContributionsService {
    * Find-or-create by email — the one identity thread a public donor
    * has, no account/login involved (see VaultDonor's own schema
    * comment). Also where the AML identity-capture requirement is
-   * enforced: a per-currency VaultDonorThreshold, checked two ways —
-   * this single contribution alone crossing it, or this donor's existing
-   * confirmed total (matched by email) plus this new pending amount
-   * crossing it. The second check is the actual anti-structuring guard;
-   * a pure per-transaction check would miss someone splitting one large
-   * gift into several small ones to stay under the radar each time.
+   * enforced, against every currency this donor has ever given in at
+   * once, not just the one in front of us right now.
+   *
+   * VaultDonorThreshold is deliberately a per-currency table, not one
+   * flat number, because ops set each currency's figure to its own
+   * AML-equivalent ceiling — e.g. a stablecoin threshold an order of
+   * magnitude lower than fiat, per seed-data.ts's own comment, since
+   * that rail is harder to unwind after the fact. That means
+   * `amount ÷ that currency's own threshold` is a real, comparable
+   * fraction of "how much of this donor's compliance headroom did this
+   * gift use up" — comparable *across* currencies with no live FX
+   * conversion needed. Summing that fraction over every confirmed gift
+   * this donor has made, in every currency, is what closes a gap a
+   * single-currency running total leaves wide open: giving
+   * just-under-threshold amounts in several different currencies would
+   * otherwise never trip any one currency's own check, even though the
+   * donor's real combined giving is well past what any of those
+   * thresholds represents (found in a codebase audit). A single
+   * oversized contribution, or several in the same currency, still
+   * trip this the same way the old same-currency-only check did — this
+   * is a strict generalization of it, not a separate rule.
+   *
+   * What this does NOT close, and what no code-only fix can: a donor
+   * who gives a genuinely different email each time gets a genuinely
+   * different VaultDonor identity each time, with its own zeroed
+   * history — there is no account, session, or other identity signal
+   * collected today to link two different emails as the same person.
+   * Closing that would mean collecting a new signal (phone, device,
+   * KYC-at-first-gift) as a real policy decision, not a bug to patch
+   * silently here — flagged for the owner, not decided in this pass.
    *
    * Returns null when no email is given — donorEmail is optional (owner's
    * explicit direction, 2026-09-11), so a fully anonymous contribution is
    * allowed with no VaultDonor row at all. This is a real, accepted
-   * tradeoff: an anonymous gift gets no receipt, AND skips the AML check
-   * entirely (there's no identity thread to check a running total
-   * against) — a donor who omits their email can give any amount without
-   * ever triggering identity capture. That's the cost of allowing
-   * anonymous giving, not an oversight.
+   * tradeoff: an anonymous gift gets no receipt, AND skips this whole
+   * check (there's no identity thread to accumulate a history against)
+   * — a donor who omits their email can give any amount without ever
+   * triggering identity capture. That's the cost of allowing anonymous
+   * giving, not an oversight.
    */
   private async findOrCreateDonor(input: InitiateVaultContributionInput, amount: Prisma.Decimal) {
     if (!input.donorEmail) return null;
 
     const existing = await prisma.vaultDonor.findUnique({ where: { email: input.donorEmail } });
+    const alreadyIdentified = existing?.idType != null;
 
-    const threshold = await prisma.vaultDonorThreshold.findUnique({ where: { currency: input.currency } });
-    if (threshold) {
-      const confirmedTotal = existing
-        ? await prisma.vaultContribution.aggregate({
-            where: { donorId: existing.id, currency: input.currency, status: "confirmed" },
-            _sum: { amount: true },
+    if (!alreadyIdentified) {
+      const confirmed = existing
+        ? await prisma.vaultContribution.findMany({
+            where: { donorId: existing.id, status: "confirmed" },
+            select: { amount: true, currency: true },
           })
-        : null;
-      const runningTotal = (confirmedTotal?._sum.amount ?? new Prisma.Decimal(0)).plus(amount);
-      const alreadyIdentified = existing?.idType != null;
+        : [];
+      const currencies = [...new Set([input.currency, ...confirmed.map((c) => c.currency)])];
+      const thresholds = await prisma.vaultDonorThreshold.findMany({ where: { currency: { in: currencies } } });
+      const thresholdByCurrency = new Map(thresholds.map((t) => [t.currency, t.thresholdAmount]));
 
-      if (!alreadyIdentified && (amount.gte(threshold.thresholdAmount) || runningTotal.gte(threshold.thresholdAmount))) {
-        if (!input.donorFullName || !input.idType || !input.idNumber) {
-          throw new BadRequestException(
-            `Contributions to this vault at or above ${input.currency} ${threshold.thresholdAmount} (including your total giving so far) require your full name and an ID for compliance — please provide donorFullName, idType, and idNumber.`,
-          );
-        }
+      const fractionOf = (amt: Prisma.Decimal, currency: string): Prisma.Decimal => {
+        const limit = thresholdByCurrency.get(currency);
+        return limit && limit.gt(0) ? amt.div(limit) : new Prisma.Decimal(0);
+      };
+
+      const fractionUsed = confirmed.reduce(
+        (sum, c) => sum.plus(fractionOf(c.amount, c.currency)),
+        fractionOf(amount, input.currency),
+      );
+
+      if (fractionUsed.gte(1) && (!input.donorFullName || !input.idType || !input.idNumber)) {
+        throw new BadRequestException(
+          `Your giving to Birr — across this and any other currency — has reached a point where compliance requires your full name and an ID; please provide donorFullName, idType, and idNumber.`,
+        );
       }
     }
 
