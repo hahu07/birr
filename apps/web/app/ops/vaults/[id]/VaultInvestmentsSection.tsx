@@ -4,13 +4,13 @@
 // InvestmentsSection: registration is plain staff CRUD, changing an
 // existing investment's allocation is always the vault.investment_change
 // governed action, decided on the Approval Queue.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import type { Counterparty, Investment, VaultInvestment } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 const INSTRUMENT_TYPES: Investment["instrumentType"][] = [
   "sukuk",
@@ -21,20 +21,13 @@ const INSTRUMENT_TYPES: Investment["instrumentType"][] = [
 ];
 
 export function VaultInvestmentsSection({ vaultId, currency }: { vaultId: string; currency: string }) {
-  const [investments, setInvestments] = useState<VaultInvestment[] | null>(null);
+  const {
+    data: investments,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<VaultInvestment[]>(`/vault-investments?vaultId=${vaultId}`), [vaultId]);
   const [activeCounterparties, setActiveCounterparties] = useState<Counterparty[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetchJson<VaultInvestment[]>(`/vault-investments?vaultId=${vaultId}`)
-      .then(setInvestments)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [vaultId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     apiFetchJson<Counterparty[]>("/counterparties?status=active")

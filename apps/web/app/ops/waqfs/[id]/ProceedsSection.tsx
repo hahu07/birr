@@ -16,12 +16,12 @@
 // (possibly negative) entry, never an edit — so no edit/delete
 // affordance here. Only shown for Investment-type waqfs (see the parent
 // page's own gate).
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate } from "../../../../lib/format";
 import type { Investment, WaqfProceeds } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 export function ProceedsSection({
   waqfId,
@@ -35,20 +35,13 @@ export function ProceedsSection({
   // refresh CausesSection's list.
   onChanged: () => void;
 }) {
-  const [proceeds, setProceeds] = useState<WaqfProceeds[] | null>(null);
+  const {
+    data: proceeds,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<WaqfProceeds[]>(`/waqf-proceeds?waqfId=${waqfId}`), [waqfId]);
   const [investments, setInvestments] = useState<Investment[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetchJson<WaqfProceeds[]>(`/waqf-proceeds?waqfId=${waqfId}`)
-      .then(setProceeds)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [waqfId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     apiFetchJson<Investment[]>(`/investments?waqfId=${waqfId}`).then(setInvestments).catch(() => setInvestments([]));

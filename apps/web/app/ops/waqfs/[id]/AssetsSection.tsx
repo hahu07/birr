@@ -4,12 +4,12 @@
 // Asset) — disposal is always a governed_actions asset.dispose action,
 // decided on the Approval Queue page (never here). Propose control is
 // the "Propose disposal" button per active-status row below.
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize } from "../../../../lib/format";
 import type { Asset } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 
 const CATEGORIES: Asset["category"][] = [
@@ -22,19 +22,8 @@ const CATEGORIES: Asset["category"][] = [
 ];
 
 export function AssetsSection({ waqfId }: { waqfId: string }) {
-  const [assets, setAssets] = useState<Asset[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: assets, error, reload: load } = useLoadedResource(() => apiFetchJson<Asset[]>(`/assets?waqfId=${waqfId}`), [waqfId]);
   const [showForm, setShowForm] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetchJson<Asset[]>(`/assets?waqfId=${waqfId}`)
-      .then(setAssets)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [waqfId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   return (
     <section>

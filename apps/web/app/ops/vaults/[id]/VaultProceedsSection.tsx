@@ -6,28 +6,21 @@
 // that service's own comment) — staff set each cause's proceeds
 // allocation explicitly via the governed vault.proceeds_allocate action
 // in VaultCausesSection above.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate } from "../../../../lib/format";
 import type { VaultInvestment, VaultProceeds } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 export function VaultProceedsSection({ vaultId, currency }: { vaultId: string; currency: string }) {
-  const [proceeds, setProceeds] = useState<VaultProceeds[] | null>(null);
+  const {
+    data: proceeds,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<VaultProceeds[]>(`/vault-proceeds?vaultId=${vaultId}`), [vaultId]);
   const [investments, setInvestments] = useState<VaultInvestment[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetchJson<VaultProceeds[]>(`/vault-proceeds?vaultId=${vaultId}`)
-      .then(setProceeds)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [vaultId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     apiFetchJson<VaultInvestment[]>(`/vault-investments?vaultId=${vaultId}`).then(setInvestments).catch(() => setInvestments([]));

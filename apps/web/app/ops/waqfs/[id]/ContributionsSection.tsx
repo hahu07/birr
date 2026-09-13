@@ -5,12 +5,11 @@
 // AssetsSection: a contribution is always founder-initiated real money
 // movement (POST /contributions, Founder Portal only), never something
 // staff enters on someone's behalf.
-import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { humanize, formatAmount, formatDate } from "../../../../lib/format";
 import type { Contribution } from "../../../../lib/ops-types";
 import { Alert, Badge, EmptyState, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 const STATUS_TONE: Record<Contribution["status"], "success" | "warning" | "danger"> = {
   pending: "warning",
@@ -19,18 +18,7 @@ const STATUS_TONE: Record<Contribution["status"], "success" | "warning" | "dange
 };
 
 export function ContributionsSection({ waqfId }: { waqfId: string }) {
-  const [contributions, setContributions] = useState<Contribution[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    apiFetchJson<Contribution[]>(`/contributions?waqfId=${waqfId}`)
-      .then(setContributions)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [waqfId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: contributions, error } = useLoadedResource(() => apiFetchJson<Contribution[]>(`/contributions?waqfId=${waqfId}`), [waqfId]);
 
   return (
     <section>

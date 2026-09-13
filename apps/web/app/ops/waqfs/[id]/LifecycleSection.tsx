@@ -7,12 +7,12 @@
 // route works for any type, but the user asked specifically to track
 // this for Project funds; extending display to other types later is a
 // one-line change there, none here.
-import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatDate, humanize } from "../../../../lib/format";
 import type { WaqfLifecycleStatus } from "../../../../lib/ops-types";
 import { Alert, LifecycleChecklist, Skeleton } from "@birr/ui";
 import type { LifecycleChecklistRow } from "@birr/ui";
+import { useLoadedResource } from "../../_components/SectionChrome";
 
 function buildRows(status: WaqfLifecycleStatus): LifecycleChecklistRow[] {
   const { stages } = status;
@@ -99,22 +99,7 @@ function buildRows(status: WaqfLifecycleStatus): LifecycleChecklistRow[] {
 }
 
 export function LifecycleSection({ waqfId }: { waqfId: string }) {
-  const [status, setStatus] = useState<WaqfLifecycleStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiFetchJson<WaqfLifecycleStatus>(`/waqfs/${waqfId}/lifecycle`)
-      .then((data) => {
-        if (!cancelled) setStatus(data);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [waqfId]);
+  const { data: status, error } = useLoadedResource(() => apiFetchJson<WaqfLifecycleStatus>(`/waqfs/${waqfId}/lifecycle`), [waqfId]);
 
   return (
     <section>

@@ -6,11 +6,12 @@
 // each Founder can itself have more than one team member. MFA is a
 // property of the individual person (User), not the Founder org, so
 // resetting it needs to target one specific member, not "the Founder."
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { useStaffSession } from "../../../../lib/staff-session";
 import type { FounderTeamMember } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Skeleton } from "@birr/ui";
+import { useLoadedResource } from "../../_components/SectionChrome";
 
 export function FounderTeamSection({ founders }: { founders: { id: string; name: string }[] }) {
   return (
@@ -26,20 +27,13 @@ function FounderTeam({ founderId, founderName }: { founderId: string; founderNam
   const { staff } = useStaffSession();
   const isAdmin = staff?.staffRole === "platform_admin";
 
-  const [members, setMembers] = useState<FounderTeamMember[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: members,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<FounderTeamMember[]>(`/founders/${founderId}/members`), [founderId]);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    apiFetchJson<FounderTeamMember[]>(`/founders/${founderId}/members`)
-      .then((data) => setMembers(data))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [founderId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   async function handleResetMfa(member: FounderTeamMember) {
     if (!window.confirm(`Reset two-factor authentication for ${member.user.fullName}? They'll need to set it up again.`)) {

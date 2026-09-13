@@ -8,27 +8,20 @@
 // money); refunding one is always the governed vault.contribution_refund
 // action, proposed here and decided on the Approval Queue page, never
 // here — same posture as every other Vault money-moving action.
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import type { VaultContribution } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 
 export function VaultContributionsSection({ vaultId, currency }: { vaultId: string; currency: string }) {
-  const [contributions, setContributions] = useState<VaultContribution[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    apiFetchJson<VaultContribution[]>(`/vault-contributions?vaultId=${vaultId}`)
-      .then(setContributions)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [vaultId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data: contributions,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<VaultContribution[]>(`/vault-contributions?vaultId=${vaultId}`), [vaultId]);
 
   return (
     <section>

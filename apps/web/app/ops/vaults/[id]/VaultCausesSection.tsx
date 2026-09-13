@@ -12,12 +12,12 @@
 // a Vault (see VaultCause's own schema comment), so both columns use the
 // bespoke propose-with-a-value inline control, same shape as the Waqf
 // side's InvestmentChangeAction.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate } from "../../../../lib/format";
 import type { CauseCategory, Vault, VaultCause } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 export function VaultCausesSection({
   vaultId,
@@ -30,22 +30,11 @@ export function VaultCausesSection({
   currency: string;
   onChanged: () => void;
 }) {
-  const [causes, setCauses] = useState<VaultCause[] | null>(null);
+  const { data: causes, error, reload: load } = useLoadedResource(() => apiFetchJson<VaultCause[]>(`/vaults/${vaultId}/causes`), [vaultId]);
   const [categories, setCategories] = useState<CauseCategory[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
   const showProceeds = vaultType === "investment";
-
-  const load = useCallback(() => {
-    apiFetchJson<VaultCause[]>(`/vaults/${vaultId}/causes`)
-      .then(setCauses)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [vaultId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     apiFetchJson<CauseCategory[]>("/cause-categories")

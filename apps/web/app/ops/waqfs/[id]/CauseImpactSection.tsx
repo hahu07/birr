@@ -6,18 +6,16 @@
 // see CauseImpactUpdate's own schema comment): a correction is a new
 // entry, not an edit. Needs at least one Cause to exist first, same
 // prerequisite Beneficiaries/Distributions already have.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatDate } from "../../../../lib/format";
 import type { CauseImpactUpdate, WaqfCause } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, StatCard } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 export function CauseImpactSection({ waqfId, causesVersion }: { waqfId: string; causesVersion: number }) {
   const [causes, setCauses] = useState<WaqfCause[]>([]);
   const [selectedCauseId, setSelectedCauseId] = useState("");
-  const [updates, setUpdates] = useState<CauseImpactUpdate[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
@@ -29,19 +27,14 @@ export function CauseImpactSection({ waqfId, causesVersion }: { waqfId: string; 
       .catch(() => setCauses([]));
   }, [waqfId, causesVersion]);
 
-  const load = useCallback(() => {
-    if (!selectedCauseId) {
-      setUpdates([]);
-      return;
-    }
-    apiFetchJson<CauseImpactUpdate[]>(`/cause-impact-updates?waqfCauseId=${selectedCauseId}`)
-      .then(setUpdates)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [selectedCauseId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data: updates,
+    error,
+    reload: load,
+  } = useLoadedResource(
+    () => (selectedCauseId ? apiFetchJson<CauseImpactUpdate[]>(`/cause-impact-updates?waqfCauseId=${selectedCauseId}`) : Promise.resolve([])),
+    [selectedCauseId],
+  );
 
   if (causes.length === 0) return null; // nothing to report impact against yet
 
@@ -58,10 +51,7 @@ export function CauseImpactSection({ waqfId, causesVersion }: { waqfId: string; 
         <label className="text-sm font-medium text-slate-700">Cause</label>
         <select
           value={selectedCauseId}
-          onChange={(e) => {
-            setSelectedCauseId(e.target.value);
-            setUpdates(null);
-          }}
+          onChange={(e) => setSelectedCauseId(e.target.value)}
           className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
         >
           {causes.map((c) => (

@@ -5,12 +5,12 @@
 // "payouts go to Counterparty" framing decision) — approval is always
 // the vault.distribution_approve governed action, decided on the
 // Approval Queue page (never here).
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize } from "../../../../lib/format";
 import type { Counterparty, VaultCause, VaultDistribution } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 
 const STATUS_TONE: Record<VaultDistribution["status"], "success" | "warning" | "danger"> = {
@@ -31,20 +31,13 @@ export function VaultDistributionsSection({
   currency: string;
   causes: VaultCause[];
 }) {
-  const [distributions, setDistributions] = useState<VaultDistribution[] | null>(null);
+  const {
+    data: distributions,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<VaultDistribution[]>(`/vault-distributions?vaultId=${vaultId}`), [vaultId]);
   const [activeCounterparties, setActiveCounterparties] = useState<Counterparty[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetchJson<VaultDistribution[]>(`/vault-distributions?vaultId=${vaultId}`)
-      .then(setDistributions)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [vaultId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     apiFetchJson<Counterparty[]>("/counterparties?status=active")

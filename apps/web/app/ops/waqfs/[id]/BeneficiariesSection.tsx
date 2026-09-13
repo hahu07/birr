@@ -5,14 +5,14 @@
 // .criteria_update, beneficiary.status_change), decided on the Approval
 // Queue page (never here) — propose controls for both live in this
 // file's own table (CriteriaUpdateAction / StatusChangeAction below).
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatDate, humanize } from "../../../../lib/format";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 import { markNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Beneficiary, BeneficiaryNomination, WaqfCause } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 export function BeneficiariesSection({
   waqfId,
@@ -23,20 +23,13 @@ export function BeneficiariesSection({
   causesVersion: number;
   onChanged: () => void;
 }) {
-  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[] | null>(null);
+  const {
+    data: beneficiaries,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<Beneficiary[]>(`/beneficiaries?waqfId=${waqfId}`), [waqfId]);
   const [causes, setCauses] = useState<WaqfCause[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetchJson<Beneficiary[]>(`/beneficiaries?waqfId=${waqfId}`)
-      .then(setBeneficiaries)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [waqfId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     // includeInactive=true — an existing beneficiary can already be pinned
@@ -554,18 +547,11 @@ function PayoutDetailsAction({ beneficiary, onSaved }: { beneficiary: Beneficiar
  * .approve's own comment on why).
  */
 function NominationsQueue({ waqfId, onDecided }: { waqfId: string; onDecided: () => void }) {
-  const [nominations, setNominations] = useState<BeneficiaryNomination[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    apiFetchJson<BeneficiaryNomination[]>(`/beneficiary-nominations?waqfId=${waqfId}`)
-      .then(setNominations)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [waqfId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data: nominations,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<BeneficiaryNomination[]>(`/beneficiary-nominations?waqfId=${waqfId}`), [waqfId]);
 
   const pending = nominations?.filter((n) => n.status === "pending") ?? [];
 

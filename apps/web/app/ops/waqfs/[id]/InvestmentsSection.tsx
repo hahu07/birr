@@ -4,13 +4,13 @@
 // a governed_actions investment.change action, decided on the Approval
 // Queue page (never here). Propose control is the "Propose change"
 // action per active-status row below (InvestmentChangeAction).
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import type { Counterparty, Investment } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 const INSTRUMENT_TYPES: Investment["instrumentType"][] = [
   "sukuk",
@@ -29,20 +29,13 @@ export function InvestmentsSection({
   amountRaised: string;
   corpusCurrency: string | null;
 }) {
-  const [investments, setInvestments] = useState<Investment[] | null>(null);
+  const {
+    data: investments,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<Investment[]>(`/investments?waqfId=${waqfId}`), [waqfId]);
   const [activeCounterparties, setActiveCounterparties] = useState<Counterparty[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetchJson<Investment[]>(`/investments?waqfId=${waqfId}`)
-      .then(setInvestments)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [waqfId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     apiFetchJson<Counterparty[]>("/counterparties?status=active")

@@ -8,12 +8,12 @@
 // ProposeGovernedActionButton here. This is the write-side counterpart
 // to My Desk (app/ops/page.tsx), which reads a signed-in staff member's
 // own assignments but has never had anywhere to create one.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatDate, humanize } from "../../../../lib/format";
 import type { BirrStaff, WaqfCaseAssignment } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 const ASSIGNMENT_ROLES: WaqfCaseAssignment["assignmentRole"][] = [
   "mutawalli_officer",
@@ -30,20 +30,13 @@ const STATUS_TONE: Record<WaqfCaseAssignment["status"], "success" | "warning" | 
 };
 
 export function CaseAssignmentsSection({ waqfId }: { waqfId: string }) {
-  const [assignments, setAssignments] = useState<WaqfCaseAssignment[] | null>(null);
+  const {
+    data: assignments,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<WaqfCaseAssignment[]>(`/waqf-case-assignments?waqfId=${waqfId}`), [waqfId]);
   const [staff, setStaff] = useState<BirrStaff[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetchJson<WaqfCaseAssignment[]>(`/waqf-case-assignments?waqfId=${waqfId}`)
-      .then(setAssignments)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [waqfId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     apiFetchJson<BirrStaff[]>("/birr-staff")

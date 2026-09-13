@@ -11,7 +11,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize } from "../../../../lib/format";
 import type { Beneficiary, Distribution, DistributionCauseSummary, WaqfCause } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, StatCard, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 
 const STATUS_TONE: Record<Distribution["status"], "success" | "warning" | "danger"> = {
@@ -39,27 +39,26 @@ export function DistributionsSection({
   causesVersion: number;
   beneficiariesVersion: number;
 }) {
-  const [distributions, setDistributions] = useState<Distribution[] | null>(null);
-  const [summary, setSummary] = useState<DistributionCauseSummary[] | null>(null);
+  const {
+    data: distributions,
+    error,
+    reload: reloadDistributions,
+  } = useLoadedResource(() => apiFetchJson<Distribution[]>(`/distributions?waqfId=${waqfId}`), [waqfId]);
+  // Separate hook instance, separate failure mode — a broken rollup
+  // shouldn't block the (more important) raw distributions list from
+  // rendering, so its own fetch failure is swallowed to an empty list
+  // rather than surfaced as this section's error.
+  const { data: summary, reload: reloadSummary } = useLoadedResource(
+    () => apiFetchJson<DistributionCauseSummary[]>(`/distributions/summary?waqfId=${waqfId}`).catch(() => []),
+    [waqfId],
+  );
+  const load = useCallback(() => {
+    reloadDistributions();
+    reloadSummary();
+  }, [reloadDistributions, reloadSummary]);
   const [causes, setCauses] = useState<WaqfCause[]>([]);
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetchJson<Distribution[]>(`/distributions?waqfId=${waqfId}`)
-      .then(setDistributions)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-    // Separate call, separate failure mode — a broken rollup shouldn't
-    // block the (more important) raw distributions list from rendering.
-    apiFetchJson<DistributionCauseSummary[]>(`/distributions/summary?waqfId=${waqfId}`)
-      .then(setSummary)
-      .catch(() => setSummary([]));
-  }, [waqfId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   useEffect(() => {
     // includeInactive=true — a past distribution can reference a cause the

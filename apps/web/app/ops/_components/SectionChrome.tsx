@@ -8,6 +8,7 @@
 // this is the one place it lives. Under app/_components/ (not a route
 // segment — the leading underscore excludes it from Next's router) so
 // it's reachable from any page, not nested under one route's folder.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Skeleton } from "@birr/ui";
 
 export function SectionHeader({
@@ -37,6 +38,57 @@ export function SectionHeader({
       )}
     </div>
   );
+}
+
+/**
+ * The fetch/error/reload boilerplate repeated near-verbatim across
+ * every Ops Console *Section.tsx component (found in a codebase
+ * audit) — a GET on mount/dep-change, `null` while loading, a caught
+ * error surfaced as a string, and a stable `reload` a caller (a form's
+ * onCreated, a row action's onChanged) can call to refetch. Also closes
+ * a latent race a couple of hand-written versions of this already
+ * guarded against and the rest didn't: if `deps` changes again before
+ * the in-flight request resolves, a stale response arriving after a
+ * fresher one is now dropped rather than overwriting it.
+ *
+ * Deliberately doesn't own rendering (Alert/Skeleton/EmptyState/Table
+ * branches) — those differ too much page to page (column counts, extra
+ * summary rows, per-page empty copy) to force through one shape; each
+ * section still writes its own `{error && <Alert>...}` etc., just
+ * against this hook's `data`/`error` instead of hand-rolled state.
+ *
+ * `data` is never reset to `null` on a refetch, whether that's the
+ * effect firing again because `deps` changed or a caller invoking the
+ * returned `reload()` directly (a form's onCreated, a row action's
+ * onChanged) — the previous data stays on screen until the new
+ * response replaces it, rather than flashing back to a loading
+ * skeleton. A section that specifically wants "switching resource
+ * clears the table" (e.g. a dropdown picking a different one) can
+ * still do that itself with one extra line, same as before this hook
+ * existed.
+ */
+export function useLoadedResource<T>(fetcher: () => Promise<T>, deps: unknown[]): { data: T | null; error: string | null; reload: () => void } {
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- deps is the caller's own dependency list, not statically visible here
+  const reload = useCallback(() => {
+    const thisRequest = ++requestId.current;
+    fetcher()
+      .then((result) => {
+        if (requestId.current === thisRequest) setData(result);
+      })
+      .catch((err: unknown) => {
+        if (requestId.current === thisRequest) setError(err instanceof Error ? err.message : "Something went wrong.");
+      });
+  }, deps);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  return { data, error, reload };
 }
 
 export function RowsSkeleton({ columns }: { columns: number }) {

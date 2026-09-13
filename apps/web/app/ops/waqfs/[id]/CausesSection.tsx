@@ -9,7 +9,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate } from "../../../../lib/format";
 import type { Waqf, WaqfCause, WaqfProceeds } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 export function CausesSection({
   waqfId,
@@ -34,8 +34,15 @@ export function CausesSection({
   // proceedsAllocatedAmount without a manual page reload.
   proceedsVersion: number;
 }) {
-  const [causes, setCauses] = useState<WaqfCause[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // proceedsVersion in the dep list (not just waqfId) — bumped by
+  // ProceedsSection whenever it records a new entry, per this
+  // component's own top-of-file comment, since the backend recomputes
+  // each cause's proceedsAllocatedAmount on every record().
+  const {
+    data: causes,
+    error,
+    reload: load,
+  } = useLoadedResource(() => apiFetchJson<WaqfCause[]>(`/waqf-causes?waqfId=${waqfId}`), [waqfId, proceedsVersion]);
   const [showForm, setShowForm] = useState(false);
 
   // Only an Investment-type waqf can ever have recorded WaqfProceeds
@@ -43,16 +50,6 @@ export function CausesSection({
   // "Proceeds allocated" column/control only make sense here.
   const showProceeds = waqfType === "investment";
   const [proceedsTotal, setProceedsTotal] = useState<number | null>(null);
-
-  const load = useCallback(() => {
-    apiFetchJson<WaqfCause[]>(`/waqf-causes?waqfId=${waqfId}`)
-      .then(setCauses)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [waqfId]);
-
-  useEffect(() => {
-    load();
-  }, [load, proceedsVersion]);
 
   useEffect(() => {
     if (!showProceeds) return;
