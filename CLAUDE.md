@@ -129,6 +129,32 @@ a Founder, and never a new self-service role. See `docs/core-service
 product-level explanation; this note exists so this section above isn't
 read as the complete picture of what Birr now is.
 
+**Update, 2026-09-13 — Known gap, deliberately not fixed: Vault's AML
+check can be bypassed by giving under a different email each time.**
+`VaultContributionsService.findOrCreateDonor` (vault-contributions
+.service.ts) is where the anti-structuring check lives — a donor
+crossing `VaultDonorThreshold` requires a full name and ID. That check
+already accumulates across currencies as of this date (giving
+just-under-threshold amounts in several currencies no longer avoids
+it — see that method's own comment for how), but it still only ever
+recognizes a donor by `donorEmail`. There is no account, login,
+session, phone number, or any other identity signal collected today —
+a donor who types a genuinely different email on every gift gets a
+genuinely different, blank-history `VaultDonor` every time, and can
+split one large gift into many smaller ones this way without ever
+triggering ID capture. In plain terms: give $9,999 five times under
+five different emails and the platform sees five unrelated small
+donors, never one $50,000 donor. No code change can close this alone —
+email is the only thread a donor has today, by design (self-service,
+no account, see the note above). Closing it for real means picking one
+of: (1) start collecting and matching on a second signal (phone number,
+device fingerprint) so different emails can still be linked; (2)
+require ID upfront above some amount regardless of a donor's history,
+not just on threshold-crossing; or (3) accept the residual risk for v1
+and rely on manual/off-platform review of unusual giving patterns
+instead. Not decided here — an explicit compliance call for the owner
+to make, not a bug for the next session to silently patch.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
