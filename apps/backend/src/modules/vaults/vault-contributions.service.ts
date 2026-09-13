@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException, Unauthorize
 import { IsEmail, IsEnum, IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma, ContributionProvider, IdType } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
+import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validation/max-decimal";
 import { PaymentProviderAdapter } from "../contributions/providers/payment-provider.interface";
 import { StripeAdapter } from "../contributions/providers/stripe.adapter";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
@@ -22,7 +23,12 @@ export class InitiateVaultContributionInput {
   @IsString()
   vaultCauseId?: string;
 
+  // Unauthenticated, public route — MaxDecimal is a blunt sanity
+  // ceiling against a malformed/malicious value, not a business rule
+  // (found in a codebase audit: nothing previously bounded this at
+  // all). See MaxDecimal's own comment.
   @IsNumberString()
+  @MaxDecimal(MAX_PUBLIC_CONTRIBUTION_AMOUNT)
   amount!: string;
 
   @IsString()

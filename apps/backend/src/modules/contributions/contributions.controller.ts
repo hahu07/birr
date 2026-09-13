@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { IsEmail, IsEnum, IsNumberString, IsOptional, IsString } from "class-validator";
 import { Request } from "express";
+import { Throttle } from "@nestjs/throttler";
 import { ContributionProvider } from "@birr/db";
 import { ContributionsService } from "./contributions.service";
 import { DistributionsService } from "../distributions/distributions.service";
@@ -10,12 +11,16 @@ import { assertPrimaryContact, resolveFounderFromSession } from "../../common/au
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
+import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validation/max-decimal";
 
 class InitiateContributionBody {
   @IsString()
   waqfId!: string;
 
+  // Same blunt sanity ceiling as InitiateVaultContributionInput's own
+  // amount field — see MaxDecimal's own comment.
   @IsNumberString()
+  @MaxDecimal(MAX_PUBLIC_CONTRIBUTION_AMOUNT)
   amount!: string;
 
   // Not a fixed enum — validated against the live ContributionMinimum
@@ -49,6 +54,12 @@ export class ContributionsController {
   // including the primary-contact restriction (real money moving into
   // the org's waqf is an org-commitment action, not something any
   // viewer/requester colleague should be able to trigger unilaterally).
+  // Throttled tighter than the app-wide default since each call
+  // triggers a real payment-provider API call (found in a codebase
+  // audit) — a higher count than VaultContributionsController's own
+  // override since this route requires a founder session, not fully
+  // anonymous traffic.
+  @Throttle({ default: { limit: 20, ttl: 600_000 } })
   @Post("contributions")
   async initiate(@Body() body: InitiateContributionBody, @Req() request: Request) {
     const founder = await resolveFounderFromSession(request);

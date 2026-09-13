@@ -1,4 +1,5 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Query } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { VaultContributionsService, HoldVaultContributionInput, InitiateVaultContributionInput } from "./vault-contributions.service";
 import { Public } from "../../common/guards/public.decorator";
 import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
@@ -15,6 +16,14 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/curr
 export class VaultContributionsController {
   constructor(private readonly service: VaultContributionsService) {}
 
+  // Tighter than the app-wide default (100/min/IP, see app.module.ts's
+  // own comment) — this route is @Public() and each call triggers a
+  // real Stripe/Paystack/Coinbase API call, so the default limit left
+  // it cheap to spam against a live payment provider (found in a
+  // codebase audit). Same shape as FoundersController's sign-up
+  // override; a higher count than that one since donating more than
+  // once from a shared/office IP is a real, legitimate case.
+  @Throttle({ default: { limit: 10, ttl: 600_000 } })
   @Public()
   @Post()
   initiate(@Body() body: InitiateVaultContributionInput) {
