@@ -213,8 +213,36 @@ export class VaultsService {
     return prisma.vault.findFirst({ where: { id, deletedAt: null }, include: { causes: { where: { deletedAt: null } } } });
   }
 
+  // Field whitelist for the two @Public() routes below — a public
+  // visitor's browser gets exactly what apps/web/lib/types.ts's Vault/
+  // VaultCause interfaces declare, never the staff-only fields on the
+  // same rows (createdByUserId identifies a staff member;
+  // allocatedAmount/proceedsAllocatedAmount are governed-action-gated
+  // internal ceilings) — findById/list below stay on `include` since
+  // those two routes are staff-only (no @Public()).
+  private static readonly PUBLIC_VAULT_SELECT = {
+    id: true,
+    name: true,
+    slug: true,
+    description: true,
+    type: true,
+    // Not part of the public Vault type in apps/web/lib/types.ts, but
+    // needed here so findBySlug's own not-open check (below) still
+    // compiles/works — harmless to include, a vault's status is already
+    // implied by which list it showed up in.
+    status: true,
+    currency: true,
+    targetAmount: true,
+    jurisdiction: true,
+    coverImageUrl: true,
+    causes: {
+      where: { deletedAt: null },
+      select: { id: true, vaultId: true, causeCategoryId: true, name: true, description: true },
+    },
+  } as const;
+
   findBySlug(slug: string) {
-    return prisma.vault.findFirst({ where: { slug, deletedAt: null }, include: { causes: { where: { deletedAt: null } } } });
+    return prisma.vault.findFirst({ where: { slug, deletedAt: null }, select: VaultsService.PUBLIC_VAULT_SELECT });
   }
 
   /**
@@ -239,7 +267,7 @@ export class VaultsService {
   listOpen() {
     return prisma.vault.findMany({
       where: { status: "open", deletedAt: null },
-      include: { causes: { where: { deletedAt: null } } },
+      select: VaultsService.PUBLIC_VAULT_SELECT,
       orderBy: { openedAt: "desc" },
     });
   }

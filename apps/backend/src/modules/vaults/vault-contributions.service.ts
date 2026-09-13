@@ -334,8 +334,18 @@ export class VaultContributionsService {
     return prisma.vaultContribution.findUnique({ where: { id } });
   }
 
+  // Ops Console's contributions table (VaultContributionsSection) only
+  // ever needs an identifying label for the donor column — select the
+  // exact fields apps/web/lib/ops-types.ts's VaultContribution.donor
+  // declares, not the full row (which carries phone/country/
+  // idNumberEncrypted — unnecessary to ship to the browser, encrypted
+  // or not).
   listByVault(vaultId: string) {
-    return prisma.vaultContribution.findMany({ where: { vaultId }, orderBy: { createdAt: "desc" }, include: { donor: true } });
+    return prisma.vaultContribution.findMany({
+      where: { vaultId },
+      orderBy: { createdAt: "desc" },
+      include: { donor: { select: { id: true, email: true, fullName: true } } },
+    });
   }
 
   /**
