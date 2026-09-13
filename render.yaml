@@ -23,11 +23,24 @@
 #      Rasid/Nazim/Bashir's ai_agents API keys (on birr-agents, not
 #      birr-backend — see that service's own comment on why), and
 #      birr-backend's DATABASE_URL from step 1.
-#   3. Once all three services exist, copy each one's own Deploy Hook
+#   3. Once all four services exist, copy each one's own Deploy Hook
 #      URL (service → Settings → Deploy Hook) into this repo's GitHub
-#      Actions secrets as RENDER_DEPLOY_HOOK_BACKEND/_WEB/_AGENTS.
+#      Actions secrets as RENDER_DEPLOY_HOOK_BACKEND/_WEB/_AGENTS/_DOCS.
 #
-# Region: frankfurt for all three services — the closest of Render's five
+# 2026-09-13: birr-docs added — the @birr/docs Docusaurus site
+# (previously local-only, docusaurus.config.ts's own `url` was a
+# placeholder). A static site, not a Docker web service like the three
+# below: no database, no env vars, no manual dashboard step beyond its
+# own Deploy Hook — Render serves its build output straight from a CDN,
+# so it also has no free-tier cold-start/spin-down concern the other
+# three's `plan: free` does. Kept on this same Blueprint/region rather
+# than a separate host (Vercel/Netlify/GitHub Pages) so docs deployment
+# reuses infrastructure this project already has a relationship with —
+# GitHub Pages specifically was ruled out outright: it needs either a
+# public repo or a paid GitHub plan to serve from a private one, and
+# this repo is private.
+#
+# Region: frankfurt for the three compute services — the closest of Render's five
 # regions (Oregon/Ohio/Virginia/Frankfurt/Singapore) to Nigeria/West
 # Africa, the primary latency consideration raised when Render itself was
 # chosen over Fly.io/Railway (see that comparison — Fly.io has an actual
@@ -250,3 +263,15 @@ services:
       # the failure path this is actually for.
       - key: SENTRY_DSN
         sync: false
+
+  # ---- Docusaurus docs site — public, third-party-readable product
+  # documentation (apps/docs). See this file's own top comment for why
+  # this lives here rather than a separate host. onBrokenLinks: "throw"
+  # in docusaurus.config.ts means a genuinely broken internal link fails
+  # this build outright, not just the local one. ----
+  - type: web
+    runtime: static
+    name: birr-docs
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @birr/docs build
+    staticPublishPath: apps/docs/dist
+    autoDeploy: false

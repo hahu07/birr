@@ -16,10 +16,14 @@ const config: Config = {
   tagline: "A digital trustee for Islamic waqf",
   favicon: "img/favicon.svg",
 
-  // Placeholder — set to the real published URL before deploying this
-  // anywhere public. Only affects canonical links/sitemap generation,
-  // not local development.
-  url: "https://docs.birr.example",
+  // 2026-09-13: deployed via Render — see render.yaml's own comment on
+  // the birr-docs service (a static site, same Blueprint/region the
+  // rest of this project already deploys through; GitHub Pages was
+  // ruled out since this repo is private). Render's default subdomain
+  // is deterministic from that service's own `name`, same as
+  // birr-backend/birr-web's own URLs elsewhere in that file — only
+  // affects canonical links/sitemap generation, not local development.
+  url: "https://birr-docs.onrender.com",
   baseUrl: "/",
 
   organizationName: "hahu07",

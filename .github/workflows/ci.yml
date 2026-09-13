@@ -279,3 +279,4 @@ jobs:
       - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}"
       - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WEB }}"
       - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_AGENTS }}"
+      - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_DOCS }}"
