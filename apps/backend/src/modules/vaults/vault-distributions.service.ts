@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsNotEmpty, IsNumberString, IsString } from "class-validator";
+import { IsNotEmpty, IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma, PayoutProvider } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { assertWithinAllocation as assertWithinAllocationShared } from "../../common/money/allocation-ceiling";
 import { PayoutBankDetails, PayoutProviderAdapter } from "../distributions/providers/payout-provider.interface";
 import { PaystackPayoutAdapter } from "../distributions/providers/paystack-payout.adapter";
+import { CASH_AND_BANK_ACCOUNT_CODE, PROGRAM_EXPENSES_ACCOUNT_CODE, VaultLedgerService } from "./vault-ledger.service";
 
 export class CreateVaultDistributionInput {
   @IsString()
@@ -15,6 +16,14 @@ export class CreateVaultDistributionInput {
 
   @IsString()
   counterpartyId!: string;
+
+  // Optional — see VaultMilestone's own schema comment. When set,
+  // create() refuses to create the row at all unless that milestone's
+  // status is already "completed" (see below) — the real gate on
+  // milestone-tranche disbursement, not just a UI-level restriction.
+  @IsOptional()
+  @IsString()
+  vaultMilestoneId?: string;
 
   @IsNumberString()
   amount!: Prisma.Decimal | number | string;
@@ -35,6 +44,7 @@ export class VaultDistributionsService {
 
   constructor(
     private readonly encryption: EncryptionService,
+    private readonly ledger: VaultLedgerService,
     paystackPayoutAdapter: PaystackPayoutAdapter,
   ) {
     this.payoutAdapters = new Map<PayoutProvider, PayoutProviderAdapter>([["paystack", paystackPayoutAdapter]]);
@@ -64,6 +74,21 @@ export class VaultDistributionsService {
     if (!counterparty) throw new NotFoundException(`Counterparty "${input.counterpartyId}" not found.`);
     if (counterparty.status !== "active") {
       throw new BadRequestException(`"${counterparty.name}" is ${counterparty.status} — not approved to receive payouts.`);
+    }
+    // The milestone gate (2026-09-13) — this distribution can't even be
+    // created as this milestone's tranche until vault.milestone_complete
+    // has actually been approved (governed-actions.service.ts), not just
+    // set unilaterally. No milestone attached at all skips this
+    // entirely — an ad-hoc, non-tranche distribution behaves exactly as
+    // before this feature.
+    if (input.vaultMilestoneId) {
+      const milestone = await prisma.vaultMilestone.findUnique({ where: { id: input.vaultMilestoneId } });
+      if (!milestone || milestone.vaultId !== input.vaultId) {
+        throw new BadRequestException(`Milestone "${input.vaultMilestoneId}" does not belong to vault "${input.vaultId}".`);
+      }
+      if (milestone.status !== "completed") {
+        throw new BadRequestException(`Milestone "${milestone.name}" isn't marked completed yet — its tranche can't be disbursed.`);
+      }
     }
 
     return prisma.$transaction(async (tx) => {
@@ -296,6 +321,28 @@ export class VaultDistributionsService {
           after: updated as any,
         },
       });
+
+      // Double-entry auto-post (2026-09-13) — Debit Program Expenses,
+      // Credit Cash & Bank, same transaction as the status flip. Only
+      // on an actual "paid" outcome — a failed payout moved no real
+      // money, so nothing gets posted for it.
+      if (result.status === "paid") {
+        const programExpenses = await this.ledger.getAccountByCode(tx, PROGRAM_EXPENSES_ACCOUNT_CODE);
+        const cashAndBank = await this.ledger.getAccountByCode(tx, CASH_AND_BANK_ACCOUNT_CODE);
+        await this.ledger.post(tx, {
+          vaultId: distribution.vaultId,
+          description: "Distribution paid to counterparty",
+          currency: distribution.currency,
+          source: "distribution",
+          sourceId: updated.id,
+          actorType: "system",
+          lines: [
+            { ledgerAccountId: programExpenses.id, debit: distribution.amount },
+            { ledgerAccountId: cashAndBank.id, credit: distribution.amount },
+          ],
+        });
+      }
+
       return updated;
     });
   }

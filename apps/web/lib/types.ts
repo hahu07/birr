@@ -138,6 +138,12 @@ export interface Vault {
   // own `include`), which is what the public donation page reads
   // instead of a second call to the staff-only GET /vaults/:id/causes.
   causes?: VaultCause[];
+  // Same "only present from findBySlug" posture as causes above.
+  // Project-type vaults only — an investment vault's milestones array
+  // is always empty. Name/sequence/status only, by design (see
+  // VaultMilestone's own schema comment) — never evidenceNotes or
+  // targetAmount, both staff-internal.
+  milestones?: VaultMilestone[];
 }
 
 export interface VaultCause {
@@ -146,6 +152,13 @@ export interface VaultCause {
   causeCategoryId: string | null;
   name: string;
   description: string | null;
+}
+
+export interface VaultMilestone {
+  id: string;
+  name: string;
+  sequence: number;
+  status: "pending" | "in_progress" | "completed";
 }
 
 export interface CauseImpactUpdate {

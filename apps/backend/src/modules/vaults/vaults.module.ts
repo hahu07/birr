@@ -12,6 +12,14 @@ import { VaultDistributionsService } from "./vault-distributions.service";
 import { VaultDistributionsController } from "./vault-distributions.controller";
 import { VaultDonorThresholdsService } from "./vault-donor-thresholds.service";
 import { VaultDonorThresholdsController } from "./vault-donor-thresholds.controller";
+import { VaultLedgerService } from "./vault-ledger.service";
+import { VaultLedgerController } from "./vault-ledger.controller";
+import { VaultLedgerAccountsService } from "./vault-ledger-accounts.service";
+import { VaultLedgerAccountsController } from "./vault-ledger-accounts.controller";
+import { VaultExpensesService } from "./vault-expenses.service";
+import { VaultExpensesController } from "./vault-expenses.controller";
+import { VaultMilestonesService } from "./vault-milestones.service";
+import { VaultMilestonesController } from "./vault-milestones.controller";
 import { ResendVaultReceiptEmailAdapter } from "./email/resend-vault-receipt.adapter";
 import { StripeAdapter } from "../contributions/providers/stripe.adapter";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
@@ -29,6 +37,10 @@ import { EncryptionService } from "../../common/settings/encryption.service";
     VaultProceedsController,
     VaultDistributionsController,
     VaultDonorThresholdsController,
+    VaultLedgerController,
+    VaultLedgerAccountsController,
+    VaultExpensesController,
+    VaultMilestonesController,
   ],
   providers: [
     VaultsService,
@@ -38,6 +50,10 @@ import { EncryptionService } from "../../common/settings/encryption.service";
     VaultInvestmentsService,
     VaultProceedsService,
     VaultDistributionsService,
+    VaultLedgerService,
+    VaultLedgerAccountsService,
+    VaultExpensesService,
+    VaultMilestonesService,
     // Not exported by SettingsModule (only SettingsService is) — every
     // consuming module provides its own instance, same convention as
     // e.g. BeneficiariesModule's own EncryptionService provider.
@@ -48,6 +64,13 @@ import { EncryptionService } from "../../common/settings/encryption.service";
     StablecoinAdapter,
     PaystackPayoutAdapter,
   ],
-  exports: [VaultsService, VaultContributionsService, VaultInvestmentsService, VaultProceedsService, VaultDistributionsService],
+  exports: [
+    VaultsService,
+    VaultContributionsService,
+    VaultInvestmentsService,
+    VaultProceedsService,
+    VaultDistributionsService,
+    VaultMilestonesService,
+  ],
 })
 export class VaultsModule {}

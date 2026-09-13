@@ -4,14 +4,18 @@ import { randomUUID } from "crypto";
 import { VaultDistributionsService } from "./vault-distributions.service";
 import { VaultsService } from "./vaults.service";
 import { VaultProceedsService } from "./vault-proceeds.service";
+import { VaultLedgerService } from "./vault-ledger.service";
+import { VaultMilestonesService } from "./vault-milestones.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { FakePaystackPayoutAdapter } from "../distributions/test-support/fake-payout-adapters";
 
 describe("VaultDistributionsService", () => {
   const encryption = new EncryptionService();
   const fakePayoutAdapter = new FakePaystackPayoutAdapter();
-  const service = new VaultDistributionsService(encryption, fakePayoutAdapter as any);
+  const ledger = new VaultLedgerService();
+  const service = new VaultDistributionsService(encryption, ledger, fakePayoutAdapter as any);
   const vaultsService = new VaultsService(new VaultProceedsService());
+  const milestonesService = new VaultMilestonesService();
 
   const vaultIds: string[] = [];
   const vaultDistributionIds: string[] = [];
@@ -84,6 +88,16 @@ describe("VaultDistributionsService", () => {
 
   afterAll(async () => {
     await prisma.vaultDistribution.deleteMany({ where: { id: { in: vaultDistributionIds } } });
+    // Journal entry lines before their entries before the vault itself
+    // — the paid-distribution auto-post hook (2026-09-13) means these
+    // fixture vaults now have VaultJournalEntry rows referencing them,
+    // with no onDelete: Cascade on that FK.
+    await prisma.vaultJournalEntryLine.deleteMany({ where: { journalEntry: { vaultId: { in: vaultIds } } } });
+    await prisma.vaultJournalEntry.deleteMany({ where: { vaultId: { in: vaultIds } } });
+    // Milestones after every distribution that could reference one
+    // (already deleted above) — see the "milestone-gated tranche
+    // disbursement" describe block (2026-09-13).
+    await prisma.vaultMilestone.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultCause.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.counterparty.deleteMany({ where: { id: { in: counterpartyIds } } });
@@ -153,6 +167,34 @@ describe("VaultDistributionsService", () => {
     const webhookBody = Buffer.from(JSON.stringify({ event: "transfer.success", data: { reference: distribution.id } }));
     const result = await service.handlePayoutWebhook(webhookBody, {});
     expect(result?.status).toBe("paid");
+
+    // Double-entry auto-post (2026-09-13) — a "paid" outcome should
+    // post a balanced Program Expenses debit / Cash & Bank credit
+    // journal entry, same amount as the distribution itself.
+    const journalEntry = await prisma.vaultJournalEntry.findFirst({
+      where: { source: "distribution", sourceId: distribution.id },
+      include: { lines: { include: { ledgerAccount: true } } },
+    });
+    expect(journalEntry?.lines).toHaveLength(2);
+    expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === "5000")?.debit.toString()).toBe("75");
+    expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === "1000")?.credit.toString()).toBe("75");
+  });
+
+  test("handlePayoutWebhook() posts no journal entry on a failed payout outcome", async () => {
+    const distribution = await service.create(
+      { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, amount: "40", currency: "USD" },
+      actorUserId,
+    );
+    vaultDistributionIds.push(distribution.id);
+    await prisma.$transaction((tx) => service.approve(distribution.id, tx));
+    await service.initiateDisbursement(distribution.id);
+
+    const webhookBody = Buffer.from(JSON.stringify({ event: "transfer.failed", data: { reference: distribution.id } }));
+    const result = await service.handlePayoutWebhook(webhookBody, {});
+    expect(result?.status).toBe("payout_failed");
+
+    const journalEntry = await prisma.vaultJournalEntry.findFirst({ where: { source: "distribution", sourceId: distribution.id } });
+    expect(journalEntry).toBeNull();
   });
 
   test("reject() moves a pending distribution to rejected", async () => {
@@ -452,6 +494,51 @@ describe("VaultDistributionsService", () => {
       const fulfilled = outcomes.filter((o) => o.status === "fulfilled");
       expect(fulfilled).toHaveLength(1);
       expect(fakePayoutAdapter.calls).toHaveLength(1);
+    });
+  });
+
+  // The milestone gate (2026-09-13) — create() itself refuses to build
+  // this distribution as a milestone's tranche until that milestone's
+  // own status is "completed" (only reachable via the governed
+  // vault.milestone_complete action — see governed-actions.service.ts).
+  describe("milestone-gated tranche disbursement", () => {
+    test("create() rejects a distribution against a milestone that isn't completed yet", async () => {
+      const milestone = await milestonesService.create({ vaultId, name: "Not yet done", sequence: 101 }, actorUserId);
+      await expect(
+        service.create(
+          { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, vaultMilestoneId: milestone.id, amount: "1", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    test("create() succeeds once the milestone is completed", async () => {
+      const milestone = await milestonesService.create({ vaultId, name: "Actually done", sequence: 102 }, actorUserId);
+      await prisma.$transaction((tx) => milestonesService.complete(milestone.id, tx));
+
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, vaultMilestoneId: milestone.id, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      expect(distribution.vaultMilestoneId).toBe(milestone.id);
+    });
+
+    test("create() rejects a milestone that belongs to a different vault", async () => {
+      const otherVault = await vaultsService.create(
+        { name: "Milestone Gate Other Vault", slug: `milestone-gate-other-${Date.now()}`, type: "project", currency: "USD", jurisdiction: "NG" },
+        actorUserId,
+      );
+      vaultIds.push(otherVault.id);
+      const foreignMilestone = await milestonesService.create({ vaultId: otherVault.id, name: "Wrong vault", sequence: 1 }, actorUserId);
+      await prisma.$transaction((tx) => milestonesService.complete(foreignMilestone.id, tx));
+
+      await expect(
+        service.create(
+          { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, vaultMilestoneId: foreignMilestone.id, amount: "1", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

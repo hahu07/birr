@@ -310,6 +310,7 @@ model User {
   mfaBackupCodes                 MfaBackupCode[]
   createdVaults                  Vault[]
   recordedVaultProceeds          VaultProceeds[]
+  recordedVaultExpenses          VaultExpense[]
 
   @@map("users")
 }
@@ -1711,22 +1712,22 @@ enum VaultStatus {
 // no Foundation, no funding-plan/installment-floor machinery (public
 // giving is open-ended, not a declared-corpus commitment), no deed.
 model Vault {
-  id              String      @id @default(uuid())
-  name            String
+  id                   String      @id @default(uuid())
+  name                 String
   // Public-URL-friendly identifier for the donation page
   // (/vaults/:slug) — unique, staff-set at creation, never derived
   // implicitly from name so a later rename doesn't break an already-
   // shared link.
-  slug            String      @unique
-  description     String?
-  type            VaultType
-  status          VaultStatus @default(draft)
+  slug                 String      @unique
+  description          String?
+  type                 VaultType
+  status               VaultStatus @default(draft)
   // Primary currency — targetAmount below, VaultCause allocation
   // ceilings, and VaultDistribution payouts all stay denominated in
   // this one currency, same no-cross-currency-blending assumption
   // Waqf.corpusCurrency/Distribution.currency already make elsewhere in
   // this schema.
-  currency        String
+  currency             String
   // Update, 2026-09-13 — a vault can also accept contributions in these
   // currencies, beyond its one `currency` above (e.g. a USD vault that
   // also takes NGN and USDC gifts). Deliberately scoped to giving only
@@ -1741,22 +1742,22 @@ model Vault {
   // terms rather than converting). Extending allocation/distribution to
   // be currency-aware too is real, deliberately deferred follow-up
   // work, not an oversight.
-  additionalCurrencies String[]  @default([])
+  additionalCurrencies String[]    @default([])
   // Display-only progress-bar figure, denominated in `currency` above —
   // deliberately NOT wired into any enforcement, unlike Waqf's corpus/
   // funding-plan fields.
-  targetAmount    Decimal?
+  targetAmount         Decimal?
   // Same free-form-string convention as Waqf.jurisdiction, so
   // CompliancePolicySet can key off it the same way.
-  jurisdiction    String
-  coverImageUrl   String?
-  createdByUserId String
-  createdByUser   User        @relation(fields: [createdByUserId], references: [id])
-  openedAt        DateTime?
-  closedAt        DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  deletedAt       DateTime?
+  jurisdiction         String
+  coverImageUrl        String?
+  createdByUserId      String
+  createdByUser        User        @relation(fields: [createdByUserId], references: [id])
+  openedAt             DateTime?
+  closedAt             DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  deletedAt            DateTime?
 
   causes          VaultCause[]
   contributions   VaultContribution[]
@@ -1764,6 +1765,9 @@ model Vault {
   proceeds        VaultProceeds[]
   distributions   VaultDistribution[]
   governedActions GovernedAction[]
+  journalEntries  VaultJournalEntry[]
+  expenses        VaultExpense[]
+  milestones      VaultMilestone[]
 
   @@map("vaults")
 }
@@ -1995,26 +1999,208 @@ model VaultProceeds {
 // distribution.approve exactly, including firing the same real-payout
 // (Paystack-only, today) disbursement flow post-commit.
 model VaultDistribution {
-  id              String             @id @default(uuid())
-  vaultId         String
-  vault           Vault              @relation(fields: [vaultId], references: [id])
-  vaultCauseId    String
-  vaultCause      VaultCause         @relation(fields: [vaultCauseId], references: [id])
-  counterpartyId  String
-  counterparty    Counterparty       @relation(fields: [counterpartyId], references: [id])
-  amount          Decimal
-  currency        String
-  status          DistributionStatus @default(pending)
-  approvedAt      DateTime?
-  payoutProvider  PayoutProvider?
-  payoutReference String?            @unique
-  paidAt          DateTime?
-  payoutError     String?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  deletedAt       DateTime?
+  id               String             @id @default(uuid())
+  vaultId          String
+  vault            Vault              @relation(fields: [vaultId], references: [id])
+  vaultCauseId     String
+  vaultCause       VaultCause         @relation(fields: [vaultCauseId], references: [id])
+  counterpartyId   String
+  counterparty     Counterparty       @relation(fields: [counterpartyId], references: [id])
+  // Optional — a project-vault distribution *may* be a specific
+  // milestone's tranche, in which case VaultDistributionsService
+  // .create() refuses to even create the row until that milestone's
+  // own status is "completed" (see VaultMilestone's own comment).
+  // Left null, a distribution behaves exactly as before this feature —
+  // an ad-hoc payout with no milestone gate.
+  vaultMilestoneId String?
+  vaultMilestone   VaultMilestone?    @relation(fields: [vaultMilestoneId], references: [id])
+  amount           Decimal
+  currency         String
+  status           DistributionStatus @default(pending)
+  approvedAt       DateTime?
+  payoutProvider   PayoutProvider?
+  payoutReference  String?            @unique
+  paidAt           DateTime?
+  payoutError      String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  deletedAt        DateTime?
 
   @@index([vaultId])
   @@index([vaultCauseId])
+  @@index([vaultMilestoneId])
   @@map("vault_distributions")
+}
+
+// ---- Vault double-entry ledger (2026-09-13) ----
+// A genuine chart-of-accounts/journal-entry system for Vault money,
+// additional to (not a replacement for) VaultContribution/
+// VaultDistribution and VaultsService.withAmountRaised/
+// assertWithinAllocation — those keep working exactly as before; this
+// is a second, more rigorous system of record layered on top, per the
+// owner's explicit choice of full double-entry over a lighter
+// expense-tracking-only option. See CLAUDE.md's own dated note.
+
+enum LedgerAccountType {
+  asset
+  liability
+  equity
+  revenue
+  expense
+}
+
+// A shared catalog across every vault, not per-vault — same "one
+// standard list, staff-managed" convention as CauseCategory. The four
+// isSystemDefault rows (seeded) are what the three auto-posting hooks
+// below write to; staff may add further expense sub-accounts (e.g.
+// "Materials," "Labor," "Permits") for itemizing project spend, but
+// can't delete an isSystemDefault row out from under the posting code.
+model VaultLedgerAccount {
+  id              String            @id @default(uuid())
+  code            String            @unique
+  name            String
+  type            LedgerAccountType
+  isSystemDefault Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+
+  lines    VaultJournalEntryLine[]
+  expenses VaultExpense[]
+
+  @@map("vault_ledger_accounts")
+}
+
+enum VaultJournalEntrySource {
+  contribution
+  distribution
+  expense
+  manual_adjustment
+}
+
+// Append-only, like AuditLog — no updatedAt/deletedAt, no update path
+// anywhere in the service layer. A mistake is corrected with a new
+// reversing entry, never an edit, for the same "the trail is never
+// rewritten" reason AuditLog itself is insert-only.
+model VaultJournalEntry {
+  id          String                  @id @default(uuid())
+  vaultId     String
+  vault       Vault                   @relation(fields: [vaultId], references: [id])
+  entryDate   DateTime                @default(now())
+  description String
+  // One currency per entry — a vault with additionalCurrencies posts a
+  // separate entry per currency it transacts in, same "never mix
+  // currencies in one figure" posture as VaultDistribution/
+  // assertWithinAllocation/the AML check.
+  currency    String
+  source      VaultJournalEntrySource
+  // The VaultContribution/VaultDistribution/VaultExpense id that
+  // triggered this entry — traceability, and lets a future duplicate-
+  // posting guard check "has this source already been posted."
+  sourceId    String?
+  actorType   ActorType
+  actorUserId String?
+  createdAt   DateTime                @default(now())
+
+  lines VaultJournalEntryLine[]
+
+  @@index([vaultId])
+  @@index([source, sourceId])
+  @@map("vault_journal_entries")
+}
+
+// One row per debit or credit leg. VaultLedgerService.post() is the
+// only writer, and enforces sum(debit) == sum(credit) across every
+// line of a given journalEntryId inside the same transaction as the
+// insert — the real enforcement, done carefully in a transaction
+// rather than a DB CHECK constraint that can't span sibling rows
+// (same "careful transaction, not a constraint that doesn't fit the
+// shape" precedent assertWithinAllocation's own row-lock already
+// sets). The single-row CHECK below still closes the narrower "one
+// line can't be both a debit and a credit" case at the DB level.
+model VaultJournalEntryLine {
+  id              String             @id @default(uuid())
+  journalEntryId  String
+  journalEntry    VaultJournalEntry  @relation(fields: [journalEntryId], references: [id])
+  ledgerAccountId String
+  ledgerAccount   VaultLedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+  debit           Decimal            @default(0)
+  credit          Decimal            @default(0)
+
+  @@index([journalEntryId])
+  @@index([ledgerAccountId])
+  @@map("vault_journal_entry_lines")
+}
+
+// A staff-recorded, itemized project cost (e.g. "Cement — 50 bags" /
+// 500 / USD) — the thing a lump-sum VaultDistribution payout to a
+// Counterparty can't itemize on its own. Plain staff CRUD to create
+// (mirrors VaultDistributionsService.create()'s own precedent — only
+// vault.distribution_approve is governed, not every line-item leading
+// up to it); still writes its own audit_logs row and auto-posts a
+// balanced journal entry, same as every other Vault mutation.
+// Append-only like VaultJournalEntry — no update/delete; a
+// mis-entered expense is corrected with a new offsetting VaultExpense.
+model VaultExpense {
+  id               String             @id @default(uuid())
+  vaultId          String
+  vault            Vault              @relation(fields: [vaultId], references: [id])
+  vaultMilestoneId String?
+  vaultMilestone   VaultMilestone?    @relation(fields: [vaultMilestoneId], references: [id])
+  ledgerAccountId  String
+  ledgerAccount    VaultLedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+  amount           Decimal
+  currency         String
+  description      String
+  recordedByUserId String
+  recordedByUser   User               @relation(fields: [recordedByUserId], references: [id])
+  createdAt        DateTime           @default(now())
+
+  @@index([vaultId])
+  @@index([vaultMilestoneId])
+  @@map("vault_expenses")
+}
+
+// ---- Project-vault lifecycle/milestones (2026-09-13) ----
+// Project-type vaults only (VaultMilestonesService rejects creation
+// against an investment-type vault) — an investment vault has no
+// construction-progress concept, same type-branching precedent
+// assertWithinAllocation already uses elsewhere in this schema.
+enum VaultMilestoneStatus {
+  pending
+  in_progress
+  completed
+}
+
+model VaultMilestone {
+  id            String               @id @default(uuid())
+  vaultId       String
+  vault         Vault                @relation(fields: [vaultId], references: [id])
+  name          String
+  description   String?
+  // Display/release order among this vault's own milestones — not a
+  // global ordering.
+  sequence      Int
+  // Planning figure only, denominated in the vault's own currency —
+  // same display-only, non-enforcing posture as Vault.targetAmount
+  // itself. The real ceiling on any tranche paid against this
+  // milestone is still VaultCause.allocatedAmount via
+  // assertWithinAllocation, untouched by this field.
+  targetAmount  Decimal?
+  status        VaultMilestoneStatus @default(pending)
+  completedAt   DateTime?
+  // Text only for v1 — no file/photo upload, same "start simple"
+  // posture file attachments were deferred with everywhere else in
+  // this codebase (see VaultCoverStorageService's own narrow, single-
+  // purpose scope).
+  evidenceNotes String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  deletedAt     DateTime?
+
+  distributions VaultDistribution[]
+  expenses      VaultExpense[]
+
+  @@unique([vaultId, sequence])
+  @@map("vault_milestones")
 }

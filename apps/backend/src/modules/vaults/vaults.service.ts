@@ -253,6 +253,14 @@ export class VaultsService {
       where: { deletedAt: null },
       select: { id: true, vaultId: true, causeCategoryId: true, name: true, description: true },
     },
+    // Name/sequence/status only — never evidenceNotes or targetAmount,
+    // both staff-internal (see VaultMilestone's own schema comment on
+    // this public-transparency design choice).
+    milestones: {
+      where: { deletedAt: null },
+      orderBy: { sequence: "asc" },
+      select: { id: true, name: true, sequence: true, status: true },
+    },
   } as const;
 
   async findBySlug(slug: string) {

@@ -4,6 +4,7 @@ import { EncryptionService } from "../../common/settings/encryption.service";
 import { VaultContributionsService } from "./vault-contributions.service";
 import { VaultsService } from "./vaults.service";
 import { VaultProceedsService } from "./vault-proceeds.service";
+import { VaultLedgerService } from "./vault-ledger.service";
 import {
   CreatePaymentInput,
   CreatePaymentResult,
@@ -76,6 +77,7 @@ describe("VaultContributionsService", () => {
   const service = new VaultContributionsService(
     new EncryptionService(),
     receiptEmail as any,
+    new VaultLedgerService(),
     stripeFake as any,
     paystackFake as any,
     stablecoinFake as any,
@@ -121,6 +123,12 @@ describe("VaultContributionsService", () => {
   afterAll(async () => {
     await prisma.vaultContribution.deleteMany({ where: { id: { in: vaultContributionIds } } });
     await prisma.vaultDonor.deleteMany({ where: { email: { in: vaultDonorEmails } } });
+    // Journal entry lines before their entries before the vault itself
+    // — the confirmed-contribution auto-post hook (2026-09-13) means
+    // these fixture vaults now have VaultJournalEntry rows referencing
+    // them, with no onDelete: Cascade on that FK.
+    await prisma.vaultJournalEntryLine.deleteMany({ where: { journalEntry: { vaultId: { in: vaultIds } } } });
+    await prisma.vaultJournalEntry.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultCause.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.$disconnect();
@@ -495,6 +503,17 @@ describe("VaultContributionsService", () => {
 
       const receipt = receiptEmail.sent.find((r) => r.contributionId === result.contribution.id);
       expect(receipt).toMatchObject({ to: email, vaultName: "Contributions Test Vault", causeName: "Water Wells" });
+
+      // Double-entry auto-post (2026-09-13) — confirming a contribution
+      // should post a balanced Cash & Bank debit / Donations Revenue
+      // credit journal entry, same amount as the contribution itself.
+      const journalEntry = await prisma.vaultJournalEntry.findFirst({
+        where: { source: "contribution", sourceId: result.contribution.id },
+        include: { lines: { include: { ledgerAccount: true } } },
+      });
+      expect(journalEntry?.lines).toHaveLength(2);
+      expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === "1000")?.debit.toString()).toBe("200");
+      expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === "4000")?.credit.toString()).toBe("200");
     });
 
     test("is idempotent on a webhook retry for an already-processed contribution", async () => {

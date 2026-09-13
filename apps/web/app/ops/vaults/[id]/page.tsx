@@ -12,14 +12,18 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { humanize } from "../../../../lib/format";
-import type { Vault, VaultStatus } from "../../../../lib/ops-types";
+import type { Vault, VaultMilestone, VaultStatus } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, IconArchive, Skeleton } from "@birr/ui";
 import { VaultCausesSection } from "./VaultCausesSection";
 import { VaultInvestmentsSection } from "./VaultInvestmentsSection";
 import { VaultProceedsSection } from "./VaultProceedsSection";
 import { VaultDistributionsSection } from "./VaultDistributionsSection";
 import { VaultContributionsSection } from "./VaultContributionsSection";
+import { VaultMilestonesSection } from "./VaultMilestonesSection";
+import { VaultExpensesSection } from "./VaultExpensesSection";
+import { VaultLedgerSection } from "./VaultLedgerSection";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
+import { useLoadedResource } from "../../_components/SectionChrome";
 
 const STATUS_TONE: Record<VaultStatus, "success" | "warning" | "neutral" | "danger"> = {
   draft: "neutral",
@@ -59,6 +63,18 @@ export default function VaultDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Project vaults only (VaultMilestonesService itself rejects
+  // creation against anything else) — fetched at this level, not
+  // inside VaultMilestonesSection alone, since VaultExpensesSection's
+  // own milestone-link dropdown needs the same list. Hooks run
+  // unconditionally before the early error/loading returns below, so
+  // `vault` may still be null on the first render — the fetcher itself
+  // guards against that rather than skipping the hook call.
+  const { data: milestones, reload: reloadMilestones } = useLoadedResource(
+    () => (vault?.type === "project" ? apiFetchJson<VaultMilestone[]>(`/vault-milestones?vaultId=${id}`) : Promise.resolve([])),
+    [id, vault?.type],
+  );
 
   if (error) {
     return (
@@ -119,8 +135,18 @@ export default function VaultDetailPage() {
             <VaultProceedsSection vaultId={id} currency={vault.currency} />
           </>
         )}
-        <VaultDistributionsSection vaultId={id} currency={vault.currency} causes={causes} />
+        {vault.type === "project" && (
+          <>
+            <VaultMilestonesSection
+              vaultId={id}
+              onChanged={reloadMilestones}
+            />
+            <VaultExpensesSection vaultId={id} currency={vault.currency} milestones={milestones ?? []} />
+          </>
+        )}
+        <VaultDistributionsSection vaultId={id} currency={vault.currency} causes={causes} milestones={milestones ?? []} />
         <VaultContributionsSection vaultId={id} currency={vault.currency} />
+        <VaultLedgerSection vaultId={id} currency={vault.currency} additionalCurrencies={vault.additionalCurrencies} />
       </div>
     </div>
   );

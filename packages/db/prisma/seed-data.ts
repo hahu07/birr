@@ -53,6 +53,12 @@ export const permissions = [
   // manually through the provider's own dashboard" with an auditable,
   // maker-checker-gated decision inside Birr's own system.
   { key: "vault.contribution_refund", category: "vault", requiresMakerChecker: true, description: "Refund a confirmed vault contribution." },
+  // Same fiduciary weight as vault.distribution_approve — verifying a
+  // project milestone's real-world completion before the tranche it
+  // unlocks can even be created (VaultDistributionsService.create()'s
+  // own milestone-completion gate), not just a status label a single
+  // staff member could set unilaterally.
+  { key: "vault.milestone_complete", category: "vault", requiresMakerChecker: true, description: "Mark a project vault's milestone as completed, unlocking its distribution tranche." },
 ] as const;
 
 // role key -> permission key -> { canMaker, canChecker }
@@ -72,6 +78,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.publish": { canMaker: true },
     "vault.cause_allocate": { canMaker: true },
     "vault.distribution_approve": { canMaker: true },
+    "vault.milestone_complete": { canMaker: true },
   },
   // Apex checker across every maker-checker gated permission — the Board
   // is the last line of sign-off, distinct from (and above) the
@@ -91,6 +98,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.investment_change": { canChecker: true },
     "vault.distribution_approve": { canChecker: true },
     "vault.contribution_refund": { canChecker: true },
+    "vault.milestone_complete": { canChecker: true },
   },
   investment_committee: {
     "asset.dispose": { canChecker: true },
@@ -111,6 +119,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "counterparty.onboard": { canChecker: true },
     "waqf.view": { canMaker: true },
     "vault.distribution_approve": { canChecker: true },
+    "vault.milestone_complete": { canChecker: true },
   },
   audit_committee: {
     "asset.dispose": { canChecker: true },
@@ -130,6 +139,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.cause_allocate": { canChecker: true },
     "vault.proceeds_allocate": { canChecker: true },
     "vault.distribution_approve": { canChecker: true },
+    "vault.milestone_complete": { canChecker: true },
     // Maker, not checker, here — compliance is the role that actually
     // holds a contribution for review (see VaultContributionsService
     // .hold's own role gate) and is best placed to propose reversing
@@ -216,4 +226,21 @@ export const causeCategories = [
   { name: "Religious Education", description: "Quran memorization, Islamic studies, and mosque support.", icon: "🕌", sortOrder: 50, typicalWaqfTypes: ["asset", "investment"] },
   { name: "Water & Sanitation", description: "Clean water access and sanitation infrastructure.", icon: "💧", sortOrder: 60, typicalWaqfTypes: ["project", "asset"] },
   { name: "Disaster Relief", description: "Emergency response to natural disasters and crises.", icon: "🚨", sortOrder: 70, typicalWaqfTypes: ["project"] },
+] as const;
+
+// The four accounts VaultLedgerService's three auto-posting hooks
+// write to (confirmed contribution, paid distribution, recorded
+// expense) — isSystemDefault: true so the Ops Console's chart-of-
+// accounts page refuses to let staff delete them out from under the
+// posting code. Staff add further expense sub-accounts (e.g.
+// "Materials," "Labor," "Permits") through that same page for
+// itemizing project spend; this seed only needs to cover what the
+// system itself writes to automatically. Distributions Payable is
+// reserved, not yet used by any posting rule — kept for a later
+// accrual-basis slice rather than added only once actually needed.
+export const vaultLedgerAccounts = [
+  { code: "1000", name: "Cash & Bank", type: "asset", isSystemDefault: true },
+  { code: "2000", name: "Distributions Payable", type: "liability", isSystemDefault: true },
+  { code: "4000", name: "Donations Revenue", type: "revenue", isSystemDefault: true },
+  { code: "5000", name: "Program Expenses", type: "expense", isSystemDefault: true },
 ] as const;

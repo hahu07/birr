@@ -12,6 +12,8 @@ import { VaultProceedsService } from "../vaults/vault-proceeds.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
+import { VaultLedgerService } from "../vaults/vault-ledger.service";
+import { VaultMilestonesService } from "../vaults/vault-milestones.service";
 import {
   FakePaystackPayoutAdapter,
   createFakeStripePayoutAdapter,
@@ -53,6 +55,7 @@ describe("GovernedActionsService", () => {
   const encryption = new EncryptionService();
   const beneficiariesService = new BeneficiariesService(encryption);
   const fakePaystackPayoutAdapter = new FakePaystackPayoutAdapter();
+  const vaultLedgerService = new VaultLedgerService();
   // Any fixture beneficiary that gets decided with approve: true on
   // distribution.approve needs complete Paystack payout details now that
   // approve() gates on DistributionsService.assertPayoutReady.
@@ -78,14 +81,16 @@ describe("GovernedActionsService", () => {
     ),
     new VaultsService(new VaultProceedsService()),
     new VaultInvestmentsService(),
-    new VaultDistributionsService(encryption, fakePaystackPayoutAdapter as any),
+    new VaultDistributionsService(encryption, vaultLedgerService, fakePaystackPayoutAdapter as any),
     new VaultContributionsService(
       encryption,
       new FakeVaultReceiptEmailAdapter() as any,
+      vaultLedgerService,
       new FakeVaultPaymentAdapter() as any,
       new FakeVaultPaymentAdapter() as any,
       new FakeVaultPaymentAdapter() as any,
     ),
+    new VaultMilestonesService(),
     notificationsService,
   );
 
@@ -232,6 +237,10 @@ describe("GovernedActionsService", () => {
     // VaultContribution rows created via the real flow tests are gone.
     await prisma.vaultDistribution.deleteMany({ where: { id: { in: vaultDistributionIds } } });
     await prisma.vaultInvestment.deleteMany({ where: { id: { in: vaultInvestmentIds } } });
+    // RESTRICT on vaultId, same reasoning as VaultDistribution/
+    // VaultInvestment above — after VaultDistribution (already gone,
+    // and its own vaultMilestoneId FK is ON DELETE SET NULL anyway).
+    await prisma.vaultMilestone.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultProceeds.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultContribution.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultCause.deleteMany({ where: { id: { in: vaultCauseIds } } });
@@ -1536,6 +1545,78 @@ describe("GovernedActionsService", () => {
       expect(rejectResult.governedAction.status).toBe("rejected");
       const rejected = await prisma.vaultDistribution.findUniqueOrThrow({ where: { id: secondDistribution.id } });
       expect(rejected.status).toBe("rejected");
+    });
+
+    test("vault.milestone_complete: approve → status becomes completed, vaultId is derived, audit-logged; reject leaves it unchanged", async () => {
+      const { vault } = await createProjectVaultWithCause();
+      const milestone = await prisma.vaultMilestone.create({
+        data: { vaultId: vault.id, name: "Foundation laid", sequence: 1 },
+      });
+
+      const approveAction = await service.propose({
+        permissionKey: "vault.milestone_complete",
+        payload: { vaultMilestoneId: milestone.id },
+        makerUserId,
+      });
+      governedActionIds.push(approveAction.id);
+      expect(approveAction.vaultId).toBe(vault.id);
+
+      const result = await service.decide({
+        governedActionId: approveAction.id,
+        checkerUserId: distributionCheckerUserId,
+        approve: true,
+      });
+      expect(result.governedAction.status).toBe("approved");
+      expect(result.fulfillment?.entityType).toBe("VaultMilestone");
+
+      const completed = await prisma.vaultMilestone.findUniqueOrThrow({ where: { id: milestone.id } });
+      expect(completed.status).toBe("completed");
+      expect(completed.completedAt).not.toBeNull();
+
+      const logs = await auditLogsFor(milestone.id);
+      expect(logs.some((l) => l.action === "vault_milestone.completed")).toBe(true);
+
+      // A second, separate milestone, rejected — no onReject handler
+      // (matches vault.contribution_refund's own precedent just below),
+      // so nothing about the milestone itself changes; only the
+      // governed_action's own decide()-level audit log records it.
+      const secondMilestone = await prisma.vaultMilestone.create({
+        data: { vaultId: vault.id, name: "Well drilled", sequence: 2 },
+      });
+      const rejectAction = await service.propose({
+        permissionKey: "vault.milestone_complete",
+        payload: { vaultMilestoneId: secondMilestone.id },
+        makerUserId,
+      });
+      governedActionIds.push(rejectAction.id);
+      const rejectResult = await service.decide({
+        governedActionId: rejectAction.id,
+        checkerUserId: distributionCheckerUserId,
+        approve: false,
+      });
+      expect(rejectResult.governedAction.status).toBe("rejected");
+      const stillPending = await prisma.vaultMilestone.findUniqueOrThrow({ where: { id: secondMilestone.id } });
+      expect(stillPending.status).toBe("pending");
+    });
+
+    test("vault.milestone_complete: decide(approve: true) throws and the GovernedAction stays proposed for an already-completed milestone", async () => {
+      const { vault } = await createProjectVaultWithCause();
+      const milestone = await prisma.vaultMilestone.create({
+        data: { vaultId: vault.id, name: "Already done", sequence: 1, status: "completed", completedAt: new Date() },
+      });
+
+      const action = await service.propose({
+        permissionKey: "vault.milestone_complete",
+        payload: { vaultMilestoneId: milestone.id },
+        makerUserId,
+      });
+      governedActionIds.push(action.id);
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true }),
+      ).rejects.toThrow(BadRequestException);
+      const stillProposed = await prisma.governedAction.findUniqueOrThrow({ where: { id: action.id } });
+      expect(stillProposed.status).toBe("proposed");
     });
 
     test("vault.contribution_refund: approve → refundStatus becomes requested, vaultId is derived, both audit-logged; the fire-and-forget follow-up eventually refunds it", async () => {

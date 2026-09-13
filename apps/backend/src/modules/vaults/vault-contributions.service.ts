@@ -9,6 +9,7 @@ import { StripeAdapter } from "../contributions/providers/stripe.adapter";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { StablecoinAdapter } from "../contributions/providers/stablecoin.adapter";
 import { ResendVaultReceiptEmailAdapter } from "./email/resend-vault-receipt.adapter";
+import { CASH_AND_BANK_ACCOUNT_CODE, DONATIONS_REVENUE_ACCOUNT_CODE, VaultLedgerService } from "./vault-ledger.service";
 
 export class HoldVaultContributionInput {
   @IsString()
@@ -71,6 +72,7 @@ export class VaultContributionsService {
   constructor(
     private readonly encryption: EncryptionService,
     private readonly receiptEmail: ResendVaultReceiptEmailAdapter,
+    private readonly ledger: VaultLedgerService,
     stripeAdapter: StripeAdapter,
     paystackAdapter: PaystackAdapter,
     stablecoinAdapter: StablecoinAdapter,
@@ -346,6 +348,26 @@ export class VaultContributionsService {
           after: confirmed as any,
         },
       });
+
+      // Double-entry auto-post (2026-09-13) — Debit Cash & Bank, Credit
+      // Donations Revenue, same transaction as the status flip so the
+      // ledger and the contribution row can never disagree about
+      // whether this money landed.
+      const cashAndBank = await this.ledger.getAccountByCode(tx, CASH_AND_BANK_ACCOUNT_CODE);
+      const donationsRevenue = await this.ledger.getAccountByCode(tx, DONATIONS_REVENUE_ACCOUNT_CODE);
+      await this.ledger.post(tx, {
+        vaultId: contribution.vaultId,
+        description: `Contribution confirmed (${contribution.provider})`,
+        currency: contribution.currency,
+        source: "contribution",
+        sourceId: confirmed.id,
+        actorType: "system",
+        lines: [
+          { ledgerAccountId: cashAndBank.id, debit: confirmed.amount },
+          { ledgerAccountId: donationsRevenue.id, credit: confirmed.amount },
+        ],
+      });
+
       return confirmed;
     });
 

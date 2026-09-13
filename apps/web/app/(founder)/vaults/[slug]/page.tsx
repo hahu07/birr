@@ -79,6 +79,7 @@ export default function VaultDonationPage() {
   }
 
   const causes = vault.causes ?? [];
+  const milestones = vault.milestones ?? [];
   // Same progress treatment as VaultCard (SiteChrome.tsx) — kept
   // consistent rather than each page inventing its own since a donor
   // may see both before deciding to give. The goal/bar is always the
@@ -150,6 +151,34 @@ export default function VaultDonationPage() {
                 Also raised: {otherRaised.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")}
               </p>
             )}
+          </div>
+        )}
+
+        {milestones.length > 0 && (
+          <div className="mt-6">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Project progress</p>
+            <ol className="space-y-2.5">
+              {milestones.map((m) => (
+                <li key={m.id} className="flex items-center gap-2.5 text-sm">
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                      m.status === "completed"
+                        ? "bg-primary-600 text-white"
+                        : m.status === "in_progress"
+                          ? "bg-accent-100 text-accent-700 ring-1 ring-inset ring-accent-300"
+                          : "bg-slate-100 text-slate-400 ring-1 ring-inset ring-slate-200"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {m.status === "completed" ? "✓" : m.sequence}
+                  </span>
+                  <span className={m.status === "completed" ? "text-slate-900" : "text-slate-600"}>{m.name}</span>
+                  <span className="text-xs text-slate-400">
+                    ({m.status === "completed" ? "Done" : m.status === "in_progress" ? "In progress" : "Upcoming"})
+                  </span>
+                </li>
+              ))}
+            </ol>
           </div>
         )}
 

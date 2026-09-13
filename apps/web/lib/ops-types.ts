@@ -862,6 +862,10 @@ export interface VaultDistribution {
   vaultId: string;
   vaultCauseId: string;
   counterpartyId: string;
+  // Set when this distribution is a specific milestone's tranche
+  // (2026-09-13) — create() refuses the row until that milestone's own
+  // status is "completed". null for an ad-hoc, non-tranche payout.
+  vaultMilestoneId: string | null;
   amount: string;
   currency: string;
   status: "pending" | "approved" | "disbursing" | "paid" | "payout_failed" | "rejected";
@@ -871,6 +875,55 @@ export interface VaultDistribution {
   paidAt: string | null;
   payoutError: string | null;
   createdAt: string;
+}
+
+// Project-vault lifecycle tracking (2026-09-13) — see
+// VaultMilestone's own schema comment. status only ever reaches
+// "completed" via the governed vault.milestone_complete action.
+export interface VaultMilestone {
+  id: string;
+  vaultId: string;
+  name: string;
+  description: string | null;
+  sequence: number;
+  targetAmount: string | null;
+  status: "pending" | "in_progress" | "completed";
+  completedAt: string | null;
+  evidenceNotes: string | null;
+  createdAt: string;
+}
+
+// The chart of accounts VaultLedgerService's auto-posting hooks write
+// to — a shared catalog across every vault, not per-vault (2026-09-13).
+export interface VaultLedgerAccount {
+  id: string;
+  code: string;
+  name: string;
+  type: "asset" | "liability" | "equity" | "revenue" | "expense";
+  isSystemDefault: boolean;
+}
+
+// An itemized project cost — see VaultExpense's own schema comment.
+export interface VaultExpense {
+  id: string;
+  vaultId: string;
+  vaultMilestoneId: string | null;
+  ledgerAccountId: string;
+  amount: string;
+  currency: string;
+  description: string;
+  recordedByUserId: string;
+  createdAt: string;
+}
+
+export interface VaultLedgerAccountBalance {
+  ledgerAccountId: string;
+  code: string;
+  name: string;
+  type: string;
+  debit: string;
+  credit: string;
+  balance: string;
 }
 
 export interface VaultContribution {

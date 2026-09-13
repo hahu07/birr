@@ -16,6 +16,7 @@ import { VaultsService } from "../vaults/vaults.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
+import { VaultMilestonesService } from "../vaults/vault-milestones.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -161,6 +162,7 @@ export class GovernedActionsService {
     private readonly vaultInvestmentsService: VaultInvestmentsService,
     private readonly vaultDistributionsService: VaultDistributionsService,
     private readonly vaultContributionsService: VaultContributionsService,
+    private readonly vaultMilestonesService: VaultMilestonesService,
     private readonly notificationsService: NotificationsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
@@ -788,6 +790,67 @@ export class GovernedActionsService {
               entityId: distribution.id,
               before,
               after: distribution,
+            };
+          },
+        },
+      ],
+      // Same fiduciary weight as vault.distribution_approve above —
+      // verifying a project milestone's real-world completion before
+      // the tranche it unlocks can even be created
+      // (VaultDistributionsService.create()'s own milestone-completion
+      // gate), not a status label a single staff member could set
+      // unilaterally. No onReject, matching vault.contribution_refund's
+      // own precedent just above — a rejection leaves the milestone
+      // exactly as it was; nothing about it actually changed, so the
+      // governed_action's own decide()-level audit log is enough.
+      [
+        "vault.milestone_complete",
+        {
+          resolveVaultId: async (payload) => {
+            const { vaultMilestoneId } = payload as { vaultMilestoneId: string };
+            const milestone = await prisma.vaultMilestone.findUnique({ where: { id: vaultMilestoneId } });
+            return milestone?.vaultId;
+          },
+          checkDuplicate: async (payload) => {
+            const { vaultMilestoneId } = payload as { vaultMilestoneId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "vault.milestone_complete" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["vaultMilestoneId"], equals: vaultMilestoneId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "A completion proposal for this milestone is already awaiting a decision — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { vaultMilestoneId } = payload as { vaultMilestoneId: string };
+            const milestone = await prisma.vaultMilestone.findUnique({
+              where: { id: vaultMilestoneId },
+              include: { vault: { select: { name: true } } },
+            });
+            return milestone
+              ? `Mark "${milestone.name}" complete for "${milestone.vault.name}".`
+              : `VaultMilestone "${vaultMilestoneId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { vaultMilestoneId } = payload as { vaultMilestoneId: string };
+            const milestone = await prisma.vaultMilestone.findUnique({
+              where: { id: vaultMilestoneId },
+              select: { status: true, targetAmount: true, evidenceNotes: true },
+            });
+            return milestone ? { ...milestone } : null;
+          },
+          onApprove: async (payload, tx) => {
+            const { vaultMilestoneId } = payload as { vaultMilestoneId: string };
+            const before = await tx.vaultMilestone.findUnique({ where: { id: vaultMilestoneId } });
+            const milestone = await this.vaultMilestonesService.complete(vaultMilestoneId, tx);
+            return {
+              auditAction: "vault_milestone.completed",
+              entityType: "VaultMilestone",
+              entityId: milestone.id,
+              before,
+              after: milestone,
             };
           },
         },

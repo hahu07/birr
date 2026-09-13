@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize } from "../../../../lib/format";
-import type { Counterparty, VaultCause, VaultDistribution } from "../../../../lib/ops-types";
+import type { Counterparty, VaultCause, VaultDistribution, VaultMilestone } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
@@ -26,10 +26,15 @@ export function VaultDistributionsSection({
   vaultId,
   currency,
   causes,
+  milestones,
 }: {
   vaultId: string;
   currency: string;
   causes: VaultCause[];
+  // Project vaults only — see VaultMilestone's own schema comment.
+  // Empty for an investment vault, which simply never shows the
+  // milestone picker below.
+  milestones: VaultMilestone[];
 }) {
   const {
     data: distributions,
@@ -47,6 +52,7 @@ export function VaultDistributionsSection({
 
   const causeName = (id: string) => causes.find((c) => c.id === id)?.name ?? "—";
   const counterpartyName = (id: string) => activeCounterparties.find((c) => c.id === id)?.name ?? "—";
+  const milestoneName = (id: string | null) => (id ? (milestones.find((m) => m.id === id)?.name ?? "—") : null);
 
   return (
     <section>
@@ -74,6 +80,7 @@ export function VaultDistributionsSection({
             currency={currency}
             causes={causes}
             counterparties={activeCounterparties}
+            milestones={milestones}
             onCreated={() => {
               setShowForm(false);
               load();
@@ -93,6 +100,7 @@ export function VaultDistributionsSection({
             <TableRow>
               <TableHeaderCell>Counterparty</TableHeaderCell>
               <TableHeaderCell>Cause</TableHeaderCell>
+              {milestones.length > 0 && <TableHeaderCell>Milestone</TableHeaderCell>}
               <TableHeaderCell>Amount</TableHeaderCell>
               <TableHeaderCell>Status</TableHeaderCell>
               <TableHeaderCell />
@@ -103,6 +111,9 @@ export function VaultDistributionsSection({
               <TableRow key={d.id}>
                 <TableCell className="font-medium text-slate-900">{counterpartyName(d.counterpartyId)}</TableCell>
                 <TableCell className="text-slate-500">{causeName(d.vaultCauseId)}</TableCell>
+                {milestones.length > 0 && (
+                  <TableCell className="text-slate-500">{milestoneName(d.vaultMilestoneId) ?? "—"}</TableCell>
+                )}
                 <TableCell className="text-slate-500">
                   {formatAmount(d.amount)} {d.currency}
                 </TableCell>
@@ -169,19 +180,29 @@ function DistributionForm({
   currency,
   causes,
   counterparties,
+  milestones,
   onCreated,
 }: {
   vaultId: string;
   currency: string;
   causes: VaultCause[];
   counterparties: Counterparty[];
+  milestones: VaultMilestone[];
   onCreated: () => void;
 }) {
   const [vaultCauseId, setVaultCauseId] = useState(causes[0]?.id ?? "");
   const [counterpartyId, setCounterpartyId] = useState(counterparties[0]?.id ?? "");
+  const [vaultMilestoneId, setVaultMilestoneId] = useState("");
   const [amount, setAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Only a completed milestone can actually be attached — see
+  // VaultDistributionsService.create()'s own gate (it flatly rejects a
+  // non-completed one). Filtering here means the dropdown never offers
+  // a choice that's guaranteed to fail; an incomplete milestone simply
+  // isn't a distribution option yet.
+  const completedMilestones = milestones.filter((m) => m.status === "completed");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -190,7 +211,7 @@ function DistributionForm({
     try {
       await apiFetchJson("/vault-distributions", {
         method: "POST",
-        body: JSON.stringify({ vaultId, vaultCauseId, counterpartyId, amount, currency }),
+        body: JSON.stringify({ vaultId, vaultCauseId, counterpartyId, vaultMilestoneId: vaultMilestoneId || undefined, amount, currency }),
       });
       onCreated();
     } catch (err) {
@@ -235,6 +256,26 @@ function DistributionForm({
             ))}
           </select>
         </div>
+        {milestones.length > 0 && (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Milestone tranche (optional)</label>
+            <select
+              value={vaultMilestoneId}
+              onChange={(e) => setVaultMilestoneId(e.target.value)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              <option value="">Ad-hoc (no milestone)</option>
+              {completedMilestones.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            {completedMilestones.length === 0 && (
+              <p className="text-xs text-slate-500">No milestone is completed yet — propose one's completion first.</p>
+            )}
+          </div>
+        )}
         <div className="w-32 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Amount ({currency})</label>
           <Input type="number" min="0" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />

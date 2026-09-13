@@ -76,6 +76,7 @@ const NAV_GROUPS: {
       { href: "/ops/vaults", label: "Vaults", icon: IconArchive },
       { href: "/ops/counterparties", label: "Counterparties", icon: IconLandmark },
       { href: "/ops/cause-categories", label: "Cause Categories", icon: IconSparkle },
+      { href: "/ops/vault-ledger-accounts", label: "Vault Ledger Accounts", icon: IconFileText },
     ],
   },
   {
