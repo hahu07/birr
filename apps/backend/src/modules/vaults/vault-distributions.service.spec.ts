@@ -19,6 +19,7 @@ describe("VaultDistributionsService", () => {
   let actorUserId: string;
   let vaultId: string;
   let causeId: string;
+  let investmentVaultId: string;
   let payoutReadyCounterpartyId: string;
   let noPayoutDetailsCounterpartyId: string;
 
@@ -48,6 +49,13 @@ describe("VaultDistributionsService", () => {
     // governed-actions.service.spec.ts; this fixture just needs a real
     // ceiling in place already.
     await prisma.vaultCause.update({ where: { id: causeId }, data: { allocatedAmount: "1000" } });
+
+    const investmentVault = await vaultsService.create(
+      { name: "Distributions Test Investment Vault", slug: `distributions-investment-test-${Date.now()}`, type: "investment", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    investmentVaultId = investmentVault.id;
+    vaultIds.push(investmentVault.id);
 
     const payoutReady = await prisma.counterparty.create({
       data: {
@@ -165,6 +173,189 @@ describe("VaultDistributionsService", () => {
         actorUserId,
       ),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  // Mirrors DistributionsService's own "allocation enforcement" describe
+  // block, against the shared common/money/allocation-ceiling helper
+  // both services now delegate to (see that module's own spec for the
+  // policy's pure-logic unit tests — race-safety, corpus-vs-proceeds,
+  // multi-currency lock-in). These are the integration-level tests
+  // proving the wiring into VaultCause/VaultDistribution actually works.
+  //
+  // One test from the Waqf side is deliberately NOT ported here: the
+  // multi-currency lock-in test. Distribution's own currency-lock only
+  // applies "if waqf.corpusCurrency is set" (many waqf fixtures leave it
+  // unset), so a Waqf-side distribution can genuinely reach
+  // assertWithinAllocation with two different currencies against one
+  // cause. VaultDistributionsService.create() has no such escape hatch
+  // — vault.currency is a required field, always set, and every
+  // VaultDistribution is rejected outright at create() if its currency
+  // doesn't match the vault's own. A second currency can therefore never
+  // reach assertWithinAllocation for a real Vault at all; that branch of
+  // the shared helper is exercised only by its own unit test.
+  describe("allocation enforcement", () => {
+    test("rejects a distribution with no allocation set on its cause", async () => {
+      const cause = await vaultsService.createCause({ vaultId, name: "No Allocation Fixture Cause" }, actorUserId);
+      await expect(
+        service.create(
+          { vaultId, vaultCauseId: cause.id, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    test("approve() re-checks headroom and rejects if it shrank since creation", async () => {
+      const cause = await vaultsService.createCause({ vaultId, name: "Approve Recheck Fixture Cause" }, actorUserId);
+      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "100" } });
+
+      const pending = await service.create(
+        { vaultId, vaultCauseId: cause.id, counterpartyId: payoutReadyCounterpartyId, amount: "80", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(pending.id);
+
+      // Headroom shrinks after the distribution was created against the
+      // old, larger figure.
+      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "50" } });
+
+      await prisma.$transaction(async (tx) => {
+        await expect(service.approve(pending.id, tx)).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    test("concurrent create() calls against the same cause can't jointly exceed the ceiling (TOCTOU regression)", async () => {
+      const cause = await vaultsService.createCause({ vaultId, name: "Concurrency Fixture Cause" }, actorUserId);
+      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "100" } });
+
+      // Each individually fits under the 100 ceiling (60 < 100), but
+      // together they total 120 — exceeding it. Without the shared
+      // helper's row lock, both transactions could read "0 already
+      // committed" before either commits, and both would succeed.
+      const results = await Promise.allSettled([
+        service.create({ vaultId, vaultCauseId: cause.id, counterpartyId: payoutReadyCounterpartyId, amount: "60", currency: "USD" }, actorUserId),
+        service.create({ vaultId, vaultCauseId: cause.id, counterpartyId: payoutReadyCounterpartyId, amount: "60", currency: "USD" }, actorUserId),
+      ]);
+
+      const fulfilled = results.filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof service.create>>> => r.status === "fulfilled");
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason).toBeInstanceOf(BadRequestException);
+      vaultDistributionIds.push(fulfilled[0].value.id);
+
+      const committed = await prisma.vaultDistribution.aggregate({
+        where: { vaultCauseId: cause.id, status: { in: ["pending", "approved", "disbursing", "paid"] } },
+        _sum: { amount: true },
+      });
+      expect(committed._sum.amount?.toString()).toBe("60");
+    });
+
+    test("non-Investment vault: ceiling is the sum of allocatedAmount and proceedsAllocatedAmount", async () => {
+      const cause = await vaultsService.createCause({ vaultId, name: "Two Pools Fixture Cause" }, actorUserId);
+      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "60", proceedsAllocatedAmount: "40" } });
+
+      // 60 + 40 = 100 combined ceiling — exceeding it by 1 rejects.
+      await expect(
+        service.create(
+          { vaultId, vaultCauseId: cause.id, counterpartyId: payoutReadyCounterpartyId, amount: "101", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      // Exactly the combined total succeeds.
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: cause.id, counterpartyId: payoutReadyCounterpartyId, amount: "100", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+    });
+
+    test("Investment vault: only proceedsAllocatedAmount counts toward the ceiling — corpus is excluded", async () => {
+      const cause = await vaultsService.createCause({ vaultId: investmentVaultId, name: "Investment Fixture Cause" }, actorUserId);
+      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "1000", proceedsAllocatedAmount: "40" } });
+
+      // Corpus (1000) is NOT part of the ceiling here — only proceeds
+      // (40) is, so even a modest 41 against a cause with 1000 of corpus
+      // allocated still rejects.
+      await expect(
+        service.create(
+          { vaultId: investmentVaultId, vaultCauseId: cause.id, counterpartyId: payoutReadyCounterpartyId, amount: "41", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      // Exactly the proceeds total succeeds, ignoring the much larger corpus figure.
+      const distribution = await service.create(
+        { vaultId: investmentVaultId, vaultCauseId: cause.id, counterpartyId: payoutReadyCounterpartyId, amount: "40", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+    });
+  });
+
+  // Mirrors DistributionsService's own payout-rail idempotency/
+  // concurrency coverage — proves the atomic claim (updateMany with the
+  // expected current status in the WHERE clause) holds for Vault's own
+  // initiateDisbursement/handlePayoutWebhook, not just retryDisbursement
+  // (already covered below).
+  describe("payout idempotency and concurrency", () => {
+    beforeEach(() => {
+      fakePayoutAdapter.calls = [];
+      fakePayoutAdapter.shouldFail = false;
+    });
+
+    test("initiateDisbursement() is idempotent — a second call on an already-disbursing row is a no-op", async () => {
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      await prisma.$transaction((tx) => service.approve(distribution.id, tx));
+      await service.initiateDisbursement(distribution.id);
+      expect(fakePayoutAdapter.calls).toHaveLength(1);
+
+      await service.initiateDisbursement(distribution.id);
+      expect(fakePayoutAdapter.calls).toHaveLength(1); // unchanged — status is no longer "approved"
+    });
+
+    test("initiateDisbursement() — two concurrent calls on the same approved distribution: only one reaches the payout adapter", async () => {
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      await prisma.$transaction((tx) => service.approve(distribution.id, tx));
+
+      await Promise.all([service.initiateDisbursement(distribution.id), service.initiateDisbursement(distribution.id)]);
+
+      // The assertion that actually proves the double-payout fix — a
+      // sequential-only test can't distinguish "idempotent" from "never
+      // raced in the first place".
+      expect(fakePayoutAdapter.calls).toHaveLength(1);
+
+      const updated = await prisma.vaultDistribution.findUniqueOrThrow({ where: { id: distribution.id } });
+      expect(updated.status).toBe("disbursing");
+    });
+
+    test("handlePayoutWebhook() is idempotent on replay", async () => {
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      await prisma.$transaction((tx) => service.approve(distribution.id, tx));
+      await service.initiateDisbursement(distribution.id);
+
+      const rawBody = Buffer.from(JSON.stringify({ event: "transfer.success", data: { reference: distribution.id } }));
+      const result = await service.handlePayoutWebhook(rawBody, {});
+      expect(result?.status).toBe("paid");
+      expect(result?.paidAt).not.toBeNull();
+
+      // Replay — idempotent no-op, not a second state change.
+      const replay = await service.handlePayoutWebhook(rawBody, {});
+      expect(replay?.status).toBe("paid");
+      expect(replay?.paidAt?.getTime()).toBe(result?.paidAt?.getTime());
+    });
   });
 
   // Mirrors DistributionsService's own retryDisbursement coverage
