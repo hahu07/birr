@@ -23,7 +23,7 @@ import {
 } from "@birr/ui";
 import { apiFetchJson } from "../../lib/api";
 import type { CauseCategory, Vault } from "../../lib/types";
-import { GRADIENT, Reveal, SiteFooter, SiteHeader } from "./SiteChrome";
+import { GRADIENT, Reveal, SiteFooter, SiteHeader, VaultCard } from "./SiteChrome";
 import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 
 // The three Waqf Fund types a Founder can establish — WAQF_TYPE_CONTENT
@@ -441,42 +441,7 @@ export default function MarketingHome() {
           <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {openVaults.slice(0, VAULT_TEASER_LIMIT).map((vault, i) => (
               <Reveal key={vault.id} delayMs={i * 75}>
-                <Card tone="neutral" className="flex h-full flex-col">
-                  {vault.coverImageUrl ? (
-                    <div className="-mx-6 -mt-6 mb-4 h-36 overflow-hidden rounded-t-lg bg-slate-100">
-                      <img src={vault.coverImageUrl} alt={vault.name} className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <span
-                      className="mb-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700 ring-1 ring-inset ring-accent-100"
-                      aria-hidden="true"
-                    >
-                      <IconArchive className="h-5 w-5" />
-                    </span>
-                  )}
-                  <h3 className="text-sm font-semibold text-slate-900">{vault.name}</h3>
-                  {vault.description && <p className="mt-2 text-sm leading-relaxed text-slate-600">{vault.description}</p>}
-                  {(vault.causes?.length ?? 0) > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {vault.causes!.map((c) => (
-                        <span key={c.id} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
-                          {c.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {vault.targetAmount && (
-                    <p className="mt-3 text-xs text-slate-500">
-                      Goal: {vault.currency} {Number(vault.targetAmount).toLocaleString()}
-                    </p>
-                  )}
-                  <Link
-                    href={`/vaults/${vault.slug}`}
-                    className="mt-4 inline-flex items-center justify-center rounded-md bg-primary-700 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-800"
-                  >
-                    Give to this vault
-                  </Link>
-                </Card>
+                <VaultCard vault={vault} />
               </Reveal>
             ))}
           </div>

@@ -8,7 +8,9 @@
 // public surface needs it.
 import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Button, IconMark } from "@birr/ui";
+import { Button, Card, IconArchive, IconMark } from "@birr/ui";
+import { humanize } from "../../lib/format";
+import type { Vault } from "../../lib/types";
 import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 
 // Four stops, not two-color interpolation across the full distance: a
@@ -208,5 +210,53 @@ export function SiteFooter() {
         </p>
       </div>
     </footer>
+  );
+}
+
+// Shared between the homepage's "Support a cause" teaser
+// (MarketingHome.tsx) and the full /vaults index (vaults/page.tsx) —
+// this markup was previously duplicated near-verbatim between the two
+// (found in a codebase audit). `showType` is the one real difference:
+// the fuller index page labels each card with its vault type ("Project
+// vault"), the homepage teaser doesn't.
+export function VaultCard({ vault, showType = false }: { vault: Vault; showType?: boolean }) {
+  return (
+    <Card tone="neutral" className="flex h-full flex-col">
+      {vault.coverImageUrl ? (
+        <div className="-mx-6 -mt-6 mb-4 h-36 overflow-hidden rounded-t-lg bg-slate-100">
+          <img src={vault.coverImageUrl} alt={vault.name} className="h-full w-full object-cover" />
+        </div>
+      ) : (
+        <span
+          className="mb-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700 ring-1 ring-inset ring-accent-100"
+          aria-hidden="true"
+        >
+          <IconArchive className="h-5 w-5" />
+        </span>
+      )}
+      {showType && <p className="text-[11px] font-semibold uppercase tracking-wide text-accent-600">{humanize(vault.type)} vault</p>}
+      <h3 className={`text-sm font-semibold text-slate-900 ${showType ? "mt-1" : ""}`}>{vault.name}</h3>
+      {vault.description && <p className="mt-2 text-sm leading-relaxed text-slate-600">{vault.description}</p>}
+      {vault.causes && vault.causes.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {vault.causes.map((c) => (
+            <span key={c.id} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+              {c.name}
+            </span>
+          ))}
+        </div>
+      )}
+      {vault.targetAmount && (
+        <p className="mt-3 text-xs text-slate-500">
+          Goal: {vault.currency} {Number(vault.targetAmount).toLocaleString()}
+        </p>
+      )}
+      <Link
+        href={`/vaults/${vault.slug}`}
+        className="mt-4 inline-flex items-center justify-center rounded-md bg-primary-700 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-800"
+      >
+        Give to this vault
+      </Link>
+    </Card>
   );
 }
