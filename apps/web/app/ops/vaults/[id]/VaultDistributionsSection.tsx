@@ -128,6 +128,7 @@ export function VaultDistributionsSection({
                       onProposed={load}
                     />
                   )}
+                  {d.status === "payout_failed" && <RetryDisbursementAction distributionId={d.id} onRetried={load} />}
                 </TableCell>
               </TableRow>
             ))}
@@ -135,6 +136,38 @@ export function VaultDistributionsSection({
         </Table>
       )}
     </section>
+  );
+}
+
+// No maker-checker gate here (unlike ProposeGovernedActionButton above)
+// — the governance decision already happened at
+// vault.distribution_approve; this is purely payment-mechanics retry
+// against an already-final decision. Mirrors DistributionsSection.tsx's
+// own RetryDisbursementAction exactly.
+function RetryDisbursementAction({ distributionId, onRetried }: { distributionId: string; onRetried: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function retry() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await apiFetchJson(`/vault-distributions/${distributionId}/retry-disbursement`, { method: "POST" });
+      onRetried();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div>
+      <Button variant="secondary" className="px-2.5 py-1.5 text-xs" disabled={submitting} onClick={retry}>
+        {submitting ? "Retrying…" : "Retry disbursement"}
+      </Button>
+      {error && <p className="mt-1 text-[11px] text-red-600">{error}</p>}
+    </div>
   );
 }
 

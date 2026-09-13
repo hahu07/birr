@@ -5,6 +5,7 @@ import { withFounderScope } from "../../common/db/founder-scope";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
+import { assertWithinAllocation as assertWithinAllocationShared } from "../../common/money/allocation-ceiling";
 import { PayoutProviderAdapter } from "./providers/payout-provider.interface";
 import { PaystackPayoutAdapter } from "./providers/paystack-payout.adapter";
 import { StripePayoutAdapter } from "./providers/stripe-payout.adapter";
@@ -504,50 +505,19 @@ export class DistributionsService {
    * from yet — this is what gives WaqfCausesService.allocate() (Founder
    * self-service, corpus-based) and .allocateProceeds() (Birr staff,
    * investment-proceeds-based) real teeth instead of being decorative
-   * numbers. The two pools are summed here as one combined ceiling —
-   * they're tracked separately at the WaqfCause level (corpus vs.
-   * income stays a meaningful distinction, see each method's own
-   * comment) but a Distribution itself doesn't care which pool its
-   * money notionally came from. Counts pending/approved/disbursing/paid
-   * distributions as "committed" (a pending one is already a real claim
-   * on the allocation, not yet-moved money notwithstanding) —
-   * deliberately EXCLUDES payout_failed: a failed payout never actually
-   * moved money and releases its claim on the cause's ceiling, so a
-   * fresh distribution (or a retryDisbursement re-check) against the
-   * same cause isn't blocked by money that never left. Excludes
-   * `excludeDistributionId` so approve()'s/retryDisbursement's re-checks
-   * don't double-count the row being (re-)confirmed against itself.
-   *
-   * Scoped to `currency` — WaqfCause.allocatedAmount/proceedsAllocatedAmount
-   * still carry no currency of their own at the schema level, so this
-   * treats the ceiling as denominated in whichever currency the cause's
-   * *first* committed distribution used, and locks every later
-   * distribution against the same cause to that same currency
-   * (2026-08-30 security audit fix — see
-   * docs/comprehensive-code-review-prompt.md). Deliberately NOT just
-   * "sum same-currency commitments and ignore other currencies" —
-   * that alone would let every distinct currency independently reach
-   * the full ceiling against one cause (e.g. 100 NGN *and* 100 USD
-   * *and* 100 GBP all committed against a single allocatedAmount: 100
-   * cause), which is a different but equally real bypass of the ceiling
-   * CLAUDE.md calls "a real enforced ceiling, not a decorative figure."
-   * Locking to one currency per cause matches the implicit
-   * single-currency assumption already used throughout this codebase
-   * (e.g. summaryByCause's own comment on why mixing currencies is
-   * meaningless) without requiring an exchange-rate conversion, which
-   * is out of scope for this fix.
-   *
-   * That still left one real hole until 2026-09-04: nothing stopped a
-   * *first* distribution itself from locking in a currency that doesn't
-   * actually match what the ceiling was computed in (the corpus, plus
-   * WaqfProceeds — both anchored to the waqf's own corpusCurrency), so
-   * e.g. a $25,000 USD distribution against a cause whose real ceiling
-   * was ₦25,000 would pass this check comparing raw numbers as if the
-   * two currencies were equivalent (found live, via a real Ops Console
-   * screenshot). create() now rejects a mismatched currency against
-   * waqf.corpusCurrency before it ever reaches here — see that method's
-   * own comment — so the lock this method applies should, from here on,
-   * only ever be locking in the currency that was already correct.
+   * numbers. The actual policy (corpus-vs-proceeds treatment, the
+   * single-currency lock-in, the TOCTOU row lock) lives in the shared
+   * ../../common/money/allocation-ceiling — see that module's own
+   * comment for the full history (this policy has already changed
+   * twice: CLAUDE.md's 2026-08-27 and 2026-09-04 updates) and its spec
+   * for the behavior this thin wrapper delegates to. This method is
+   * only the WaqfCause/Distribution-specific plumbing: which rows count
+   * as "committed" (pending/approved/disbursing/paid — deliberately
+   * EXCLUDES payout_failed, since a failed payout never actually moved
+   * money and releases its claim on the ceiling) and which table gets
+   * row-locked. Excludes `excludeDistributionId` so approve()'s/
+   * retryDisbursement's re-checks don't double-count the row being
+   * (re-)confirmed against itself.
    */
   private async assertWithinAllocation(
     causeId: string,
@@ -556,60 +526,26 @@ export class DistributionsService {
     tx: Prisma.TransactionClient,
     excludeDistributionId?: string,
   ): Promise<void> {
-    // Row-locked for the rest of this transaction so two concurrent
-    // distributions against the same cause can't both read the
-    // pre-commit "already committed" sum below and jointly exceed the
-    // allocation ceiling (TOCTOU) — the DB lock is what actually makes
-    // this "a real enforced ceiling, not a decorative figure" under
-    // concurrency, not just the comparison below on its own.
-    await tx.$queryRaw`SELECT id FROM "waqf_causes" WHERE id = ${causeId} FOR UPDATE`;
-    const cause = await tx.waqfCause.findUnique({ where: { id: causeId } });
-    // Investment-type waqfs: corpus (allocatedAmount) is preserved
-    // principal, not itself distributable — only investment proceeds
-    // (proceedsAllocatedAmount) are real income available to spend,
-    // per classical waqf perpetuity (corpus preserved, only income
-    // spent). Reverses the 2026-08-27 decision that made corpus
-    // distributable for every type including Investment — see
-    // CLAUDE.md's 2026-09-04 update for the full history on this.
-    // Every other type has no proceeds concept at all
-    // (WaqfProceedsService only accepts Investment-type waqfs), so
-    // allocatedAmount stays their only, still fully distributable,
-    // pool — nothing changes for Asset/Project.
-    const waqf = cause ? await tx.waqf.findUnique({ where: { id: cause.waqfId }, select: { type: true } }) : null;
-    const allocated =
-      waqf?.type === "investment"
-        ? new Prisma.Decimal(cause?.proceedsAllocatedAmount ?? 0)
-        : new Prisma.Decimal(cause?.allocatedAmount ?? 0).plus(cause?.proceedsAllocatedAmount ?? 0);
-
     const committedWhere: Prisma.DistributionWhereInput = {
       causeId,
       deletedAt: null,
       status: { in: ["pending", "approved", "disbursing", "paid"] },
       ...(excludeDistributionId ? { id: { not: excludeDistributionId } } : {}),
     };
-
-    const otherCurrencyCommitment = await tx.distribution.findFirst({
-      where: { ...committedWhere, currency: { not: currency } },
-      select: { currency: true },
+    await assertWithinAllocationShared(causeId, additionalAmount, currency, {
+      lockCause: async (id) => {
+        await tx.$queryRaw`SELECT id FROM "waqf_causes" WHERE id = ${id} FOR UPDATE`;
+      },
+      loadCauseAndParentType: async (id) => {
+        const cause = await tx.waqfCause.findUnique({ where: { id } });
+        const waqf = cause ? await tx.waqf.findUnique({ where: { id: cause.waqfId }, select: { type: true } }) : null;
+        return { cause, parentType: waqf?.type ?? null };
+      },
+      findCommittedInOtherCurrency: (curr) =>
+        tx.distribution.findFirst({ where: { ...committedWhere, currency: { not: curr } }, select: { currency: true } }),
+      sumCommittedInCurrency: async (curr) =>
+        (await tx.distribution.aggregate({ where: { ...committedWhere, currency: curr }, _sum: { amount: true } }))._sum.amount,
     });
-    if (otherCurrencyCommitment) {
-      throw new BadRequestException(
-        `This cause already has committed distributions in ${otherCurrencyCommitment.currency} — a distribution against the same cause can't switch to ${currency} without first resolving the earlier ones.`,
-      );
-    }
-
-    const committed = await tx.distribution.aggregate({
-      where: { ...committedWhere, currency },
-      _sum: { amount: true },
-    });
-    const alreadyCommitted = committed._sum.amount ?? new Prisma.Decimal(0);
-
-    if (alreadyCommitted.plus(additionalAmount).gt(allocated)) {
-      const remaining = allocated.minus(alreadyCommitted);
-      throw new BadRequestException(
-        `This distribution's amount (${additionalAmount} ${currency}) exceeds this cause's unused allocation — only ${remaining.isNegative() ? 0 : remaining} ${currency} of its ${allocated} allocation is unused.`,
-      );
-    }
   }
 
   findById(id: string) {

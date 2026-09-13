@@ -166,4 +166,101 @@ describe("VaultDistributionsService", () => {
       ),
     ).rejects.toThrow(NotFoundException);
   });
+
+  // Mirrors DistributionsService's own retryDisbursement coverage
+  // exactly — see that spec's "payout rail" describe block. Same fixture
+  // shape (a payout-ready counterparty, a real ceiling on the cause),
+  // same fake-adapter shouldFail toggle to force a payout_failed row to
+  // retry against.
+  describe("retryDisbursement()", () => {
+    beforeEach(() => {
+      fakePayoutAdapter.calls = [];
+      fakePayoutAdapter.shouldFail = false;
+    });
+
+    test("rejects a distribution that isn't payout_failed", async () => {
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      await expect(service.retryDisbursement(distribution.id, actorUserId)).rejects.toThrow(BadRequestException);
+    });
+
+    test("re-checks headroom, resets status, clears payoutError, and re-attempts", async () => {
+      fakePayoutAdapter.shouldFail = true;
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      await prisma.$transaction((tx) => service.approve(distribution.id, tx));
+      await service.initiateDisbursement(distribution.id);
+      const failed = await prisma.vaultDistribution.findUniqueOrThrow({ where: { id: distribution.id } });
+      expect(failed.status).toBe("payout_failed");
+
+      fakePayoutAdapter.shouldFail = false;
+      await service.retryDisbursement(distribution.id, actorUserId);
+
+      const retried = await prisma.vaultDistribution.findUniqueOrThrow({ where: { id: distribution.id } });
+      expect(retried.status).toBe("disbursing");
+      expect(retried.payoutError).toBeNull();
+    });
+
+    test("rejects if headroom was consumed by another distribution in the meantime", async () => {
+      const tightCause = await vaultsService.createCause({ vaultId, name: "Retry Headroom Fixture Cause" }, actorUserId);
+      await prisma.vaultCause.update({ where: { id: tightCause.id }, data: { allocatedAmount: "10" } });
+
+      fakePayoutAdapter.shouldFail = true;
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: tightCause.id, counterpartyId: payoutReadyCounterpartyId, amount: "10", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      await prisma.$transaction((tx) => service.approve(distribution.id, tx));
+      await service.initiateDisbursement(distribution.id);
+      const failed = await prisma.vaultDistribution.findUniqueOrThrow({ where: { id: distribution.id } });
+      expect(failed.status).toBe("payout_failed");
+
+      // Another distribution now consumes the cause's entire headroom
+      // while the first sits payout_failed (deliberately excluded from
+      // "committed" — see the shared allocation-ceiling module's own
+      // comment).
+      const other = await service.create(
+        { vaultId, vaultCauseId: tightCause.id, counterpartyId: payoutReadyCounterpartyId, amount: "10", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(other.id);
+
+      await expect(service.retryDisbursement(distribution.id, actorUserId)).rejects.toThrow(BadRequestException);
+    });
+
+    // Regression coverage for the double-payout race, mirroring
+    // DistributionsService's own concurrent-retry test — proves the
+    // atomic claim (updateMany with payout_failed in the WHERE clause)
+    // holds under real concurrency, not just sequential idempotency.
+    test("two concurrent retries of the same failed distribution: only one reaches the payout adapter", async () => {
+      fakePayoutAdapter.shouldFail = true;
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      await prisma.$transaction((tx) => service.approve(distribution.id, tx));
+      await service.initiateDisbursement(distribution.id);
+      const failed = await prisma.vaultDistribution.findUniqueOrThrow({ where: { id: distribution.id } });
+      expect(failed.status).toBe("payout_failed");
+
+      fakePayoutAdapter.shouldFail = false;
+      fakePayoutAdapter.calls = [];
+      const outcomes = await Promise.allSettled([
+        service.retryDisbursement(distribution.id, actorUserId),
+        service.retryDisbursement(distribution.id, actorUserId),
+      ]);
+
+      const fulfilled = outcomes.filter((o) => o.status === "fulfilled");
+      expect(fulfilled).toHaveLength(1);
+      expect(fakePayoutAdapter.calls).toHaveLength(1);
+    });
+  });
 });

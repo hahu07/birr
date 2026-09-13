@@ -19,6 +19,17 @@ export class VaultDistributionsController {
     return this.service.list(vaultId);
   }
 
+  // No maker-checker gate: the governance decision already happened at
+  // vault.distribution_approve; this is purely payment-mechanics retry
+  // against an already-final decision, not a new fiduciary act. No role
+  // restriction beyond an authenticated staff session — same posture as
+  // DistributionsController.retryDisbursement.
+  @Post(":id/retry-disbursement")
+  async retryDisbursement(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    await this.service.retryDisbursement(id, staff.userId);
+    return { ok: true };
+  }
+
   @Get(":id")
   async findById(@Param("id") id: string) {
     const distribution = await this.service.findById(id);

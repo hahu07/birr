@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from "@nes
 import { IsNotEmpty, IsNumberString, IsString } from "class-validator";
 import { prisma, Prisma, PayoutProvider } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
+import { assertWithinAllocation as assertWithinAllocationShared } from "../../common/money/allocation-ceiling";
 import { PayoutBankDetails, PayoutProviderAdapter } from "../distributions/providers/payout-provider.interface";
 import { PaystackPayoutAdapter } from "../distributions/providers/paystack-payout.adapter";
 
@@ -211,6 +212,58 @@ export class VaultDistributionsService {
   }
 
   /**
+   * Staff-callable, deliberately NOT re-routed through governed_actions
+   * — mirrors DistributionsService.retryDisbursement() exactly: the
+   * governance decision (vault.distribution_approve) already happened
+   * and is final, so this is purely payment-mechanics retry, same trust
+   * tier as a webhook-driven retry would be. Re-checks headroom (a
+   * payout_failed row is excluded from assertWithinAllocation's
+   * committed sum, so other distributions against the same cause may
+   * have consumed the space in the meantime) before re-attempting.
+   */
+  async retryDisbursement(distributionId: string, staffUserId: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      const distribution = await tx.vaultDistribution.findUnique({ where: { id: distributionId } });
+      if (!distribution) throw new NotFoundException(`VaultDistribution "${distributionId}" not found.`);
+      if (distribution.status !== "payout_failed") {
+        throw new BadRequestException(
+          `VaultDistribution "${distributionId}" is not in a failed-payout state (status: ${distribution.status}).`,
+        );
+      }
+      await this.assertWithinAllocation(distribution.vaultCauseId, distribution.amount, distribution.currency, tx, distributionId);
+      // Atomic claim: two rapid "Retry disbursement" clicks on the same
+      // failed row could otherwise both pass the check above and both go
+      // on to call initiateDisbursement() below.
+      const claim = await tx.vaultDistribution.updateMany({
+        where: { id: distributionId, status: "payout_failed" },
+        data: { status: "approved", payoutError: null },
+      });
+      if (claim.count !== 1) {
+        throw new BadRequestException(
+          `VaultDistribution "${distributionId}" is not in a failed-payout state (status: ${distribution.status}).`,
+        );
+      }
+      const updated = await tx.vaultDistribution.findUniqueOrThrow({ where: { id: distributionId } });
+      await tx.auditLog.create({
+        data: {
+          vaultId: distribution.vaultId,
+          actorType: "birr_staff",
+          actorUserId: staffUserId,
+          action: "vault_distribution.disbursement_retried",
+          entityType: "VaultDistribution",
+          entityId: distribution.id,
+          before: distribution as any,
+          after: updated as any,
+        },
+      });
+    });
+    // Outside the tx — real HTTP call. Awaited (not fire-and-forget) so
+    // the staff member clicking "Retry disbursement" sees the outcome
+    // in the response, rather than polling for it.
+    await this.initiateDisbursement(distributionId);
+  }
+
+  /**
    * Called from ContributionsController's webhook dispatch, ahead of
    * both the Founder-flow payout parser and every contribution parser —
    * mirrors DistributionsService.handlePayoutWebhook exactly (verify,
@@ -248,14 +301,11 @@ export class VaultDistributionsService {
   }
 
   /**
-   * Same currency-locked, corpus-vs-proceeds-aware ceiling
-   * DistributionsService.assertWithinAllocation enforces, against
-   * VaultCause instead of WaqfCause. Investment-style vaults: only
-   * proceedsAllocatedAmount is spendable (corpus preserved) — mirrors
-   * the exact classical-waqf-perpetuity treatment CLAUDE.md documents
-   * for Investment-type Waqf Funds. Every other vault type
-   * (project) has no proceeds concept, so allocatedAmount stays its
-   * only, fully distributable, pool.
+   * Same shared ceiling DistributionsService.assertWithinAllocation
+   * delegates to (../../common/money/allocation-ceiling) — this method
+   * is only the VaultCause/VaultDistribution-specific plumbing (which
+   * rows count as "committed", which table gets row-locked). See that
+   * module's own comment for the actual policy and its history.
    */
   private async assertWithinAllocation(
     vaultCauseId: string,
@@ -264,43 +314,26 @@ export class VaultDistributionsService {
     tx: Prisma.TransactionClient,
     excludeDistributionId?: string,
   ): Promise<void> {
-    await tx.$queryRaw`SELECT id FROM "vault_causes" WHERE id = ${vaultCauseId} FOR UPDATE`;
-    const cause = await tx.vaultCause.findUnique({ where: { id: vaultCauseId } });
-    const vault = cause ? await tx.vault.findUnique({ where: { id: cause.vaultId }, select: { type: true } }) : null;
-    const allocated =
-      vault?.type === "investment"
-        ? new Prisma.Decimal(cause?.proceedsAllocatedAmount ?? 0)
-        : new Prisma.Decimal(cause?.allocatedAmount ?? 0).plus(cause?.proceedsAllocatedAmount ?? 0);
-
     const committedWhere: Prisma.VaultDistributionWhereInput = {
       vaultCauseId,
       deletedAt: null,
       status: { in: ["pending", "approved", "disbursing", "paid"] },
       ...(excludeDistributionId ? { id: { not: excludeDistributionId } } : {}),
     };
-
-    const otherCurrencyCommitment = await tx.vaultDistribution.findFirst({
-      where: { ...committedWhere, currency: { not: currency } },
-      select: { currency: true },
+    await assertWithinAllocationShared(vaultCauseId, additionalAmount, currency, {
+      lockCause: async (id) => {
+        await tx.$queryRaw`SELECT id FROM "vault_causes" WHERE id = ${id} FOR UPDATE`;
+      },
+      loadCauseAndParentType: async (id) => {
+        const cause = await tx.vaultCause.findUnique({ where: { id } });
+        const vault = cause ? await tx.vault.findUnique({ where: { id: cause.vaultId }, select: { type: true } }) : null;
+        return { cause, parentType: vault?.type ?? null };
+      },
+      findCommittedInOtherCurrency: (curr) =>
+        tx.vaultDistribution.findFirst({ where: { ...committedWhere, currency: { not: curr } }, select: { currency: true } }),
+      sumCommittedInCurrency: async (curr) =>
+        (await tx.vaultDistribution.aggregate({ where: { ...committedWhere, currency: curr }, _sum: { amount: true } }))._sum.amount,
     });
-    if (otherCurrencyCommitment) {
-      throw new BadRequestException(
-        `This cause already has committed distributions in ${otherCurrencyCommitment.currency} — a distribution against the same cause can't switch to ${currency} without first resolving the earlier ones.`,
-      );
-    }
-
-    const committed = await tx.vaultDistribution.aggregate({
-      where: { ...committedWhere, currency },
-      _sum: { amount: true },
-    });
-    const alreadyCommitted = committed._sum.amount ?? new Prisma.Decimal(0);
-
-    if (alreadyCommitted.plus(additionalAmount).gt(allocated)) {
-      const remaining = allocated.minus(alreadyCommitted);
-      throw new BadRequestException(
-        `This distribution's amount (${additionalAmount} ${currency}) exceeds this cause's unused allocation — only ${remaining.isNegative() ? 0 : remaining} ${currency} of its ${allocated} allocation is unused.`,
-      );
-    }
   }
 
   findById(id: string) {
