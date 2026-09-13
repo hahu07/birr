@@ -118,6 +118,10 @@ export interface Vault {
   type: "investment" | "project";
   currency: string;
   targetAmount: string | null;
+  // Sum of confirmed VaultContribution amounts, in this vault's own
+  // currency — always present (never null; "0" when nothing's been
+  // confirmed yet). See VaultsService.withAmountRaised's own comment.
+  amountRaised: string;
   jurisdiction: string;
   coverImageUrl: string | null;
   // Only present from GET /vaults/by-slug/:slug and GET /vaults/:id —

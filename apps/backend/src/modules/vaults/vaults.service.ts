@@ -241,8 +241,32 @@ export class VaultsService {
     },
   } as const;
 
-  findBySlug(slug: string) {
-    return prisma.vault.findFirst({ where: { slug, deletedAt: null }, select: VaultsService.PUBLIC_VAULT_SELECT });
+  async findBySlug(slug: string) {
+    const vault = await prisma.vault.findFirst({ where: { slug, deletedAt: null }, select: VaultsService.PUBLIC_VAULT_SELECT });
+    if (!vault) return null;
+    const [withRaised] = await this.withAmountRaised([vault]);
+    return withRaised;
+  }
+
+  /**
+   * Batches a "how much has this vault actually raised" sum onto each
+   * row — Prisma has no built-in way to express a related model's SUM
+   * inside a `select`/`include`, so this runs as one grouped aggregate
+   * query alongside the main one rather than N+1 per-vault queries.
+   * Confirmed contributions only (a vault's own currency is fixed, so
+   * unlike the cross-currency AML check elsewhere in this module, no
+   * currency mixing is possible here — every confirmed row is already
+   * in the vault's own currency by the time it reaches "confirmed").
+   */
+  private async withAmountRaised<T extends { id: string }>(vaults: T[]): Promise<(T & { amountRaised: string })[]> {
+    if (vaults.length === 0) return [];
+    const sums = await prisma.vaultContribution.groupBy({
+      by: ["vaultId"],
+      where: { vaultId: { in: vaults.map((v) => v.id) }, status: "confirmed" },
+      _sum: { amount: true },
+    });
+    const raisedByVaultId = new Map(sums.map((s) => [s.vaultId, s._sum.amount?.toString() ?? "0"]));
+    return vaults.map((v) => ({ ...v, amountRaised: raisedByVaultId.get(v.id) ?? "0" }));
   }
 
   /**
@@ -264,12 +288,13 @@ export class VaultsService {
   // dedicated /vaults index) renders cards from, and GET /vaults/:id
   // /causes is staff-only, not something an unauthenticated visitor's
   // page can call per vault to fill them in afterward.
-  listOpen() {
-    return prisma.vault.findMany({
+  async listOpen() {
+    const vaults = await prisma.vault.findMany({
       where: { status: "open", deletedAt: null },
       select: VaultsService.PUBLIC_VAULT_SELECT,
       orderBy: { openedAt: "desc" },
     });
+    return this.withAmountRaised(vaults);
   }
 
   /**

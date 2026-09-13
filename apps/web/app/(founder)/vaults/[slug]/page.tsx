@@ -80,6 +80,12 @@ export default function VaultDonationPage() {
 
   const minimum = minimums.find((m) => m.currency === vault.currency);
   const causes = vault.causes ?? [];
+  // Same progress treatment as VaultCard (SiteChrome.tsx) — kept
+  // consistent rather than each page inventing its own since a donor
+  // may see both before deciding to give.
+  const target = vault.targetAmount ? Number(vault.targetAmount) : null;
+  const raised = Number(vault.amountRaised);
+  const pct = target && target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : null;
 
   return (
     <div className="min-h-screen bg-white">
@@ -102,17 +108,41 @@ export default function VaultDonationPage() {
         {causes.length > 0 && (
           <div className="mt-5 flex flex-wrap gap-1.5">
             {causes.map((c) => (
-              <span key={c.id} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+              <span key={c.id} className="rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">
                 {c.name}
               </span>
             ))}
           </div>
         )}
 
-        {vault.targetAmount && (
-          <p className="mt-4 text-sm text-slate-500">
-            Goal: {vault.currency} {Number(vault.targetAmount).toLocaleString()}
-          </p>
+        {(pct !== null || raised > 0) && (
+          <div className="mt-6">
+            {pct !== null ? (
+              <>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-primary-600 transition-[width] duration-500 ease-out"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex items-baseline justify-between gap-2 text-sm">
+                  <span className="font-semibold text-slate-900">
+                    {vault.currency} {raised.toLocaleString()} <span className="font-normal text-slate-500">raised</span>
+                  </span>
+                  <span className="text-slate-500">
+                    of {vault.currency} {target!.toLocaleString()} goal
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">
+                <span className="font-semibold text-slate-900">
+                  {vault.currency} {raised.toLocaleString()}
+                </span>{" "}
+                raised so far
+              </p>
+            )}
+          </div>
         )}
 
         <div className="mt-8">

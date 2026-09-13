@@ -8,7 +8,7 @@
 // public surface needs it.
 import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Button, Card, IconArchive, IconMark } from "@birr/ui";
+import { Button, IconArchive, IconMark } from "@birr/ui";
 import { humanize } from "../../lib/format";
 import type { Vault } from "../../lib/types";
 import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
@@ -219,44 +219,97 @@ export function SiteFooter() {
 // (found in a codebase audit). `showType` is the one real difference:
 // the fuller index page labels each card with its vault type ("Project
 // vault"), the homepage teaser doesn't.
+//
+// The whole card is one Link, not a small "Give to this vault" link at
+// the bottom of an otherwise inert box — a bigger, more honest click
+// target, and a real hover-lift affordance a donor can actually feel
+// responding to their cursor. That CTA is kept as a styled <span> (not
+// a nested <a>) for exactly that reason: an <a> inside an <a> is invalid
+// HTML and would confuse a screen reader into announcing two links for
+// one destination.
 export function VaultCard({ vault, showType = false }: { vault: Vault; showType?: boolean }) {
+  const target = vault.targetAmount ? Number(vault.targetAmount) : null;
+  const raised = Number(vault.amountRaised);
+  const pct = target && target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : null;
+
   return (
-    <Card tone="neutral" className="flex h-full flex-col">
+    <Link
+      href={`/vaults/${vault.slug}`}
+      className="group flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-lg"
+    >
       {vault.coverImageUrl ? (
-        <div className="-mx-6 -mt-6 mb-4 h-36 overflow-hidden rounded-t-lg bg-slate-100">
-          <img src={vault.coverImageUrl} alt={vault.name} className="h-full w-full object-cover" />
+        <div className="h-40 w-full shrink-0 overflow-hidden bg-slate-100">
+          <img
+            src={vault.coverImageUrl}
+            alt=""
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
         </div>
       ) : (
-        <span
-          className="mb-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-700 ring-1 ring-inset ring-accent-100"
-          aria-hidden="true"
-        >
-          <IconArchive className="h-5 w-5" />
-        </span>
-      )}
-      {showType && <p className="text-[11px] font-semibold uppercase tracking-wide text-accent-600">{humanize(vault.type)} vault</p>}
-      <h3 className={`text-sm font-semibold text-slate-900 ${showType ? "mt-1" : ""}`}>{vault.name}</h3>
-      {vault.description && <p className="mt-2 text-sm leading-relaxed text-slate-600">{vault.description}</p>}
-      {vault.causes && vault.causes.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {vault.causes.map((c) => (
-            <span key={c.id} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
-              {c.name}
-            </span>
-          ))}
+        <div className="flex h-40 w-full shrink-0 items-center justify-center bg-gradient-to-br from-accent-50 via-accent-50 to-primary-50">
+          <span
+            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-accent-700 shadow-sm ring-1 ring-inset ring-accent-100"
+            aria-hidden="true"
+          >
+            <IconArchive className="h-6 w-6" />
+          </span>
         </div>
       )}
-      {vault.targetAmount && (
-        <p className="mt-3 text-xs text-slate-500">
-          Goal: {vault.currency} {Number(vault.targetAmount).toLocaleString()}
-        </p>
-      )}
-      <Link
-        href={`/vaults/${vault.slug}`}
-        className="mt-4 inline-flex items-center justify-center rounded-md bg-primary-700 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-800"
-      >
-        Give to this vault
-      </Link>
-    </Card>
+
+      <div className="flex flex-1 flex-col p-6">
+        {showType && <p className="text-[11px] font-semibold uppercase tracking-wide text-accent-600">{humanize(vault.type)} vault</p>}
+        <h3 className={`text-base font-semibold leading-snug text-slate-900 ${showType ? "mt-1" : ""}`}>{vault.name}</h3>
+        {vault.description && <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-slate-600">{vault.description}</p>}
+
+        {vault.causes && vault.causes.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {vault.causes.map((c) => (
+              <span key={c.id} className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">
+                {c.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Spacer — pushes progress/CTA to a shared baseline across a
+            grid row regardless of how long each card's own description
+            or cause-chip list runs. */}
+        <div className="flex-1" />
+
+        {(pct !== null || raised > 0) && (
+          <div className="mt-5">
+            {pct !== null ? (
+              <>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-primary-600 transition-[width] duration-500 ease-out"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex items-baseline justify-between gap-2 text-xs">
+                  <span className="font-semibold text-slate-900">
+                    {vault.currency} {raised.toLocaleString()} <span className="font-normal text-slate-500">raised</span>
+                  </span>
+                  <span className="shrink-0 text-slate-500">
+                    of {vault.currency} {target!.toLocaleString()}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-slate-500">
+                <span className="font-semibold text-slate-900">
+                  {vault.currency} {raised.toLocaleString()}
+                </span>{" "}
+                raised so far
+              </p>
+            )}
+          </div>
+        )}
+
+        <span className="mt-5 inline-flex items-center justify-center rounded-md bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors group-hover:bg-primary-800">
+          Give to this vault
+        </span>
+      </div>
+    </Link>
   );
 }

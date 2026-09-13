@@ -23,6 +23,11 @@ describe("VaultsService", () => {
   });
 
   afterAll(async () => {
+    // Deleted before the vaults themselves — VaultContribution.vaultId
+    // has no onDelete: Cascade, so a vault with contributions still on
+    // file would otherwise fail the deleteMany below with a foreign
+    // key violation.
+    await prisma.vaultContribution.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultCause.deleteMany({ where: { id: { in: vaultCauseIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.causeCategory.deleteMany({ where: { id: { in: causeCategoryIds } } });
@@ -203,5 +208,45 @@ describe("VaultsService", () => {
 
     expect(await service.findById("00000000-0000-0000-0000-000000000000")).toBeNull();
     expect(await service.findBySlug("no-such-slug-at-all")).toBeNull();
+  });
+
+  test("listOpen()/findBySlug() report amountRaised as the sum of confirmed contributions only", async () => {
+    const slug = uniqueSlug("raised-so-far");
+    const vault = await service.create(
+      { name: "Raised So Far Vault", slug, type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+
+    // Two confirmed (should sum), one pending (should not count) — same
+    // "pending never counts as raised" posture as everywhere else
+    // committed/confirmed money is aggregated in this codebase.
+    await prisma.vaultContribution.createMany({
+      data: [
+        { vaultId: vault.id, amount: "100", currency: "USD", provider: "stripe", providerReference: `${vault.id}-1`, status: "confirmed" },
+        { vaultId: vault.id, amount: "50", currency: "USD", provider: "stripe", providerReference: `${vault.id}-2`, status: "confirmed" },
+        { vaultId: vault.id, amount: "999", currency: "USD", provider: "stripe", providerReference: `${vault.id}-3`, status: "pending" },
+      ],
+    });
+
+    const bySlug = await service.findBySlug(slug);
+    expect(bySlug?.amountRaised).toBe("150");
+
+    const openList = await service.listOpen();
+    expect(openList.find((v) => v.id === vault.id)?.amountRaised).toBe("150");
+  });
+
+  test("listOpen()/findBySlug() report amountRaised as \"0\" for a vault with no contributions", async () => {
+    const slug = uniqueSlug("nothing-raised-yet");
+    const vault = await service.create(
+      { name: "Nothing Raised Yet Vault", slug, type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+
+    expect((await service.findBySlug(slug))?.amountRaised).toBe("0");
+    expect((await service.listOpen()).find((v) => v.id === vault.id)?.amountRaised).toBe("0");
   });
 });
