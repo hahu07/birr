@@ -155,6 +155,49 @@ and rely on manual/off-platform review of unusual giving patterns
 instead. Not decided here — an explicit compliance call for the owner
 to make, not a bug for the next session to silently patch.
 
+**Update, 2026-09-13 — Sanctions/PEP screening vendor picked:
+ScreenShield, starting on its Starter tier.** The original Vault plan
+deferred automated sanctions/PEP screening entirely, pending a vendor
+choice. Considered against the same jurisdiction-driven logic this file
+already applies to compliance policy generally (`waqfs.jurisdiction`
+drives which policy set applies, not a Founder's home jurisdiction; see
+the Regulatory & assurance posture section above) — Birr today operates
+only as a non-profit registered in Nigeria, so a screening vendor that
+ignores Nigeria's own domestic list in favor of Western-market-only
+coverage is a materially weaker fit than one that doesn't:
+- **ComplyAdvantage** (full case-management platform, enterprise sales
+  process, no published pricing) and **Sanctions.io** (established,
+  transparent usage-based pricing, OFAC/UN/EU/HMT + 1M+ PEPs) were both
+  considered and are both credible, API-first options — but neither
+  screens against Nigeria's own NFIU list, only the generic
+  international sanctions regimes.
+- **ScreenShield** (Mulanji Technologies, Nigeria, RC 1909785) is the
+  only option found that screens Nigeria's NFIU domestic designations
+  specifically, alongside OFAC/UN/EU and 1M+ worldwide PEPs, with a
+  REST API, a sandbox available within 24 hours, and published tiered
+  pricing (Starter $249/mo — 5,000 calls, international lists + PEPs;
+  Growth $749/mo — adds NFIU + goAML filing; Scale $1,999/mo). Built
+  specifically for African PSPs/fintechs facing CBN/BoG-style
+  enforcement, which is a closer match to Birr's actual regulatory
+  environment than a generic global vendor.
+- Starting on **Starter**, not Growth: matches this codebase's own
+  "start simple" posture (see Tech principles) — get real screening
+  live against the major international lists first, at the lower cost
+  a non-profit can actually sustain, and treat the NFIU/goAML upgrade
+  (Growth tier) as a flagged next step once real transaction volume or
+  a specific regulatory ask justifies the added cost, not a day-one
+  requirement.
+
+This is a documented direction, not a signed contract or a finished
+integration — before any commercial commitment, Birr's own leadership
+still needs to independently verify ScreenShield's claims (its stated
+BCC licence, CBN/BoG examination-readiness, data protection terms) and
+negotiate real commercial terms; none of that can be substituted for by
+picking a vendor from its own marketing site. The actual engineering
+work (a screening call at donor/Founder/Counterparty onboarding,
+wired through `governed_actions` the same way every other Vault safety
+feature has been) is separate follow-on work, not done here.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
