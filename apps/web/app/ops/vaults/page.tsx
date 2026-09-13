@@ -137,7 +137,12 @@ export default function VaultsPage() {
                     </Link>
                   </TableCell>
                   <TableCell>{humanize(v.type)}</TableCell>
-                  <TableCell className="text-slate-500">{v.currency}</TableCell>
+                  <TableCell className="text-slate-500">
+                    {v.currency}
+                    {v.additionalCurrencies.length > 0 && (
+                      <span className="text-slate-400"> + {v.additionalCurrencies.join(", ")}</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-slate-500">{v.jurisdiction}</TableCell>
                   <TableCell>
                     <Badge tone={STATUS_TONE[v.status]}>{humanize(v.status)}</Badge>
@@ -340,6 +345,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
   const [description, setDescription] = useState("");
   const [type, setType] = useState<VaultType>("project");
   const [currency, setCurrency] = useState("USD");
+  const [additionalCurrencies, setAdditionalCurrencies] = useState("");
   const [jurisdiction, setJurisdiction] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -349,9 +355,25 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
     setError(null);
     setSubmitting(true);
     try {
+      // Comma-separated, same free-text convention as this form's own
+      // Currency/Jurisdiction fields rather than a fancier multi-select
+      // — the backend already dedupes against the primary currency and
+      // against itself (VaultsService.create's own comment).
+      const additional = additionalCurrencies
+        .split(",")
+        .map((c) => c.trim().toUpperCase())
+        .filter(Boolean);
       await apiFetchJson("/vaults", {
         method: "POST",
-        body: JSON.stringify({ name, slug, description: description || undefined, type, currency, jurisdiction }),
+        body: JSON.stringify({
+          name,
+          slug,
+          description: description || undefined,
+          type,
+          currency,
+          additionalCurrencies: additional.length > 0 ? additional : undefined,
+          jurisdiction,
+        }),
       });
       onCreated();
     } catch (err) {
@@ -412,6 +434,14 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
         <div className="w-24 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Currency</label>
           <Input required value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+        </div>
+        <div className="min-w-[12rem] flex-1 space-y-1.5">
+          <label className="text-sm font-medium text-slate-700">Additional currencies (optional)</label>
+          <Input
+            value={additionalCurrencies}
+            onChange={(e) => setAdditionalCurrencies(e.target.value)}
+            placeholder="e.g. NGN, USDC"
+          />
         </div>
         <div className="w-32 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Jurisdiction</label>

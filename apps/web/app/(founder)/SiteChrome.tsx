@@ -228,8 +228,13 @@ export function SiteFooter() {
 // HTML and would confuse a screen reader into announcing two links for
 // one destination.
 export function VaultCard({ vault, showType = false }: { vault: Vault; showType?: boolean }) {
+  // The goal/progress bar is always denominated in the vault's own
+  // primary currency (see Vault.additionalCurrencies's own comment) —
+  // any other currency this vault has also received gets its own
+  // separate line below, never summed into this one figure.
+  const raised = Number(vault.amountRaised.find((r) => r.currency === vault.currency)?.amount ?? "0");
+  const otherRaised = vault.amountRaised.filter((r) => r.currency !== vault.currency && Number(r.amount) > 0);
   const target = vault.targetAmount ? Number(vault.targetAmount) : null;
-  const raised = Number(vault.amountRaised);
   const pct = target && target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : null;
 
   return (
@@ -276,9 +281,9 @@ export function VaultCard({ vault, showType = false }: { vault: Vault; showType?
             or cause-chip list runs. */}
         <div className="flex-1" />
 
-        {(pct !== null || raised > 0) && (
+        {(pct !== null || raised > 0 || otherRaised.length > 0) && (
           <div className="mt-5">
-            {pct !== null ? (
+            {pct !== null && (
               <>
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                   <div
@@ -295,12 +300,18 @@ export function VaultCard({ vault, showType = false }: { vault: Vault; showType?
                   </span>
                 </div>
               </>
-            ) : (
+            )}
+            {pct === null && raised > 0 && (
               <p className="text-xs text-slate-500">
                 <span className="font-semibold text-slate-900">
                   {vault.currency} {raised.toLocaleString()}
                 </span>{" "}
                 raised so far
+              </p>
+            )}
+            {otherRaised.length > 0 && (
+              <p className={`text-xs text-slate-500 ${pct !== null || raised > 0 ? "mt-1.5" : ""}`}>
+                Also raised: {otherRaised.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")}
               </p>
             )}
           </div>

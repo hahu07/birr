@@ -78,13 +78,15 @@ export default function VaultDonationPage() {
     );
   }
 
-  const minimum = minimums.find((m) => m.currency === vault.currency);
   const causes = vault.causes ?? [];
   // Same progress treatment as VaultCard (SiteChrome.tsx) — kept
   // consistent rather than each page inventing its own since a donor
-  // may see both before deciding to give.
+  // may see both before deciding to give. The goal/bar is always the
+  // vault's own primary currency; anything raised in one of its
+  // additionalCurrencies gets its own line, never summed into this one.
+  const raised = Number(vault.amountRaised.find((r) => r.currency === vault.currency)?.amount ?? "0");
+  const otherRaised = vault.amountRaised.filter((r) => r.currency !== vault.currency && Number(r.amount) > 0);
   const target = vault.targetAmount ? Number(vault.targetAmount) : null;
-  const raised = Number(vault.amountRaised);
   const pct = target && target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : null;
 
   return (
@@ -115,9 +117,9 @@ export default function VaultDonationPage() {
           </div>
         )}
 
-        {(pct !== null || raised > 0) && (
+        {(pct !== null || raised > 0 || otherRaised.length > 0) && (
           <div className="mt-6">
-            {pct !== null ? (
+            {pct !== null && (
               <>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                   <div
@@ -134,7 +136,8 @@ export default function VaultDonationPage() {
                   </span>
                 </div>
               </>
-            ) : (
+            )}
+            {pct === null && raised > 0 && (
               <p className="text-sm text-slate-500">
                 <span className="font-semibold text-slate-900">
                   {vault.currency} {raised.toLocaleString()}
@@ -142,11 +145,16 @@ export default function VaultDonationPage() {
                 raised so far
               </p>
             )}
+            {otherRaised.length > 0 && (
+              <p className={`text-sm text-slate-500 ${pct !== null || raised > 0 ? "mt-1.5" : ""}`}>
+                Also raised: {otherRaised.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")}
+              </p>
+            )}
           </div>
         )}
 
         <div className="mt-8">
-          <ContributionForm vault={vault} causes={causes} minimumAmount={minimum?.minAmount} />
+          <ContributionForm vault={vault} causes={causes} minimums={minimums} />
         </div>
       </div>
 
@@ -158,13 +166,21 @@ export default function VaultDonationPage() {
 function ContributionForm({
   vault,
   causes,
-  minimumAmount,
+  minimums,
 }: {
   vault: Vault;
   causes: VaultCause[];
-  minimumAmount: string | undefined;
+  minimums: ContributionMinimum[];
 }) {
-  const availableProviders = PROVIDERS.filter((p) => (p.currencies as readonly string[]).includes(vault.currency));
+  // The vault's own primary currency plus whatever additionalCurrencies
+  // it also accepts (2026-09-13) — a donor picks among all of them, not
+  // just the primary one. Providers, minimum, and the eventual
+  // POST /vault-contributions payload all key off whichever is
+  // currently selected, not vault.currency directly.
+  const acceptedCurrencies = [vault.currency, ...vault.additionalCurrencies];
+  const [currency, setCurrency] = useState(vault.currency);
+  const availableProviders = PROVIDERS.filter((p) => (p.currencies as readonly string[]).includes(currency));
+  const minimumAmount = minimums.find((m) => m.currency === currency)?.minAmount;
 
   const [amount, setAmount] = useState("");
   const [vaultCauseId, setVaultCauseId] = useState("");
@@ -188,7 +204,7 @@ function ContributionForm({
           vaultId: vault.id,
           vaultCauseId: vaultCauseId || undefined,
           amount,
-          currency: vault.currency,
+          currency,
           provider,
           donorEmail: donorEmail || undefined,
           donorFullName: donorFullName || undefined,
@@ -214,7 +230,7 @@ function ContributionForm({
   if (availableProviders.length === 0) {
     return (
       <Alert tone="warning" title="No payment method available">
-        This vault's currency ({vault.currency}) isn't currently supported by any payment method.
+        {currency} isn't currently supported by any payment method.
       </Alert>
     );
   }
@@ -228,8 +244,34 @@ function ContributionForm({
           </Alert>
         )}
 
+        {acceptedCurrencies.length > 1 && (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">Currency</label>
+            <select
+              value={currency}
+              onChange={(e) => {
+                const nextCurrency = e.target.value;
+                setCurrency(nextCurrency);
+                // The previously-selected provider may not accept the
+                // newly-chosen currency (e.g. switching from USD to
+                // NGN drops Stripe, which only takes USD/EUR/GBP) — reset
+                // to whichever provider actually supports it.
+                const stillAvailable = PROVIDERS.filter((p) => (p.currencies as readonly string[]).includes(nextCurrency));
+                setProvider(stillAvailable[0]?.value ?? provider);
+              }}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              {acceptedCurrencies.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700">Amount ({vault.currency})</label>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Amount ({currency})</label>
           <Input
             type="number"
             min="0"
@@ -241,7 +283,7 @@ function ContributionForm({
           />
           {minimumAmount && (
             <p className="mt-1 text-xs text-slate-500">
-              Minimum contribution: {vault.currency} {formatMinimum(minimumAmount)}
+              Minimum contribution: {currency} {formatMinimum(minimumAmount)}
             </p>
           )}
         </div>

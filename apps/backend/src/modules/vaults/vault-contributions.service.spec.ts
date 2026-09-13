@@ -174,6 +174,44 @@ describe("VaultContributionsService", () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  test("initiate() accepts a contribution in one of the vault's additionalCurrencies, and still rejects one that's neither", async () => {
+    const multiCurrencyVault = await vaultsService.create(
+      {
+        name: "Multi Currency Fixture Vault",
+        slug: `multi-currency-fixture-${Date.now()}`,
+        type: "project",
+        currency: "USD",
+        jurisdiction: "NG",
+        additionalCurrencies: ["NGN"],
+      },
+      actorUserId,
+    );
+    vaultIds.push(multiCurrencyVault.id);
+    await prisma.$transaction((tx) => vaultsService.publish(multiCurrencyVault.id, tx));
+
+    // NGN — an additionalCurrency, not the primary — succeeds.
+    const ngnResult = await service.initiate({
+      vaultId: multiCurrencyVault.id,
+      amount: "200000",
+      currency: "NGN",
+      provider: "paystack",
+      donorEmail: uniqueEmail("additional-currency"),
+    });
+    vaultContributionIds.push(ngnResult.contribution.id);
+    expect(ngnResult.contribution.currency).toBe("NGN");
+
+    // GBP — neither the primary nor an additionalCurrency — still rejects.
+    await expect(
+      service.initiate({
+        vaultId: multiCurrencyVault.id,
+        amount: "200",
+        currency: "GBP",
+        provider: "stripe",
+        donorEmail: uniqueEmail("still-unaccepted-currency"),
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   test("initiate() writes a pending VaultContribution, a matching VaultDonor, and an audit_logs record attributed to public_donor", async () => {
     const email = uniqueEmail("first-time");
     const result = await service.initiate({

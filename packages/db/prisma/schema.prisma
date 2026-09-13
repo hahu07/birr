@@ -1721,12 +1721,30 @@ model Vault {
   description     String?
   type            VaultType
   status          VaultStatus @default(draft)
-  // Single currency per vault — same no-cross-currency-blending
-  // assumption Waqf.corpusCurrency/Distribution.currency already make
-  // throughout this schema.
+  // Primary currency — targetAmount below, VaultCause allocation
+  // ceilings, and VaultDistribution payouts all stay denominated in
+  // this one currency, same no-cross-currency-blending assumption
+  // Waqf.corpusCurrency/Distribution.currency already make elsewhere in
+  // this schema.
   currency        String
-  // Display-only progress-bar figure — deliberately NOT wired into any
-  // enforcement, unlike Waqf's corpus/funding-plan fields.
+  // Update, 2026-09-13 — a vault can also accept contributions in these
+  // currencies, beyond its one `currency` above (e.g. a USD vault that
+  // also takes NGN and USDC gifts). Deliberately scoped to giving only
+  // for this first slice: targetAmount, VaultCause.allocatedAmount/
+  // proceedsAllocatedAmount, and VaultDistribution all remain
+  // `currency`-only — a distribution still can't be created in one of
+  // these, and the goal/progress bar shown against it is `currency`-
+  // only too. VaultsService.withAmountRaised reports each accepted
+  // currency's own raised total separately, never converted/summed
+  // together (no exchange-rate dependency, matching how the AML
+  // anti-structuring check already treats each currency on its own
+  // terms rather than converting). Extending allocation/distribution to
+  // be currency-aware too is real, deliberately deferred follow-up
+  // work, not an oversight.
+  additionalCurrencies String[]  @default([])
+  // Display-only progress-bar figure, denominated in `currency` above —
+  // deliberately NOT wired into any enforcement, unlike Waqf's corpus/
+  // funding-plan fields.
   targetAmount    Decimal?
   // Same free-form-string convention as Waqf.jurisdiction, so
   // CompliancePolicySet can key off it the same way.

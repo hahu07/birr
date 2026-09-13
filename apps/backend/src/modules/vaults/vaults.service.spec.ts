@@ -210,7 +210,7 @@ describe("VaultsService", () => {
     expect(await service.findBySlug("no-such-slug-at-all")).toBeNull();
   });
 
-  test("listOpen()/findBySlug() report amountRaised as the sum of confirmed contributions only", async () => {
+  test("listOpen()/findBySlug() report amountRaised as the sum of confirmed contributions only, per currency", async () => {
     const slug = uniqueSlug("raised-so-far");
     const vault = await service.create(
       { name: "Raised So Far Vault", slug, type: "project", currency: "USD", jurisdiction: "NG" },
@@ -231,13 +231,13 @@ describe("VaultsService", () => {
     });
 
     const bySlug = await service.findBySlug(slug);
-    expect(bySlug?.amountRaised).toBe("150");
+    expect(bySlug?.amountRaised).toEqual([{ currency: "USD", amount: "150" }]);
 
     const openList = await service.listOpen();
-    expect(openList.find((v) => v.id === vault.id)?.amountRaised).toBe("150");
+    expect(openList.find((v) => v.id === vault.id)?.amountRaised).toEqual([{ currency: "USD", amount: "150" }]);
   });
 
-  test("listOpen()/findBySlug() report amountRaised as \"0\" for a vault with no contributions", async () => {
+  test("listOpen()/findBySlug() report amountRaised as an empty array for a vault with no contributions", async () => {
     const slug = uniqueSlug("nothing-raised-yet");
     const vault = await service.create(
       { name: "Nothing Raised Yet Vault", slug, type: "project", currency: "USD", jurisdiction: "NG" },
@@ -246,7 +246,43 @@ describe("VaultsService", () => {
     vaultIds.push(vault.id);
     await publishVault(vault.id);
 
-    expect((await service.findBySlug(slug))?.amountRaised).toBe("0");
-    expect((await service.listOpen()).find((v) => v.id === vault.id)?.amountRaised).toBe("0");
+    expect((await service.findBySlug(slug))?.amountRaised).toEqual([]);
+    expect((await service.listOpen()).find((v) => v.id === vault.id)?.amountRaised).toEqual([]);
+  });
+
+  test("create() accepts additionalCurrencies, deduped against the primary currency and against itself", async () => {
+    const slug = uniqueSlug("multi-currency");
+    const vault = await service.create(
+      { name: "Multi Currency Vault", slug, type: "project", currency: "USD", jurisdiction: "NG", additionalCurrencies: ["NGN", "USDC", "USD", "NGN"] },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    expect(vault.additionalCurrencies.sort()).toEqual(["NGN", "USDC"]);
+  });
+
+  test("amountRaised reports each accepted currency's own confirmed total separately, never summed together", async () => {
+    const slug = uniqueSlug("multi-currency-raised");
+    const vault = await service.create(
+      { name: "Multi Currency Raised Vault", slug, type: "project", currency: "USD", jurisdiction: "NG", additionalCurrencies: ["NGN"] },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+
+    await prisma.vaultContribution.createMany({
+      data: [
+        { vaultId: vault.id, amount: "100", currency: "USD", provider: "stripe", providerReference: `${vault.id}-usd`, status: "confirmed" },
+        { vaultId: vault.id, amount: "50000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-ngn`, status: "confirmed" },
+      ],
+    });
+
+    const bySlug = await service.findBySlug(slug);
+    expect(bySlug?.amountRaised).toEqual(
+      expect.arrayContaining([
+        { currency: "USD", amount: "100" },
+        { currency: "NGN", amount: "50000" },
+      ]),
+    );
+    expect(bySlug?.amountRaised).toHaveLength(2);
   });
 });

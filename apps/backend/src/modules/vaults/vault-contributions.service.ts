@@ -95,8 +95,15 @@ export class VaultContributionsService {
     if (vault.status !== "open") {
       throw new BadRequestException(`"${vault.name}" isn't currently open for contributions.`);
     }
-    if (input.currency !== vault.currency) {
-      throw new BadRequestException(`This vault only accepts contributions in ${vault.currency}.`);
+    // Accepts the vault's primary currency or any of its
+    // additionalCurrencies (2026-09-13) — everything downstream of this
+    // check (minimum lookup, payment adapter selection, the AML
+    // fraction-sum) already keys off input.currency directly, so no
+    // other change was needed to let a contribution actually land in
+    // one of the additional currencies once it passes here.
+    const acceptedCurrencies = [vault.currency, ...vault.additionalCurrencies];
+    if (!acceptedCurrencies.includes(input.currency)) {
+      throw new BadRequestException(`This vault only accepts contributions in ${acceptedCurrencies.join(", ")}.`);
     }
     if (input.vaultCauseId) {
       const cause = await prisma.vaultCause.findFirst({

@@ -198,6 +198,35 @@ work (a screening call at donor/Founder/Counterparty onboarding,
 wired through `governed_actions` the same way every other Vault safety
 feature has been) is separate follow-on work, not done here.
 
+**Update, 2026-09-13 — a Vault can now accept giving in more than one
+currency.** Until now `Vault.currency` was the one currency a vault
+could ever take a contribution in — raised directly by the owner
+(a real campaign like "Ramadan Relief" reasonably wants to accept USD,
+NGN, and stablecoin gifts together, not force a donor to match one
+fixed currency). Two decisions, both the owner's:
+- **Separate totals per currency, never converted into one figure.**
+  `VaultsService.withAmountRaised` now groups by currency
+  (`{currency, amount}[]`, not a single number) — a donor giving in NGN
+  sees "₦500,000 raised," not a made-up combined total requiring a
+  live exchange-rate feed this codebase deliberately doesn't take on
+  for a fiduciary system reporting on money. Same posture
+  `VaultContributionsService.findOrCreateDonor`'s AML check already
+  takes (compare each currency on its own terms, never convert).
+- **Contributions first, allocation later — a deliberately scoped first
+  slice, not the full picture.** `Vault.additionalCurrencies: String[]`
+  lets a vault accept gifts in currencies beyond its primary `currency`
+  (`VaultContributionsService.initiate` validates against the full set).
+  `targetAmount`, `VaultCause.allocatedAmount`/`proceedsAllocatedAmount`,
+  the shared allocation-ceiling check, and `VaultDistribution` payouts
+  all deliberately stay `currency`-only for now — a distribution still
+  can't be created in one of the additional currencies, and the
+  goal/progress bar shown on the public page is the primary currency
+  alone (any additional-currency total gets its own separate line, not
+  folded into the goal's progress bar). Extending allocation/payouts to
+  be currency-aware too is real, flagged follow-on work, not an
+  oversight — the owner chose to ship giving-side support now rather
+  than hold it for the larger redesign.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

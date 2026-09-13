@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsEnum, IsOptional, IsString, Matches } from "class-validator";
+import { IsArray, IsEnum, IsOptional, IsString, Matches } from "class-validator";
 import { prisma, Prisma, VaultType, VaultStatus } from "@birr/db";
 import { VaultProceedsService } from "./vault-proceeds.service";
 
@@ -28,6 +28,15 @@ export class CreateVaultInput {
 
   @IsString()
   currency!: string;
+
+  // Other currencies this vault also accepts for giving, beyond
+  // `currency` above — see Vault.additionalCurrencies's own schema
+  // comment for what this does and does not extend to in this first
+  // slice (contributions only, not targetAmount/allocation/payouts).
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  additionalCurrencies?: string[];
 
   @IsString()
   jurisdiction!: string;
@@ -85,9 +94,13 @@ export class VaultsService {
    * it later becomes visible/public (a governed action, unlike this).
    */
   async create(input: CreateVaultInput, actorUserId: string) {
+    // Dedupe against the primary currency and against itself — a
+    // currency listed as "additional" when it's already the primary
+    // one is meaningless, not a real second option to give in.
+    const additionalCurrencies = [...new Set(input.additionalCurrencies ?? [])].filter((c) => c !== input.currency);
     try {
       return await prisma.$transaction(async (tx) => {
-        const vault = await tx.vault.create({ data: { ...input, createdByUserId: actorUserId } });
+        const vault = await tx.vault.create({ data: { ...input, additionalCurrencies, createdByUserId: actorUserId } });
         await tx.auditLog.create({
           data: {
             actorType: "birr_staff",
@@ -232,6 +245,7 @@ export class VaultsService {
     // implied by which list it showed up in.
     status: true,
     currency: true,
+    additionalCurrencies: true,
     targetAmount: true,
     jurisdiction: true,
     coverImageUrl: true,
@@ -253,20 +267,33 @@ export class VaultsService {
    * row — Prisma has no built-in way to express a related model's SUM
    * inside a `select`/`include`, so this runs as one grouped aggregate
    * query alongside the main one rather than N+1 per-vault queries.
-   * Confirmed contributions only (a vault's own currency is fixed, so
-   * unlike the cross-currency AML check elsewhere in this module, no
-   * currency mixing is possible here — every confirmed row is already
-   * in the vault's own currency by the time it reaches "confirmed").
+   * Confirmed contributions only.
+   *
+   * Grouped by currency, not summed into one figure — since
+   * Vault.additionalCurrencies (2026-09-13), a vault can accept gifts in
+   * more than one currency, and there's no meaningful way to add e.g.
+   * USD and NGN totals together without a live exchange-rate
+   * conversion this codebase deliberately doesn't take on (same
+   * "compare each currency on its own terms, never convert" posture
+   * VaultContributionsService.findOrCreateDonor's AML check already
+   * takes). Callers show each currency's own raised total separately.
    */
-  private async withAmountRaised<T extends { id: string }>(vaults: T[]): Promise<(T & { amountRaised: string })[]> {
+  private async withAmountRaised<T extends { id: string }>(
+    vaults: T[],
+  ): Promise<(T & { amountRaised: { currency: string; amount: string }[] })[]> {
     if (vaults.length === 0) return [];
     const sums = await prisma.vaultContribution.groupBy({
-      by: ["vaultId"],
+      by: ["vaultId", "currency"],
       where: { vaultId: { in: vaults.map((v) => v.id) }, status: "confirmed" },
       _sum: { amount: true },
     });
-    const raisedByVaultId = new Map(sums.map((s) => [s.vaultId, s._sum.amount?.toString() ?? "0"]));
-    return vaults.map((v) => ({ ...v, amountRaised: raisedByVaultId.get(v.id) ?? "0" }));
+    const raisedByVaultId = new Map<string, { currency: string; amount: string }[]>();
+    for (const s of sums) {
+      const list = raisedByVaultId.get(s.vaultId) ?? [];
+      list.push({ currency: s.currency, amount: s._sum.amount?.toString() ?? "0" });
+      raisedByVaultId.set(s.vaultId, list);
+    }
+    return vaults.map((v) => ({ ...v, amountRaised: raisedByVaultId.get(v.id) ?? [] }));
   }
 
   /**

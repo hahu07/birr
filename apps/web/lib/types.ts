@@ -116,12 +116,21 @@ export interface Vault {
   slug: string;
   description: string | null;
   type: "investment" | "project";
+  // Primary currency — targetAmount below and amountRaised's own entry
+  // for this currency are what a goal/progress bar is shown against.
   currency: string;
+  // Other currencies this vault also accepts for giving, beyond
+  // `currency` above (2026-09-13) — see Vault.additionalCurrencies's
+  // own schema comment for what this does and does not extend to.
+  additionalCurrencies: string[];
+  // Denominated in `currency` above only, even when additionalCurrencies
+  // isn't empty — see that field's own comment.
   targetAmount: string | null;
-  // Sum of confirmed VaultContribution amounts, in this vault's own
-  // currency — always present (never null; "0" when nothing's been
-  // confirmed yet). See VaultsService.withAmountRaised's own comment.
-  amountRaised: string;
+  // One entry per currency this vault has actually received a confirmed
+  // contribution in — never summed/converted across currencies (see
+  // VaultsService.withAmountRaised's own comment on why). Empty array,
+  // never missing, when nothing's been confirmed yet in any currency.
+  amountRaised: { currency: string; amount: string }[];
   jurisdiction: string;
   coverImageUrl: string | null;
   // Only present from GET /vaults/by-slug/:slug and GET /vaults/:id —

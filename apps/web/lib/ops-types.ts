@@ -800,6 +800,10 @@ export interface Vault {
   type: VaultType;
   status: VaultStatus;
   currency: string;
+  // Other currencies this vault also accepts for giving, beyond
+  // `currency` above (2026-09-13) — see Vault.additionalCurrencies's
+  // own schema comment.
+  additionalCurrencies: string[];
   targetAmount: string | null;
   jurisdiction: string;
   coverImageUrl: string | null;
