@@ -45,6 +45,13 @@ export default function VaultsIndexPage() {
           </p>
         </Reveal>
 
+        {/* Visually hidden — the card titles below are h3s (found in a
+            codebase audit: nothing between this page's one h1 and those
+            h3s, an invalid skip for a screen-reader user navigating by
+            heading level). This groups them under a real h2 without
+            changing how the section reads visually. */}
+        <h2 className="sr-only">Open vaults</h2>
+
         {vaults === null && (
           <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (

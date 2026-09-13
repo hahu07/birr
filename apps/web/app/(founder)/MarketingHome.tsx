@@ -626,9 +626,15 @@ function SlideTrack({ active, left, right, className = "" }: { active: "left" | 
   }, [active, left, right]);
 
   return (
-    <div className={`overflow-hidden transition-[height] duration-500 ease-in-out ${className}`} style={{ height }}>
+    // motion-reduce:transition-none on both layers — same convention
+    // Reveal (SiteChrome.tsx) already uses, applied here too (found in a
+    // codebase audit: this component had no reduced-motion handling at
+    // all, so switching tabs always animated regardless of OS setting).
+    // The height/position still update instantly; only the animation
+    // between them is skipped.
+    <div className={`overflow-hidden transition-[height] duration-500 ease-in-out motion-reduce:transition-none ${className}`} style={{ height }}>
       <div
-        className="flex transition-transform duration-500 ease-in-out"
+        className="flex transition-transform duration-500 ease-in-out motion-reduce:transition-none"
         style={{ width: "200%", transform: active === "left" ? "translateX(0%)" : "translateX(-50%)" }}
       >
         <div ref={leftRef} className="w-1/2 shrink-0 px-1 self-start">
