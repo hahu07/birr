@@ -270,6 +270,16 @@ model User {
   // shape Invitation already uses for the analogous invite-acceptance flow.
   verificationToken          String?    @unique
   verificationTokenExpiresAt DateTime?
+  // Self-service password reset (2026-09-14) — same inline-token shape
+  // as verificationToken above (a 32-byte hex link is not brute-forceable
+  // by hand, unlike WhatsAppOtp's 6-digit code, so no separate
+  // attempt-limited table is needed here either). Set on
+  // FoundersService.requestPasswordReset(), nulled out once
+  // resetPassword() consumes it. A shorter validity window than
+  // verificationToken's 24h — see FoundersService's own
+  // PASSWORD_RESET_TOKEN_VALIDITY_HOURS comment on why.
+  passwordResetToken          String?    @unique
+  passwordResetTokenExpiresAt DateTime?
   // Step 1 of founder onboarding also requires WhatsApp verification
   // alongside email. whatsappNumber is set (unverified) as soon as an
   // OTP is requested; whatsappVerifiedAt stays null until a WhatsAppOtp

@@ -21,6 +21,8 @@ import {
   CreateFounderInput,
   SignUpInput,
   LoginInput,
+  RequestPasswordResetInput,
+  ResetPasswordInput,
   EstablishFounderAndFoundationInput,
   DraftPurposeSuggestionInput,
 } from "./founders.service";
@@ -97,6 +99,21 @@ export class FoundersController {
   async resendVerificationEmail(@Req() request: Request) {
     const user = await resolveUserFromSession(request);
     return this.service.resendVerificationEmail(user.id);
+  }
+
+  // Unauthenticated, unlike resend-verification-email above — a locked-out
+  // founder has no session. Tight throttle since this is an
+  // unauthenticated-by-email lookup, the same class of endpoint as login.
+  @Post("request-password-reset")
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
+  async requestPasswordReset(@Body() body: RequestPasswordResetInput) {
+    return this.service.requestPasswordReset(body.email);
+  }
+
+  @Post("reset-password")
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
+  async resetPassword(@Body() body: ResetPasswordInput) {
+    return this.service.resetPassword(body);
   }
 
   // Brute-force protection on a real credential, not just an OTP — a

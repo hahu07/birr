@@ -63,4 +63,36 @@ export class ResendVerificationEmailAdapter implements VerificationEmailAdapter 
       throw new Error(`Resend rejected the verification email: ${error.message}`);
     }
   }
+
+  async sendPasswordResetEmail(to: string, link: string): Promise<void> {
+    const apiKey = await this.settings.get("resend", "API_KEY");
+    const from = await this.settings.get("resend", "FROM_ADDRESS");
+
+    if (!apiKey || !from) {
+      if (inRealDeployment()) {
+        throw new Error(apiKey ? "Resend from-address is not configured." : "Resend API key is not configured.");
+      }
+      logDevEmailFallback("password reset email", to, `Reset password: ${link}`);
+      return;
+    }
+
+    const resend = await this.getResend(apiKey);
+    const { error } = await resend.emails.send({
+      from,
+      to,
+      subject: "Reset your Birr password",
+      html: renderEmailTemplate({
+        heading: "Reset your password",
+        bodyHtml:
+          "<p>We received a request to reset the password on your Birr Founder account. " +
+          "If you didn't request this, you can safely ignore this email — your password won't change. " +
+          "This link expires in 1 hour.</p>",
+        ctaLabel: "Reset password",
+        ctaUrl: link,
+      }),
+    });
+    if (error) {
+      throw new Error(`Resend rejected the password reset email: ${error.message}`);
+    }
+  }
 }

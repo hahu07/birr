@@ -41,11 +41,17 @@ const testUsername = (label: string) => `${label.replace(/[^a-z0-9]/gi, "").slic
 
 class FakeEmailAdapter {
   sent: { to: string; link: string }[] = [];
+  passwordResetSent: { to: string; link: string }[] = [];
   shouldFail = false;
 
   async sendVerificationEmail(to: string, link: string): Promise<void> {
     if (this.shouldFail) throw new Error("delivery failed");
     this.sent.push({ to, link });
+  }
+
+  async sendPasswordResetEmail(to: string, link: string): Promise<void> {
+    if (this.shouldFail) throw new Error("delivery failed");
+    this.passwordResetSent.push({ to, link });
   }
 }
 
@@ -211,6 +217,94 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
     await service.verifyEmail(user!.verificationToken!);
 
     await expect(service.resendVerificationEmail(userId)).rejects.toThrow(BadRequestException);
+  });
+
+  describe("requestPasswordReset() / resetPassword()", () => {
+    test("full round trip: request a reset, use the token, log in with the new password", async () => {
+      const email = testEmail("password-reset-happy");
+      const username = testUsername("pwresethappy");
+      await service.signUp({ fullName: "Password Reset Happy Path", email, username, password: "original-password" });
+      emailAdapter.passwordResetSent = [];
+
+      await service.requestPasswordReset(email);
+      expect(emailAdapter.passwordResetSent).toHaveLength(1);
+      expect(emailAdapter.passwordResetSent[0]?.to).toBe(email);
+
+      const link = emailAdapter.passwordResetSent[0]!.link;
+      const token = new URL(link).searchParams.get("token")!;
+      expect(token).toBeTruthy();
+
+      await service.resetPassword({ token, newPassword: "brand-new-password" });
+
+      // Old password no longer works, new one does.
+      await expect(service.login({ username, password: "original-password" })).rejects.toThrow(UnauthorizedException);
+      const result = await service.login({ username, password: "brand-new-password" });
+      expect(result).toBeDefined();
+    });
+
+    // Never reveals whether an email has an account — same {ok: true}
+    // shape either way, and no email is ever sent for one that doesn't
+    // exist (or has no passwordHash at all).
+    test("requestPasswordReset() returns {ok: true} for an email with no account, and sends nothing", async () => {
+      emailAdapter.passwordResetSent = [];
+      const result = await service.requestPasswordReset(`nobody-${randomUUID()}@example.test`);
+      expect(result).toEqual({ ok: true });
+      expect(emailAdapter.passwordResetSent).toHaveLength(0);
+    });
+
+    test("resetPassword() rejects an unknown or already-used token", async () => {
+      await expect(service.resetPassword({ token: "not-a-real-token", newPassword: "whatever-password" })).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    test("resetPassword() rejects an expired token", async () => {
+      const email = testEmail("password-reset-expired");
+      const username = testUsername("pwresetexpired");
+      const { userId } = await service.signUp({
+        fullName: "Password Reset Expired",
+        email,
+        username,
+        password: "original-password",
+      });
+      await service.requestPasswordReset(email);
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+      // Simulate the token having been issued over an hour ago, rather
+      // than waiting out PASSWORD_RESET_TOKEN_VALIDITY_HOURS for real.
+      await prisma.user.update({ where: { id: userId }, data: { passwordResetTokenExpiresAt: new Date(Date.now() - 1000) } });
+
+      await expect(
+        service.resetPassword({ token: user.passwordResetToken!, newPassword: "brand-new-password" }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    test("resetPassword() rejects a password shorter than the minimum", async () => {
+      const email = testEmail("password-reset-tooshort");
+      const username = testUsername("pwresettooshort");
+      await service.signUp({ fullName: "Password Reset Too Short", email, username, password: "original-password" });
+      await service.requestPasswordReset(email);
+      const token = new URL(emailAdapter.passwordResetSent.at(-1)!.link).searchParams.get("token")!;
+
+      await expect(service.resetPassword({ token, newPassword: "short" })).rejects.toThrow(BadRequestException);
+    });
+
+    test("resetPassword() writes a user.password_reset audit log", async () => {
+      const email = testEmail("password-reset-audit");
+      const username = testUsername("pwresetaudit");
+      const { userId } = await service.signUp({
+        fullName: "Password Reset Audit",
+        email,
+        username,
+        password: "original-password",
+      });
+      await service.requestPasswordReset(email);
+      const token = new URL(emailAdapter.passwordResetSent.at(-1)!.link).searchParams.get("token")!;
+      await service.resetPassword({ token, newPassword: "brand-new-password" });
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: userId, action: "user.password_reset" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ actorType: "founder_user", actorUserId: userId });
+    });
   });
 
   test("login() succeeds with the correct username + password", async () => {

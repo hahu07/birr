@@ -55,8 +55,10 @@ const NAV_ITEMS = [
 // /vaults is the public "browse all open vaults" index and /vaults/
 // is the per-vault donation page (app/vaults/page.tsx and
 // app/vaults/[slug]/page.tsx) — no Founder session involved in either,
-// same reasoning as /waqf-types/.
-const PUBLIC_ROUTES = ["/sign-in", "/sign-up", "/verified", "/vaults"];
+// same reasoning as /waqf-types/. /forgot-password and /reset-password
+// (2026-09-14) are reachable by a locked-out founder with no session by
+// definition — same posture as sign-up/verified above.
+const PUBLIC_ROUTES = ["/sign-in", "/sign-up", "/verified", "/vaults", "/forgot-password", "/reset-password"];
 const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/"];
 function isPublicRoutePath(pathname: string) {
   return PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));

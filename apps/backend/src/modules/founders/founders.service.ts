@@ -59,6 +59,19 @@ export class LoginInput {
   password!: string;
 }
 
+export class RequestPasswordResetInput {
+  @IsString()
+  email!: string;
+}
+
+export class ResetPasswordInput {
+  @IsString()
+  token!: string;
+
+  @MinLength(MIN_PASSWORD_LENGTH)
+  newPassword!: string;
+}
+
 export class EstablishFounderAndFoundationInput {
   @IsString()
   founderName!: string;
@@ -107,6 +120,12 @@ export class DraftPurposeSuggestionInput {
 }
 
 const VERIFICATION_TOKEN_VALIDITY_HOURS = 24;
+// Shorter than VERIFICATION_TOKEN_VALIDITY_HOURS — a password-reset link
+// is a stronger credential than an email-verification link (it directly
+// grants account access, not just activation), so the usual "keep it
+// short-lived" tradeoff leans further here. 1 hour matches common
+// practice elsewhere (most password-reset flows use 15min-1h).
+const PASSWORD_RESET_TOKEN_VALIDITY_HOURS = 1;
 const BCRYPT_ROUNDS = 10;
 
 @Injectable()
@@ -262,6 +281,80 @@ export class FoundersService {
         `Couldn't send the verification email: ${err instanceof Error ? err.message : "unknown error"}`,
       );
     }
+
+    return { ok: true };
+  }
+
+  /**
+   * Unauthenticated by necessity (unlike resendVerificationEmail above) —
+   * a founder who's locked out has no session to prove who they are.
+   * Always returns the same {ok: true} shape whether or not the email
+   * matches a real, password-auth account, so this can never be used to
+   * enumerate registered emails. 2026-09-14: found live during a
+   * comprehensive Founder-side review that no self-service recovery path
+   * existed at all for a lost password — a hard lockout on a platform
+   * whose whole pitch is self-service.
+   */
+  async requestPasswordReset(email: string): Promise<{ ok: true }> {
+    const user = await prisma.user.findUnique({ where: { email } });
+    // No passwordHash means this account never used password auth (e.g.
+    // an invited co-founder who only ever signs in some other way, if
+    // that ever exists) — nothing to reset, but still can't say so
+    // without leaking account existence.
+    if (user && user.passwordHash) {
+      const token = randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_VALIDITY_HOURS * 60 * 60 * 1000);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordResetToken: token, passwordResetTokenExpiresAt: expiresAt },
+      });
+
+      const portalUrl = process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000";
+      const resetLink = `${portalUrl}/reset-password?token=${token}`;
+      // Best-effort, same posture as signUp()'s own send above — a
+      // Resend outage must never reveal (via a thrown error reaching the
+      // caller) that this email actually had an account.
+      try {
+        await this.emailAdapter.sendPasswordResetEmail(user.email, resetLink);
+      } catch (err) {
+        this.logger.error(`Couldn't send password reset email to ${user.email}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    return { ok: true };
+  }
+
+  /**
+   * The other half of requestPasswordReset() above. Deliberately
+   * standalone rather than routed through signUp()'s password handling —
+   * this changes an existing account's credential, never creates one.
+   */
+  async resetPassword(input: ResetPasswordInput): Promise<{ ok: true }> {
+    if (input.newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new BadRequestException(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    }
+
+    const user = await prisma.user.findUnique({ where: { passwordResetToken: input.token } });
+    if (!user || !user.passwordResetTokenExpiresAt || user.passwordResetTokenExpiresAt < new Date()) {
+      throw new BadRequestException("This password reset link is invalid or has expired — request a new one.");
+    }
+
+    const passwordHash = await hash(input.newPassword, BCRYPT_ROUNDS);
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: user.id },
+        data: { passwordHash, passwordResetToken: null, passwordResetTokenExpiresAt: null },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorType: "founder_user",
+          actorUserId: user.id,
+          action: "user.password_reset",
+          entityType: "User",
+          entityId: user.id,
+        },
+      });
+    });
 
     return { ok: true };
   }
