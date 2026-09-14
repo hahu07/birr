@@ -1419,13 +1419,19 @@ model ConflictOfInterestDeclaration {
   @@map("conflict_of_interest_declarations")
 }
 
-// The founder's real, structured e-signature appointing Birr as
-// Mutawalli (trustee) over one specific Waqf Fund — the final step of
-// onboarding. One-to-one with Waqf (scoped per-fund, not per-founder,
-// matching CLAUDE.md's framing that the trustee relationship attaches
-// at establishment of *each* waqf). Immutable like AuditLog once
-// written — see the migration for this model, which revokes UPDATE/
-// DELETE the same way audit_logs already does.
+// SUPERSEDED, 2026-08-27 — kept only for historical rows; nothing
+// writes a new WaqfDeed anymore. This used to be the founder's real,
+// structured e-signature appointing Birr as Mutawalli (trustee) over
+// one specific Waqf Fund, scoped per-fund rather than per-founder. See
+// FoundationDeed above (the live mechanism today, one deed per
+// Foundation covering every Waqf Fund under it, present and future) for
+// the full reasoning behind the reversal — a Founder establishes more
+// than one Waqf Fund under the same Foundation over time, and re-signing
+// per fund didn't match that reality; it had also silently regressed to
+// every fund after the first getting no deed at all. Still immutable
+// like AuditLog once written — see the migration for this model, which
+// revokes UPDATE/DELETE the same way audit_logs already does — so any
+// pre-2026-08-27 row here stays exactly as signed.
 model WaqfDeed {
   id                  String   @id @default(uuid())
   waqfId              String   @unique
