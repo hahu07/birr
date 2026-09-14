@@ -5,8 +5,10 @@ import {
   CreateVaultInput,
   UpdateVaultStatusInput,
   CreateVaultCauseInput,
+  UpdateVaultFeasibilityReportInput,
 } from "./vaults.service";
 import { VaultCoverStorageService, MAX_SIZE_BYTES as MAX_COVER_SIZE_BYTES } from "./vault-cover-storage.service";
+import { VaultDocumentStorageService, MAX_SIZE_BYTES as MAX_DOCUMENT_SIZE_BYTES } from "./vault-document-storage.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
 
@@ -15,6 +17,7 @@ export class VaultsController {
   constructor(
     private readonly service: VaultsService,
     private readonly coverStorage: VaultCoverStorageService,
+    private readonly documentStorage: VaultDocumentStorageService,
   ) {}
 
   // Staff-only, no @Public() — matches WaqfCausesController.create()'s
@@ -99,5 +102,20 @@ export class VaultsController {
     if (!cover) throw new BadRequestException("No cover image file was uploaded.");
     const { url } = await this.coverStorage.saveCover(cover);
     return this.service.setCoverImage(id, url, staff.userId);
+  }
+
+  // multipart/form-data — same shape as uploadCover above. `report`
+  // optional so a title-only edit doesn't require re-uploading the
+  // file, mirroring VaultMilestonesController's own evidence route.
+  @Post(":id/feasibility-report")
+  @UseInterceptors(FileInterceptor("report", { limits: { fileSize: MAX_DOCUMENT_SIZE_BYTES } }))
+  async setFeasibilityReport(
+    @Param("id") id: string,
+    @Body() body: UpdateVaultFeasibilityReportInput,
+    @UploadedFile() report: Express.Multer.File | undefined,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    const url = report ? (await this.documentStorage.saveDocument(report)).url : undefined;
+    return this.service.setFeasibilityReport(id, { title: body.title, url }, staff.userId);
   }
 }

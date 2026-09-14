@@ -807,6 +807,8 @@ export interface Vault {
   targetAmount: string | null;
   jurisdiction: string;
   coverImageUrl: string | null;
+  feasibilityReportUrl: string | null;
+  feasibilityReportTitle: string | null;
   createdByUserId: string;
   openedAt: string | null;
   closedAt: string | null;

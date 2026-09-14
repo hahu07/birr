@@ -53,6 +53,12 @@ export class UpdateVaultStatusInput {
   status!: VaultStatus;
 }
 
+export class UpdateVaultFeasibilityReportInput {
+  @IsOptional()
+  @IsString()
+  title?: string;
+}
+
 export class CreateVaultCauseInput {
   @IsString()
   vaultId!: string;
@@ -224,6 +230,45 @@ export class VaultsService {
     });
   }
 
+  /**
+   * Staff-only, plain CRUD (not governed) — same trust level as
+   * setCoverImage() above. Deliberately allows either field alone
+   * (updating just the title, or just re-uploading the file) rather
+   * than requiring both together, mirroring VaultMilestonesService
+   * .setEvidence()'s own "only overwrite whichever field is actually
+   * sent" reasoning. Unlike milestone evidence, this is public the
+   * moment it's set — see Vault.feasibilityReportUrl's own schema
+   * comment on why.
+   */
+  async setFeasibilityReport(id: string, input: { title?: string; url?: string }, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const vault = await findVaultOrThrow(tx, id);
+
+      const updated = await tx.vault.update({
+        where: { id },
+        data: {
+          feasibilityReportTitle: input.title ?? vault.feasibilityReportTitle,
+          feasibilityReportUrl: input.url ?? vault.feasibilityReportUrl,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          vaultId: id,
+          actorType: "birr_staff",
+          actorUserId,
+          action: "vault.feasibility_report_updated",
+          entityType: "Vault",
+          entityId: updated.id,
+          before: { feasibilityReportTitle: vault.feasibilityReportTitle, feasibilityReportUrl: vault.feasibilityReportUrl } as any,
+          after: { feasibilityReportTitle: updated.feasibilityReportTitle, feasibilityReportUrl: updated.feasibilityReportUrl } as any,
+        },
+      });
+
+      return updated;
+    });
+  }
+
   findById(id: string) {
     return prisma.vault.findFirst({ where: { id, deletedAt: null }, include: { causes: { where: { deletedAt: null } } } });
   }
@@ -251,17 +296,24 @@ export class VaultsService {
     targetAmount: true,
     jurisdiction: true,
     coverImageUrl: true,
+    // Deliberately public, unlike milestone evidence — see
+    // Vault.feasibilityReportUrl's own schema comment: this is a
+    // donor's own due-diligence material, not staff-internal proof.
+    feasibilityReportUrl: true,
+    feasibilityReportTitle: true,
     causes: {
       where: { deletedAt: null },
       select: { id: true, vaultId: true, causeCategoryId: true, name: true, description: true },
     },
-    // Name/sequence/status only — never evidenceNotes or targetAmount,
-    // both staff-internal (see VaultMilestone's own schema comment on
-    // this public-transparency design choice).
+    // Update, 2026-09-14 — evidenceNotes/evidenceFileUrl are public too:
+    // the whole point of photographing/documenting completed work is
+    // showing the donor who actually paid for it, per the owner's
+    // explicit direction. targetAmount stays excluded — a budget figure,
+    // not proof of anything, no reason given to change that one.
     milestones: {
       where: { deletedAt: null },
       orderBy: { sequence: "asc" },
-      select: { id: true, name: true, sequence: true, status: true },
+      select: { id: true, name: true, sequence: true, status: true, evidenceNotes: true, evidenceFileUrl: true },
     },
   } as const;
 

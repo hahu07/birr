@@ -11,6 +11,7 @@ describe("VaultsService", () => {
   const vaultIds: string[] = [];
   const vaultCauseIds: string[] = [];
   const causeCategoryIds: string[] = [];
+  const milestoneIds: string[] = [];
   let actorUserId: string;
 
   beforeAll(async () => {
@@ -35,6 +36,7 @@ describe("VaultsService", () => {
     // against a fixture vault, with no onDelete: Cascade on that FK.
     await prisma.vaultJournalEntryLine.deleteMany({ where: { journalEntry: { vaultId: { in: vaultIds } } } });
     await prisma.vaultJournalEntry.deleteMany({ where: { vaultId: { in: vaultIds } } });
+    await prisma.vaultMilestone.deleteMany({ where: { id: { in: milestoneIds } } });
     await prisma.vaultCause.deleteMany({ where: { id: { in: vaultCauseIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.causeCategory.deleteMany({ where: { id: { in: causeCategoryIds } } });
@@ -321,5 +323,92 @@ describe("VaultsService", () => {
       ]),
     );
     expect(bySlug?.amountRaised).toHaveLength(2);
+  });
+
+  describe("setFeasibilityReport()", () => {
+    test("sets title and url, audit-logged with a real before/after, and only overwrites whichever field is sent", async () => {
+      const slug = uniqueSlug("feasibility-report");
+      const vault = await service.create(
+        { name: "Feasibility Report Vault", slug, type: "project", currency: "USD", jurisdiction: "NG" },
+        actorUserId,
+      );
+      vaultIds.push(vault.id);
+
+      const withTitle = await service.setFeasibilityReport(vault.id, { title: "Kaduna Water Needs Assessment, 2026" }, actorUserId);
+      expect(withTitle.feasibilityReportTitle).toBe("Kaduna Water Needs Assessment, 2026");
+      expect(withTitle.feasibilityReportUrl).toBeNull();
+
+      const withUrl = await service.setFeasibilityReport(
+        vault.id,
+        { url: "http://localhost:4000/uploads/vault-documents/x.pdf" },
+        actorUserId,
+      );
+      // Providing only url leaves the previously-set title alone.
+      expect(withUrl.feasibilityReportTitle).toBe("Kaduna Water Needs Assessment, 2026");
+      expect(withUrl.feasibilityReportUrl).toBe("http://localhost:4000/uploads/vault-documents/x.pdf");
+
+      const logs = await prisma.auditLog.findMany({
+        where: { entityId: vault.id, action: "vault.feasibility_report_updated" },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(logs).toHaveLength(2);
+      expect(logs[0]).toMatchObject({ actorType: "birr_staff", actorUserId, vaultId: vault.id });
+    });
+
+    test("throws NotFoundException for an unknown vault id", async () => {
+      await expect(
+        service.setFeasibilityReport("00000000-0000-0000-0000-000000000000", { title: "x" }, actorUserId),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  test("findBySlug() exposes the feasibility report publicly", async () => {
+    const slug = uniqueSlug("feasibility-report-public");
+    const vault = await service.create(
+      { name: "Public Feasibility Report Vault", slug, type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+    await service.setFeasibilityReport(
+      vault.id,
+      { title: "Site Survey", url: "http://localhost:4000/uploads/vault-documents/site-survey.pdf" },
+      actorUserId,
+    );
+
+    const bySlug = await service.findBySlug(slug);
+    expect(bySlug?.feasibilityReportTitle).toBe("Site Survey");
+    expect(bySlug?.feasibilityReportUrl).toBe("http://localhost:4000/uploads/vault-documents/site-survey.pdf");
+  });
+
+  test("findBySlug() exposes milestone evidence publicly (owner's explicit direction, 2026-09-14 — donors should see proof of completed work)", async () => {
+    const slug = uniqueSlug("milestone-evidence-public");
+    const vault = await service.create(
+      { name: "Public Milestone Evidence Vault", slug, type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+    const milestone = await prisma.vaultMilestone.create({
+      data: {
+        vaultId: vault.id,
+        name: "Borehole drilled",
+        sequence: 1,
+        status: "completed",
+        completedAt: new Date(),
+        evidenceNotes: "Borehole completed and tested for potability on site.",
+        evidenceFileUrl: "http://localhost:4000/uploads/vault-documents/borehole-photo.jpg",
+      },
+    });
+    milestoneIds.push(milestone.id);
+
+    const bySlug = await service.findBySlug(slug);
+    expect(bySlug?.milestones).toHaveLength(1);
+    expect(bySlug?.milestones?.[0]?.evidenceNotes).toBe("Borehole completed and tested for potability on site.");
+    expect(bySlug?.milestones?.[0]?.evidenceFileUrl).toBe(
+      "http://localhost:4000/uploads/vault-documents/borehole-photo.jpg",
+    );
+    // targetAmount stays excluded — a budget figure, not proof of anything.
+    expect((bySlug?.milestones?.[0] as { targetAmount?: unknown })?.targetAmount).toBeUndefined();
   });
 });

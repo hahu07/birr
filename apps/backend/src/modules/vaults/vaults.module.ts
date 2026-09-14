@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { VaultsService } from "./vaults.service";
 import { VaultsController } from "./vaults.controller";
 import { VaultCoverStorageService } from "./vault-cover-storage.service";
+import { VaultDocumentStorageService } from "./vault-document-storage.service";
 import { VaultContributionsService } from "./vault-contributions.service";
 import { VaultContributionsController } from "./vault-contributions.controller";
 import { VaultInvestmentsService } from "./vault-investments.service";
@@ -46,6 +47,7 @@ import { EncryptionService } from "../../common/settings/encryption.service";
   providers: [
     VaultsService,
     VaultCoverStorageService,
+    VaultDocumentStorageService,
     VaultDonorThresholdsService,
     VaultContributionsService,
     VaultInvestmentsService,

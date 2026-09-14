@@ -22,6 +22,7 @@ import { VaultContributionsSection } from "./VaultContributionsSection";
 import { VaultMilestonesSection } from "./VaultMilestonesSection";
 import { VaultExpensesSection } from "./VaultExpensesSection";
 import { VaultLedgerSection } from "./VaultLedgerSection";
+import { VaultFeasibilityReportSection } from "./VaultFeasibilityReportSection";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 import { useLoadedResource } from "../../_components/SectionChrome";
 
@@ -120,6 +121,7 @@ export default function VaultDetailPage() {
       </header>
 
       <div className="space-y-10">
+        <VaultFeasibilityReportSection vault={vault} onChanged={load} />
         <VaultCausesSection
           vaultId={id}
           vaultType={vault.type}

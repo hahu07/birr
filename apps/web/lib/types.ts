@@ -139,6 +139,12 @@ export interface Vault {
   spentSoFar?: { currency: string; amount: string }[];
   jurisdiction: string;
   coverImageUrl: string | null;
+  // A feasibility study, business case, or needs assessment — public
+  // by design, unlike VaultMilestone's own evidence fields (see
+  // Vault.feasibilityReportUrl's own schema comment on why this one's
+  // meant for a donor's own due diligence, not staff-internal proof).
+  feasibilityReportUrl: string | null;
+  feasibilityReportTitle: string | null;
   // Only present from GET /vaults/by-slug/:slug and GET /vaults/:id —
   // both include it directly (see VaultsService.findBySlug/findById's
   // own `include`), which is what the public donation page reads
@@ -146,9 +152,10 @@ export interface Vault {
   causes?: VaultCause[];
   // Same "only present from findBySlug" posture as causes above.
   // Project-type vaults only — an investment vault's milestones array
-  // is always empty. Name/sequence/status only, by design (see
-  // VaultMilestone's own schema comment) — never evidenceNotes or
-  // targetAmount, both staff-internal.
+  // is always empty. evidenceNotes/evidenceFileUrl are public here too
+  // (2026-09-14) — the point of documenting completed work is showing
+  // the donor who paid for it. targetAmount stays excluded (a budget
+  // figure, not proof of anything).
   milestones?: VaultMilestone[];
 }
 
@@ -165,6 +172,8 @@ export interface VaultMilestone {
   name: string;
   sequence: number;
   status: "pending" | "in_progress" | "completed";
+  evidenceNotes: string | null;
+  evidenceFileUrl: string | null;
 }
 
 export interface CauseImpactUpdate {

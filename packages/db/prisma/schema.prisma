@@ -1712,22 +1712,22 @@ enum VaultStatus {
 // no Foundation, no funding-plan/installment-floor machinery (public
 // giving is open-ended, not a declared-corpus commitment), no deed.
 model Vault {
-  id                   String      @id @default(uuid())
-  name                 String
+  id                     String      @id @default(uuid())
+  name                   String
   // Public-URL-friendly identifier for the donation page
   // (/vaults/:slug) — unique, staff-set at creation, never derived
   // implicitly from name so a later rename doesn't break an already-
   // shared link.
-  slug                 String      @unique
-  description          String?
-  type                 VaultType
-  status               VaultStatus @default(draft)
+  slug                   String      @unique
+  description            String?
+  type                   VaultType
+  status                 VaultStatus @default(draft)
   // Primary currency — targetAmount below, VaultCause allocation
   // ceilings, and VaultDistribution payouts all stay denominated in
   // this one currency, same no-cross-currency-blending assumption
   // Waqf.corpusCurrency/Distribution.currency already make elsewhere in
   // this schema.
-  currency             String
+  currency               String
   // Update, 2026-09-13 — a vault can also accept contributions in these
   // currencies, beyond its one `currency` above (e.g. a USD vault that
   // also takes NGN and USDC gifts). Deliberately scoped to giving only
@@ -1742,22 +1742,33 @@ model Vault {
   // terms rather than converting). Extending allocation/distribution to
   // be currency-aware too is real, deliberately deferred follow-up
   // work, not an oversight.
-  additionalCurrencies String[]    @default([])
+  additionalCurrencies   String[]    @default([])
   // Display-only progress-bar figure, denominated in `currency` above —
   // deliberately NOT wired into any enforcement, unlike Waqf's corpus/
   // funding-plan fields.
-  targetAmount         Decimal?
+  targetAmount           Decimal?
   // Same free-form-string convention as Waqf.jurisdiction, so
   // CompliancePolicySet can key off it the same way.
-  jurisdiction         String
-  coverImageUrl        String?
-  createdByUserId      String
-  createdByUser        User        @relation(fields: [createdByUserId], references: [id])
-  openedAt             DateTime?
-  closedAt             DateTime?
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
-  deletedAt            DateTime?
+  jurisdiction           String
+  coverImageUrl          String?
+  // Update, 2026-09-14 — a feasibility study, business case, or needs
+  // assessment a donor can read *before* giving — upfront due
+  // diligence, distinct from VaultMilestone.evidenceFileUrl (proof of
+  // work done *after* giving), though both are public for the same
+  // reason: see VaultsService's own PUBLIC_VAULT_SELECT. One slot, not
+  // a document library, same "start simple" convention as
+  // coverImageUrl above; feasibilityReportTitle exists because a bare
+  // "View report" link with no context tells a donor nothing about
+  // what they're about to open.
+  feasibilityReportUrl   String?
+  feasibilityReportTitle String?
+  createdByUserId        String
+  createdByUser          User        @relation(fields: [createdByUserId], references: [id])
+  openedAt               DateTime?
+  closedAt               DateTime?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+  deletedAt              DateTime?
 
   causes          VaultCause[]
   contributions   VaultContribution[]
@@ -2173,23 +2184,23 @@ enum VaultMilestoneStatus {
 }
 
 model VaultMilestone {
-  id            String               @id @default(uuid())
-  vaultId       String
-  vault         Vault                @relation(fields: [vaultId], references: [id])
-  name          String
-  description   String?
+  id              String               @id @default(uuid())
+  vaultId         String
+  vault           Vault                @relation(fields: [vaultId], references: [id])
+  name            String
+  description     String?
   // Display/release order among this vault's own milestones — not a
   // global ordering.
-  sequence      Int
+  sequence        Int
   // Planning figure only, denominated in the vault's own currency —
   // same display-only, non-enforcing posture as Vault.targetAmount
   // itself. The real ceiling on any tranche paid against this
   // milestone is still VaultCause.allocatedAmount via
   // assertWithinAllocation, untouched by this field.
-  targetAmount  Decimal?
-  status        VaultMilestoneStatus @default(pending)
-  completedAt   DateTime?
-  evidenceNotes String?
+  targetAmount    Decimal?
+  status          VaultMilestoneStatus @default(pending)
+  completedAt     DateTime?
+  evidenceNotes   String?
   // Update, 2026-09-14 — a photo or completion-report PDF, same
   // plain-local-disk convention as VaultCoverStorageService/
   // MessageAttachmentStorageService (PNG/JPEG/WebP/PDF, mime-sniffed
@@ -2200,10 +2211,15 @@ model VaultMilestone {
   // later (e.g. once a final report is ready) is a plain staff action,
   // audit-logged like every other Vault mutation, not a second
   // governed checkpoint on top of the one that actually moves money.
+  // This field and evidenceNotes above are both public (see
+  // VaultsService's own PUBLIC_VAULT_SELECT) — the owner's explicit
+  // direction, same day this shipped: the whole point of documenting
+  // completed work is showing the donor who paid for it, not just
+  // proving it to the staff checker who approves the milestone.
   evidenceFileUrl String?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  deletedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  deletedAt       DateTime?
 
   distributions VaultDistribution[]
   expenses      VaultExpense[]
