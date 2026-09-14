@@ -103,19 +103,24 @@ export default function WaqfFundDetailPage() {
                 // Deed-signing is Foundation-level, not per-Waqf — see
                 // FoundationDeed's own schema comment — so this reads
                 // waqf.foundation.foundationDeed, the deed covering this
-                // waqf's whole Foundation, not a per-fund one.
-                ...(waqf.foundation.foundationDeed
-                  ? [
-                      {
-                        label: "Deed",
-                        value: (
-                          <Link href={`/foundations/${waqf.foundationId}/deed`} className="text-primary-700 hover:text-primary-800">
-                            Signed {formatDate(waqf.foundation.foundationDeed.signedAt)} — View →
-                          </Link>
-                        ),
-                      },
-                    ]
-                  : []),
+                // waqf's whole Foundation, not a per-fund one. 2026-09-14
+                // audit fix: this row used to be omitted entirely when
+                // unsigned, so a founder viewing a fund under an unsigned
+                // 2nd+ Foundation had no clue signing was even possible
+                // from here — now always shown, linking to the page that
+                // can actually sign it (foundations/[id]/deed).
+                {
+                  label: "Deed",
+                  value: waqf.foundation.foundationDeed ? (
+                    <Link href={`/foundations/${waqf.foundationId}/deed`} className="text-primary-700 hover:text-primary-800">
+                      Signed {formatDate(waqf.foundation.foundationDeed.signedAt)} — View →
+                    </Link>
+                  ) : (
+                    <Link href={`/foundations/${waqf.foundationId}/deed`} className="text-primary-700 hover:text-primary-800">
+                      Not signed yet — Sign →
+                    </Link>
+                  ),
+                },
               ]}
             />
             {waqf.purpose && (

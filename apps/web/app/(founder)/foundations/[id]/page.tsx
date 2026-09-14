@@ -85,9 +85,19 @@ export default function FoundationDetailPage() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {foundation?.foundationDeed && (
+          {foundation?.foundationDeed ? (
             <Link href={`/foundations/${foundationId}/deed`}>
               <Button variant="secondary">View signed deed</Button>
+            </Link>
+          ) : (
+            // 2026-09-14 audit fix: this used to render nothing at all
+            // when unsigned — a Founder had no way to even discover that
+            // signing was possible for any Foundation past their first
+            // (the onboarding wizard only ever covers foundations[0]).
+            // Anyone can see the CTA; the deed page itself gates the
+            // actual form to the primary contact.
+            <Link href={`/foundations/${foundationId}/deed`}>
+              <Button variant="secondary">Sign deed</Button>
             </Link>
           )}
           {isPrimaryContact && (

@@ -1,30 +1,33 @@
 "use client";
 
-// The signed waqf deed — the actual legal instrument appointing Birr as
-// Mutawalli (trustee), viewable any time after signing, not just once
-// during the onboarding wizard's step 4 (which showed a summary, never
-// deedText itself). Fetched via GET /waqfs/:id, already founder-scoped
-// (see WaqfsService.findByIdForFounder) — no separate deed endpoint
-// needed here.
-import Link from "next/link";
+// Update, 2026-09-14 — deed-signing moved to the Foundation level on
+// 2026-08-27 (see FoundationDeed's own schema comment): one deed covers
+// a Foundation and every Waqf Fund under it, present and future. This
+// route used to render waqf.waqfDeed directly, which is null for every
+// current waqf (nothing writes a WaqfDeed anymore — see WaqfDeed's own
+// schema comment) — so it unconditionally showed "no deed on file" even
+// when the Foundation's own deed, which actually covers this fund, was
+// signed. portfolio/[id]/page.tsx was already fixed to link to the
+// correct /foundations/[id]/deed page instead; this route stays live
+// (an old bookmark, a stale link) and just forwards there now rather
+// than showing the wrong answer if hit directly.
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { apiFetchJson } from "../../../../../lib/api";
-import { formatDate } from "../../../../../lib/format";
 import type { Waqf } from "../../../../../lib/types";
-import { Alert, Button, Skeleton } from "@birr/ui";
-import { DeedDocument } from "../../../DeedDocument";
+import { Alert, Skeleton } from "@birr/ui";
 
-export default function WaqfDeedPage() {
+export default function WaqfDeedRedirectPage() {
   const params = useParams<{ id: string }>();
-  const [waqf, setWaqf] = useState<Waqf | null>(null);
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     apiFetchJson<Waqf>(`/waqfs/${params.id}`)
-      .then((data) => {
-        if (!cancelled) setWaqf(data);
+      .then((waqf) => {
+        if (cancelled) return;
+        router.replace(`/foundations/${waqf.foundationId}/deed`);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -32,48 +35,16 @@ export default function WaqfDeedPage() {
     return () => {
       cancelled = true;
     };
-  }, [params.id]);
+  }, [params.id, router]);
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="flex items-center justify-between gap-3 print:hidden">
-        <Link
-          href={`/portfolio/${params.id}`}
-          className="text-sm font-medium text-primary-700 hover:text-primary-800"
-        >
-          ← {waqf?.name ?? "Waqf Fund"}
-        </Link>
-        {waqf?.waqfDeed && (
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => window.print()}>
-            Print / Save as PDF
-          </Button>
-        )}
-      </div>
-
-      {error && (
+      {error ? (
         <Alert tone="danger" title="Couldn't load this deed" className="mt-6">
           {error}
         </Alert>
-      )}
-
-      {!error && !waqf && <Skeleton className="mt-6 h-96 w-full" />}
-
-      {!error && waqf && !waqf.waqfDeed && (
-        <Alert tone="warning" title="No deed signed yet" className="mt-6">
-          {waqf.name} doesn&apos;t have a signed deed on file yet.
-        </Alert>
-      )}
-
-      {!error && waqf?.waqfDeed && (
-        <div className="mt-6">
-          <DeedDocument
-            eyebrow="Deed of Waqf"
-            title={waqf.name}
-            deedText={waqf.waqfDeed.deedText}
-            signedBy={waqf.waqfDeed.typedLegalName}
-            signedAt={formatDate(waqf.waqfDeed.signedAt)}
-          />
-        </div>
+      ) : (
+        <Skeleton className="mt-6 h-96 w-full" />
       )}
     </div>
   );

@@ -6,34 +6,53 @@
 // GET /foundations/:id, already founder-scoped (see
 // FoundationsService.findByIdForFounder) — no separate deed endpoint
 // needed here.
+//
+// Update, 2026-09-14 — also where an UNSIGNED Foundation's deed gets
+// signed, not just a passive "no deed yet" notice. Before this, the
+// onboarding wizard was the only place a deed could ever be signed
+// (hardcoded to the founder's first Foundation), so any 2nd+ Foundation
+// could never have its deed signed through the UI at all — found during
+// a comprehensive Founder-side review. Only the org's primary contact
+// gets the actual form (SignFoundationDeedForm's own POST requires it,
+// same posture as foundations/[id]/page.tsx's "Invite a co-founder"
+// gate); anyone else sees a passive notice instead of a form that would
+// just 403 on submit.
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../../lib/api";
 import { formatDate } from "../../../../../lib/format";
+import { useFounderSession } from "../../../../../lib/founder-session";
 import { useMarkNotificationsReadForEntity } from "../../../../../lib/notifications";
-import type { Foundation } from "../../../../../lib/types";
+import type { Foundation, FounderMembership } from "../../../../../lib/types";
 import { Alert, Button, Skeleton } from "@birr/ui";
 import { DeedDocument } from "../../../DeedDocument";
+import { SignFoundationDeedForm } from "../../../SignFoundationDeedForm";
 
 export default function FoundationDeedPage() {
   const params = useParams<{ id: string }>();
+  const { user } = useFounderSession();
   const [foundation, setFoundation] = useState<Foundation | null>(null);
+  const [members, setMembers] = useState<FounderMembership[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    apiFetchJson<Foundation>(`/foundations/${params.id}`)
-      .then((data) => {
-        if (!cancelled) setFoundation(data);
+  const load = useCallback(() => {
+    Promise.all([
+      apiFetchJson<Foundation>(`/foundations/${params.id}`),
+      apiFetchJson<FounderMembership[]>("/founders/me/members"),
+    ])
+      .then(([foundationData, membersData]) => {
+        setFoundation(foundationData);
+        setMembers(membersData);
       })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, [params.id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const isPrimaryContact = members?.some((m) => m.user.id === user?.id && m.permissionLevel === "primary_contact");
 
   // Fix for the notification read-state gap (see
   // lib/notifications.ts's own comment) — covers foundation_deed.signed,
@@ -64,9 +83,16 @@ export default function FoundationDeedPage() {
 
       {!error && !foundation && <Skeleton className="mt-6 h-96 w-full" />}
 
-      {!error && foundation && !foundation.foundationDeed && (
+      {!error && foundation && !foundation.foundationDeed && isPrimaryContact && (
+        <div className="mt-6">
+          <SignFoundationDeedForm foundation={foundation} onSigned={load} />
+        </div>
+      )}
+
+      {!error && foundation && !foundation.foundationDeed && isPrimaryContact === false && (
         <Alert tone="warning" title="No deed signed yet" className="mt-6">
-          {foundation.name} doesn&apos;t have a signed deed on file yet.
+          {foundation.name} doesn&apos;t have a signed deed on file yet. Only this Foundation&apos;s primary
+          contact can sign it.
         </Alert>
       )}
 
