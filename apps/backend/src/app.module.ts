@@ -15,6 +15,7 @@ import { CauseCategorySuggestionsModule } from "./modules/cause-category-suggest
 import { CauseImpactUpdatesModule } from "./modules/cause-impact-updates/cause-impact-updates.module";
 import { AssetsModule } from "./modules/assets/assets.module";
 import { BeneficiariesModule } from "./modules/beneficiaries/beneficiaries.module";
+import { FounderRequestsModule } from "./modules/founder-requests/founder-requests.module";
 import { InvestmentsModule } from "./modules/investments/investments.module";
 import { CounterpartiesModule } from "./modules/counterparties/counterparties.module";
 import { WaqfProceedsModule } from "./modules/waqf-proceeds/waqf-proceeds.module";
@@ -62,6 +63,7 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     CauseImpactUpdatesModule,
     AssetsModule,
     BeneficiariesModule,
+    FounderRequestsModule,
     InvestmentsModule,
     CounterpartiesModule,
     WaqfProceedsModule,

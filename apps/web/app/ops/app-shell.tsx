@@ -64,6 +64,7 @@ const NAV_GROUPS: {
     label: "Governance",
     items: [
       { href: "/ops/governed-actions", label: "Approvals", icon: IconClipboardCheck },
+      { href: "/ops/founder-requests", label: "Founder Requests", icon: IconInbox },
       { href: "/ops/conflict-of-interest", label: "Conflicts of Interest", icon: IconShieldAlert },
       { href: "/ops/ai-agents", label: "AI Agents", icon: IconSparkle },
     ],

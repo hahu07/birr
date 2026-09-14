@@ -352,6 +352,35 @@ export interface FounderAuditLogPage {
   nextCursor: string | null;
 }
 
+// The Founder Portal's "request" half of "view, request" — see
+// FounderRequest's own schema comment. `details` is intentionally
+// loosely typed here (its exact keys vary by `type`; see
+// FounderRequestsService.REQUIRED_DETAIL_KEYS for the backend's own
+// per-type shape) — this is a display-only record, never re-parsed
+// into a stricter shape client-side.
+export type FounderRequestType =
+  | "distribution_approval"
+  | "investment_change"
+  | "beneficiary_criteria_change"
+  | "asset_disposal"
+  | "other";
+
+export type FounderRequestStatus = "pending" | "in_review" | "actioned" | "declined";
+
+export interface FounderRequest {
+  id: string;
+  waqfId: string;
+  waqf: { id: string; name: string; type: "investment" | "asset" | "project" };
+  type: FounderRequestType;
+  details: Record<string, unknown>;
+  note: string | null;
+  status: FounderRequestStatus;
+  reviewedByStaff: { id: string; user: { fullName: string } } | null;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
 export interface Contribution {
   id: string;
   waqfId: string;

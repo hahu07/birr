@@ -25,6 +25,7 @@ import { ProceedsSection } from "./ProceedsSection";
 import { DistributionsSection } from "./DistributionsSection";
 import { BeneficiariesSection } from "./BeneficiariesSection";
 import { GovernanceActivitySection } from "./GovernanceActivitySection";
+import { RequestsSection } from "./RequestsSection";
 import { FinancialReportSection } from "./FinancialReportSection";
 import { LifecycleSection } from "./LifecycleSection";
 
@@ -147,6 +148,7 @@ export default function WaqfFundDetailPage() {
             {waqf.type === "investment" && <ProceedsSection waqfId={waqf.id} />}
             <DistributionsSection waqfId={waqf.id} />
             <BeneficiariesSection waqfId={waqf.id} />
+            <RequestsSection waqfId={waqf.id} waqfType={waqf.type} />
             <GovernanceActivitySection waqfId={waqf.id} />
             <FinancialReportSection waqfId={waqf.id} />
           </Card>

@@ -154,6 +154,31 @@ enum DistributionStatus {
   rejected
 }
 
+// A Founder's typed ask for a governance action Birr staff alone can
+// carry out — distribution.approve, investment.change, and the two
+// beneficiary handlers below are all governed_actions permission keys
+// (see GovernedActionsService's own handler map); "asset_disposal"
+// maps to asset.dispose the same way. A FounderRequest is never itself
+// a governed_action and never becomes one automatically — creating one
+// writes nothing to governed_actions, matching CLAUDE.md's "Founders
+// never operate that governance machinery themselves." It exists so a
+// Founder's ask arrives as a structured, typed, trackable thing instead
+// of free text buried in Message — see FounderRequest's own comment.
+enum FounderRequestType {
+  distribution_approval
+  investment_change
+  beneficiary_criteria_change
+  asset_disposal
+  other
+}
+
+enum FounderRequestStatus {
+  pending
+  in_review
+  actioned
+  declined
+}
+
 enum CaseAssignmentRole {
   mutawalli_officer
   investment_officer
@@ -242,11 +267,11 @@ enum FoundationStatus {
 // ---------- Models ----------
 
 model User {
-  id                         String     @id @default(uuid())
-  email                      String     @unique
-  fullName                   String
-  authProviderId             String?
-  status                     UserStatus @default(invited)
+  id                          String     @id @default(uuid())
+  email                       String     @unique
+  fullName                    String
+  authProviderId              String?
+  status                      UserStatus @default(invited)
   // Existed as an unused placeholder from before this — never set,
   // never checked. 2026-09-08: actually wired up, birr_staff only for
   // now (mandatory there — see BirrStaffService.login's own comment).
@@ -255,21 +280,21 @@ model User {
   // starts, before mfaEnabled flips true on confirmation — a
   // not-yet-confirmed secret is inert either way, since nothing reads
   // it until mfaEnabled is true.
-  mfaEnabled                 Boolean    @default(false)
-  mfaSecretEncrypted         String?
+  mfaEnabled                  Boolean    @default(false)
+  mfaSecretEncrypted          String?
   // Real password auth for the Founder Portal — see
   // apps/backend/src/common/auth/session.ts. passwordHash is nullable to
   // accommodate any future non-password-auth users (e.g. an eventual
   // WorkOS/Auth0 migration per CLAUDE.md), but is always set for
   // sign-ups created through FoundersService.signUp().
-  username                   String?    @unique
-  passwordHash               String?
+  username                    String?    @unique
+  passwordHash                String?
   // Self-service sign-up email verification. Set on signUp(), nulled out
   // once verifyEmail() consumes it — a single active token per user is
   // enough for this use case (no separate token table), same inline-token
   // shape Invitation already uses for the analogous invite-acceptance flow.
-  verificationToken          String?    @unique
-  verificationTokenExpiresAt DateTime?
+  verificationToken           String?    @unique
+  verificationTokenExpiresAt  DateTime?
   // Self-service password reset (2026-09-14) — same inline-token shape
   // as verificationToken above (a 32-byte hex link is not brute-forceable
   // by hand, unlike WhatsAppOtp's 6-digit code, so no separate
@@ -288,11 +313,11 @@ model User {
   // shape as verificationToken, since a human-typed 6-digit code needs a
   // short expiry and brute-force protection that a 32-byte hex link
   // doesn't.
-  whatsappNumber             String?
-  whatsappVerifiedAt         DateTime?
-  createdAt                  DateTime   @default(now())
-  updatedAt                  DateTime   @updatedAt
-  deletedAt                  DateTime?
+  whatsappNumber              String?
+  whatsappVerifiedAt          DateTime?
+  createdAt                   DateTime   @default(now())
+  updatedAt                   DateTime   @updatedAt
+  deletedAt                   DateTime?
 
   founderMemberships             FounderMembership[]             @relation("MembershipUser")
   invitedMemberships             FounderMembership[]             @relation("MembershipInvitedBy")
@@ -365,6 +390,7 @@ model Founder {
   signedFoundationDeeds  FoundationDeed[]
   causeSuggestions       CauseCategorySuggestion[]
   beneficiaryNominations BeneficiaryNomination[]
+  founderRequests        FounderRequest[]
 
   @@map("founders")
 }
@@ -397,8 +423,9 @@ model BirrStaff {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
-  caseAssignments WaqfCaseAssignment[]
-  coiDeclarations ConflictOfInterestDeclaration[]
+  caseAssignments         WaqfCaseAssignment[]
+  coiDeclarations         ConflictOfInterestDeclaration[]
+  reviewedFounderRequests FounderRequest[]
 
   @@map("birr_staff")
 }
@@ -480,6 +507,7 @@ model Waqf {
   causeSuggestions       CauseCategorySuggestion[]
   proceeds               WaqfProceeds[]
   beneficiaryNominations BeneficiaryNomination[]
+  founderRequests        FounderRequest[]
 
   @@index([foundationId])
   @@map("waqfs")
@@ -1402,6 +1430,46 @@ model Distribution {
   @@index([waqfId])
   @@index([causeId])
   @@map("distributions")
+}
+
+// The Founder Portal's "view, request" side of governance — see
+// CLAUDE.md's Tech principles. Until this model, a request for a
+// distribution approval, an investment change, or a beneficiary-
+// criteria change had no structured home at all: a Founder either
+// waited for staff to notice a need themselves, or wrote free text
+// into Message, which has no type, no status, and isn't triage-able
+// as a queue. This is deliberately NOT wired into governed_actions —
+// staff review a request here and, if they agree, go create the real
+// governed_action themselves through the normal Ops flow; a Founder
+// filing one moves nothing, approves nothing, and can't skip the
+// maker-checker step it's asking staff to start.
+model FounderRequest {
+  id                String               @id @default(uuid())
+  waqfId            String
+  waqf              Waqf                 @relation(fields: [waqfId], references: [id])
+  founderId         String
+  founder           Founder              @relation(fields: [founderId], references: [id])
+  type              FounderRequestType
+  // Shape varies by type (e.g. distribution_approval names a cause and
+  // beneficiary; investment_change names an instrument and proposed
+  // allocation) — validated per-type at the service layer, one Json
+  // column rather than a column per possible field across four
+  // unrelated shapes. Never itself a fiduciary record — the real
+  // before/after lives on the governed_action a staff member creates
+  // in response, if any.
+  details           Json
+  note              String?              @db.Text
+  status            FounderRequestStatus @default(pending)
+  reviewedByStaffId String?
+  reviewedByStaff   BirrStaff?           @relation(fields: [reviewedByStaffId], references: [id])
+  reviewNote        String?              @db.Text
+  reviewedAt        DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([waqfId])
+  @@index([founderId])
+  @@map("founder_requests")
 }
 
 // reviewedByUserId != declaredByUserId is enforced by a DB CHECK

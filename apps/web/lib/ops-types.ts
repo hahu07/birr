@@ -960,3 +960,31 @@ export interface VaultContribution {
   refundFailedReason: string | null;
   createdAt: string;
 }
+
+// A Founder's typed ask for a governance action staff alone can carry
+// out — see the backend's FounderRequest model comment. Staff triage
+// these on the queue at /ops/founder-requests, scoped to their own
+// caseload the same way Beneficiaries are.
+export type FounderRequestType =
+  | "distribution_approval"
+  | "investment_change"
+  | "beneficiary_criteria_change"
+  | "asset_disposal"
+  | "other";
+
+export type FounderRequestStatus = "pending" | "in_review" | "actioned" | "declined";
+
+export interface FounderRequest {
+  id: string;
+  waqfId: string;
+  waqf: { id: string; name: string; type: "investment" | "asset" | "project" };
+  founderId: string;
+  type: FounderRequestType;
+  details: Record<string, unknown>;
+  note: string | null;
+  status: FounderRequestStatus;
+  reviewedByStaff: { id: string; user: { fullName: string } } | null;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}

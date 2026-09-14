@@ -46,6 +46,7 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
   let foundationDeedAId: string;
   let causeImpactUpdateAId: string;
   let invitationAId: string;
+  let founderRequestAId: string;
 
   beforeAll(async () => {
     const userA = await prisma.user.create({
@@ -186,12 +187,27 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
       },
     });
     invitationAId = invitationA.id;
+
+    // 2026-09-14 — founder_requests is the newest founder-reachable
+    // table (FounderRequestsService); covered here from the start,
+    // unlike invitations above which was missed in the 2026-08-30
+    // expansion and needed its own follow-up fix.
+    const founderRequestA = await prisma.founderRequest.create({
+      data: {
+        waqfId: waqfAId,
+        founderId: founderAId,
+        type: "other",
+        details: { note: "RLS fixture" },
+      },
+    });
+    founderRequestAId = founderRequestA.id;
   });
 
   afterAll(async () => {
     // Children first, respecting FK order. Users/Founders left in place —
     // same convention as every other spec in this codebase (audit_logs
     // and other insert-only/immutable rows may reference them).
+    await prisma.founderRequest.deleteMany({ where: { id: founderRequestAId } });
     await prisma.invitation.deleteMany({ where: { id: invitationAId } });
     await prisma.messageAttachment.deleteMany({ where: { id: messageAttachmentAId } });
     await prisma.message.deleteMany({ where: { id: messageAId } });
@@ -229,6 +245,7 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
     ["cause_impact_updates", () => causeImpactUpdateAId],
     ["message_attachments", () => messageAttachmentAId],
     ["invitations", () => invitationAId],
+    ["founder_requests", () => founderRequestAId],
   ] as [string, () => string][])(
     "%s: founder A's row is visible to founder A, invisible to founder B, at the RLS layer alone",
     async (table, getId) => {
