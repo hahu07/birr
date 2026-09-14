@@ -30,3 +30,18 @@
     transform: translate(-2%, -6%);
   }
 }
+
+/* MarketingHome's hero subheadline — RotatingPhrase re-mounts a new
+   <span> (via a changing `key`) every few seconds; this keyframe is
+   what actually plays on each mount, gated by `motion-safe:` at the
+   call site the same as float-slow above. */
+@keyframes rotate-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

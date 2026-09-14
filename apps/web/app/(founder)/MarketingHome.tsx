@@ -32,6 +32,17 @@ import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 // summary here and the fuller page can never drift apart.
 const WAQF_TYPES = WAQF_TYPE_SLUGS.map((slug) => WAQF_TYPE_CONTENT[slug]);
 
+// Hero subheadline's rotating close — four real, distinct facts about
+// governed_actions (never a claim this codebase doesn't actually back:
+// see CLAUDE.md's own non-negotiables), cycled so the sentence keeps
+// making its case rather than saying the same four words forever.
+const GOVERNANCE_PROOF_PHRASES = [
+  "checked twice, logged forever.",
+  "reviewed by someone else.",
+  "recorded, never erased.",
+  "provable, not promised.",
+];
+
 // Two parallel four-step paths through the same platform — a Founder
 // establishes and governs their own fund; anyone else can support one of
 // Birr's own Vaults without ever establishing anything. Deliberately the
@@ -204,13 +215,20 @@ export default function MarketingHome() {
     <div className="min-h-screen bg-white">
       <SiteHeader />
 
-      <section className="relative overflow-hidden px-6 pb-24 pt-20 sm:px-8 sm:pt-28" style={{ backgroundImage: GRADIENT }}>
+      <section className="relative overflow-hidden px-6 pb-28 pt-24 sm:px-8 sm:pt-32" style={{ backgroundImage: GRADIENT }}>
         <div
           className="pointer-events-none absolute -right-32 -top-32 h-[36rem] w-[36rem] rounded-full bg-white/10 blur-3xl motion-safe:animate-[float-slow_16s_ease-in-out_infinite]"
           aria-hidden="true"
         />
         <div
           className="pointer-events-none absolute -bottom-40 -left-24 h-[28rem] w-[28rem] rounded-full bg-accent-400/10 blur-3xl motion-safe:animate-[float-slow_20s_ease-in-out_infinite_reverse]"
+          aria-hidden="true"
+        />
+        {/* A third, smaller orb behind the headline itself — the two
+            above sit at the corners; this gives the type block its own
+            faint halo instead of floating on flat gradient. */}
+        <div
+          className="pointer-events-none absolute left-1/2 top-1/3 h-[24rem] w-[24rem] -translate-x-1/2 rounded-full bg-white/[0.06] blur-3xl motion-safe:animate-[float-slow_24s_ease-in-out_infinite]"
           aria-hidden="true"
         />
         <div
@@ -222,25 +240,66 @@ export default function MarketingHome() {
           aria-hidden="true"
         />
         <div className="relative z-10 mx-auto max-w-3xl text-center">
-          <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-white/70">Waqf Trustee Platform</p>
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            A digital trustee for Islamic waqf.
-          </h1>
-          <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-white/80">
-            Establish your own Foundation and Waqf Fund, self-service — Birr becomes Mutawalli (trustee) over what
-            you establish, as you agree, no approval gate. Every decision from there runs through the same
-            maker-checker governance a fiduciary system demands.
-          </p>
-          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link href="/sign-up" className="w-full sm:w-auto">
-              <Button variant="secondary" className="w-full">
-                Sign up
-              </Button>
-            </Link>
-            <Link href="/sign-in" className="text-sm font-medium text-white/80 hover:text-white">
+          <Reveal>
+            {/* A live figure, not a decorative label — falls back to a
+                plain category pill until openVaults has actually loaded
+                or if nothing's open right now, so this never flashes a
+                wrong or deflating "0" on first paint. */}
+            <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm">
+              {openVaults && openVaults.length > 0 ? (
+                <>
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-400 motion-safe:animate-pulse" aria-hidden="true" />
+                  {openVaults.length} {openVaults.length === 1 ? "vault" : "vaults"} open for giving right now
+                </>
+              ) : (
+                "Waqf & Vault Trustee Platform"
+              )}
+            </p>
+          </Reveal>
+          <Reveal delayMs={90}>
+            <h1 className="text-balance text-4xl font-semibold tracking-tight text-white sm:text-6xl">
+              A gift that outlives you.
+              <br className="hidden sm:block" />
+              {/* Explicit space — without it, JSX collapses the
+                  whitespace between the (mobile-hidden) <br> and this
+                  span to nothing, running "you.Sadaqah" together once
+                  the <br> disappears below the sm breakpoint. */}
+              <span> </span>
+              <span className="bg-gradient-to-r from-accent-300 to-accent-500 bg-clip-text text-transparent">
+                Sadaqah Jariyah, engineered to prove it.
+              </span>
+            </h1>
+          </Reveal>
+          <Reveal delayMs={180}>
+            {/* A div, not a <p> — Reveal renders a <div>, and the nested
+                Reveal below (the punchline) would be invalid HTML nested
+                inside a real <p> (browsers silently close the paragraph
+                early on a block child, splitting the sentence). */}
+            <div className="mx-auto mt-6 max-w-xl text-balance text-lg text-white/80">
+              One governance engine. Every decision — <RotatingPhrase phrases={GOVERNANCE_PROOF_PHRASES} />
+            </div>
+          </Reveal>
+          <Reveal delayMs={270}>
+            <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+              <Link href="/sign-up" className="w-full sm:w-auto">
+                <Button
+                  variant="secondary"
+                  className="w-full px-6 py-3 text-base shadow-lg shadow-black/20 transition-transform motion-safe:hover:-translate-y-0.5"
+                >
+                  Establish your Waqf Fund
+                </Button>
+              </Link>
+              <Link
+                href="/vaults"
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-white/30 px-6 py-3 text-base font-medium text-white transition-colors hover:border-white/60 hover:bg-white/10 sm:w-auto"
+              >
+                Support a cause <span aria-hidden="true">→</span>
+              </Link>
+            </div>
+            <Link href="/sign-in" className="mt-5 inline-block text-sm font-medium text-white/70 hover:text-white">
               Already have an account? Sign in →
             </Link>
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -562,6 +621,33 @@ export default function MarketingHome() {
 
       <SiteFooter />
     </div>
+  );
+}
+
+// Cycles through a short list of phrases in place — each one fades/
+// slides in via a CSS keyframe (globals.css's own rotate-word-in) that
+// re-plays because `key={index}` forces React to re-mount the <span>
+// on every change, not because any class gets toggled by hand. The
+// interval itself is skipped under prefers-reduced-motion (same check
+// SiteChrome's own useInView makes for Reveal) — auto-changing text is
+// exactly the kind of motion that preference exists to turn off, not
+// just the transition between changes.
+function RotatingPhrase({ phrases, intervalMs = 2600 }: { phrases: string[]; intervalMs?: number }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setIndex((i) => (i + 1) % phrases.length), intervalMs);
+    return () => window.clearInterval(id);
+  }, [phrases, intervalMs]);
+
+  return (
+    <span
+      key={index}
+      className="inline-block motion-safe:animate-[rotate-word-in_500ms_ease-out] font-semibold bg-gradient-to-r from-accent-300 to-accent-500 bg-clip-text text-transparent"
+    >
+      {phrases[index]}
+    </span>
   );
 }
 
