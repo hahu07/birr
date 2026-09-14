@@ -22,7 +22,7 @@ import {
   IconSparkle,
 } from "@birr/ui";
 import { apiFetchJson } from "../../lib/api";
-import type { CauseCategory, Vault } from "../../lib/types";
+import type { Vault } from "../../lib/types";
 import { GRADIENT, Reveal, SiteFooter, SiteHeader, VaultCard } from "./SiteChrome";
 import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 
@@ -193,22 +193,17 @@ export default function MarketingHome() {
   const [howItWorksPath, setHowItWorksPath] = useState<"founder" | "giver">("founder");
   const [managesProduct, setManagesProduct] = useState<"waqf" | "vault">("waqf");
 
-  // Real data, not placeholders — GET /vaults/open and GET
-  // /cause-categories are both @Public(), no session needed. Each
-  // vault's own causes come embedded in the listOpen() response itself
-  // (see VaultsService.listOpen's own comment) — GET /vaults/:id/causes
-  // is staff-only, not something this unauthenticated page could call
-  // per vault to fill them in afterward.
+  // Real data, not a placeholder — GET /vaults/open is @Public(), no
+  // session needed. Each vault's own causes come embedded in the
+  // listOpen() response itself (see VaultsService.listOpen's own
+  // comment) — GET /vaults/:id/causes is staff-only, not something this
+  // unauthenticated page could call per vault to fill them in afterward.
   const [openVaults, setOpenVaults] = useState<Vault[] | null>(null);
-  const [causeCategories, setCauseCategories] = useState<CauseCategory[]>([]);
 
   useEffect(() => {
     apiFetchJson<Vault[]>("/vaults/open")
       .then(setOpenVaults)
       .catch(() => setOpenVaults([]));
-    apiFetchJson<CauseCategory[]>("/cause-categories")
-      .then(setCauseCategories)
-      .catch(() => setCauseCategories([]));
   }, []);
 
   return (
@@ -515,25 +510,6 @@ export default function MarketingHome() {
           </Link>
         )}
 
-        {causeCategories.length > 0 && (
-          <div className="mx-auto mt-16 max-w-3xl text-center">
-            <p className="text-xs font-semibold uppercase tracking-widest text-primary-600">One standard catalog</p>
-            <h3 className="mt-2 text-lg font-semibold tracking-tight text-slate-900">
-              The same causes, whichever door you came through.
-            </h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">
-              A Founder's Waqf Fund and a public Vault both draw from this list — causes are standardized once,
-              not reinvented per product.
-            </p>
-            <div className="mt-5 flex flex-wrap justify-center gap-2">
-              {causeCategories.map((c) => (
-                <span key={c.id} className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700">
-                  {c.icon && <span aria-hidden="true">{c.icon}</span>} {c.name}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </section>
 
       <section id="governance" className="px-6 py-20 sm:px-8">

@@ -6,25 +6,21 @@
 // manages" vault-type cards, "How it works" giver track). The homepage
 // keeps its own inline teaser (MarketingHome.tsx's "Support a cause"
 // section) unchanged — this page is the fuller, linkable one, not a
-// replacement for it. Same @Public() GET /vaults/open + GET
-// /cause-categories this page's data comes from.
+// replacement for it. Same @Public() GET /vaults/open this page's data
+// comes from.
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
-import type { CauseCategory, Vault } from "../../../lib/types";
+import type { Vault } from "../../../lib/types";
 import { Skeleton } from "@birr/ui";
 import { Reveal, SiteFooter, SiteHeader, VaultCard } from "../SiteChrome";
 
 export default function VaultsIndexPage() {
   const [vaults, setVaults] = useState<Vault[] | null>(null);
-  const [causeCategories, setCauseCategories] = useState<CauseCategory[]>([]);
 
   useEffect(() => {
     apiFetchJson<Vault[]>("/vaults/open")
       .then(setVaults)
       .catch(() => setVaults([]));
-    apiFetchJson<CauseCategory[]>("/cause-categories")
-      .then(setCauseCategories)
-      .catch(() => setCauseCategories([]));
   }, []);
 
   return (
@@ -74,25 +70,6 @@ export default function VaultsIndexPage() {
           </div>
         )}
 
-        {causeCategories.length > 0 && (
-          <div className="mx-auto mt-16 max-w-3xl text-center">
-            <p className="text-xs font-semibold uppercase tracking-widest text-primary-600">One standard catalog</p>
-            <h2 className="mt-2 text-lg font-semibold tracking-tight text-slate-900">
-              The same causes, whichever door you came through.
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">
-              A Founder's Waqf Fund and a public Vault both draw from this list — causes are standardized once, not
-              reinvented per product.
-            </p>
-            <div className="mt-5 flex flex-wrap justify-center gap-2">
-              {causeCategories.map((c) => (
-                <span key={c.id} className="flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700">
-                  {c.icon && <span aria-hidden="true">{c.icon}</span>} {c.name}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
       </section>
 
       <SiteFooter />
