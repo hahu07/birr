@@ -8,6 +8,7 @@ export interface SessionUser {
   email: string;
   fullName: string;
   mfaEnabled: boolean;
+  whatsappVerifiedAt: string | null;
 }
 
 export interface Founder {

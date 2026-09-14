@@ -338,6 +338,7 @@ model User {
   reviewedBeneficiaryNominations BeneficiaryNomination[]         @relation("BeneficiaryNominationReviewedBy")
   causeImpactUpdates             CauseImpactUpdate[]
   notifications                  Notification[]
+  notificationPreferences        NotificationPreference[]
   recordedWaqfProceeds           WaqfProceeds[]
   counterpartyShariahApprovals   Counterparty[]                  @relation("CounterpartyShariahApprover")
   createdInvestmentPlacements    InvestmentPlacement[]
@@ -1631,6 +1632,29 @@ model Notification {
 
   @@index([recipientUserId, readAt])
   @@map("notifications")
+}
+
+// Per-user opt-out from NotificationsService's own CHANNEL_PLAN
+// defaults — deliberately scoped to a handful of user-facing categories
+// (see NotificationsService's own TYPE_TO_PREFERENCE_CATEGORY map), not
+// every raw `type`. A type with no category mapping (governed_action
+// .proposed, coi.escalated, trustee_license.expiring, and every other
+// Critical-tier or staff-only type) is never user-configurable at all —
+// this table can only ever narrow what CHANNEL_PLAN already allows,
+// never widen it, and a missing row means "use the CHANNEL_PLAN
+// default," so this table starting empty changes nothing for anyone.
+model NotificationPreference {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  category        String
+  emailEnabled    Boolean  @default(true)
+  whatsappEnabled Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, category])
+  @@map("notification_preferences")
 }
 
 // One table, discriminated by inviteeKind, for both founder-side and

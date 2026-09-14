@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, Post, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Req } from "@nestjs/common";
 import { Request } from "express";
-import { IsString } from "class-validator";
-import { NotificationsService } from "./notifications.service";
+import { IsBoolean, IsString } from "class-validator";
+import { NOTIFICATION_PREFERENCE_CATEGORIES, NotificationPreferenceCategory, NotificationsService } from "./notifications.service";
 import { isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
 import { resolveUserFromSession } from "../../common/auth/current-founder";
 import { Public } from "../../common/guards/public.decorator";
@@ -12,6 +12,14 @@ class MarkReadForEntityBody {
 
   @IsString()
   relatedEntityId!: string;
+}
+
+class SetNotificationPreferenceBody {
+  @IsBoolean()
+  emailEnabled!: boolean;
+
+  @IsBoolean()
+  whatsappEnabled!: boolean;
 }
 
 // @Public() — reachable by both identity types, same "authenticated a
@@ -43,6 +51,30 @@ export class NotificationsController {
     const userId = await this.resolveRecipientUserId(request);
     await this.service.markAllRead(userId);
     return { ok: true };
+  }
+
+  // Declared before the ":id" routes above only matters for path
+  // params — "preferences" is a literal segment on GET/PUT, which never
+  // collides with those POST routes' ":id". Dual-reachable like every
+  // other route on this controller — a Founder configures their own,
+  // a Birr staff member theirs.
+  @Get("preferences")
+  async getPreferences(@Req() request: Request) {
+    const userId = await this.resolveRecipientUserId(request);
+    return this.service.getPreferences(userId);
+  }
+
+  @Put("preferences/:category")
+  async setPreference(
+    @Param("category") category: string,
+    @Body() body: SetNotificationPreferenceBody,
+    @Req() request: Request,
+  ) {
+    if (!NOTIFICATION_PREFERENCE_CATEGORIES.includes(category as NotificationPreferenceCategory)) {
+      throw new BadRequestException(`Unknown notification preference category "${category}".`);
+    }
+    const userId = await this.resolveRecipientUserId(request);
+    return this.service.setPreference(userId, category as NotificationPreferenceCategory, body);
   }
 
   // Generic direct-view mark-read — see NotificationsService.markReadForEntity's

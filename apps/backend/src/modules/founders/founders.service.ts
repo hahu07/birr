@@ -664,7 +664,13 @@ export class FoundersService {
       include: { founder: true },
     });
     return {
-      user: { id: user.id, email: user.email, fullName: user.fullName, mfaEnabled: user.mfaEnabled },
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        mfaEnabled: user.mfaEnabled,
+        whatsappVerifiedAt: user.whatsappVerifiedAt,
+      },
       founder: membership?.founder ?? null,
     };
   }

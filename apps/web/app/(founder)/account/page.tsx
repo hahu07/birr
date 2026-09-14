@@ -9,10 +9,15 @@
 // (CLAUDE.md), and forcing enrollment at signup would add real
 // onboarding friction with no equivalent internal-mandate
 // justification. Nothing here blocks any other route if MFA stays off.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { useFounderSession } from "../../../lib/founder-session";
-import type { MfaEnrollmentConfirm, MfaEnrollmentStart } from "../../../lib/types";
+import type {
+  MfaEnrollmentConfirm,
+  MfaEnrollmentStart,
+  NotificationPreferenceCategory,
+  NotificationPreferences,
+} from "../../../lib/types";
 import { Alert, Badge, Button, Card, Input, Skeleton } from "@birr/ui";
 
 type EnrollStep = "idle" | "starting" | "scan" | "backup-codes";
@@ -54,6 +59,125 @@ export default function AccountPage() {
             </div>
           )}
         </Card>
+      </div>
+
+      <div className="mt-6">
+        <Card>
+          <p className="text-sm font-medium text-slate-800">Notifications</p>
+          <p className="mt-1 text-sm text-slate-500">
+            You always see these in the bell — choose which ones also email or WhatsApp you
+            {user.whatsappVerifiedAt ? "" : " (WhatsApp needs a verified number first)"}.
+          </p>
+          <NotificationPreferencesForm whatsappVerified={Boolean(user.whatsappVerifiedAt)} />
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+const CATEGORY_LABELS: Record<NotificationPreferenceCategory, { title: string; description: string }> = {
+  governance: {
+    title: "Governance & waqf status",
+    description: "A fund is activated, a deed is signed, or Birr staff decides on a proposal you're involved in.",
+  },
+  money: {
+    title: "Money movement",
+    description: "A distribution is paid out, or a contribution is confirmed or fails.",
+  },
+  team: {
+    title: "Team & causes",
+    description: "A co-founder or teammate joins, or a cause suggestion you submitted is reviewed.",
+  },
+  messages: {
+    title: "Messages",
+    description: "Birr staff sends you a message.",
+  },
+};
+
+function NotificationPreferencesForm({ whatsappVerified }: { whatsappVerified: boolean }) {
+  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [savingCategory, setSavingCategory] = useState<NotificationPreferenceCategory | null>(null);
+
+  useEffect(() => {
+    apiFetchJson<NotificationPreferences>("/notifications/preferences")
+      .then(setPreferences)
+      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load notification preferences."));
+  }, []);
+
+  async function handleToggle(category: NotificationPreferenceCategory, field: "emailEnabled" | "whatsappEnabled") {
+    if (!preferences) return;
+    const next = { ...preferences[category], [field]: !preferences[category][field] };
+    setPreferences({ ...preferences, [category]: next });
+    setSavingCategory(category);
+    setError(null);
+    try {
+      await apiFetchJson(`/notifications/preferences/${category}`, { method: "PUT", body: JSON.stringify(next) });
+    } catch (err) {
+      // Roll back on failure — the checkbox already flipped optimistically above.
+      setPreferences((current) => (current ? { ...current, [category]: preferences[category] } : current));
+      setError(err instanceof Error ? err.message : "Couldn't save that — try again.");
+    } finally {
+      setSavingCategory(null);
+    }
+  }
+
+  if (error && !preferences) {
+    return (
+      <Alert tone="danger" title="Couldn't load notification preferences" className="mt-4">
+        {error}
+      </Alert>
+    );
+  }
+
+  if (!preferences) {
+    return <Skeleton className="mt-4 h-40 w-full" />;
+  }
+
+  return (
+    <div className="mt-4">
+      {error && (
+        <Alert tone="danger" title="Couldn't save" className="mb-3">
+          {error}
+        </Alert>
+      )}
+      <div className="divide-y divide-slate-100">
+        {(Object.keys(CATEGORY_LABELS) as NotificationPreferenceCategory[]).map((category) => {
+          const { title, description } = CATEGORY_LABELS[category];
+          const value = preferences[category];
+          return (
+            <div key={category} className="flex flex-wrap items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-800">{title}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-4">
+                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={value.emailEnabled}
+                    disabled={savingCategory === category}
+                    onChange={() => handleToggle(category, "emailEnabled")}
+                    className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  Email
+                </label>
+                <label
+                  className={`flex items-center gap-1.5 text-xs ${whatsappVerified ? "text-slate-600" : "text-slate-300"}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={value.whatsappEnabled}
+                    disabled={savingCategory === category || !whatsappVerified}
+                    onChange={() => handleToggle(category, "whatsappEnabled")}
+                    className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed"
+                  />
+                  WhatsApp
+                </label>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

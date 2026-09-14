@@ -70,6 +70,32 @@ const CHANNEL_PLAN: Record<string, { email: boolean; whatsapp: boolean }> = {
   "message.received": { email: true, whatsapp: false },
 };
 
+// User-configurable categories — deliberately a small, named subset of
+// the `type` keys above, not a 1:1 mirror of CHANNEL_PLAN. Every type
+// left unmapped here (governed_action.proposed, coi.escalated,
+// trustee_license.expiring, and the rest of the Critical tier, plus
+// every staff-only/self-feedback type) is never user-configurable —
+// see NotificationPreference's own schema comment on why that's a
+// deliberate ceiling, not an oversight. The four categories below are
+// exactly the ones a Founder Portal account actually receives day to
+// day (see account/page.tsx's own notification-preferences section).
+export const NOTIFICATION_PREFERENCE_CATEGORIES = ["governance", "money", "team", "messages"] as const;
+export type NotificationPreferenceCategory = (typeof NOTIFICATION_PREFERENCE_CATEGORIES)[number];
+
+const TYPE_TO_PREFERENCE_CATEGORY: Record<string, NotificationPreferenceCategory> = {
+  "governed_action.decided": "governance",
+  "waqf.activated": "governance",
+  "foundation_deed.signed": "governance",
+  "waqf_deed.signed": "governance",
+  "distribution.paid": "money",
+  "contribution.confirmed": "money",
+  "contribution.failed": "money",
+  "founder_membership.joined": "team",
+  "foundation.co_founder_joined": "team",
+  "cause_suggestion.reviewed": "team",
+  "message.received": "messages",
+};
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -107,7 +133,19 @@ export class NotificationsService {
     const user = await prisma.user.findUnique({ where: { id: input.recipientUserId } });
     if (!user) return; // Shouldn't happen — the FK guarantees the row exists — but never throw over a best-effort send.
 
-    if (plan.email) {
+    // A user preference can only narrow CHANNEL_PLAN, never widen it —
+    // an unmapped type (most of the Critical tier) skips this lookup
+    // entirely and always follows the plan above.
+    const category = TYPE_TO_PREFERENCE_CATEGORY[input.type];
+    const preference = category
+      ? await prisma.notificationPreference.findUnique({
+          where: { userId_category: { userId: user.id, category } },
+        })
+      : null;
+    const emailAllowed = plan.email && (preference?.emailEnabled ?? true);
+    const whatsappAllowed = plan.whatsapp && (preference?.whatsappEnabled ?? true);
+
+    if (emailAllowed) {
       try {
         await this.emailAdapter.sendNotificationEmail(user.email, {
           title: input.title,
@@ -122,7 +160,7 @@ export class NotificationsService {
       }
     }
 
-    if (plan.whatsapp) {
+    if (whatsappAllowed) {
       if (!user.whatsappNumber || !user.whatsappVerifiedAt) {
         this.logger.log(`Skipping WhatsApp for notification "${notification.id}" — recipient has no verified number.`);
       } else {
@@ -146,6 +184,33 @@ export class NotificationsService {
       linkUrl: input.linkUrl,
     });
     await this.whatsAppAdapter.sendMessage(to, message);
+  }
+
+  // Every category defaults to {email: true, whatsapp: true} — the
+  // CHANNEL_PLAN default — so a user who never visited this settings
+  // page gets a full row set here rather than an empty array a
+  // frontend would otherwise have to fill in with its own hardcoded
+  // defaults (and risk drifting from this file's own defaults).
+  async getPreferences(userId: string): Promise<Record<NotificationPreferenceCategory, { emailEnabled: boolean; whatsappEnabled: boolean }>> {
+    const rows = await prisma.notificationPreference.findMany({ where: { userId } });
+    const byCategory = new Map(rows.map((r) => [r.category, r]));
+    return Object.fromEntries(
+      NOTIFICATION_PREFERENCE_CATEGORIES.map((category) => [
+        category,
+        {
+          emailEnabled: byCategory.get(category)?.emailEnabled ?? true,
+          whatsappEnabled: byCategory.get(category)?.whatsappEnabled ?? true,
+        },
+      ]),
+    ) as Record<NotificationPreferenceCategory, { emailEnabled: boolean; whatsappEnabled: boolean }>;
+  }
+
+  setPreference(userId: string, category: NotificationPreferenceCategory, input: { emailEnabled: boolean; whatsappEnabled: boolean }) {
+    return prisma.notificationPreference.upsert({
+      where: { userId_category: { userId, category } },
+      update: { emailEnabled: input.emailEnabled, whatsappEnabled: input.whatsappEnabled },
+      create: { userId, category, emailEnabled: input.emailEnabled, whatsappEnabled: input.whatsappEnabled },
+    });
   }
 
   list(recipientUserId: string) {

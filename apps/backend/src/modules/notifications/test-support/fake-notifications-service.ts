@@ -36,3 +36,21 @@ export function createFakeNotificationsService(): NotificationsService {
     new FakeWhatsAppAdapter() as unknown as TwilioWhatsAppAdapter,
   );
 }
+
+// Same fake service as above, but also hands back the fakes themselves
+// so a test can assert on what was actually sent — needed for
+// notification-preference tests, where the whole point is proving a
+// channel was (or wasn't) attempted, not just that notify() didn't throw.
+export function createFakeNotificationsServiceWithSpies(): {
+  service: NotificationsService;
+  emailAdapter: FakeNotificationEmailAdapter;
+  whatsAppAdapter: FakeWhatsAppAdapter;
+} {
+  const emailAdapter = new FakeNotificationEmailAdapter();
+  const whatsAppAdapter = new FakeWhatsAppAdapter();
+  const service = new NotificationsService(
+    emailAdapter as unknown as ResendNotificationEmailAdapter,
+    whatsAppAdapter as unknown as TwilioWhatsAppAdapter,
+  );
+  return { service, emailAdapter, whatsAppAdapter };
+}

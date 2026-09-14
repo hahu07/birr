@@ -487,3 +487,13 @@ export interface MfaEnrollmentStart {
 export interface MfaEnrollmentConfirm {
   backupCodes: string[];
 }
+
+// Mirrors NotificationsService's own NOTIFICATION_PREFERENCE_CATEGORIES
+// — a small, named subset of notification types a Founder can actually
+// opt out of (see that file's own comment on why it's not every type).
+export type NotificationPreferenceCategory = "governance" | "money" | "team" | "messages";
+
+export type NotificationPreferences = Record<
+  NotificationPreferenceCategory,
+  { emailEnabled: boolean; whatsappEnabled: boolean }
+>;
