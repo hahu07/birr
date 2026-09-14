@@ -1,8 +1,11 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { Controller, Get, Query, Req } from "@nestjs/common";
+import type { Request } from "express";
 import { prisma } from "@birr/db";
 import { AuditLogsService } from "./audit-logs.service";
 import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
+import { resolveFounderFromSession } from "../../common/auth/current-founder";
+import { Public } from "../../common/guards/public.decorator";
 
 const PAGE_SIZE = 50;
 
@@ -37,6 +40,54 @@ export class AuditLogsController {
         actorUser: { select: { id: true, fullName: true, email: true } },
         actorAgent: { select: { id: true, name: true } },
         actorFounder: { select: { id: true, name: true } },
+      },
+    });
+    const hasMore = items.length > PAGE_SIZE;
+    const page = hasMore ? items.slice(0, PAGE_SIZE) : items;
+    return { items: page, nextCursor: hasMore ? page[page.length - 1]!.id : null };
+  }
+
+  // Founder-facing — 2026-09-14, found missing entirely during a
+  // comprehensive Founder-side review: the list() route above already
+  // exists, but sits behind the default-deny SessionAuthGuard floor,
+  // which resolves a Birr-staff session specifically — a Founder session
+  // fails it outright, so there was no founder-reachable audit trail at
+  // all despite founder_user actions being logged every step of the way
+  // (allocation changes, deed signings, invitations, cause selection...).
+  // @Public() here + a manual resolveFounderFromSession() call, same
+  // dual-session-controller posture as FinancialReportsController.
+  //
+  // Scoped by actorFounderId, not waqfId — a jointly-established Waqf
+  // Fund's co-founder never appears here, matching this codebase's own
+  // isolation principle ("a Founder sees only... nothing about any other
+  // Founder") more faithfully than a waqf-level scope would (Foundation-
+  // level events like a signed deed or a sent invitation have no waqfId
+  // at all, so a waqfId-scoped view would silently miss them). Every
+  // teammate under this same Founder DOES show up here — they already
+  // share full visibility into each other's actions everywhere else in
+  // the Portal (team/page.tsx, foundations/[id]/page.tsx), so this isn't
+  // a new exposure.
+  //
+  // Never selects before/after — same restraint
+  // GovernanceActivitySection already takes on the decided-governance
+  // side: a summary of *that* an action happened, not its full payload
+  // (some snapshots carry a beneficiary's bank details or a deed's full
+  // legal text, neither of which belongs in a scrollable activity feed).
+  @Public()
+  @Get("me")
+  async listMine(@Req() request: Request, @Query("cursor") cursor?: string) {
+    const founder = await resolveFounderFromSession(request);
+    const items = await prisma.auditLog.findMany({
+      where: { actorFounderId: founder.id },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: PAGE_SIZE + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        action: true,
+        entityType: true,
+        createdAt: true,
+        actorUser: { select: { id: true, fullName: true } },
       },
     });
     const hasMore = items.length > PAGE_SIZE;

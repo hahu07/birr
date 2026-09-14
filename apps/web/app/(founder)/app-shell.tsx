@@ -26,6 +26,7 @@ import { OnboardingWizardChrome } from "./onboarding/OnboardingWizardChrome";
 import {
   IconBriefcase,
   IconCheckCircle,
+  IconClock,
   IconHome,
   IconLogOut,
   IconMark,
@@ -41,6 +42,7 @@ const NAV_ITEMS = [
   { href: "/messages", label: "Messages", icon: IconMessageCircle },
   { href: "/impact", label: "Impact", icon: IconCheckCircle },
   { href: "/team", label: "Team", icon: IconUsers },
+  { href: "/activity", label: "Activity", icon: IconClock },
 ];
 
 // Routes with their own full-screen layout, reachable whether or not a

@@ -333,6 +333,25 @@ export interface WaqfGovernanceActivity {
   checkerUser: { id: string; fullName: string } | null;
 }
 
+// GET /audit-logs/me (2026-09-14) — this Founder's own team's activity
+// across every Foundation/Waqf Fund they're part of, scoped server-side
+// by actorFounderId. Deliberately a thinner shape than Ops' own
+// AuditLog type (ops-types.ts) — no before/after, no waqfId/entityId —
+// see the backend route's own comment on why a raw payload never
+// belongs in a scrollable activity feed.
+export interface FounderAuditLogEntry {
+  id: string;
+  action: string;
+  entityType: string;
+  createdAt: string;
+  actorUser: { id: string; fullName: string } | null;
+}
+
+export interface FounderAuditLogPage {
+  items: FounderAuditLogEntry[];
+  nextCursor: string | null;
+}
+
 export interface Contribution {
   id: string;
   waqfId: string;
