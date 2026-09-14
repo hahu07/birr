@@ -1,5 +1,15 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateNested,
+} from "class-validator";
 import { Type } from "class-transformer";
 import { prisma, Prisma, BeneficiaryKind, PayoutProvider } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -10,6 +20,12 @@ import { EncryptionService } from "../../common/settings/encryption.service";
 const NAME_MAX_LENGTH = 200;
 const ELIGIBILITY_MAX_LENGTH = 1000;
 const REVIEW_NOTES_MAX_LENGTH = 500;
+// A CSV of thousands of rows in one request risks a long-running,
+// single-transaction write (see proposeBulk() below — every row shares
+// one withFounderScope transaction). 500 is generous for what this is
+// actually for (an NGO's existing roster, not a mass-import pipeline)
+// while keeping one request's worst case bounded.
+const MAX_BULK_ROWS = 500;
 
 export class ProposeBeneficiaryNominationInput {
   @IsString()
@@ -58,6 +74,54 @@ export class ProposeBeneficiaryNominationInput {
   @IsOptional()
   @IsEnum(PayoutProvider)
   payoutProvider?: PayoutProvider;
+}
+
+// One row of a bulk (CSV) import — deliberately a narrower shape than
+// ProposeBeneficiaryNominationInput above: no bankDetails/payoutProvider.
+// A spreadsheet of bank account numbers is its own sensitive-data
+// problem distinct from "here's our beneficiary roster," and every
+// existing single-nomination bank details field is optional anyway —
+// added per-beneficiary later if needed, not a bulk-import requirement.
+export class BulkBeneficiaryNominationRow {
+  @IsString()
+  @IsNotEmpty({ message: "Name is required." })
+  @MaxLength(NAME_MAX_LENGTH)
+  name!: string;
+
+  @IsOptional()
+  @IsEnum(BeneficiaryKind)
+  kind?: BeneficiaryKind;
+
+  @IsString()
+  @IsNotEmpty({ message: "Eligibility is required." })
+  @MaxLength(ELIGIBILITY_MAX_LENGTH)
+  eligibilityCriteria!: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  // The frontend resolves a CSV "Cause" column (a name, not an id) to
+  // this before submitting — same reasoning as WaqfCause names being
+  // what a founder actually recognizes, not the underlying id.
+  @IsString()
+  @IsNotEmpty({ message: "Cause is required." })
+  causeId!: string;
+}
+
+export class ProposeBulkBeneficiaryNominationsInput {
+  @IsString()
+  waqfId!: string;
+
+  @ValidateNested({ each: true })
+  @Type(() => BulkBeneficiaryNominationRow)
+  @ArrayMinSize(1, { message: "At least one row is required." })
+  @ArrayMaxSize(MAX_BULK_ROWS, { message: `No more than ${MAX_BULK_ROWS} rows per import.` })
+  rows!: BulkBeneficiaryNominationRow[];
 }
 
 export class RejectBeneficiaryNominationInput {
@@ -153,6 +217,103 @@ export class BeneficiaryNominationsService {
     });
 
     return nomination;
+  }
+
+  /**
+   * Bulk (CSV) import — same review-queue posture as propose() above,
+   * just many rows in one call instead of one. Deliberately partial-
+   * success, not all-or-nothing on business-rule failures: a row whose
+   * causeId doesn't belong to this waqf is skipped and reported back,
+   * not treated as a reason to reject the other 199 good rows in the
+   * same file — the whole point of a bulk import is not re-typing a
+   * roster one mistake at a time. An actual database error still rolls
+   * back the whole call, same as any other withFounderScope transaction
+   * (per-row inserts all share it) — that's a real failure, not a
+   * validation outcome to report row-by-row.
+   */
+  async proposeBulk(input: ProposeBulkBeneficiaryNominationsInput, founderId: string, userId: string) {
+    const result = await withFounderScope(founderId, async (tx) => {
+      const waqf = await tx.waqf.findFirst({
+        where: { id: input.waqfId, foundation: { foundationFounders: { some: { founderId } } } },
+      });
+      if (!waqf) throw new BadRequestException(`Waqf "${input.waqfId}" does not belong to you.`);
+
+      const causes = await tx.waqfCause.findMany({ where: { waqfId: input.waqfId }, select: { id: true } });
+      const causeIds = new Set(causes.map((c) => c.id));
+
+      const createdIds: string[] = [];
+      const errors: { rowIndex: number; name: string; message: string }[] = [];
+
+      for (const [rowIndex, row] of input.rows.entries()) {
+        if (!causeIds.has(row.causeId)) {
+          errors.push({ rowIndex, name: row.name, message: "Cause doesn't belong to this waqf." });
+          continue;
+        }
+
+        const nomination = await tx.beneficiaryNomination.create({
+          data: {
+            waqfId: input.waqfId,
+            causeId: row.causeId,
+            proposedByFounderId: founderId,
+            proposedByUserId: userId,
+            name: row.name.trim(),
+            kind: row.kind,
+            eligibilityCriteria: row.eligibilityCriteria.trim(),
+            phone: row.phone,
+            email: row.email,
+          },
+        });
+        const { bankDetailsEncrypted: _bankDetailsEncrypted, ...auditSafe } = nomination;
+        await tx.auditLog.create({
+          data: {
+            waqfId: input.waqfId,
+            actorType: "founder_user",
+            actorUserId: userId,
+            actorFounderId: founderId,
+            action: "beneficiary_nomination.proposed",
+            entityType: "BeneficiaryNomination",
+            entityId: nomination.id,
+            after: auditSafe as any,
+          },
+        });
+        createdIds.push(nomination.id);
+      }
+
+      return { createdIds, errors };
+    });
+
+    if (result.createdIds.length > 0) {
+      this.notifyCaseAssigneesBulk(input.waqfId, result.createdIds.length).catch((err) => {
+        this.logger.error(
+          `Failed to notify case assignees of bulk beneficiary nominations for waqf "${input.waqfId}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      });
+    }
+
+    return { createdCount: result.createdIds.length, errors: result.errors };
+  }
+
+  // Same lookup as notifyCaseAssignees below, one aggregate notification
+  // instead of one per row — a 200-row import shouldn't drop 200
+  // separate notifications on every assigned staff member's bell.
+  private async notifyCaseAssigneesBulk(waqfId: string, count: number): Promise<void> {
+    const assignees = await prisma.waqfCaseAssignment.findMany({
+      where: { waqfId, status: "active" },
+      select: { birrStaff: { select: { userId: true } } },
+    });
+    await Promise.all(
+      assignees.map((a) =>
+        this.notificationsService.notify({
+          recipientType: "birr_staff",
+          recipientUserId: a.birrStaff.userId,
+          type: "beneficiary_nomination.pending",
+          title: `${count} new beneficiary nominations pending review`,
+          body: `A founder submitted a bulk nomination of ${count} beneficiaries.`,
+          linkUrl: `/ops/waqfs/${waqfId}`,
+        }),
+      ),
+    );
   }
 
   /**

@@ -3,6 +3,7 @@ import { Request } from "express";
 import {
   BeneficiaryNominationsService,
   ProposeBeneficiaryNominationInput,
+  ProposeBulkBeneficiaryNominationsInput,
   RejectBeneficiaryNominationInput,
 } from "./beneficiary-nominations.service";
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
@@ -23,6 +24,15 @@ export class BeneficiaryNominationsController {
   async propose(@Body() body: ProposeBeneficiaryNominationInput, @Req() request: Request) {
     const [founder, user] = await Promise.all([resolveFounderFromSession(request), resolveUserFromSession(request)]);
     return this.service.propose(body, founder.id, user.id);
+  }
+
+  // Declared before ":id/..." below — "bulk" is a literal path segment,
+  // never confused with an :id, but matching this controller's own
+  // "static route before dynamic" convention regardless.
+  @Post("bulk")
+  async proposeBulk(@Body() body: ProposeBulkBeneficiaryNominationsInput, @Req() request: Request) {
+    const [founder, user] = await Promise.all([resolveFounderFromSession(request), resolveUserFromSession(request)]);
+    return this.service.proposeBulk(body, founder.id, user.id);
   }
 
   @Post(":id/approve")

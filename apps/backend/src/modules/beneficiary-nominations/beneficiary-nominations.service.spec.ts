@@ -257,4 +257,69 @@ describe("BeneficiaryNominationsService", () => {
     const others = await service.listForFounder(waqfId, otherFounderId);
     expect(others).toHaveLength(0);
   });
+
+  describe("proposeBulk()", () => {
+    test("creates a pending nomination per row and audit-logs each one", async () => {
+      const result = await service.proposeBulk(
+        {
+          waqfId,
+          rows: [
+            { causeId, name: "Bulk Row One", eligibilityCriteria: "Orphaned" },
+            { causeId, name: "Bulk Row Two", eligibilityCriteria: "Widowed", kind: "individual" },
+          ],
+        },
+        founderId,
+        founderUserId,
+      );
+
+      expect(result.createdCount).toBe(2);
+      expect(result.errors).toHaveLength(0);
+
+      const created = await prisma.beneficiaryNomination.findMany({
+        where: { waqfId, name: { in: ["Bulk Row One", "Bulk Row Two"] } },
+      });
+      created.forEach((n) => nominationIds.push(n.id));
+      expect(created).toHaveLength(2);
+      expect(created.every((n) => n.status === "pending")).toBe(true);
+
+      const logs = await prisma.auditLog.findMany({
+        where: { entityId: { in: created.map((n) => n.id) }, action: "beneficiary_nomination.proposed" },
+      });
+      expect(logs).toHaveLength(2);
+      expect(logs.every((l) => l.actorType === "founder_user" && l.actorUserId === founderUserId)).toBe(true);
+    });
+
+    test("skips a row whose causeId doesn't belong to the waqf, reports it, and still creates the good rows", async () => {
+      const result = await service.proposeBulk(
+        {
+          waqfId,
+          rows: [
+            { causeId, name: "Bulk Good Row", eligibilityCriteria: "Orphaned" },
+            { causeId: "00000000-0000-0000-0000-000000000000", name: "Bulk Bad Row", eligibilityCriteria: "N/A" },
+          ],
+        },
+        founderId,
+        founderUserId,
+      );
+
+      expect(result.createdCount).toBe(1);
+      expect(result.errors).toEqual([{ rowIndex: 1, name: "Bulk Bad Row", message: "Cause doesn't belong to this waqf." }]);
+
+      const good = await prisma.beneficiaryNomination.findFirst({ where: { waqfId, name: "Bulk Good Row" } });
+      expect(good).not.toBeNull();
+      nominationIds.push(good!.id);
+      const bad = await prisma.beneficiaryNomination.findFirst({ where: { waqfId, name: "Bulk Bad Row" } });
+      expect(bad).toBeNull();
+    });
+
+    test("rejects a waqf that isn't the founder's", async () => {
+      await expect(
+        service.proposeBulk(
+          { waqfId, rows: [{ causeId, name: "Someone", eligibilityCriteria: "N/A" }] },
+          otherFounderId,
+          founderUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
 });

@@ -6,15 +6,21 @@
 // and standard endowment practice keeps that confidential from the
 // donor, not just from the general public. See
 // BeneficiariesService.summaryForFounder's own comment.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import type { Bank, BeneficiarySummary, WaqfCause } from "../../../../lib/types";
 import { Alert, Button, Combobox, Input, Skeleton, StatCard } from "@birr/ui";
 
+interface BulkNominationResult {
+  createdCount: number;
+  errors: { rowIndex: number; name: string; message: string }[];
+}
+
 export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
   const [summary, setSummary] = useState<BeneficiarySummary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [nominateState, setNominateState] = useState<"idle" | "form" | "submitted">("idle");
+  const [nominateState, setNominateState] = useState<"idle" | "form" | "bulk" | "submitted">("idle");
+  const [bulkResult, setBulkResult] = useState<BulkNominationResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,9 +41,14 @@ export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
       <div className="mb-1.5 flex flex-wrap items-start justify-between gap-3">
         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Beneficiaries</p>
         {nominateState === "idle" && (
-          <Button variant="secondary" className="shrink-0 px-3 py-1.5 text-xs" onClick={() => setNominateState("form")}>
-            Nominate a beneficiary
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setNominateState("form")}>
+              Nominate a beneficiary
+            </Button>
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setNominateState("bulk")}>
+              Bulk import (CSV)
+            </Button>
+          </div>
         )}
       </div>
       <p className="mb-3 text-sm text-slate-500">
@@ -51,10 +62,40 @@ export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
         </Alert>
       )}
 
+      {bulkResult && nominateState === "idle" && (
+        <Alert
+          tone={bulkResult.errors.length === 0 ? "success" : "warning"}
+          title={`${bulkResult.createdCount} nomination(s) submitted for review`}
+          className="mb-4"
+        >
+          {bulkResult.errors.length > 0 && (
+            <div className="mt-1.5 space-y-0.5 text-xs">
+              <p>{bulkResult.errors.length} row(s) were skipped:</p>
+              {bulkResult.errors.map((e) => (
+                <p key={e.rowIndex}>
+                  Row {e.rowIndex + 1} ({e.name || "unnamed"}): {e.message}
+                </p>
+              ))}
+            </div>
+          )}
+        </Alert>
+      )}
+
       {nominateState === "form" && (
         <NominateBeneficiaryFormPanel
           waqfId={waqfId}
           onSubmitted={() => setNominateState("submitted")}
+          onCancel={() => setNominateState("idle")}
+        />
+      )}
+
+      {nominateState === "bulk" && (
+        <BulkNominateCsvPanel
+          waqfId={waqfId}
+          onSubmitted={(result) => {
+            setBulkResult(result);
+            setNominateState("idle");
+          }}
           onCancel={() => setNominateState("idle")}
         />
       )}
@@ -339,5 +380,272 @@ function NominateBeneficiaryFormPanel({
         </div>
       )}
     </form>
+  );
+}
+
+const CSV_TEMPLATE = "Name,Kind,Cause,Eligibility,Phone,Email\nAhmad Bello,individual,Education,\"Orphaned, under 18\",,\n";
+
+// Minimal RFC-4180-ish parser — handles quoted fields (so a comma or a
+// literal quote can appear inside "Eligibility", the one column likely
+// to contain either) and CRLF/LF line endings. Not a full CSV grammar
+// (no multi-line quoted fields), which is a deliberate "start simple"
+// cut for what's realistically a spreadsheet export, not arbitrary CSV.
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  const pushField = () => {
+    row.push(field);
+    field = "";
+  };
+  const pushRow = () => {
+    pushField();
+    rows.push(row);
+    row = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inQuotes) {
+      if (char === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        field += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      pushField();
+    } else if (char === "\n") {
+      pushRow();
+    } else if (char === "\r") {
+      // skip — the following \n (if any) drives the row break
+    } else {
+      field += char;
+    }
+  }
+  if (field.length > 0 || row.length > 0) pushRow();
+  return rows.filter((r) => r.some((cell) => cell.trim().length > 0));
+}
+
+interface ParsedRow {
+  name: string;
+  kind: "individual" | "organization";
+  causeName: string;
+  causeId: string | null;
+  eligibilityCriteria: string;
+  phone: string;
+  email: string;
+  clientError: string | null;
+}
+
+function downloadCsvTemplate() {
+  const blob = new Blob([CSV_TEMPLATE], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "beneficiary-nominations-template.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * CSV import for a founder onboarding an existing beneficiary roster
+ * (an NGO's existing list, say) rather than re-typing it one at a time
+ * through NominateBeneficiaryFormPanel above. Deliberately no bank
+ * details column — see ProposeBulkBeneficiaryNominationsInput's own
+ * comment on why that's a separate, later step. Cause is matched by
+ * name (case-insensitive) against this waqf's own causes, not by id —
+ * a spreadsheet author knows the cause's name, not its database id.
+ */
+function BulkNominateCsvPanel({
+  waqfId,
+  onSubmitted,
+  onCancel,
+}: {
+  waqfId: string;
+  onSubmitted: (result: BulkNominationResult) => void;
+  onCancel: () => void;
+}) {
+  const [causes, setCauses] = useState<WaqfCause[]>([]);
+  const [rows, setRows] = useState<ParsedRow[] | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    apiFetchJson<WaqfCause[]>(`/waqf-causes?waqfId=${waqfId}`)
+      .then(setCauses)
+      .catch(() => setCauses([]));
+  }, [waqfId]);
+
+  function handleFile(file: File) {
+    setError(null);
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      const table = parseCsv(text);
+      if (table.length < 2) {
+        setError("That file has no data rows — check it has a header row plus at least one beneficiary.");
+        setRows(null);
+        return;
+      }
+      const header = table[0].map((h) => h.trim().toLowerCase());
+      const col = (name: string) => header.indexOf(name);
+      const nameCol = col("name");
+      const causeCol = col("cause");
+      const eligibilityCol = col("eligibility");
+      if (nameCol === -1 || causeCol === -1 || eligibilityCol === -1) {
+        setError('The header row must include "Name", "Cause", and "Eligibility" columns.');
+        setRows(null);
+        return;
+      }
+      const kindCol = col("kind");
+      const phoneCol = col("phone");
+      const emailCol = col("email");
+
+      const parsed: ParsedRow[] = table.slice(1).map((cells) => {
+        const name = (cells[nameCol] ?? "").trim();
+        const causeName = (cells[causeCol] ?? "").trim();
+        const eligibilityCriteria = (cells[eligibilityCol] ?? "").trim();
+        const kindRaw = (kindCol >= 0 ? cells[kindCol] : "")?.trim().toLowerCase();
+        const kind: "individual" | "organization" = kindRaw === "organization" ? "organization" : "individual";
+        const cause = causes.find((c) => c.name.toLowerCase() === causeName.toLowerCase());
+
+        let clientError: string | null = null;
+        if (!name) clientError = "Missing name.";
+        else if (!eligibilityCriteria) clientError = "Missing eligibility.";
+        else if (!causeName) clientError = "Missing cause.";
+        else if (!cause) clientError = `Cause "${causeName}" doesn't match any of this fund's causes.`;
+
+        return {
+          name,
+          kind,
+          causeName,
+          causeId: cause?.id ?? null,
+          eligibilityCriteria,
+          phone: (phoneCol >= 0 ? cells[phoneCol] : "")?.trim() ?? "",
+          email: (emailCol >= 0 ? cells[emailCol] : "")?.trim() ?? "",
+          clientError,
+        };
+      });
+      setRows(parsed);
+    };
+    reader.readAsText(file);
+  }
+
+  const validRows = rows?.filter((r) => !r.clientError) ?? [];
+  const invalidCount = (rows?.length ?? 0) - validRows.length;
+
+  async function handleSubmit() {
+    if (validRows.length === 0) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await apiFetchJson<BulkNominationResult>("/beneficiary-nominations/bulk", {
+        method: "POST",
+        body: JSON.stringify({
+          waqfId,
+          rows: validRows.map((r) => ({
+            name: r.name,
+            kind: r.kind,
+            causeId: r.causeId,
+            eligibilityCriteria: r.eligibilityCriteria,
+            phone: r.phone || undefined,
+            email: r.email || undefined,
+          })),
+        }),
+      });
+      onSubmitted(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mb-4 space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+      {error && (
+        <Alert tone="danger" title="Couldn't import">
+          {error}
+        </Alert>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-slate-800">Import a beneficiary roster</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            A CSV with Name, Cause, Eligibility columns (Kind/Phone/Email optional). Cause names must match one of
+            this fund's own causes.
+          </p>
+        </div>
+        <button type="button" className="shrink-0 text-xs font-medium text-primary-700 hover:underline" onClick={downloadCsvTemplate}>
+          Download template
+        </button>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-primary-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleFile(file);
+        }}
+      />
+
+      {rows && (
+        <div>
+          <p className="mb-2 text-xs text-slate-500">
+            {fileName} — {rows.length} row(s) parsed, {validRows.length} ready to submit
+            {invalidCount > 0 ? `, ${invalidCount} with problems` : ""}.
+          </p>
+          <div className="max-h-64 overflow-y-auto overflow-x-auto rounded-md border border-slate-200">
+            <table className="w-full min-w-[36rem] text-left text-xs">
+              <thead className="sticky top-0 bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-2.5 py-1.5 font-medium">#</th>
+                  <th className="px-2.5 py-1.5 font-medium">Name</th>
+                  <th className="px-2.5 py-1.5 font-medium">Cause</th>
+                  <th className="px-2.5 py-1.5 font-medium">Eligibility</th>
+                  <th className="px-2.5 py-1.5 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map((r, i) => (
+                  <tr key={i} className={r.clientError ? "bg-red-50" : undefined}>
+                    <td className="px-2.5 py-1.5 text-slate-400">{i + 1}</td>
+                    <td className="px-2.5 py-1.5 text-slate-800">{r.name || "—"}</td>
+                    <td className="px-2.5 py-1.5 text-slate-600">{r.causeName || "—"}</td>
+                    <td className="max-w-[16rem] truncate px-2.5 py-1.5 text-slate-600">{r.eligibilityCriteria || "—"}</td>
+                    <td className="px-2.5 py-1.5">
+                      {r.clientError ? (
+                        <span className="text-red-600">{r.clientError}</span>
+                      ) : (
+                        <span className="text-primary-700">Ready</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button type="button" disabled={submitting || validRows.length === 0} onClick={handleSubmit}>
+          {submitting ? "Submitting…" : `Submit ${validRows.length || ""} nomination(s)`}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }
