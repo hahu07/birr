@@ -1,6 +1,6 @@
 import { prisma } from "@birr/db";
 import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
-import { BeneficiariesService } from "./beneficiaries.service";
+import { BeneficiariesService, MAX_UNSCOPED_LIST_ROWS } from "./beneficiaries.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
 
 describe("BeneficiariesService", () => {
@@ -341,6 +341,26 @@ describe("BeneficiariesService", () => {
       const resultIds = results.map((b) => b.id);
       expect(resultIds).toContain(onA.id);
       expect(resultIds).not.toContain(onB.id);
+    });
+
+    // 2026-09-14 audit fix: list() with no waqfId previously ran an
+    // unbounded findMany on both the platform_admin and caseload
+    // branches, and the controller decrypts bank details on every
+    // returned row — an unfiltered call was returning every
+    // beneficiary's decrypted bank account details, platform-wide, in
+    // one response. Asserted via a findMany spy, not by actually
+    // creating MAX_UNSCOPED_LIST_ROWS+1 fixture rows.
+    test("list() with no waqfId caps both the platform_admin and caseload branches at MAX_UNSCOPED_LIST_ROWS", async () => {
+      const findManySpy = jest.spyOn(prisma.beneficiary, "findMany");
+      try {
+        await service.list(undefined, { id: "irrelevant-id", staffRole: "platform_admin" });
+        expect(findManySpy).toHaveBeenLastCalledWith(expect.objectContaining({ take: MAX_UNSCOPED_LIST_ROWS }));
+
+        await service.list(undefined, { id: "irrelevant-id", staffRole: "mutawalli_officer" });
+        expect(findManySpy).toHaveBeenLastCalledWith(expect.objectContaining({ take: MAX_UNSCOPED_LIST_ROWS }));
+      } finally {
+        findManySpy.mockRestore();
+      }
     });
   });
 });

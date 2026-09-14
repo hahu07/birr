@@ -6,6 +6,13 @@ import { withFounderScope } from "../../common/db/founder-scope";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import type { PayoutBankDetails } from "../distributions/providers/payout-provider.interface";
 
+// See list()'s own 2026-09-14 comment below — bounds the two
+// waqfId-omitted "see everything" branches, which otherwise returned
+// every beneficiary's decrypted bank details platform-wide in one call.
+// Exported so its own regression test doesn't hardcode a second copy of
+// this number.
+export const MAX_UNSCOPED_LIST_ROWS = 200;
+
 // bankCode stays optional here — a beneficiary's partial bank details
 // (or a beneficiary not yet meant for Paystack payout at all) can still
 // be saved. It only becomes a hard requirement at distribution-approval
@@ -308,16 +315,32 @@ export class BeneficiariesService {
   // previous firm-wide dump, scope to the caller's own active caseload —
   // platform_admin keeps seeing everything, matching its role as the one
   // exemption above.
+  //
+  // Update, 2026-09-14 — both waqfId-omitted branches are capped at
+  // MAX_UNSCOPED_LIST_ROWS: found live during a comprehensive Founder-side
+  // review that this endpoint's controller (BeneficiariesController.list())
+  // calls withDecryptedBankDetails() on every returned row, so an
+  // unfiltered call was returning every beneficiary's decrypted bank
+  // account details, platform-wide, in one unbounded response — real
+  // financial PII, not just a scale concern. No caller in this codebase
+  // today omits waqfId (the Ops UI always scopes to one waqf), so this
+  // cap has no effect on any known usage; it exists purely to bound the
+  // blast radius of the platform_admin/caseload "see everything" paths
+  // this method deliberately still offers. Same `take`-cap convention as
+  // WaqfsService.list()'s own capped branch — this codebase has no
+  // cursor-pagination primitive yet, so a hard cap is the established
+  // pattern, not a partial fix.
   list(waqfId: string | undefined, staff: { id: string; staffRole: string }) {
     if (waqfId) {
       return prisma.beneficiary.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" } });
     }
     if (staff.staffRole === "platform_admin") {
-      return prisma.beneficiary.findMany({ orderBy: { createdAt: "desc" } });
+      return prisma.beneficiary.findMany({ orderBy: { createdAt: "desc" }, take: MAX_UNSCOPED_LIST_ROWS });
     }
     return prisma.beneficiary.findMany({
       where: { waqf: { caseAssignments: { some: { birrStaffId: staff.id, status: "active" } } } },
       orderBy: { createdAt: "desc" },
+      take: MAX_UNSCOPED_LIST_ROWS,
     });
   }
 
