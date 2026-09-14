@@ -29,6 +29,82 @@ import {
   TableRow,
 } from "@birr/ui";
 
+// CSV export (2026-09-14) — same report data already on screen,
+// reshaped for a spreadsheet rather than a fresh fetch or a new backend
+// endpoint: GET /financial-reports/:waqfId already writes its own
+// "financial_report.exported" audit log on every call, so viewing the
+// report at all is already the compliance-relevant event this codebase
+// cares about recording — a client-side reshape of what's already been
+// fetched needs no export of its own. Multiple differently-shaped
+// tables (raised/distributed totals, by-cause, allocations) don't
+// collapse into one flat table, so this writes them as separate
+// blank-line-separated sections within one file, a common practical
+// compromise for "export what's on this page" exports. Mirrored exactly
+// from app/(founder)/portfolio/[id]/FinancialReportSection.tsx, same as
+// the rest of this file — see this file's own top comment.
+function escapeCsvField(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+function toCsvRow(fields: (string | number)[]): string {
+  return fields.map((f) => escapeCsvField(String(f))).join(",");
+}
+
+function reportToCsv(report: FinancialReport): string {
+  const lines: string[] = [];
+
+  lines.push(toCsvRow(["Waqf", report.waqf.name]));
+  lines.push(toCsvRow(["Type", report.waqf.type]));
+  lines.push(toCsvRow(["Jurisdiction", report.waqf.jurisdiction]));
+  lines.push(
+    toCsvRow([
+      "Corpus target",
+      report.waqf.corpusAmount ? `${report.waqf.corpusCurrency} ${report.waqf.corpusAmount}` : "Not declared",
+    ]),
+  );
+  lines.push(toCsvRow(["Generated", report.generatedAt]));
+  lines.push("");
+
+  lines.push(toCsvRow(["Raised", "Currency", "Amount"]));
+  for (const r of report.raised) lines.push(toCsvRow(["", r.currency, r.totalAmount]));
+  lines.push("");
+
+  lines.push(toCsvRow(["Distributed", "Currency", "Amount"]));
+  for (const d of report.distributed) lines.push(toCsvRow(["", d.currency, d.totalAmount]));
+  lines.push("");
+
+  if (report.proceeds) {
+    lines.push(toCsvRow(["Investment proceeds recorded", report.proceeds.total]));
+    lines.push("");
+  }
+
+  lines.push(toCsvRow(["By cause", "Currency", "Distributed", "Distributions", "Beneficiaries"]));
+  for (const row of report.distributionsByCause) {
+    lines.push(toCsvRow([row.causeName, row.currency, row.totalAmount, row.distributionCount, row.beneficiaryCount]));
+  }
+  lines.push("");
+
+  lines.push(toCsvRow(["Cause allocations", "Corpus allocated", "Proceeds allocated"]));
+  for (const c of report.causeAllocations) {
+    lines.push(toCsvRow([c.name, c.allocatedAmount ?? "", c.proceedsAllocatedAmount ?? ""]));
+  }
+
+  return lines.join("\n");
+}
+
+function downloadCsv(report: FinancialReport, waqfName: string) {
+  const blob = new Blob([reportToCsv(report)], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const slug = waqfName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  a.download = `${slug || "financial-report"}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function FinancialReportSection({ waqfId }: { waqfId: string }) {
   const [report, setReport] = useState<FinancialReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,6 +133,15 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
+          {report && (
+            <Button
+              variant="secondary"
+              className="px-3 py-1.5 text-xs"
+              onClick={() => downloadCsv(report, report.waqf.name)}
+            >
+              Download CSV
+            </Button>
+          )}
           {report && (
             <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => window.print()}>
               Print / Save as PDF
