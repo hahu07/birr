@@ -6,7 +6,7 @@ import { VaultProceedsService } from "./vault-proceeds.service";
 
 describe("VaultLedgerService", () => {
   const service = new VaultLedgerService();
-  const vaultsService = new VaultsService(new VaultProceedsService());
+  const vaultsService = new VaultsService(new VaultProceedsService(), service);
 
   const vaultIds: string[] = [];
   let actorUserId: string;
@@ -166,5 +166,51 @@ describe("VaultLedgerService", () => {
     // A currency this vault never transacted in reports nothing —
     // never a fabricated zero row for every account in existence.
     expect(await service.trialBalance(otherVault.id, "NGN")).toEqual([]);
+  });
+
+  test("spentByCurrency() reports the Program Expenses account's own balance, per currency, for the public 'raised vs. spent' comparison", async () => {
+    const spendVault = await vaultsService.create(
+      { name: "Ledger Spend Test Vault", slug: `ledger-spend-test-${Date.now()}`, type: "project", currency: "USD", jurisdiction: "NG", additionalCurrencies: ["NGN"] },
+      actorUserId,
+    );
+    vaultIds.push(spendVault.id);
+
+    expect(await service.spentByCurrency(spendVault.id)).toEqual([]);
+
+    await prisma.$transaction((tx) =>
+      service.post(tx, {
+        vaultId: spendVault.id,
+        description: "Expense — USD",
+        currency: "USD",
+        source: "expense",
+        actorType: "system",
+        lines: [
+          { ledgerAccountId: programExpensesId, debit: "250" },
+          { ledgerAccountId: cashAndBankId, credit: "250" },
+        ],
+      }),
+    );
+    await prisma.$transaction((tx) =>
+      service.post(tx, {
+        vaultId: spendVault.id,
+        description: "Expense — NGN",
+        currency: "NGN",
+        source: "expense",
+        actorType: "system",
+        lines: [
+          { ledgerAccountId: programExpensesId, debit: "50000" },
+          { ledgerAccountId: cashAndBankId, credit: "50000" },
+        ],
+      }),
+    );
+
+    const spent = await service.spentByCurrency(spendVault.id);
+    expect(spent).toEqual(
+      expect.arrayContaining([
+        { currency: "USD", amount: "250" },
+        { currency: "NGN", amount: "50000" },
+      ]),
+    );
+    expect(spent).toHaveLength(2);
   });
 });

@@ -16,7 +16,7 @@ import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { humanize } from "../../../../lib/format";
 import type { Vault, VaultCause } from "../../../../lib/types";
-import { Alert, Button, Card, IconArchive, Input, Skeleton } from "@birr/ui";
+import { Alert, Button, Card, IconArchive, Input, Select, Skeleton } from "@birr/ui";
 import { GRADIENT, SiteFooter, SiteHeader } from "../../SiteChrome";
 
 // Same rail/currency map as WaqfFundForm's own PROVIDERS — a vault's
@@ -89,6 +89,10 @@ export default function VaultDonationPage() {
   const otherRaised = vault.amountRaised.filter((r) => r.currency !== vault.currency && Number(r.amount) > 0);
   const target = vault.targetAmount ? Number(vault.targetAmount) : null;
   const pct = target && target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : null;
+  // Real committed program spend (paid distributions + recorded
+  // expenses) — a trust signal distinct from "raised": money can sit
+  // raised-but-not-yet-spent while a project is still being set up.
+  const spent = Number(vault.spentSoFar?.find((s) => s.currency === vault.currency)?.amount ?? "0");
 
   return (
     <div className="min-h-screen bg-white">
@@ -149,6 +153,11 @@ export default function VaultDonationPage() {
             {otherRaised.length > 0 && (
               <p className={`text-sm text-slate-500 ${pct !== null || raised > 0 ? "mt-1.5" : ""}`}>
                 Also raised: {otherRaised.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")}
+              </p>
+            )}
+            {spent > 0 && (
+              <p className="mt-1.5 text-sm text-slate-500">
+                {vault.currency} {spent.toLocaleString()} already spent on the ground
               </p>
             )}
           </div>
@@ -276,7 +285,8 @@ function ContributionForm({
         {acceptedCurrencies.length > 1 && (
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Currency</label>
-            <select
+            <Select
+              className="w-full"
               value={currency}
               onChange={(e) => {
                 const nextCurrency = e.target.value;
@@ -288,14 +298,13 @@ function ContributionForm({
                 const stillAvailable = PROVIDERS.filter((p) => (p.currencies as readonly string[]).includes(nextCurrency));
                 setProvider(stillAvailable[0]?.value ?? provider);
               }}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             >
               {acceptedCurrencies.map((c) => (
                 <option key={c} value={c}>
                   {c}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
 
@@ -320,34 +329,26 @@ function ContributionForm({
         {causes.length > 0 && (
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Support a specific cause (optional)</label>
-            <select
-              value={vaultCauseId}
-              onChange={(e) => setVaultCauseId(e.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            >
+            <Select className="w-full" value={vaultCauseId} onChange={(e) => setVaultCauseId(e.target.value)}>
               <option value="">Wherever it's needed most</option>
               {causes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700">Payment method</label>
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value as (typeof PROVIDERS)[number]["value"])}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+          <Select className="w-full" value={provider} onChange={(e) => setProvider(e.target.value as (typeof PROVIDERS)[number]["value"])}>
             {availableProviders.map((p) => (
               <option key={p.value} value={p.value}>
                 {p.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -388,17 +389,13 @@ function ContributionForm({
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">ID type</label>
-                <select
-                  value={idType}
-                  onChange={(e) => setIdType(e.target.value as (typeof ID_TYPES)[number])}
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                >
+                <Select className="w-full" value={idType} onChange={(e) => setIdType(e.target.value as (typeof ID_TYPES)[number])}>
                   {ID_TYPES.map((t) => (
                     <option key={t} value={t}>
                       {humanize(t)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">ID number</label>

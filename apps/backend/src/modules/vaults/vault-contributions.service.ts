@@ -10,6 +10,7 @@ import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { StablecoinAdapter } from "../contributions/providers/stablecoin.adapter";
 import { ResendVaultReceiptEmailAdapter } from "./email/resend-vault-receipt.adapter";
 import { CASH_AND_BANK_ACCOUNT_CODE, DONATIONS_REVENUE_ACCOUNT_CODE, VaultLedgerService } from "./vault-ledger.service";
+import { findVaultOrThrow } from "./find-vault-or-throw";
 
 export class HoldVaultContributionInput {
   @IsString()
@@ -92,8 +93,7 @@ export class VaultContributionsService {
    * checks that method has and this one categorically can't.
    */
   async initiate(input: InitiateVaultContributionInput) {
-    const vault = await prisma.vault.findFirst({ where: { id: input.vaultId, deletedAt: null } });
-    if (!vault) throw new NotFoundException(`Vault "${input.vaultId}" not found.`);
+    const vault = await findVaultOrThrow(prisma, input.vaultId);
     if (vault.status !== "open") {
       throw new BadRequestException(`"${vault.name}" isn't currently open for contributions.`);
     }

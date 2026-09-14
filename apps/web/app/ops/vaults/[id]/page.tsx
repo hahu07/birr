@@ -139,9 +139,15 @@ export default function VaultDetailPage() {
           <>
             <VaultMilestonesSection
               vaultId={id}
+              currency={vault.currency}
               onChanged={reloadMilestones}
             />
-            <VaultExpensesSection vaultId={id} currency={vault.currency} milestones={milestones ?? []} />
+            <VaultExpensesSection
+              vaultId={id}
+              currency={vault.currency}
+              additionalCurrencies={vault.additionalCurrencies}
+              milestones={milestones ?? []}
+            />
           </>
         )}
         <VaultDistributionsSection vaultId={id} currency={vault.currency} causes={causes} milestones={milestones ?? []} />

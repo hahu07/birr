@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
+import { findVaultOrThrow } from "./find-vault-or-throw";
 
 export class RecordVaultProceedsInput {
   @IsString()
@@ -35,8 +36,7 @@ export class VaultProceedsService {
    */
   async record(input: RecordVaultProceedsInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
-      const vault = await tx.vault.findFirst({ where: { id: input.vaultId, deletedAt: null } });
-      if (!vault) throw new NotFoundException(`Vault "${input.vaultId}" not found.`);
+      const vault = await findVaultOrThrow(tx, input.vaultId);
       if (vault.type !== "investment") {
         throw new BadRequestException(
           `Only investment-style vaults have investment proceeds to record — "${vault.name}" is ${vault.type}.`,

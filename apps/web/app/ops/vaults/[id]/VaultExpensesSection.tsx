@@ -7,16 +7,18 @@ import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount } from "../../../../lib/format";
 import type { VaultExpense, VaultLedgerAccount, VaultMilestone } from "../../../../lib/ops-types";
-import { Alert, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { Alert, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 export function VaultExpensesSection({
   vaultId,
   currency,
+  additionalCurrencies,
   milestones,
 }: {
   vaultId: string;
   currency: string;
+  additionalCurrencies: string[];
   milestones: VaultMilestone[];
 }) {
   const {
@@ -59,6 +61,7 @@ export function VaultExpensesSection({
           <ExpenseForm
             vaultId={vaultId}
             currency={currency}
+            additionalCurrencies={additionalCurrencies}
             expenseAccounts={expenseAccounts}
             milestones={milestones}
             onCreated={() => {
@@ -88,7 +91,7 @@ export function VaultExpensesSection({
               <TableRow key={e.id}>
                 <TableCell className="font-medium text-slate-900">{e.description}</TableCell>
                 <TableCell className="text-slate-500">{milestoneName(e.vaultMilestoneId)}</TableCell>
-                <TableCell className="text-slate-500">
+                <TableCell className="tabular-nums text-slate-500">
                   {formatAmount(e.amount)} {e.currency}
                 </TableCell>
               </TableRow>
@@ -103,16 +106,25 @@ export function VaultExpensesSection({
 function ExpenseForm({
   vaultId,
   currency,
+  additionalCurrencies,
   expenseAccounts,
   milestones,
   onCreated,
 }: {
   vaultId: string;
   currency: string;
+  additionalCurrencies: string[];
   expenseAccounts: VaultLedgerAccount[];
   milestones: VaultMilestone[];
   onCreated: () => void;
 }) {
+  // Found in a codebase audit: this form used to hardcode `currency`
+  // (the vault's primary one), so staff had no way to record a real
+  // expense actually paid in one of the vault's additionalCurrencies —
+  // same picker the public contribution form already has, for the same
+  // reason.
+  const acceptedCurrencies = [currency, ...additionalCurrencies];
+  const [expenseCurrency, setExpenseCurrency] = useState(currency);
   const [ledgerAccountId, setLedgerAccountId] = useState(expenseAccounts[0]?.id ?? "");
   const [vaultMilestoneId, setVaultMilestoneId] = useState("");
   const [amount, setAmount] = useState("");
@@ -132,7 +144,7 @@ function ExpenseForm({
           vaultMilestoneId: vaultMilestoneId || undefined,
           ledgerAccountId,
           amount,
-          currency,
+          currency: expenseCurrency,
           description,
         }),
       });
@@ -157,37 +169,41 @@ function ExpenseForm({
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Account</label>
-          <select
-            value={ledgerAccountId}
-            onChange={(e) => setLedgerAccountId(e.target.value)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+          <Select value={ledgerAccountId} onChange={(e) => setLedgerAccountId(e.target.value)}>
             {expenseAccounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         {milestones.length > 0 && (
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-slate-700">Milestone (optional)</label>
-            <select
-              value={vaultMilestoneId}
-              onChange={(e) => setVaultMilestoneId(e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            >
+            <Select value={vaultMilestoneId} onChange={(e) => setVaultMilestoneId(e.target.value)}>
               <option value="">None</option>
               {milestones.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>
               ))}
-            </select>
+            </Select>
+          </div>
+        )}
+        {acceptedCurrencies.length > 1 && (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Currency</label>
+            <Select value={expenseCurrency} onChange={(e) => setExpenseCurrency(e.target.value)}>
+              {acceptedCurrencies.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
           </div>
         )}
         <div className="w-32 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Amount ({currency})</label>
+          <label className="text-sm font-medium text-slate-700">Amount ({expenseCurrency})</label>
           <Input type="number" min="0" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
         <Button type="submit" disabled={submitting}>

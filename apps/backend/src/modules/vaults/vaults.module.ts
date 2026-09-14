@@ -20,6 +20,7 @@ import { VaultExpensesService } from "./vault-expenses.service";
 import { VaultExpensesController } from "./vault-expenses.controller";
 import { VaultMilestonesService } from "./vault-milestones.service";
 import { VaultMilestonesController } from "./vault-milestones.controller";
+import { VaultMilestoneEvidenceStorageService } from "./vault-milestone-evidence-storage.service";
 import { ResendVaultReceiptEmailAdapter } from "./email/resend-vault-receipt.adapter";
 import { StripeAdapter } from "../contributions/providers/stripe.adapter";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
@@ -54,6 +55,7 @@ import { EncryptionService } from "../../common/settings/encryption.service";
     VaultLedgerAccountsService,
     VaultExpensesService,
     VaultMilestonesService,
+    VaultMilestoneEvidenceStorageService,
     // Not exported by SettingsModule (only SettingsService is) — every
     // consuming module provides its own instance, same convention as
     // e.g. BeneficiariesModule's own EncryptionService provider.

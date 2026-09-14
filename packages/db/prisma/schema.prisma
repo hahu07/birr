@@ -2189,11 +2189,18 @@ model VaultMilestone {
   targetAmount  Decimal?
   status        VaultMilestoneStatus @default(pending)
   completedAt   DateTime?
-  // Text only for v1 — no file/photo upload, same "start simple"
-  // posture file attachments were deferred with everywhere else in
-  // this codebase (see VaultCoverStorageService's own narrow, single-
-  // purpose scope).
   evidenceNotes String?
+  // Update, 2026-09-14 — a photo or completion-report PDF, same
+  // plain-local-disk convention as VaultCoverStorageService/
+  // MessageAttachmentStorageService (PNG/JPEG/WebP/PDF, mime-sniffed
+  // from the file's own bytes, never the client-supplied header). Set
+  // via VaultMilestonesService.setEvidence, independent of
+  // vault.milestone_complete — evidence can be gathered throughout a
+  // milestone's lifecycle, not only at completion, and updating it
+  // later (e.g. once a final report is ready) is a plain staff action,
+  // audit-logged like every other Vault mutation, not a second
+  // governed checkpoint on top of the one that actually moves money.
+  evidenceFileUrl String?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
   deletedAt     DateTime?

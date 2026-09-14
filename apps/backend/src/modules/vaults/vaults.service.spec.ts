@@ -2,9 +2,11 @@ import { prisma } from "@birr/db";
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { VaultsService } from "./vaults.service";
 import { VaultProceedsService } from "./vault-proceeds.service";
+import { VaultLedgerService } from "./vault-ledger.service";
 
 describe("VaultsService", () => {
-  const service = new VaultsService(new VaultProceedsService());
+  const ledger = new VaultLedgerService();
+  const service = new VaultsService(new VaultProceedsService(), ledger);
 
   const vaultIds: string[] = [];
   const vaultCauseIds: string[] = [];
@@ -28,6 +30,11 @@ describe("VaultsService", () => {
     // file would otherwise fail the deleteMany below with a foreign
     // key violation.
     await prisma.vaultContribution.deleteMany({ where: { vaultId: { in: vaultIds } } });
+    // Journal entry lines before their entries before the vault itself —
+    // the "spentSoFar" test (2026-09-14) posts real ledger entries
+    // against a fixture vault, with no onDelete: Cascade on that FK.
+    await prisma.vaultJournalEntryLine.deleteMany({ where: { journalEntry: { vaultId: { in: vaultIds } } } });
+    await prisma.vaultJournalEntry.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultCause.deleteMany({ where: { id: { in: vaultCauseIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.causeCategory.deleteMany({ where: { id: { in: causeCategoryIds } } });
@@ -248,6 +255,36 @@ describe("VaultsService", () => {
 
     expect((await service.findBySlug(slug))?.amountRaised).toEqual([]);
     expect((await service.listOpen()).find((v) => v.id === vault.id)?.amountRaised).toEqual([]);
+  });
+
+  test("findBySlug() reports spentSoFar from the Program Expenses ledger account, empty for a vault with nothing spent yet", async () => {
+    const slug = uniqueSlug("spent-so-far");
+    const vault = await service.create(
+      { name: "Spent So Far Vault", slug, type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+
+    expect((await service.findBySlug(slug))?.spentSoFar).toEqual([]);
+
+    const cashAndBank = await prisma.vaultLedgerAccount.findFirstOrThrow({ where: { code: "1000" } });
+    const programExpenses = await prisma.vaultLedgerAccount.findFirstOrThrow({ where: { code: "5000" } });
+    await prisma.$transaction((tx) =>
+      ledger.post(tx, {
+        vaultId: vault.id,
+        description: "Expense",
+        currency: "USD",
+        source: "expense",
+        actorType: "system",
+        lines: [
+          { ledgerAccountId: programExpenses.id, debit: "400" },
+          { ledgerAccountId: cashAndBank.id, credit: "400" },
+        ],
+      }),
+    );
+
+    expect((await service.findBySlug(slug))?.spentSoFar).toEqual([{ currency: "USD", amount: "400" }]);
   });
 
   test("create() accepts additionalCurrencies, deduped against the primary currency and against itself", async () => {

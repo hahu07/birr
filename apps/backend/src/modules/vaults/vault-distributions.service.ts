@@ -125,6 +125,19 @@ export class VaultDistributionsService {
     }
     await this.assertPayoutReady(distribution.counterpartyId, tx);
     await this.assertWithinAllocation(distribution.vaultCauseId, distribution.amount, distribution.currency, tx, id);
+    // Defense-in-depth re-check, same reasoning as the headroom re-check
+    // above: create() already confirmed the milestone was completed,
+    // but that was potentially a while ago (this is a governed action,
+    // decided whenever a checker gets to it) — re-verify rather than
+    // trust a status read at proposal time. No un-complete path exists
+    // today, so this can't currently fail; it's here so it can't be
+    // silently bypassed if one ever does.
+    if (distribution.vaultMilestoneId) {
+      const milestone = await tx.vaultMilestone.findUnique({ where: { id: distribution.vaultMilestoneId } });
+      if (milestone?.status !== "completed") {
+        throw new BadRequestException(`Milestone "${milestone?.name ?? distribution.vaultMilestoneId}" isn't marked completed — its tranche can't be approved.`);
+      }
+    }
 
     const claim = await tx.vaultDistribution.updateMany({
       where: { id, status: "pending" },

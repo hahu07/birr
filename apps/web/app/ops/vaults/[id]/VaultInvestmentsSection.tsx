@@ -9,7 +9,7 @@ import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import type { Counterparty, Investment, VaultInvestment } from "../../../../lib/ops-types";
-import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { Alert, Badge, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 const INSTRUMENT_TYPES: Investment["instrumentType"][] = [
@@ -178,31 +178,23 @@ function InvestmentForm({
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Counterparty</label>
-          <select
-            value={counterpartyId}
-            onChange={(e) => setCounterpartyId(e.target.value)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+          <Select value={counterpartyId} onChange={(e) => setCounterpartyId(e.target.value)}>
             {counterparties.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Instrument</label>
-          <select
-            value={instrumentType}
-            onChange={(e) => setInstrumentType(e.target.value as Investment["instrumentType"])}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+          <Select value={instrumentType} onChange={(e) => setInstrumentType(e.target.value as Investment["instrumentType"])}>
             {INSTRUMENT_TYPES.map((t) => (
               <option key={t} value={t}>
                 {humanize(t)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="w-40 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Allocated amount</label>

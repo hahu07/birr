@@ -14,7 +14,7 @@ describe("VaultDistributionsService", () => {
   const fakePayoutAdapter = new FakePaystackPayoutAdapter();
   const ledger = new VaultLedgerService();
   const service = new VaultDistributionsService(encryption, ledger, fakePayoutAdapter as any);
-  const vaultsService = new VaultsService(new VaultProceedsService());
+  const vaultsService = new VaultsService(new VaultProceedsService(), ledger);
   const milestonesService = new VaultMilestonesService();
 
   const vaultIds: string[] = [];
@@ -522,6 +522,30 @@ describe("VaultDistributionsService", () => {
       );
       vaultDistributionIds.push(distribution.id);
       expect(distribution.vaultMilestoneId).toBe(milestone.id);
+    });
+
+    // Defense-in-depth: no un-complete path exists today, but approve()
+    // re-checks the milestone's status independently of create()'s own
+    // check, the same "don't just trust a status read from proposal
+    // time" reasoning as the headroom re-check in "allocation
+    // enforcement" above. Simulates a hypothetical future un-complete
+    // by writing the status back directly, same technique that
+    // describe block's own "approve() re-checks headroom" test uses.
+    test("approve() re-checks the milestone independently and rejects if it's no longer completed", async () => {
+      const milestone = await milestonesService.create({ vaultId, name: "Completed then reverted", sequence: 103 }, actorUserId);
+      await prisma.$transaction((tx) => milestonesService.complete(milestone.id, tx));
+
+      const distribution = await service.create(
+        { vaultId, vaultCauseId: causeId, counterpartyId: payoutReadyCounterpartyId, vaultMilestoneId: milestone.id, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+
+      await prisma.vaultMilestone.update({ where: { id: milestone.id }, data: { status: "pending", completedAt: null } });
+
+      await prisma.$transaction(async (tx) => {
+        await expect(service.approve(distribution.id, tx)).rejects.toThrow(BadRequestException);
+      });
     });
 
     test("create() rejects a milestone that belongs to a different vault", async () => {

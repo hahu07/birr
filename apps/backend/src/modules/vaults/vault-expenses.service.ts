@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { CASH_AND_BANK_ACCOUNT_CODE, VaultLedgerService } from "./vault-ledger.service";
+import { findVaultOrThrow } from "./find-vault-or-throw";
 
 export class CreateVaultExpenseInput {
   @IsString()
@@ -41,8 +42,16 @@ export class VaultExpensesService {
   constructor(private readonly ledger: VaultLedgerService) {}
 
   async create(input: CreateVaultExpenseInput, actorUserId: string) {
-    const vault = await prisma.vault.findFirst({ where: { id: input.vaultId, deletedAt: null } });
-    if (!vault) throw new NotFoundException(`Vault "${input.vaultId}" not found.`);
+    const vault = await findVaultOrThrow(prisma, input.vaultId);
+    // Found in a codebase audit: unlike VaultContributionsService.initiate(),
+    // this had no check at all against the vault's accepted currencies —
+    // staff could silently post a balanced journal entry in a currency
+    // the vault never actually raised anything in, corrupting that
+    // currency's books with money that was never real.
+    const acceptedCurrencies = [vault.currency, ...vault.additionalCurrencies];
+    if (!acceptedCurrencies.includes(input.currency)) {
+      throw new BadRequestException(`This vault only accepts amounts in ${acceptedCurrencies.join(", ")}.`);
+    }
     if (input.vaultMilestoneId) {
       const milestone = await prisma.vaultMilestone.findFirst({ where: { id: input.vaultMilestoneId, vaultId: input.vaultId, deletedAt: null } });
       if (!milestone) throw new NotFoundException(`Milestone "${input.vaultMilestoneId}" not found on this vault.`);

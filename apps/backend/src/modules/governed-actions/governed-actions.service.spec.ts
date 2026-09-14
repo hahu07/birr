@@ -79,7 +79,7 @@ describe("GovernedActionsService", () => {
       fakePaystackPayoutAdapter as any,
       createFakeStablecoinPayoutAdapter() as any,
     ),
-    new VaultsService(new VaultProceedsService()),
+    new VaultsService(new VaultProceedsService(), vaultLedgerService),
     new VaultInvestmentsService(),
     new VaultDistributionsService(encryption, vaultLedgerService, fakePaystackPayoutAdapter as any),
     new VaultContributionsService(

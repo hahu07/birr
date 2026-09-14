@@ -8,6 +8,7 @@
 // comment on why this codebase never converts between currencies.
 import { useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
+import { formatAmount } from "../../../../lib/format";
 import type { VaultLedgerAccountBalance } from "../../../../lib/ops-types";
 import { Alert, EmptyState, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
@@ -80,8 +81,8 @@ function LedgerTable({ title, endpoint, currency }: { title: string; endpoint: s
                 <TableCell className="font-medium text-slate-900">
                   {r.code} — {r.name}
                 </TableCell>
-                <TableCell className="text-slate-500">
-                  {currency} {r.balance}
+                <TableCell className="tabular-nums text-slate-500">
+                  {currency} {formatAmount(r.balance)}
                 </TableCell>
               </TableRow>
             ))}

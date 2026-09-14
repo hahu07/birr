@@ -2,10 +2,11 @@ import { prisma } from "@birr/db";
 import { BadRequestException } from "@nestjs/common";
 import { VaultProceedsService } from "./vault-proceeds.service";
 import { VaultsService } from "./vaults.service";
+import { VaultLedgerService } from "./vault-ledger.service";
 
 describe("VaultProceedsService", () => {
   const service = new VaultProceedsService();
-  const vaultsService = new VaultsService(service);
+  const vaultsService = new VaultsService(service, new VaultLedgerService());
 
   const vaultIds: string[] = [];
   let actorUserId: string;

@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate } from "../../../../lib/format";
 import type { VaultInvestment, VaultProceeds } from "../../../../lib/ops-types";
-import { Alert, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { Alert, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 export function VaultProceedsSection({ vaultId, currency }: { vaultId: string; currency: string }) {
@@ -139,18 +139,14 @@ function ProceedsForm({
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Investment (optional)</label>
-          <select
-            value={vaultInvestmentId}
-            onChange={(e) => setVaultInvestmentId(e.target.value)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+          <Select value={vaultInvestmentId} onChange={(e) => setVaultInvestmentId(e.target.value)}>
             <option value="">Not tied to one instrument</option>
             {investments.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="w-40 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Amount ({currency})</label>

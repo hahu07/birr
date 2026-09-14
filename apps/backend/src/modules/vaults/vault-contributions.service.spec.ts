@@ -74,15 +74,16 @@ describe("VaultContributionsService", () => {
   const paystackFake = new FakeAdapter();
   const stablecoinFake = new FakeAdapterWithoutRefund();
   const receiptEmail = new FakeReceiptEmailAdapter();
+  const ledger = new VaultLedgerService();
   const service = new VaultContributionsService(
     new EncryptionService(),
     receiptEmail as any,
-    new VaultLedgerService(),
+    ledger,
     stripeFake as any,
     paystackFake as any,
     stablecoinFake as any,
   );
-  const vaultsService = new VaultsService(new VaultProceedsService());
+  const vaultsService = new VaultsService(new VaultProceedsService(), ledger);
 
   const vaultIds: string[] = [];
   const vaultContributionIds: string[] = [];

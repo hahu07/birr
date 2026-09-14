@@ -890,7 +890,15 @@ export interface VaultMilestone {
   status: "pending" | "in_progress" | "completed";
   completedAt: string | null;
   evidenceNotes: string | null;
+  // A photo or completion-report PDF (2026-09-14) — set independently
+  // of vault.milestone_complete via POST /vault-milestones/:id/evidence.
+  evidenceFileUrl: string | null;
   createdAt: string;
+  // Sum of this milestone's own VaultExpense rows, per currency — never
+  // summed/converted across currencies. Empty array, never missing,
+  // when nothing's been recorded against it yet. See
+  // VaultMilestonesService.withActualSpend's own comment.
+  actualSpend: { currency: string; amount: string }[];
 }
 
 // The chart of accounts VaultLedgerService's auto-posting hooks write

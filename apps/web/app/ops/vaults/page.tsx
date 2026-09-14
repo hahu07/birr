@@ -22,6 +22,7 @@ import {
   EmptyState,
   IconArchive,
   Input,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -419,17 +420,13 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Type</label>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value as VaultType)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+          <Select value={type} onChange={(e) => setType(e.target.value as VaultType)}>
             {VAULT_TYPES.map((t) => (
               <option key={t} value={t}>
                 {humanize(t)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="w-24 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Currency</label>

@@ -4,11 +4,12 @@ import { randomUUID } from "crypto";
 import { VaultInvestmentsService } from "./vault-investments.service";
 import { VaultsService } from "./vaults.service";
 import { VaultProceedsService } from "./vault-proceeds.service";
+import { VaultLedgerService } from "./vault-ledger.service";
 import { InvestmentsService } from "../investments/investments.service";
 
 describe("VaultInvestmentsService", () => {
   const service = new VaultInvestmentsService();
-  const vaultsService = new VaultsService(new VaultProceedsService());
+  const vaultsService = new VaultsService(new VaultProceedsService(), new VaultLedgerService());
   const investmentsService = new InvestmentsService();
 
   const vaultIds: string[] = [];

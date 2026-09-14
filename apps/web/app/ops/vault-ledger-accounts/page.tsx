@@ -8,13 +8,13 @@
 // auto-posting hooks write to directly — retire() on the backend
 // refuses to touch those, and this page's own Retire button is hidden
 // for them so that refusal isn't discovered only after clicking.
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { humanize } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { VaultLedgerAccount } from "../../../lib/ops-types";
-import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
-import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
+import { Alert, Badge, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { RowsSkeleton, SectionHeader, useLoadedResource } from "../_components/SectionChrome";
 
 const ACCOUNT_TYPES: VaultLedgerAccount["type"][] = ["asset", "liability", "equity", "revenue", "expense"];
 
@@ -22,29 +22,19 @@ export default function VaultLedgerAccountsPage() {
   const { staff } = useStaffSession();
   const isAdmin = staff?.staffRole === "platform_admin";
 
-  const [accounts, setAccounts] = useState<VaultLedgerAccount[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: accounts, error, reload: load } = useLoadedResource(() => apiFetchJson<VaultLedgerAccount[]>("/vault-ledger-accounts"), []);
   const [showForm, setShowForm] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    apiFetchJson<VaultLedgerAccount[]>("/vault-ledger-accounts")
-      .then(setAccounts)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const [retireError, setRetireError] = useState<string | null>(null);
 
   async function handleRetire(account: VaultLedgerAccount) {
     setPendingId(account.id);
-    setError(null);
+    setRetireError(null);
     try {
       await apiFetchJson(`/vault-ledger-accounts/${account.id}/retire`, { method: "POST" });
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setRetireError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setPendingId(null);
     }
@@ -85,8 +75,14 @@ export default function VaultLedgerAccountsPage() {
         )}
 
         {error && (
-          <Alert tone="danger" title="Something went wrong" className="mb-4">
+          <Alert tone="danger" title="Couldn't load accounts" className="mb-4">
             {error}
+          </Alert>
+        )}
+
+        {retireError && (
+          <Alert tone="danger" title="Couldn't retire account" className="mb-4">
+            {retireError}
           </Alert>
         )}
 
@@ -109,7 +105,7 @@ export default function VaultLedgerAccountsPage() {
             <TableBody>
               {accounts.map((a) => (
                 <TableRow key={a.id}>
-                  <TableCell className="font-mono text-slate-500">{a.code}</TableCell>
+                  <TableCell className="font-mono tabular-nums text-slate-500">{a.code}</TableCell>
                   <TableCell className="font-medium text-slate-900">
                     {a.name}
                     {a.isSystemDefault && (
@@ -181,17 +177,13 @@ function AccountForm({ onSaved }: { onSaved: () => void }) {
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Type</label>
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value as VaultLedgerAccount["type"])}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+          <Select value={type} onChange={(e) => setType(e.target.value as VaultLedgerAccount["type"])}>
             {ACCOUNT_TYPES.map((t) => (
               <option key={t} value={t}>
                 {humanize(t)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <Button type="submit" disabled={submitting}>
           {submitting ? "Adding…" : "Add"}

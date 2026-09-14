@@ -19,6 +19,8 @@ export { Skeleton } from "./components/Skeleton";
 export { DetailGrid } from "./components/DetailGrid";
 export type { DetailGridProps, DetailItem } from "./components/DetailGrid";
 export { Input } from "./components/Input";
+export { Select } from "./components/Select";
+export type { SelectProps } from "./components/Select";
 export { Combobox } from "./components/Combobox";
 export type { ComboboxOption, ComboboxProps } from "./components/Combobox";
 export { PasswordInput } from "./components/PasswordInput";

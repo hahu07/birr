@@ -1,5 +1,5 @@
 import { prisma } from "@birr/db";
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { VaultExpensesService } from "./vault-expenses.service";
 import { VaultLedgerService, CASH_AND_BANK_ACCOUNT_CODE } from "./vault-ledger.service";
 import { VaultMilestonesService } from "./vault-milestones.service";
@@ -8,7 +8,7 @@ import { VaultProceedsService } from "./vault-proceeds.service";
 
 describe("VaultExpensesService", () => {
   const service = new VaultExpensesService(new VaultLedgerService());
-  const vaultsService = new VaultsService(new VaultProceedsService());
+  const vaultsService = new VaultsService(new VaultProceedsService(), new VaultLedgerService());
   const milestonesService = new VaultMilestonesService();
 
   const vaultIds: string[] = [];
@@ -68,6 +68,34 @@ describe("VaultExpensesService", () => {
     expect(journalEntry?.lines).toHaveLength(2);
     expect(journalEntry?.lines.find((l) => l.ledgerAccount.id === expenseAccountId)?.debit.toString()).toBe("500");
     expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === CASH_AND_BANK_ACCOUNT_CODE)?.credit.toString()).toBe("500");
+  });
+
+  test("create() rejects a currency the vault doesn't accept, and accepts one of its additionalCurrencies", async () => {
+    await expect(
+      service.create(
+        { vaultId, ledgerAccountId: expenseAccountId, amount: "50", currency: "EUR", description: "Unaccepted currency" },
+        actorUserId,
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    const multiCurrencyVault = await vaultsService.create(
+      {
+        name: "Expenses Multi Currency Vault",
+        slug: `expenses-multi-currency-${Date.now()}`,
+        type: "project",
+        currency: "USD",
+        jurisdiction: "NG",
+        additionalCurrencies: ["NGN"],
+      },
+      actorUserId,
+    );
+    vaultIds.push(multiCurrencyVault.id);
+
+    const expense = await service.create(
+      { vaultId: multiCurrencyVault.id, ledgerAccountId: expenseAccountId, amount: "50000", currency: "NGN", description: "Local transport" },
+      actorUserId,
+    );
+    expect(expense.currency).toBe("NGN");
   });
 
   test("create() throws NotFoundException for an unknown vaultId, milestoneId, or ledgerAccountId", async () => {

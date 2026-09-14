@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { IsArray, IsEnum, IsOptional, IsString, Matches } from "class-validator";
 import { prisma, Prisma, VaultType, VaultStatus } from "@birr/db";
 import { VaultProceedsService } from "./vault-proceeds.service";
+import { VaultLedgerService } from "./vault-ledger.service";
+import { findVaultOrThrow } from "./find-vault-or-throw";
 
 const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
@@ -85,7 +87,10 @@ const ALLOWED_STATUS_TRANSITIONS: Record<VaultStatus, VaultStatus[]> = {
 
 @Injectable()
 export class VaultsService {
-  constructor(private readonly vaultProceedsService: VaultProceedsService) {}
+  constructor(
+    private readonly vaultProceedsService: VaultProceedsService,
+    private readonly ledger: VaultLedgerService,
+  ) {}
 
   /**
    * Birr-staff path — plain CRUD, not a governed_actions action, same
@@ -129,8 +134,7 @@ export class VaultsService {
    */
   async updateStatus(id: string, newStatus: VaultStatus, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
-      const vault = await tx.vault.findFirst({ where: { id, deletedAt: null } });
-      if (!vault) throw new NotFoundException(`Vault "${id}" not found.`);
+      const vault = await findVaultOrThrow(tx, id);
 
       if (!ALLOWED_STATUS_TRANSITIONS[vault.status].includes(newStatus)) {
         const allowed = ALLOWED_STATUS_TRANSITIONS[vault.status];
@@ -182,8 +186,7 @@ export class VaultsService {
    * (2026-09-11).
    */
   async publish(id: string, tx: Prisma.TransactionClient) {
-    const vault = await tx.vault.findFirst({ where: { id, deletedAt: null } });
-    if (!vault) throw new NotFoundException(`Vault "${id}" not found.`);
+    const vault = await findVaultOrThrow(tx, id);
     if (vault.status !== "draft") {
       throw new BadRequestException(`Vault "${vault.name}" is "${vault.status}", not "draft" — nothing to publish.`);
     }
@@ -201,8 +204,7 @@ export class VaultsService {
    */
   async setCoverImage(id: string, coverImageUrl: string, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
-      const vault = await tx.vault.findFirst({ where: { id, deletedAt: null } });
-      if (!vault) throw new NotFoundException(`Vault "${id}" not found.`);
+      const vault = await findVaultOrThrow(tx, id);
 
       const updated = await tx.vault.update({ where: { id }, data: { coverImageUrl } });
 
@@ -267,7 +269,15 @@ export class VaultsService {
     const vault = await prisma.vault.findFirst({ where: { slug, deletedAt: null }, select: VaultsService.PUBLIC_VAULT_SELECT });
     if (!vault) return null;
     const [withRaised] = await this.withAmountRaised([vault]);
-    return withRaised;
+    // Real committed program spend, per currency — the one already-
+    // public-safe figure the Program Expenses ledger account gives for
+    // free (see VaultLedgerService.spentByCurrency's own comment). Only
+    // on the detail page's single-vault lookup, not the /vaults index
+    // or homepage teaser grid — a donor deciding whether to give to
+    // THIS vault benefits from seeing real spend against it; a grid of
+    // many vault cards doesn't need the extra query per card.
+    const spentSoFar = await this.ledger.spentByCurrency(withRaised.id);
+    return { ...withRaised, spentSoFar };
   }
 
   /**
@@ -343,8 +353,7 @@ export class VaultsService {
    */
   async createCause(input: CreateVaultCauseInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
-      const vault = await tx.vault.findFirst({ where: { id: input.vaultId, deletedAt: null } });
-      if (!vault) throw new NotFoundException(`Vault "${input.vaultId}" not found.`);
+      await findVaultOrThrow(tx, input.vaultId);
 
       let name = input.name;
       let description = input.description;

@@ -131,6 +131,34 @@ export class VaultLedgerService {
     return this.summarize(lines);
   }
 
+  /**
+   * Real committed program spend, per currency — the Program Expenses
+   * account's own balance, which is exactly the sum of every paid
+   * VaultDistribution and every recorded VaultExpense (both auto-post a
+   * debit there), with no separate aggregation logic to keep in sync
+   * with those two hooks. Used for the public donor-facing "raised vs.
+   * spent" comparison (VaultsService.findBySlug) — deliberately not the
+   * full trial balance/income statement (those stay staff-only; this
+   * exposes one already-public-safe figure, not the whole ledger).
+   */
+  async spentByCurrency(vaultId: string): Promise<{ currency: string; amount: string }[]> {
+    const account = await prisma.vaultLedgerAccount.findFirst({ where: { code: PROGRAM_EXPENSES_ACCOUNT_CODE } });
+    if (!account) return [];
+
+    const lines = await prisma.vaultJournalEntryLine.findMany({
+      where: { ledgerAccountId: account.id, journalEntry: { vaultId } },
+      include: { journalEntry: { select: { currency: true } } },
+    });
+
+    const byCurrency = new Map<string, Prisma.Decimal>();
+    for (const line of lines) {
+      const currency = line.journalEntry.currency;
+      const current = byCurrency.get(currency) ?? new Prisma.Decimal(0);
+      byCurrency.set(currency, current.plus(line.debit).minus(line.credit));
+    }
+    return [...byCurrency.entries()].map(([currency, amount]) => ({ currency, amount: amount.toString() }));
+  }
+
   private summarize(
     lines: { ledgerAccountId: string; debit: Prisma.Decimal; credit: Prisma.Decimal; ledgerAccount: { code: string; name: string; type: string } }[],
   ): LedgerAccountBalance[] {

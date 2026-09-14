@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize } from "../../../../lib/format";
 import type { Counterparty, VaultCause, VaultDistribution, VaultMilestone } from "../../../../lib/ops-types";
-import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { Alert, Badge, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 
@@ -230,47 +230,35 @@ function DistributionForm({
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Counterparty</label>
-          <select
-            value={counterpartyId}
-            onChange={(e) => setCounterpartyId(e.target.value)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+          <Select value={counterpartyId} onChange={(e) => setCounterpartyId(e.target.value)}>
             {counterparties.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Cause</label>
-          <select
-            value={vaultCauseId}
-            onChange={(e) => setVaultCauseId(e.target.value)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+          <Select value={vaultCauseId} onChange={(e) => setVaultCauseId(e.target.value)}>
             {causes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         {milestones.length > 0 && (
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-slate-700">Milestone tranche (optional)</label>
-            <select
-              value={vaultMilestoneId}
-              onChange={(e) => setVaultMilestoneId(e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            >
+            <Select value={vaultMilestoneId} onChange={(e) => setVaultMilestoneId(e.target.value)}>
               <option value="">Ad-hoc (no milestone)</option>
               {completedMilestones.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>
               ))}
-            </select>
+            </Select>
             {completedMilestones.length === 0 && (
               <p className="text-xs text-slate-500">No milestone is completed yet — propose one's completion first.</p>
             )}

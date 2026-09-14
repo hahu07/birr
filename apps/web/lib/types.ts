@@ -131,6 +131,12 @@ export interface Vault {
   // VaultsService.withAmountRaised's own comment on why). Empty array,
   // never missing, when nothing's been confirmed yet in any currency.
   amountRaised: { currency: string; amount: string }[];
+  // Real committed program spend (every paid VaultDistribution + every
+  // recorded VaultExpense), per currency — the Program Expenses ledger
+  // account's own balance. Only present from GET /vaults/by-slug/:slug
+  // (the detail page), not the open-vaults list/teaser grid — see
+  // VaultsService.findBySlug's own comment on why.
+  spentSoFar?: { currency: string; amount: string }[];
   jurisdiction: string;
   coverImageUrl: string | null;
   // Only present from GET /vaults/by-slug/:slug and GET /vaults/:id —
