@@ -84,7 +84,9 @@ export function VaultMilestonesSection({ vaultId, currency, onChanged }: { vault
                   <TableCell className="text-slate-500">{m.sequence}</TableCell>
                   <TableCell className="font-medium text-slate-900">
                     {m.name}
-                    {m.description && <p className="mt-0.5 text-xs font-normal text-slate-500">{m.description}</p>}
+                    {m.description && (
+                      <p className="mt-0.5 max-w-xs break-words text-xs font-normal text-slate-500">{m.description}</p>
+                    )}
                   </TableCell>
                   <TableCell className="tabular-nums text-slate-500">
                     <BudgetVsActual milestone={m} currency={currency} />
