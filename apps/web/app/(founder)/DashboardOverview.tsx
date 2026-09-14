@@ -37,11 +37,12 @@ interface CurrencyTotal {
 }
 
 // Distributed money is kept split by waqf type, never blended into one
-// figure — an Investment-type waqf's distributions can draw on
-// WaqfCause.proceedsAllocatedAmount (investment returns) on top of
-// corpus, while every other type only ever spends corpus. Folding both
-// into one "Distributed" number would silently mix money with two
-// different fiduciary characters. See DistributionsService
+// figure — an Investment-type waqf's distributions draw on
+// WaqfCause.proceedsAllocatedAmount (investment returns) ALONE, per the
+// 2026-09-04 decision (corpus is no longer itself distributable for
+// Investment funds), while every other type only ever spends corpus.
+// Folding both into one "Distributed" number would silently mix money
+// with two different fiduciary characters. See DistributionsService
 // .founderSummary's own comment.
 interface DistributedTotal extends CurrencyTotal {
   waqfType: Waqf["type"];

@@ -72,13 +72,24 @@ export interface WaqfCause {
   name: string;
   description: string | null;
   // How much of the waqf's live amountRaised (confirmed Contributions)
-  // is earmarked to this cause, for every waqf type including
-  // Investment — null means not yet allocated. Set via
-  // POST /waqf-causes/:id/allocate, founder self-service. A separate,
-  // staff-only proceeds-based pool also exists (WaqfCause
-  // .proceedsAllocatedAmount) but never surfaces here — Birr staff
-  // decide that one, not the Founder.
+  // is earmarked to this cause — null means not yet allocated. Set via
+  // POST /waqf-causes/:id/allocate, founder self-service, for every
+  // waqf type. Update, 2026-09-14 — for an Investment-type waqf
+  // specifically, this is no longer itself distributable (see
+  // proceedsAllocatedAmount below): DistributionsService's own
+  // allocation-ceiling check counts proceedsAllocatedAmount alone for
+  // Investment funds, so this field there is a corpus-preservation
+  // target the Founder can still set, not a spending ceiling.
   allocatedAmount: string | null;
+  // Birr-staff-decided (WaqfProceedsService.allocateProceeds), never
+  // founder-editable — but the backend's listForFounder() already
+  // returns the full row (no select/omit), so this is present on every
+  // founder-facing WaqfCause today; it was simply never typed here
+  // before. Investment-type waqfs only (every other type has no
+  // proceeds concept, per Vault.additionalCurrencies's own precedent —
+  // see CLAUDE.md's 2026-08-28/2026-09-04 updates). The one real
+  // distributable pool for Investment-type causes as of 2026-09-04.
+  proceedsAllocatedAmount: string | null;
   createdAt: string;
   // Only present from the founder-facing listing (GET /waqf-causes as a
   // founder session) — counts, never names, so no beneficiary PII crosses

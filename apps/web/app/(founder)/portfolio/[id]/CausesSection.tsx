@@ -269,7 +269,13 @@ export function CausesSection({
         <div className="mt-6 border-t border-slate-100 pt-5">
           <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Allocation</p>
           <p className="mb-3 text-sm text-slate-500">
-            How much of this fund's raised funds goes to each cause — and from there, to that cause's beneficiaries.
+            {waqfType === "investment"
+              ? // Update, 2026-09-14 — for Investment funds, corpus allocation is
+                // a preservation record, not a spending ceiling: only staff-set
+                // investment proceeds (shown further down, once recorded) ever
+                // reach a cause's beneficiaries. Corpus itself stays invested.
+                "How much of this fund's raised corpus you're earmarking to each cause, as a target — the corpus itself stays invested; investment proceeds are what actually reaches each cause's beneficiaries."
+              : "How much of this fund's raised funds goes to each cause — and from there, to that cause's beneficiaries."}
           </p>
 
           {pool === 0 ? (

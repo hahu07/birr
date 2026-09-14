@@ -44,8 +44,12 @@ export function ProceedsSection({ waqfId }: { waqfId: string }) {
     <div className="mt-5 border-t border-slate-100 pt-5">
       <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Proceeds</p>
       <p className="mb-3 text-sm text-slate-500">
-        Investment returns recorded over time — the corpus stays invested. Split across your selected causes
-        proportionally, alongside your own corpus allocation.
+        {/* Update, 2026-09-14 — "alongside your own corpus allocation" was
+            the pre-2026-09-04 additive model; corpus no longer counts
+            toward what a distribution can draw against for Investment
+            funds, so proceeds are the only real distributable pool now. */}
+        Investment returns recorded over time — the corpus stays invested. This is what's actually distributed to
+        your selected causes; your own corpus allocation is a preservation target, not a spending pool.
       </p>
 
       {error && (
