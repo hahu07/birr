@@ -9,6 +9,7 @@ describe("VaultLedgerService", () => {
   const vaultsService = new VaultsService(new VaultProceedsService(), service);
 
   const vaultIds: string[] = [];
+  const ledgerAccountIds: string[] = [];
   let actorUserId: string;
   let vaultId: string;
   let cashAndBankId: string;
@@ -41,6 +42,7 @@ describe("VaultLedgerService", () => {
     await prisma.vaultJournalEntryLine.deleteMany({ where: { journalEntry: { vaultId: { in: vaultIds } } } });
     await prisma.vaultJournalEntry.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
+    await prisma.vaultLedgerAccount.deleteMany({ where: { id: { in: ledgerAccountIds } } });
     await prisma.$disconnect();
   });
 
@@ -166,6 +168,51 @@ describe("VaultLedgerService", () => {
     // A currency this vault never transacted in reports nothing —
     // never a fabricated zero row for every account in existence.
     expect(await service.trialBalance(otherVault.id, "NGN")).toEqual([]);
+  });
+
+  test("spentByCurrency() sums every expense-type account, not just the system-default Program Expenses row — a real bug found live: staff itemize expenses under their own sub-accounts (Materials, Labor, ...), not that one hardcoded account", async () => {
+    const spendVault = await vaultsService.create(
+      { name: "Ledger Sub-Account Spend Test Vault", slug: `ledger-subaccount-spend-test-${Date.now()}`, type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(spendVault.id);
+
+    const materialsAccount = await prisma.vaultLedgerAccount.create({
+      data: { code: `EXP-SUB-TEST-${Date.now()}`, name: "Materials (Sub-Account Test)", type: "expense" },
+    });
+    ledgerAccountIds.push(materialsAccount.id);
+
+    await prisma.$transaction((tx) =>
+      service.post(tx, {
+        vaultId: spendVault.id,
+        description: "Materials expense — not the Program Expenses account",
+        currency: "USD",
+        source: "expense",
+        actorType: "system",
+        lines: [
+          { ledgerAccountId: materialsAccount.id, debit: "600" },
+          { ledgerAccountId: cashAndBankId, credit: "600" },
+        ],
+      }),
+    );
+    // A paid distribution, which always posts to Program Expenses
+    // specifically (VaultDistributionsService's own hardcoded account) —
+    // both this and the sub-account expense above must be counted together.
+    await prisma.$transaction((tx) =>
+      service.post(tx, {
+        vaultId: spendVault.id,
+        description: "Distribution paid",
+        currency: "USD",
+        source: "distribution",
+        actorType: "system",
+        lines: [
+          { ledgerAccountId: programExpensesId, debit: "150" },
+          { ledgerAccountId: cashAndBankId, credit: "150" },
+        ],
+      }),
+    );
+
+    expect(await service.spentByCurrency(spendVault.id)).toEqual([{ currency: "USD", amount: "750" }]);
   });
 
   test("spentByCurrency() reports the Program Expenses account's own balance, per currency, for the public 'raised vs. spent' comparison", async () => {

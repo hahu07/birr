@@ -132,21 +132,25 @@ export class VaultLedgerService {
   }
 
   /**
-   * Real committed program spend, per currency — the Program Expenses
-   * account's own balance, which is exactly the sum of every paid
-   * VaultDistribution and every recorded VaultExpense (both auto-post a
-   * debit there), with no separate aggregation logic to keep in sync
-   * with those two hooks. Used for the public donor-facing "raised vs.
-   * spent" comparison (VaultsService.findBySlug) — deliberately not the
-   * full trial balance/income statement (those stay staff-only; this
-   * exposes one already-public-safe figure, not the whole ledger).
+   * Real committed program spend, per currency — the combined balance
+   * of every expense-type account, not just the one system-default
+   * "Program Expenses" (5000) row. A paid VaultDistribution always
+   * posts to that one hardcoded account (see
+   * VaultDistributionsService's own paid-hook), but a recorded
+   * VaultExpense posts to whichever expense account staff actually
+   * chose to itemize it under (Materials, Labor, Permits & Fees, or any
+   * other sub-account created via /ops/vault-ledger-accounts) — found
+   * live, 2026-09-14: this method originally summed only the one
+   * hardcoded account and silently missed every itemized expense,
+   * understating real spend to zero on a vault where staff had used
+   * sub-accounts as intended. Used for the public donor-facing "raised
+   * vs. spent" comparison (VaultsService.findBySlug) — deliberately not
+   * the full trial balance/income statement (those stay staff-only;
+   * this exposes one already-public-safe total, not the whole ledger).
    */
   async spentByCurrency(vaultId: string): Promise<{ currency: string; amount: string }[]> {
-    const account = await prisma.vaultLedgerAccount.findFirst({ where: { code: PROGRAM_EXPENSES_ACCOUNT_CODE } });
-    if (!account) return [];
-
     const lines = await prisma.vaultJournalEntryLine.findMany({
-      where: { ledgerAccountId: account.id, journalEntry: { vaultId } },
+      where: { ledgerAccount: { type: "expense" }, journalEntry: { vaultId } },
       include: { journalEntry: { select: { currency: true } } },
     });
 
