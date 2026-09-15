@@ -207,6 +207,55 @@ work (a screening call at donor/Founder/Counterparty onboarding,
 wired through `governed_actions` the same way every other Vault safety
 feature has been) is separate follow-on work, not done here.
 
+**Update, 2026-09-15 — Counterparty onboarding screening shipped;
+Founder establishment screening designed, then rejected: Founder
+self-service must never be gated on an automated screening result.**
+`SanctionsScreening` (see `packages/db/prisma/schema.prisma`),
+`ScreenShieldAdapter`, and `SanctionsScreeningService` now exist and
+gate `counterparty.onboard` (commit `8177b0e`) — a screening hit *or* a
+screening error (vendor unconfigured/unreachable) both land a
+Counterparty in `under_review` until a `compliance_officer` resolves it,
+fail-closed, per this file's own "human decision authority preserved"
+principle.
+
+Extending that same pattern to Founder establishment was designed next
+— Founder establishment has no approval gate to hook a block into (it's
+self-service; creating a Waqf Fund is itself how Birr becomes Mutawalli,
+per this file's own "What this is" section), so the design had
+establishment always succeed, with a hit/error instead flipping the new
+Founder to a `under_review` status blocking their *next* real
+money-moving step (first Waqf Fund creation, Foundation Deed signing, a
+contribution) via the existing `assertFounderVerified` chokepoint,
+until resolved.
+
+**The owner rejected this design outright**, not merely for now. Two
+reasons, raised directly: (1) ScreenShield is a picked vendor, not an
+actual signed contract (see the note directly above — "before any
+commercial commitment, Birr's own leadership still needs to
+independently verify ScreenShield's claims... none of that can be
+substituted for by picking a vendor from its own marketing site"), so
+every screening call today resolves to `error` (unconfigured), which
+the fail-closed design above treats identically to a real hit — meaning
+**every founder, not just suspicious ones**, would be frozen out of
+funding their own first Waqf Fund right after signing up. (2) More
+fundamentally: self-service is the entire point of the Founder Portal —
+a Founder should be able to establish, fund, sign, and contribute in
+full, with nothing gated behind an automated screening result, and that
+holds independent of whether ScreenShield is ever actually under
+contract. This is a standing principle for this codebase going forward,
+not a "come back once the vendor is real" deferral: **no future session
+should propose blocking any Founder self-service action —
+establishment, Waqf Fund creation, deed signing, contribution
+initiation — on a sanctions/PEP screening result, automated or
+otherwise.** If Founder-level screening is ever wanted again, it needs
+a fundamentally different shape than "block the founder until a human
+clears them" — e.g. a purely observational flag surfaced to Birr staff
+for manual, off-platform follow-up (the same posture already chosen for
+Vault's AML email-splitting gap on 2026-09-15), never a chokepoint a
+founder's own actions can hit. Vault donor screening remains separately
+deferred per the 2026-09-15 `SanctionsScreening` schema comment,
+unaffected by this note.
+
 **Update, 2026-09-13 — a Vault can now accept giving in more than one
 currency.** Until now `Vault.currency` was the one currency a vault
 could ever take a contribution in — raised directly by the owner
