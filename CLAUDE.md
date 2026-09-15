@@ -252,9 +252,28 @@ a fundamentally different shape than "block the founder until a human
 clears them" — e.g. a purely observational flag surfaced to Birr staff
 for manual, off-platform follow-up (the same posture already chosen for
 Vault's AML email-splitting gap on 2026-09-15), never a chokepoint a
-founder's own actions can hit. Vault donor screening remains separately
-deferred per the 2026-09-15 `SanctionsScreening` schema comment,
-unaffected by this note.
+founder's own actions can hit.
+
+**Update, 2026-09-15 — Vault donor screening rejected too, same day,
+same reasoning.** The 2026-09-15 `SanctionsScreening` schema comment
+originally named Vault donor ID-capture screening as a separately
+deferred slice, alongside Founder establishment, once a second concrete
+consumer justified generalizing the model. Considered immediately after
+the Founder rejection above and rejected for the same two reasons, not
+pursued as a distinct slice: ScreenShield isn't under a real contract,
+so the same fail-closed `error` path would fire for every donor who
+crosses `VaultDonorThreshold` and provides a full name/ID — a narrower
+population than "every founder" (only donors already large enough to
+need ID capture, not every giver), but the same mistake in miniature —
+and it would land directly on top of the AML email-splitting gap
+(`VaultContributionsService.findOrCreateDonor`, see the 2026-09-13/15
+update above), where the owner already chose manual/off-platform
+compliance review over an automated block on a donor's own gift. Same
+standing principle as the Founder note above, applied here too: an
+automated sanctions/PEP result should never hold up a real donor's
+contribution — if Vault donor screening is revisited, it takes the same
+observational-flag-for-manual-review shape already chosen for the AML
+gap, not a payment-blocking gate.
 
 **Update, 2026-09-13 — a Vault can now accept giving in more than one
 currency.** Until now `Vault.currency` was the one currency a vault
