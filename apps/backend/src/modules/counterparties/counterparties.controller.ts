@@ -7,6 +7,7 @@ import {
   SetConcentrationLimitInput,
   SetPayoutDetailsInput,
 } from "./counterparties.service";
+import { SanctionsScreeningService, ResolveSanctionsScreeningInput } from "./sanctions-screening.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 import { CounterpartyStatus } from "@birr/db";
@@ -24,7 +25,10 @@ class StatusChangeInput {
 // the actions that carry real fiduciary weight.
 @Controller("counterparties")
 export class CounterpartiesController {
-  constructor(private readonly service: CounterpartiesService) {}
+  constructor(
+    private readonly service: CounterpartiesService,
+    private readonly sanctionsScreening: SanctionsScreeningService,
+  ) {}
 
   @Post()
   @RequiresStaffRole("investment_committee")
@@ -97,6 +101,28 @@ export class CounterpartiesController {
   @Get(":id/exposure")
   exposure(@Param("id") id: string) {
     return this.service.exposure(id);
+  }
+
+  // Plain staff view, no dedicated role gate — same posture as
+  // findById()/exposure() above; the compliance judgment call is
+  // resolve() below, not looking at the history.
+  @Get(":id/screenings")
+  screenings(@Param("id") id: string) {
+    return this.sanctionsScreening.list(id);
+  }
+
+  // Compliance-gated — clearing a sanctions/PEP hit (or manually signing
+  // off when screening infra itself failed) is a fraud/AML judgment
+  // call, same role tier as hold()/release() on VaultContribution and
+  // suspend()/blacklist() above.
+  @Post(":id/screenings/:screeningId/resolve")
+  @RequiresStaffRole("compliance_officer")
+  resolveScreening(
+    @Param("screeningId") screeningId: string,
+    @Body() body: ResolveSanctionsScreeningInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.sanctionsScreening.resolve(screeningId, body.notes, staff.userId);
   }
 
   @Get(":id")

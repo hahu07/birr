@@ -2,10 +2,14 @@ import { prisma } from "@birr/db";
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { CounterpartiesService } from "./counterparties.service";
+import { SanctionsScreeningService } from "./sanctions-screening.service";
+import { FakeScreeningAdapter } from "./test-support/fake-screening-adapter";
 import { EncryptionService } from "../../common/settings/encryption.service";
 
 describe("CounterpartiesService", () => {
-  const service = new CounterpartiesService(new EncryptionService());
+  const screeningAdapter = new FakeScreeningAdapter();
+  const sanctionsScreening = new SanctionsScreeningService(screeningAdapter as any, new EncryptionService());
+  const service = new CounterpartiesService(new EncryptionService(), sanctionsScreening);
 
   const counterpartyIds: string[] = [];
   let actorUserId: string;
@@ -29,6 +33,8 @@ describe("CounterpartiesService", () => {
   });
 
   afterAll(async () => {
+    // RESTRICT on counterpartyId, must go before the counterparty itself.
+    await prisma.sanctionsScreening.deleteMany({ where: { counterpartyId: { in: counterpartyIds } } });
     await prisma.counterparty.deleteMany({ where: { id: { in: counterpartyIds } } });
     await prisma.$disconnect();
   });
@@ -75,6 +81,40 @@ describe("CounterpartiesService", () => {
       contactName: "Jane Doe",
       contactEmail: "jane@example.com",
       contactPhone: "+971500000000",
+    });
+  });
+
+  describe("register() — sanctions/PEP screening (2026-09-15)", () => {
+    afterEach(() => {
+      screeningAdapter.nextResult = { status: "clear", raw: { match: false } };
+    });
+
+    test("a hit lands the counterparty at under_review instead of pending_review", async () => {
+      screeningAdapter.nextResult = { status: "hit", raw: { match: true } };
+      const counterparty = await service.register(
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
+        actorUserId,
+      );
+      counterpartyIds.push(counterparty.id);
+      expect(counterparty.status).toBe("under_review");
+
+      const screening = await sanctionsScreening.latestFor(counterparty.id);
+      expect(screening?.status).toBe("hit");
+      expect(screening?.screenedName).toBe(counterparty.name);
+    });
+
+    test("a screening error also lands the counterparty at under_review — fail-closed, not treated as clear", async () => {
+      screeningAdapter.nextResult = { status: "error", raw: null, errorMessage: "ScreenShield isn't configured." };
+      const counterparty = await service.register(
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
+        actorUserId,
+      );
+      counterpartyIds.push(counterparty.id);
+      expect(counterparty.status).toBe("under_review");
+
+      const screening = await sanctionsScreening.latestFor(counterparty.id);
+      expect(screening?.status).toBe("error");
+      expect(screening?.errorMessage).toBe("ScreenShield isn't configured.");
     });
   });
 
@@ -266,7 +306,11 @@ describe("CounterpartiesService", () => {
     });
   });
 
-  describe("onboard() — gate 2, only reachable via a governed_action approval", () => {
+  describe("onboard() — gates 1 & 3 (Shariah approval, sanctions/PEP screening), only reachable via a governed_action approval", () => {
+    afterEach(() => {
+      screeningAdapter.nextResult = { status: "clear", raw: { match: false } };
+    });
+
     test("rejects onboarding with no Shariah approval recorded yet", async () => {
       const counterparty = await service.register(
         { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
@@ -297,6 +341,67 @@ describe("CounterpartiesService", () => {
     test("rejects onboarding an unknown counterparty", async () => {
       await prisma.$transaction(async (tx) => {
         await expect(service.onboard(randomUUID(), tx)).rejects.toThrow(NotFoundException);
+      });
+    });
+
+    test("rejects onboarding when the latest sanctions/PEP screening is a hit, even with Shariah approval recorded", async () => {
+      screeningAdapter.nextResult = { status: "hit", raw: { match: true } };
+      const counterparty = await service.register(
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
+        actorUserId,
+      );
+      counterpartyIds.push(counterparty.id);
+      expect(counterparty.status).toBe("under_review");
+      await service.recordShariahApproval(counterparty.id, shariahApproverUserId);
+
+      await prisma.$transaction(async (tx) => {
+        await expect(service.onboard(counterparty.id, tx)).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    test("rejects onboarding when screening errored (fail-closed — an error is not treated as clear)", async () => {
+      screeningAdapter.nextResult = { status: "error", raw: null, errorMessage: "Simulated vendor outage" };
+      const counterparty = await service.register(
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
+        actorUserId,
+      );
+      counterpartyIds.push(counterparty.id);
+      expect(counterparty.status).toBe("under_review");
+      await service.recordShariahApproval(counterparty.id, shariahApproverUserId);
+
+      await prisma.$transaction(async (tx) => {
+        await expect(service.onboard(counterparty.id, tx)).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    test("succeeds once a hit is resolve()'d and Shariah approval is present", async () => {
+      screeningAdapter.nextResult = { status: "hit", raw: { match: true } };
+      const counterparty = await service.register(
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
+        actorUserId,
+      );
+      counterpartyIds.push(counterparty.id);
+      await service.recordShariahApproval(counterparty.id, shariahApproverUserId);
+
+      const screening = await sanctionsScreening.latestFor(counterparty.id);
+      await sanctionsScreening.resolve(screening!.id, "Investigated — false positive.", actorUserId);
+
+      const onboarded = await prisma.$transaction((tx) => service.onboard(counterparty.id, tx));
+      expect(onboarded.status).toBe("active");
+    });
+
+    test("rejects onboarding a counterparty with no screening on file at all", async () => {
+      // Bypasses register() entirely — simulates a counterparty that
+      // predates this feature, same fixture shape governed-actions
+      // .service.spec.ts's own pre-existing tests use.
+      const counterparty = await prisma.counterparty.create({
+        data: { name: `No Screening Fixture ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
+      });
+      counterpartyIds.push(counterparty.id);
+      await service.recordShariahApproval(counterparty.id, shariahApproverUserId);
+
+      await prisma.$transaction(async (tx) => {
+        await expect(service.onboard(counterparty.id, tx)).rejects.toThrow(BadRequestException);
       });
     });
   });
