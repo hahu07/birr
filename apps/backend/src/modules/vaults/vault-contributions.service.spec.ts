@@ -710,4 +710,112 @@ describe("VaultContributionsService", () => {
       expect(refunded.refundReference).toBeNull();
     });
   });
+
+  // The manual/off-platform AML review CLAUDE.md's own dated note
+  // points to (2026-09-15) — direct fixture rows, not the full
+  // initiate()/handleWebhook() dance, since this is a read-only report
+  // over already-confirmed data.
+  describe("getStructuringReview()", () => {
+    let currency: string;
+    let reviewVaultId: string;
+    const donorIds: string[] = [];
+    const contributionIds: string[] = [];
+
+    beforeAll(async () => {
+      currency = `STRUCT${Date.now() % 100000}`;
+      await prisma.vaultDonorThreshold.create({ data: { currency, thresholdAmount: "1000" } });
+
+      const vault = await vaultsService.create(
+        { name: "Structuring Review Fixture Vault", slug: `structuring-review-${Date.now()}`, type: "project", currency, jurisdiction: "NG" },
+        actorUserId,
+      );
+      reviewVaultId = vault.id;
+      vaultIds.push(vault.id);
+      await prisma.$transaction((tx) => vaultsService.publish(vault.id, tx));
+    });
+
+    afterAll(async () => {
+      await prisma.vaultContribution.deleteMany({ where: { id: { in: contributionIds } } });
+      await prisma.vaultDonor.deleteMany({ where: { id: { in: donorIds } } });
+      await prisma.vaultDonorThreshold.deleteMany({ where: { currency } });
+    });
+
+    async function confirmedContributionFromDonor(email: string, amount: string) {
+      const donor = await prisma.vaultDonor.create({ data: { email } });
+      donorIds.push(donor.id);
+      const contribution = await prisma.vaultContribution.create({
+        data: {
+          vaultId: reviewVaultId,
+          donorId: donor.id,
+          amount,
+          currency,
+          provider: "stripe",
+          providerReference: `structuring-review-${donor.id}`,
+          status: "confirmed",
+        },
+      });
+      contributionIds.push(contribution.id);
+      return contribution;
+    }
+
+    test("groups near-threshold contributions from different donors to the same vault/currency", async () => {
+      await confirmedContributionFromDonor(uniqueEmail("structuring-a"), "999");
+      await confirmedContributionFromDonor(uniqueEmail("structuring-b"), "998");
+
+      const { groups } = await service.getStructuringReview();
+      const group = groups.find((g) => g.vaultId === reviewVaultId);
+      expect(group).toBeDefined();
+      expect(group!.distinctDonorCount).toBe(2);
+      expect(group!.contributions).toHaveLength(2);
+      expect(group!.contributions.every((c) => c.fractionOfThreshold >= 0.5)).toBe(true);
+    });
+
+    test("does not group a single donor's one large gift — nothing to compare it against", async () => {
+      const soloCurrency = `STRUCTSOLO${Date.now() % 100000}`;
+      await prisma.vaultDonorThreshold.create({ data: { currency: soloCurrency, thresholdAmount: "1000" } });
+      const soloVault = await vaultsService.create(
+        { name: "Structuring Review Solo Vault", slug: `structuring-solo-${Date.now()}`, type: "project", currency: soloCurrency, jurisdiction: "NG" },
+        actorUserId,
+      );
+      vaultIds.push(soloVault.id);
+      await prisma.$transaction((tx) => vaultsService.publish(soloVault.id, tx));
+
+      const donor = await prisma.vaultDonor.create({ data: { email: uniqueEmail("structuring-solo") } });
+      donorIds.push(donor.id);
+      const contribution = await prisma.vaultContribution.create({
+        data: {
+          vaultId: soloVault.id,
+          donorId: donor.id,
+          amount: "999",
+          currency: soloCurrency,
+          provider: "stripe",
+          providerReference: `structuring-solo-${donor.id}`,
+          status: "confirmed",
+        },
+      });
+      contributionIds.push(contribution.id);
+
+      const { groups } = await service.getStructuringReview();
+      expect(groups.find((g) => g.vaultId === soloVault.id)).toBeUndefined();
+
+      await prisma.vaultDonorThreshold.deleteMany({ where: { currency: soloCurrency } });
+    });
+
+    test("ignores contributions well below minFraction of the threshold", async () => {
+      await confirmedContributionFromDonor(uniqueEmail("structuring-low-a"), "100");
+      await confirmedContributionFromDonor(uniqueEmail("structuring-low-b"), "90");
+
+      const { groups } = await service.getStructuringReview(0.5);
+      const group = groups.find((g) => g.vaultId === reviewVaultId);
+      // The earlier near-threshold pair is still there — these two new,
+      // low ones must not have joined it.
+      expect(group!.contributions.some((c) => c.amount === "100")).toBe(false);
+      expect(group!.contributions.some((c) => c.amount === "90")).toBe(false);
+    });
+
+    test("a currency with no VaultDonorThreshold row is skipped entirely", async () => {
+      const { groups } = await service.getStructuringReview();
+      expect(groups.every((g) => g.currency !== "NO-THRESHOLD-CURRENCY")).toBe(true);
+    });
+  });
 });

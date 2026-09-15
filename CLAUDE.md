@@ -129,31 +129,40 @@ a Founder, and never a new self-service role. See `docs/core-service
 product-level explanation; this note exists so this section above isn't
 read as the complete picture of what Birr now is.
 
-**Update, 2026-09-13 — Known gap, deliberately not fixed: Vault's AML
-check can be bypassed by giving under a different email each time.**
-`VaultContributionsService.findOrCreateDonor` (vault-contributions
-.service.ts) is where the anti-structuring check lives — a donor
-crossing `VaultDonorThreshold` requires a full name and ID. That check
-already accumulates across currencies as of this date (giving
-just-under-threshold amounts in several currencies no longer avoids
-it — see that method's own comment for how), but it still only ever
-recognizes a donor by `donorEmail`. There is no account, login,
-session, phone number, or any other identity signal collected today —
-a donor who types a genuinely different email on every gift gets a
-genuinely different, blank-history `VaultDonor` every time, and can
-split one large gift into many smaller ones this way without ever
-triggering ID capture. In plain terms: give $9,999 five times under
-five different emails and the platform sees five unrelated small
-donors, never one $50,000 donor. No code change can close this alone —
-email is the only thread a donor has today, by design (self-service,
-no account, see the note above). Closing it for real means picking one
-of: (1) start collecting and matching on a second signal (phone number,
-device fingerprint) so different emails can still be linked; (2)
-require ID upfront above some amount regardless of a donor's history,
-not just on threshold-crossing; or (3) accept the residual risk for v1
-and rely on manual/off-platform review of unusual giving patterns
-instead. Not decided here — an explicit compliance call for the owner
-to make, not a bug for the next session to silently patch.
+**Update, 2026-09-13, decided 2026-09-15 — Vault's AML check can still
+be bypassed by giving under a different email each time; accepted as a
+residual risk for v1, covered by manual/off-platform review instead of
+a code change.** `VaultContributionsService.findOrCreateDonor`
+(vault-contributions.service.ts) is where the anti-structuring check
+lives — a donor crossing `VaultDonorThreshold` requires a full name and
+ID. That check accumulates across currencies (giving just-under-
+threshold amounts in several currencies doesn't avoid it — see that
+method's own comment for how), but it still only ever recognizes a
+donor by `donorEmail`. There is no account, login, session, phone
+number, or any other identity signal collected today — a donor who
+types a genuinely different email on every gift gets a genuinely
+different, blank-history `VaultDonor` every time, and can split one
+large gift into many smaller ones this way without ever triggering ID
+capture. In plain terms: give $9,999 five times under five different
+emails and the platform sees five unrelated small donors, never one
+$50,000 donor.
+
+Three closing options were laid out on 2026-09-13: (1) a second
+identity signal (phone number, device fingerprint) so different emails
+can still be linked; (2) requiring ID upfront above a flat amount
+regardless of a donor's history; or (3) accepting the residual risk for
+v1, relying on manual/off-platform review instead. The owner chose (3)
+explicitly on 2026-09-15 — this is now v1's actual, intended posture,
+not an open question. No code change was made to the giving flow
+itself; nothing about `findOrCreateDonor`'s single-`donorEmail`
+identity model changed. The mitigation is procedural: Birr's
+compliance/risk staff are expected to periodically query
+`VaultContribution`/`VaultDonor` off-platform (e.g. donors sharing a
+name, IP, device, or amount pattern across different emails within a
+short window) rather than relying on the in-app threshold check alone
+to catch structuring. Revisiting options (1) or (2) later, once real
+giving volume makes the residual risk harder to accept, is real
+follow-on work — not something this decision forecloses.
 
 **Update, 2026-09-13 — Sanctions/PEP screening vendor picked:
 ScreenShield, starting on its Starter tier.** The original Vault plan

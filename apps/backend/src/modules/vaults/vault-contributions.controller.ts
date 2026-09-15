@@ -38,6 +38,17 @@ export class VaultContributionsController {
     return this.service.listByVault(vaultId);
   }
 
+  // Declared before ":id" below — otherwise Nest would match this as
+  // findById(id: "structuring-review") instead. The manual/off-platform
+  // AML review CLAUDE.md's own dated note points to (2026-09-15) —
+  // same compliance-judgment tier as hold()/release() below.
+  @Get("structuring-review")
+  @RequiresStaffRole(["compliance_officer", "audit_committee", "board_of_trustees", "platform_admin"])
+  structuringReview(@Query("minFraction") minFraction?: string) {
+    const parsed = minFraction ? Number(minFraction) : undefined;
+    return this.service.getStructuringReview(parsed && !Number.isNaN(parsed) ? parsed : undefined);
+  }
+
   // Polling target for the frontend after redirect/QR display — same
   // posture as GET /contributions/:id.
   @Public()

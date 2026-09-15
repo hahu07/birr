@@ -270,7 +270,14 @@ Two additional compliance controls apply specifically to public giving:
   catches someone trying to avoid identity checks by splitting one large
   gift into several smaller ones. Stablecoin gifts carry a materially
   lower threshold than card or bank gifts, since a completed crypto
-  payment is far harder to reverse than a card charge.
+  payment is far harder to reverse than a card charge. This check
+  recognizes a donor by email alone — a different email on every gift
+  resets the running total, so structuring across emails isn't caught
+  by the platform itself. Accepted as a residual risk for v1 (owner's
+  decision, 2026-09-15): closing it would mean a second identity signal
+  or a flat per-gift ID requirement, neither built yet; for now this is
+  covered by manual/off-platform compliance review instead. See
+  CLAUDE.md's own dated note for the full reasoning.
 - **A hold.** A compliance-tier staff member can flag any confirmed gift
   for review at any time, independent of whether it's ultimately
   refunded — this pauses nothing about the payment itself, just marks it

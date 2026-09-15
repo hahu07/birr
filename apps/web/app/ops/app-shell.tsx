@@ -86,6 +86,7 @@ const NAV_GROUPS: {
     items: [
       { href: "/ops/jurisdictions", label: "Jurisdictions", icon: IconGlobe },
       { href: "/ops/audit-logs", label: "Audit Log", icon: IconFileText },
+      { href: "/ops/vault-compliance-review", label: "Vault Giving Review", icon: IconShieldAlert },
     ],
   },
   {

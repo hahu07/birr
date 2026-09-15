@@ -1013,6 +1013,31 @@ export interface VaultContribution {
   createdAt: string;
 }
 
+// GET /vault-contributions/structuring-review (2026-09-15) — the
+// manual/off-platform AML review CLAUDE.md's own dated note points to.
+// Raw near-threshold data, not an automatic verdict — see the backend
+// service's own comment on why this deliberately doesn't try to be a
+// clustering/fraud-detection algorithm.
+export interface StructuringReviewContribution {
+  id: string;
+  donorId: string | null;
+  donorEmail: string | null;
+  donorFullName: string | null;
+  donorIdCaptured: boolean;
+  amount: string;
+  fractionOfThreshold: number;
+  createdAt: string;
+}
+
+export interface StructuringReviewGroup {
+  vaultId: string;
+  vaultName: string;
+  currency: string;
+  thresholdAmount: string;
+  distinctDonorCount: number;
+  contributions: StructuringReviewContribution[];
+}
+
 // A Founder's typed ask for a governance action staff alone can carry
 // out — see the backend's FounderRequest model comment. Staff triage
 // these on the queue at /ops/founder-requests, scoped to their own

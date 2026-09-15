@@ -203,9 +203,10 @@ export class VaultContributionsService {
    * different VaultDonor identity each time, with its own zeroed
    * history — there is no account, session, or other identity signal
    * collected today to link two different emails as the same person.
-   * Closing that would mean collecting a new signal (phone, device,
-   * KYC-at-first-gift) as a real policy decision, not a bug to patch
-   * silently here — flagged for the owner, not decided in this pass.
+   * Decided, 2026-09-15 (owner's explicit call): accepted as a residual
+   * risk for v1 rather than closed here — covered by manual/off-platform
+   * compliance review instead of a second identity signal or a flat
+   * per-gift ID requirement. See CLAUDE.md's own dated note.
    *
    * Returns null when no email is given — donorEmail is optional (owner's
    * explicit direction, 2026-09-11), so a fully anonymous contribution is
@@ -414,6 +415,88 @@ export class VaultContributionsService {
       orderBy: { createdAt: "desc" },
       include: { donor: { select: { id: true, email: true, fullName: true } } },
     });
+  }
+
+  /**
+   * The manual/off-platform review this file's own findOrCreateDonor
+   * comment points to (see CLAUDE.md's dated note, 2026-09-15): the AML
+   * threshold check only ever recognizes a donor by email, so someone
+   * splitting one large gift across several emails never trips it
+   * automatically. Rather than build (and risk over-trusting) an
+   * automatic clustering heuristic, this surfaces the raw near-threshold
+   * data — every confirmed contribution at or above `minFraction` of its
+   * currency's threshold — grouped by vault+currency so a human can
+   * actually spot "several different donors, each just under, to the
+   * same vault, close together" for themselves. A currency with no
+   * VaultDonorThreshold row is skipped entirely (nothing to be "near").
+   *
+   * minFraction defaults to 0.5 — half the threshold — deliberately
+   * lower than the 1.0 the automatic check itself fires at, since this
+   * is a human-reviewed list, not an enforcement gate; false positives
+   * here cost a staff member a glance, not a blocked donor.
+   */
+  async getStructuringReview(minFraction = 0.5) {
+    const thresholds = await prisma.vaultDonorThreshold.findMany();
+    const thresholdByCurrency = new Map(thresholds.map((t) => [t.currency, t.thresholdAmount]));
+    if (thresholdByCurrency.size === 0) return { groups: [] };
+
+    const contributions = await prisma.vaultContribution.findMany({
+      where: { status: "confirmed", currency: { in: [...thresholdByCurrency.keys()] } },
+      include: { vault: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, fullName: true, idType: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const nearThreshold = contributions
+      .map((c) => {
+        const limit = thresholdByCurrency.get(c.currency)!;
+        const fraction = limit.gt(0) ? c.amount.div(limit).toNumber() : 0;
+        return { contribution: c, fraction };
+      })
+      .filter((row) => row.fraction >= minFraction);
+
+    const groupsByKey = new Map<string, typeof nearThreshold>();
+    for (const row of nearThreshold) {
+      const key = `${row.contribution.vaultId}:${row.contribution.currency}`;
+      const group = groupsByKey.get(key) ?? [];
+      group.push(row);
+      groupsByKey.set(key, group);
+    }
+
+    const groups = [...groupsByKey.values()]
+      .map((rows) => {
+        const { vault, currency } = rows[0].contribution;
+        // Anonymous (no donorId) contributions are the most evasive case
+        // — each counted as its own "distinct" giver, same reasoning
+        // findOrCreateDonor's own comment gives for why an anonymous
+        // gift skips the automatic check entirely.
+        const distinctDonorIds = new Set(rows.map((r) => r.contribution.donorId ?? r.contribution.id));
+        return {
+          vaultId: vault.id,
+          vaultName: vault.name,
+          currency,
+          thresholdAmount: thresholdByCurrency.get(currency)!.toString(),
+          distinctDonorCount: distinctDonorIds.size,
+          contributions: rows
+            .sort((a, b) => b.contribution.createdAt.getTime() - a.contribution.createdAt.getTime())
+            .map((r) => ({
+              id: r.contribution.id,
+              donorId: r.contribution.donorId,
+              donorEmail: r.contribution.donor?.email ?? null,
+              donorFullName: r.contribution.donor?.fullName ?? null,
+              donorIdCaptured: r.contribution.donor?.idType != null,
+              amount: r.contribution.amount.toString(),
+              fractionOfThreshold: r.fraction,
+              createdAt: r.contribution.createdAt,
+            })),
+        };
+      })
+      // The whole point is spotting several different givers clustering
+      // near the same threshold — a single donor legitimately giving
+      // one large, ID-verified gift isn't a review candidate at all.
+      .filter((group) => group.distinctDonorCount >= 2)
+      .sort((a, b) => b.distinctDonorCount - a.distinctDonorCount);
+
+    return { groups };
   }
 
   /**
