@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsNotEmpty, IsNumberString, IsString } from "class-validator";
+import { IsNotEmpty, IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma, PayoutProvider } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { assertWithinAllocation as assertWithinAllocationShared } from "../../common/money/allocation-ceiling";
+import { CASH_AND_BANK_ACCOUNT_CODE, PROGRAM_EXPENSES_ACCOUNT_CODE, WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
 import { PayoutProviderAdapter } from "./providers/payout-provider.interface";
 import { PaystackPayoutAdapter } from "./providers/paystack-payout.adapter";
 import { StripePayoutAdapter } from "./providers/stripe-payout.adapter";
@@ -20,6 +21,15 @@ export class CreateDistributionInput {
 
   @IsString()
   beneficiaryId!: string;
+
+  // Optional — see WaqfMilestone's own schema comment. When set,
+  // create() refuses to create the row at all unless that milestone's
+  // status is already "completed" — the real gate on milestone-tranche
+  // disbursement for a Project-type Waqf Fund, mirroring
+  // CreateVaultDistributionInput.vaultMilestoneId exactly.
+  @IsOptional()
+  @IsString()
+  waqfMilestoneId?: string;
 
   // See AssetsService's CreateAssetInput.estimatedValue for why this is
   // @IsNumberString rather than @IsNumber.
@@ -42,6 +52,7 @@ export class DistributionsService {
   constructor(
     private readonly beneficiariesService: BeneficiariesService,
     private readonly notificationsService: NotificationsService,
+    private readonly ledger: WaqfLedgerService,
     stripePayoutAdapter: StripePayoutAdapter,
     paystackPayoutAdapter: PaystackPayoutAdapter,
     stablecoinPayoutAdapter: StablecoinPayoutAdapter,
@@ -91,6 +102,20 @@ export class DistributionsService {
       throw new BadRequestException(
         `This waqf's corpus is denominated in ${waqf.corpusCurrency} — a distribution must use that same currency, not ${input.currency}.`,
       );
+    }
+    // The milestone gate (2026-09-15, ported from
+    // VaultDistributionsService.create()'s own gate) — this
+    // distribution can't even be created as this milestone's tranche
+    // until waqf.milestone_complete has actually been approved. No
+    // milestone attached at all skips this entirely.
+    if (input.waqfMilestoneId) {
+      const milestone = await prisma.waqfMilestone.findUnique({ where: { id: input.waqfMilestoneId } });
+      if (!milestone || milestone.waqfId !== input.waqfId) {
+        throw new BadRequestException(`Milestone "${input.waqfMilestoneId}" does not belong to waqf "${input.waqfId}".`);
+      }
+      if (milestone.status !== "completed") {
+        throw new BadRequestException(`Milestone "${milestone.name}" isn't marked completed yet — its tranche can't be disbursed.`);
+      }
     }
     return prisma.$transaction(async (tx) => {
       await this.assertBeneficiaryEligible(input.waqfId, input.beneficiaryId, input.causeId, tx);
@@ -147,6 +172,18 @@ export class DistributionsService {
     // status/expiry can change in that same gap.
     await this.assertBeneficiaryEligible(distribution.waqfId, distribution.beneficiaryId, distribution.causeId, tx);
     await this.assertWithinAllocation(distribution.causeId, distribution.amount, distribution.currency, tx, id);
+    // Defense-in-depth re-check, same reasoning as the headroom
+    // re-check above — create() already confirmed the milestone was
+    // completed, but that was potentially a while ago. No un-complete
+    // path exists today, so this can't currently fail; it's here so it
+    // can't be silently bypassed if one ever does. Mirrors
+    // VaultDistributionsService.approve()'s own re-check exactly.
+    if (distribution.waqfMilestoneId) {
+      const milestone = await tx.waqfMilestone.findUnique({ where: { id: distribution.waqfMilestoneId } });
+      if (milestone?.status !== "completed") {
+        throw new BadRequestException(`Milestone "${milestone?.name ?? distribution.waqfMilestoneId}" isn't marked completed — its tranche can't be approved.`);
+      }
+    }
     // Atomic claim (not a plain update): only one caller can flip a given
     // "pending" row — the same class of race this method's status guard
     // above already fast-fails on, closed for real here.
@@ -402,6 +439,29 @@ export class DistributionsService {
           after: updated as any,
         },
       });
+
+      // Double-entry auto-post (2026-09-15, ported from
+      // VaultDistributionsService.handlePayoutWebhook's own hook) —
+      // Debit Program Expenses, Credit Cash & Bank, same transaction as
+      // the status flip. Only on an actual "paid" outcome — a failed
+      // payout moved no real money.
+      if (result.status === "paid") {
+        const programExpenses = await this.ledger.getAccountByCode(tx, PROGRAM_EXPENSES_ACCOUNT_CODE);
+        const cashAndBank = await this.ledger.getAccountByCode(tx, CASH_AND_BANK_ACCOUNT_CODE);
+        await this.ledger.post(tx, {
+          waqfId: distribution.waqfId,
+          description: "Distribution paid to beneficiary",
+          currency: distribution.currency,
+          source: "distribution",
+          sourceId: updated.id,
+          actorType: "system",
+          lines: [
+            { ledgerAccountId: programExpenses.id, debit: distribution.amount },
+            { ledgerAccountId: cashAndBank.id, credit: distribution.amount },
+          ],
+        });
+      }
+
       return updated;
     });
 

@@ -47,6 +47,7 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
   let causeImpactUpdateAId: string;
   let invitationAId: string;
   let founderRequestAId: string;
+  let waqfMilestoneAId: string;
 
   beforeAll(async () => {
     const userA = await prisma.user.create({
@@ -201,6 +202,17 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
       },
     });
     founderRequestAId = founderRequestA.id;
+
+    // waqf_milestones (2026-09-15) — the Founder Portal's own "Project
+    // progress" read (GET /waqf-milestones?waqfId=) needs the same DB
+    // layer every other founder-reachable table with a direct waqfId
+    // column already has. waqfA is type "asset", not "project" — fine
+    // for this RLS-only test, which writes the row directly and never
+    // goes through WaqfMilestonesService's own type check.
+    const waqfMilestoneA = await prisma.waqfMilestone.create({
+      data: { waqfId: waqfAId, name: "RLS Fixture Milestone A", sequence: 1 },
+    });
+    waqfMilestoneAId = waqfMilestoneA.id;
   });
 
   afterAll(async () => {
@@ -208,6 +220,7 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
     // same convention as every other spec in this codebase (audit_logs
     // and other insert-only/immutable rows may reference them).
     await prisma.founderRequest.deleteMany({ where: { id: founderRequestAId } });
+    await prisma.waqfMilestone.deleteMany({ where: { id: waqfMilestoneAId } });
     await prisma.invitation.deleteMany({ where: { id: invitationAId } });
     await prisma.messageAttachment.deleteMany({ where: { id: messageAttachmentAId } });
     await prisma.message.deleteMany({ where: { id: messageAId } });
@@ -246,6 +259,7 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
     ["message_attachments", () => messageAttachmentAId],
     ["invitations", () => invitationAId],
     ["founder_requests", () => founderRequestAId],
+    ["waqf_milestones", () => waqfMilestoneAId],
   ] as [string, () => string][])(
     "%s: founder A's row is visible to founder A, invisible to founder B, at the RLS layer alone",
     async (table, getId) => {

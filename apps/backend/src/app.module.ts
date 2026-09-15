@@ -43,6 +43,7 @@ import { FinancialReportsModule } from "./modules/financial-reports/financial-re
 import { HealthModule } from "./modules/health/health.module";
 import { BanksModule } from "./modules/banks/banks.module";
 import { VaultsModule } from "./modules/vaults/vaults.module";
+import { WaqfLedgerModule } from "./modules/waqf-ledger/waqf-ledger.module";
 import { PermissionGuard } from "./common/guards/permission.guard";
 import { StaffRoleGuard } from "./common/guards/staff-role.guard";
 import { SessionAuthGuard } from "./common/guards/session-auth.guard";
@@ -91,6 +92,7 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     HealthModule,
     BanksModule,
     VaultsModule,
+    WaqfLedgerModule,
   ],
   providers: [
     // First in the list — captures unhandled request-path errors for

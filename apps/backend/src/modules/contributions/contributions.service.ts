@@ -13,6 +13,7 @@ import { withFounderScope } from "../../common/db/founder-scope";
 import { AssetsService } from "../assets/assets.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
+import { CASH_AND_BANK_ACCOUNT_CODE, CONTRIBUTIONS_REVENUE_ACCOUNT_CODE, WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
 import { PaymentProviderAdapter } from "./providers/payment-provider.interface";
 import { StripeAdapter } from "./providers/stripe.adapter";
 import { PaystackAdapter } from "./providers/paystack.adapter";
@@ -35,6 +36,7 @@ export class ContributionsService {
   constructor(
     private readonly assetsService: AssetsService,
     private readonly notificationsService: NotificationsService,
+    private readonly ledger: WaqfLedgerService,
     stripeAdapter: StripeAdapter,
     paystackAdapter: PaystackAdapter,
     stablecoinAdapter: StablecoinAdapter,
@@ -314,6 +316,24 @@ export class ContributionsService {
           before: contribution as any,
           after: confirmed as any,
         },
+      });
+
+      // Double-entry auto-post (2026-09-15, ported alongside Vault's
+      // own equivalent contribution hook) — Debit Cash & Bank, Credit
+      // Contributions Revenue, same transaction as the status flip.
+      const cashAndBank = await this.ledger.getAccountByCode(tx, CASH_AND_BANK_ACCOUNT_CODE);
+      const contributionsRevenue = await this.ledger.getAccountByCode(tx, CONTRIBUTIONS_REVENUE_ACCOUNT_CODE);
+      await this.ledger.post(tx, {
+        waqfId: contribution.waqfId,
+        description: "Contribution confirmed",
+        currency: confirmed.currency,
+        source: "contribution",
+        sourceId: confirmed.id,
+        actorType: "system",
+        lines: [
+          { ledgerAccountId: cashAndBank.id, debit: confirmed.amount },
+          { ledgerAccountId: contributionsRevenue.id, credit: confirmed.amount },
+        ],
       });
 
       return { confirmed, waqfActivated: waqfBefore?.status === "draft" };

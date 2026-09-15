@@ -347,6 +347,7 @@ model User {
   createdVaults                  Vault[]
   recordedVaultProceeds          VaultProceeds[]
   recordedVaultExpenses          VaultExpense[]
+  recordedWaqfExpenses           WaqfExpense[]
 
   @@map("users")
 }
@@ -509,6 +510,9 @@ model Waqf {
   proceeds               WaqfProceeds[]
   beneficiaryNominations BeneficiaryNomination[]
   founderRequests        FounderRequest[]
+  journalEntries         WaqfJournalEntry[]
+  expenses               WaqfExpense[]
+  milestones             WaqfMilestone[]
 
   @@index([foundationId])
   @@map("waqfs")
@@ -1424,13 +1428,146 @@ model Distribution {
   // successful retryDisbursement(). Surfaced to staff so a payout_failed
   // row is actionable, not just a dead end.
   payoutError     String?
+  // Optional — see WaqfMilestone's own schema comment. When set,
+  // DistributionsService.create() refuses to create the row at all
+  // unless that milestone's status is already "completed" — the real
+  // gate on milestone-tranche disbursement for a Project-type Waqf
+  // Fund, not just a UI-level restriction. Mirrors
+  // VaultDistribution.vaultMilestoneId exactly (2026-09-15 — Vault had
+  // real fund accounting and milestone-gated tranches for a while
+  // before a Project Waqf Fund, the founder-established equivalent of
+  // a Project Vault, ever got the same capability; see WaqfLedgerAccount
+  // 's own comment for the parallel gap on the accounting side).
+  waqfMilestoneId String?
+  waqfMilestone   WaqfMilestone?     @relation(fields: [waqfMilestoneId], references: [id])
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   deletedAt       DateTime?
 
   @@index([waqfId])
   @@index([causeId])
+  @@index([waqfMilestoneId])
   @@map("distributions")
+}
+
+// Founder/Waqf-side counterpart to VaultLedgerAccount — deliberately a
+// separate table, not a shared one, matching this codebase's own
+// "Vault and Waqf are parallel, never-shared products" convention (see
+// CLAUDE.md's Vault section). Reuses LedgerAccountType (already a
+// generic enum, not Vault-specific) rather than duplicating it.
+//
+// 2026-09-15 — this whole ledger/expense/milestone slice exists because
+// a Project-type Waqf Fund is structurally the same kind of thing as a
+// Project Vault (both fund real-world work in tranches against
+// verified progress) but never got the double-entry bookkeeping,
+// itemized expense tracking, or milestone-gated disbursement Vault
+// built for itself on 2026-09-13/14 — found in a comprehensive review,
+// raised directly by the owner. See WaqfLedgerService's own comment for
+// the posting engine this chart of accounts feeds.
+model WaqfLedgerAccount {
+  id              String                 @id @default(uuid())
+  code            String                 @unique
+  name            String
+  type            LedgerAccountType
+  isSystemDefault Boolean                @default(false)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  deletedAt       DateTime?
+  lines           WaqfJournalEntryLine[]
+  expenses        WaqfExpense[]
+
+  @@map("waqf_ledger_accounts")
+}
+
+model WaqfJournalEntry {
+  id          String                  @id @default(uuid())
+  waqfId      String
+  waqf        Waqf                    @relation(fields: [waqfId], references: [id])
+  entryDate   DateTime                @default(now())
+  description String
+  currency    String
+  source      VaultJournalEntrySource
+  sourceId    String?
+  actorType   ActorType
+  actorUserId String?
+  createdAt   DateTime                @default(now())
+  lines       WaqfJournalEntryLine[]
+  // Append-only, like AuditLog — no update/delete path exists. A
+  // mistake is corrected with a new reversing entry, never edited,
+  // same posture as VaultJournalEntry.
+
+  @@index([waqfId])
+  @@index([source, sourceId])
+  @@map("waqf_journal_entries")
+}
+
+model WaqfJournalEntryLine {
+  id              String            @id @default(uuid())
+  journalEntryId  String
+  journalEntry    WaqfJournalEntry  @relation(fields: [journalEntryId], references: [id])
+  ledgerAccountId String
+  ledgerAccount   WaqfLedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+  debit           Decimal           @default(0)
+  credit          Decimal           @default(0)
+  // CHECK (debit = 0 AND credit > 0) OR (debit > 0 AND credit = 0) — see
+  // the migration's own raw SQL statement, same debit_xor_credit shape
+  // as vault_journal_entry_lines.
+
+  @@index([journalEntryId])
+  @@index([ledgerAccountId])
+  @@map("waqf_journal_entry_lines")
+}
+
+model WaqfExpense {
+  id               String            @id @default(uuid())
+  waqfId           String
+  waqf             Waqf              @relation(fields: [waqfId], references: [id])
+  waqfMilestoneId  String?
+  waqfMilestone    WaqfMilestone?    @relation(fields: [waqfMilestoneId], references: [id])
+  ledgerAccountId  String
+  ledgerAccount    WaqfLedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+  amount           Decimal
+  currency         String
+  description      String
+  recordedByUserId String
+  recordedByUser   User              @relation(fields: [recordedByUserId], references: [id])
+  createdAt        DateTime          @default(now())
+  // No update/delete — a mis-entered expense is corrected with a new
+  // offsetting WaqfExpense + its own reversing journal entry, same
+  // append-only rule as VaultExpense.
+
+  @@index([waqfId])
+  @@index([waqfMilestoneId])
+  @@map("waqf_expenses")
+}
+
+// Founder/Waqf-side counterpart to VaultMilestone — Project-type Waqf
+// Funds only (create() rejects Investment/Asset, same type-branching
+// precedent assertWithinAllocation already uses). evidenceNotes/
+// evidenceFileUrl are visible to the Founder who established this fund
+// on their own portfolio page — unlike Vault's public donation page,
+// there's no anonymous public donor here to gate this from; the
+// Founder is exactly who this evidence is for.
+model WaqfMilestone {
+  id              String               @id @default(uuid())
+  waqfId          String
+  waqf            Waqf                 @relation(fields: [waqfId], references: [id])
+  name            String
+  description     String?
+  sequence        Int
+  targetAmount    Decimal?
+  status          VaultMilestoneStatus @default(pending)
+  completedAt     DateTime?
+  evidenceNotes   String?
+  evidenceFileUrl String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  deletedAt       DateTime?
+  distributions   Distribution[]
+  expenses        WaqfExpense[]
+
+  @@unique([waqfId, sequence])
+  @@map("waqf_milestones")
 }
 
 // The Founder Portal's "view, request" side of governance — see

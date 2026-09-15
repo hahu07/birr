@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, UnauthorizedException } from "
 import { prisma, Asset, Waqf } from "@birr/db";
 import { ContributionsService } from "./contributions.service";
 import { AssetsService } from "../assets/assets.service";
+import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import {
   CreatePaymentInput,
@@ -36,6 +37,7 @@ describe("ContributionsService", () => {
   const service = new ContributionsService(
     new AssetsService(),
     createFakeNotificationsService(),
+    new WaqfLedgerService(),
     stripeFake as any,
     paystackFake as any,
     stablecoinFake as any,
@@ -112,6 +114,8 @@ describe("ContributionsService", () => {
     // so anything it references can't be cleaned up anyway.
     await prisma.contribution.deleteMany({ where: { id: { in: contributionIds } } });
     await prisma.asset.deleteMany({ where: { id: { in: assetIds } } });
+    await prisma.waqfJournalEntryLine.deleteMany({ where: { journalEntry: { waqfId: { in: waqfIds } } } });
+    await prisma.waqfJournalEntry.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
     await prisma.$disconnect();
   });
@@ -420,6 +424,19 @@ describe("ContributionsService", () => {
 
     const logs = await prisma.auditLog.findMany({ where: { entityId: confirmed!.id } });
     expect(logs.some((l) => l.action === "contribution.confirmed")).toBe(true);
+
+    // Double-entry auto-post (2026-09-15, ported from
+    // VaultContributionsService's own equivalent hook) — confirming a
+    // contribution should post a balanced Cash & Bank debit /
+    // Contributions Revenue credit journal entry, same amount as the
+    // contribution itself.
+    const journalEntry = await prisma.waqfJournalEntry.findFirst({
+      where: { source: "contribution", sourceId: confirmed!.id },
+      include: { lines: { include: { ledgerAccount: true } } },
+    });
+    expect(journalEntry?.lines).toHaveLength(2);
+    expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === "1000")?.debit.toString()).toBe("1000");
+    expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === "4000")?.credit.toString()).toBe("1000");
   });
 
   test("initiate() + handleWebhook() a second time against an already-active waqf succeeds (top-up), and the resulting Asset is named accordingly", async () => {

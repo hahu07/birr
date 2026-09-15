@@ -4,6 +4,7 @@ import { FinancialReportsService } from "./financial-reports.service";
 import { DistributionsService } from "../distributions/distributions.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
+import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import {
   FakePaystackPayoutAdapter,
@@ -21,6 +22,7 @@ describe("FinancialReportsService", () => {
   const distributionsService = new DistributionsService(
     new BeneficiariesService(encryption),
     createFakeNotificationsService(),
+    new WaqfLedgerService(),
     createFakeStripePayoutAdapter() as any,
     new FakePaystackPayoutAdapter() as any,
     createFakeStablecoinPayoutAdapter() as any,

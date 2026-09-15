@@ -9,6 +9,7 @@ import { DistributionsService } from "../distributions/distributions.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { WaqfProceedsService } from "../waqf-proceeds/waqf-proceeds.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
+import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
 import {
   FakePaystackPayoutAdapter,
   createFakeStripePayoutAdapter,
@@ -31,6 +32,7 @@ describe("WaqfsService", () => {
     new DistributionsService(
       new BeneficiariesService(new EncryptionService()),
       createFakeNotificationsService(),
+      new WaqfLedgerService(),
       createFakeStripePayoutAdapter() as any,
       new FakePaystackPayoutAdapter() as any,
       createFakeStablecoinPayoutAdapter() as any,

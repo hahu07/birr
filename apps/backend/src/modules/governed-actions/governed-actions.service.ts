@@ -17,6 +17,7 @@ import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import { VaultMilestonesService } from "../vaults/vault-milestones.service";
+import { WaqfMilestonesService } from "../waqf-ledger/waqf-milestones.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -163,6 +164,7 @@ export class GovernedActionsService {
     private readonly vaultDistributionsService: VaultDistributionsService,
     private readonly vaultContributionsService: VaultContributionsService,
     private readonly vaultMilestonesService: VaultMilestonesService,
+    private readonly waqfMilestonesService: WaqfMilestonesService,
     private readonly notificationsService: NotificationsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
@@ -848,6 +850,67 @@ export class GovernedActionsService {
             return {
               auditAction: "vault_milestone.completed",
               entityType: "VaultMilestone",
+              entityId: milestone.id,
+              before,
+              after: milestone,
+            };
+          },
+        },
+      ],
+      // Founder/Waqf-side counterpart to vault.milestone_complete above
+      // (2026-09-15, ported alongside the rest of the Waqf ledger/
+      // milestone slice — see WaqfLedgerAccount's own schema comment).
+      // Same fiduciary weight as distribution.approve — verifying a
+      // project milestone's real-world completion before the tranche it
+      // unlocks can even be created (DistributionsService.create()'s own
+      // milestone-completion gate). No onReject, same precedent as
+      // vault.milestone_complete — a rejection leaves the milestone
+      // exactly as it was.
+      [
+        "waqf.milestone_complete",
+        {
+          resolveWaqfId: async (payload) => {
+            const { waqfMilestoneId } = payload as { waqfMilestoneId: string };
+            const milestone = await prisma.waqfMilestone.findUnique({ where: { id: waqfMilestoneId } });
+            return milestone?.waqfId;
+          },
+          checkDuplicate: async (payload) => {
+            const { waqfMilestoneId } = payload as { waqfMilestoneId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "waqf.milestone_complete" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["waqfMilestoneId"], equals: waqfMilestoneId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "A completion proposal for this milestone is already awaiting a decision — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { waqfMilestoneId } = payload as { waqfMilestoneId: string };
+            const milestone = await prisma.waqfMilestone.findUnique({
+              where: { id: waqfMilestoneId },
+              include: { waqf: { select: { name: true } } },
+            });
+            return milestone
+              ? `Mark "${milestone.name}" complete for "${milestone.waqf.name}".`
+              : `WaqfMilestone "${waqfMilestoneId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { waqfMilestoneId } = payload as { waqfMilestoneId: string };
+            const milestone = await prisma.waqfMilestone.findUnique({
+              where: { id: waqfMilestoneId },
+              select: { status: true, targetAmount: true, evidenceNotes: true },
+            });
+            return milestone ? { ...milestone } : null;
+          },
+          onApprove: async (payload, tx) => {
+            const { waqfMilestoneId } = payload as { waqfMilestoneId: string };
+            const before = await tx.waqfMilestone.findUnique({ where: { id: waqfMilestoneId } });
+            const milestone = await this.waqfMilestonesService.complete(waqfMilestoneId, tx);
+            return {
+              auditAction: "waqf_milestone.completed",
+              entityType: "WaqfMilestone",
               entityId: milestone.id,
               before,
               after: milestone,

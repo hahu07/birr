@@ -9,6 +9,7 @@ import {
   vaultDonorThresholds,
   causeCategories,
   vaultLedgerAccounts,
+  waqfLedgerAccounts,
 } from "./seed-data";
 
 const prisma = new PrismaClient();
@@ -160,6 +161,14 @@ async function main() {
     });
   }
 
+  for (const account of waqfLedgerAccounts) {
+    await prisma.waqfLedgerAccount.upsert({
+      where: { code: account.code },
+      update: { name: account.name, type: account.type, isSystemDefault: account.isSystemDefault },
+      create: account,
+    });
+  }
+
   const adminPasswordHash = await hash(SEED_ADMIN_PASSWORD, BCRYPT_ROUNDS);
   const adminUser = await prisma.user.upsert({
     where: { email: SEED_ADMIN_EMAIL },
@@ -177,7 +186,7 @@ async function main() {
     create: { userId: adminUser.id, staffRole: "platform_admin" },
   });
 
-  console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums, ${corpusMinimums.length} corpus minimums, ${vaultDonorThresholds.length} vault donor thresholds, ${causeCategories.length} cause categories, ${vaultLedgerAccounts.length} vault ledger accounts.`);
+  console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums, ${corpusMinimums.length} corpus minimums, ${vaultDonorThresholds.length} vault donor thresholds, ${causeCategories.length} cause categories, ${vaultLedgerAccounts.length} vault ledger accounts, ${waqfLedgerAccounts.length} waqf ledger accounts.`);
   console.log(`Seeded bootstrap platform_admin: ${SEED_ADMIN_EMAIL} (password: ${SEED_ADMIN_PASSWORD}) — change this before any shared/non-local use.`);
 
   for (const agentSeed of agentSeeds) {

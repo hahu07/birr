@@ -7,6 +7,7 @@ import { InvestmentsModule } from "../investments/investments.module";
 import { CounterpartiesModule } from "../counterparties/counterparties.module";
 import { DistributionsModule } from "../distributions/distributions.module";
 import { VaultsModule } from "../vaults/vaults.module";
+import { WaqfLedgerModule } from "../waqf-ledger/waqf-ledger.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
@@ -17,6 +18,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
     CounterpartiesModule,
     DistributionsModule,
     VaultsModule,
+    WaqfLedgerModule,
     NotificationsModule,
   ],
   controllers: [GovernedActionsController],

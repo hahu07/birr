@@ -50,6 +50,21 @@ async function bootstrap() {
   // cause" cards. See modules/vaults/vault-cover-storage.service.ts.
   app.use("/uploads/vault-covers", express.static(path.join(__dirname, "..", "uploads", "vault-covers")));
 
+  // Both public by design, same posture as vault-covers above — see
+  // Vault.feasibilityReportUrl's own schema comment (a donor's upfront
+  // due-diligence material) and VaultMilestone's (proof of work done
+  // after giving, per VaultsService's PUBLIC_VAULT_SELECT). Found
+  // missing (2026-09-15) while building the Waqf-side equivalent of
+  // this feature — neither path was actually mounted here, so any
+  // feasibilityReportUrl/evidenceFileUrl saved by
+  // VaultDocumentStorageService/VaultMilestoneEvidenceStorageService
+  // 404'd when a browser tried to load it.
+  app.use("/uploads/vault-documents", express.static(path.join(__dirname, "..", "uploads", "vault-documents")));
+  app.use(
+    "/uploads/vault-milestone-evidence",
+    express.static(path.join(__dirname, "..", "uploads", "vault-milestone-evidence")),
+  );
+
   // Message attachments are private Founder<->Birr-staff correspondence —
   // NOT meant to be public. Until 2026-09-08 this sat under the same
   // blanket `app.use("/uploads", express.static(...))` mount as the
@@ -102,6 +117,56 @@ async function bootstrap() {
       }
     },
     express.static(path.join(__dirname, "..", "uploads", "message-attachments")),
+  );
+
+  // Waqf-side milestone evidence — visible to the Founder who
+  // established this fund (per WaqfMilestone's own schema comment on
+  // why: unlike Vault's anonymous public donor, there's no one else
+  // this needs gating from besides other Founders), gated the same way
+  // as message-attachments above: any signed-in Birr staff, or a
+  // Founder whose Foundation owns the waqf this milestone belongs to.
+  // Found while building this feature (2026-09-15): VaultMilestoneEvidenceStorageService
+  // and VaultDocumentStorageService both generate URLs under
+  // /uploads/vault-milestone-evidence and /uploads/vault-documents,
+  // but neither path is actually mounted anywhere in this file — those
+  // URLs currently 404. Not fixed here (out of scope for this Waqf-side
+  // feature), but not repeated here either.
+  app.use(
+    "/uploads/waqf-milestone-evidence",
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        if (!hasAnySessionCookie(req)) {
+          res.status(401).json({ message: "Not signed in." });
+          return;
+        }
+        const filename = path.basename(req.path);
+        const milestone = await prisma.waqfMilestone.findFirst({
+          where: { evidenceFileUrl: { endsWith: `/${filename}` } },
+          select: { waqf: { select: { foundationId: true } } },
+        });
+        if (!milestone) {
+          res.status(404).json({ message: "Not found." });
+          return;
+        }
+        if (!(await isBirrStaffSession(req))) {
+          const founder = await resolveFounderFromSession(req);
+          const owns = await prisma.foundationFounder.findFirst({
+            where: { foundationId: milestone.waqf.foundationId, founderId: founder.id },
+            select: { founderId: true },
+          });
+          if (!owns) {
+            res.status(403).json({ message: "You don't have access to this file." });
+            return;
+          }
+        }
+        next();
+      } catch (err) {
+        const status = err instanceof HttpException ? err.getStatus() : 500;
+        const message = err instanceof HttpException ? err.message : "Internal server error";
+        res.status(status).json({ message });
+      }
+    },
+    express.static(path.join(__dirname, "..", "uploads", "waqf-milestone-evidence")),
   );
 
   // Correlation id: reuses an inbound x-request-id (e.g. from a load

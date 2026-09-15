@@ -59,6 +59,11 @@ export const permissions = [
   // own milestone-completion gate), not just a status label a single
   // staff member could set unilaterally.
   { key: "vault.milestone_complete", category: "vault", requiresMakerChecker: true, description: "Mark a project vault's milestone as completed, unlocking its distribution tranche." },
+  // Founder/Waqf-side counterpart to vault.milestone_complete above
+  // (2026-09-15) — same fiduciary weight as distribution.approve, so it
+  // shares that permission's exact maker/checker set below rather than
+  // vault.milestone_complete's own (broader) set.
+  { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
 ] as const;
 
 // role key -> permission key -> { canMaker, canChecker }
@@ -70,6 +75,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
   mutawalli_officer: {
     "asset.dispose": { canMaker: true },
     "distribution.approve": { canMaker: true },
+    "waqf.milestone_complete": { canMaker: true },
     "investment.change": { canChecker: true },
     "beneficiary.criteria_update": { canMaker: true },
     "beneficiary.status_change": { canMaker: true },
@@ -87,6 +93,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
   board_of_trustees: {
     "asset.dispose": { canChecker: true },
     "distribution.approve": { canChecker: true },
+    "waqf.milestone_complete": { canChecker: true },
     "investment.change": { canChecker: true },
     "beneficiary.criteria_update": { canChecker: true },
     "beneficiary.status_change": { canChecker: true },
@@ -131,6 +138,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
   },
   compliance_officer: {
     "distribution.approve": { canChecker: true },
+    "waqf.milestone_complete": { canChecker: true },
     "beneficiary.criteria_update": { canChecker: true },
     "beneficiary.status_change": { canChecker: true },
     "compliance.report_export": { canMaker: true },
@@ -242,5 +250,17 @@ export const vaultLedgerAccounts = [
   { code: "1000", name: "Cash & Bank", type: "asset", isSystemDefault: true },
   { code: "2000", name: "Distributions Payable", type: "liability", isSystemDefault: true },
   { code: "4000", name: "Donations Revenue", type: "revenue", isSystemDefault: true },
+  { code: "5000", name: "Program Expenses", type: "expense", isSystemDefault: true },
+] as const;
+
+// Founder/Waqf-side counterpart to vaultLedgerAccounts above — same
+// four codes/types, "Contributions Revenue" instead of "Donations
+// Revenue" to match this side's own terminology (Contribution, not
+// Donation). See WaqfLedgerAccount's own schema comment for why this
+// separate seed exists (2026-09-15) rather than sharing Vault's rows.
+export const waqfLedgerAccounts = [
+  { code: "1000", name: "Cash & Bank", type: "asset", isSystemDefault: true },
+  { code: "2000", name: "Distributions Payable", type: "liability", isSystemDefault: true },
+  { code: "4000", name: "Contributions Revenue", type: "revenue", isSystemDefault: true },
   { code: "5000", name: "Program Expenses", type: "expense", isSystemDefault: true },
 ] as const;

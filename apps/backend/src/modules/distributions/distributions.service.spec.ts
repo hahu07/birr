@@ -3,6 +3,8 @@ import { BadRequestException } from "@nestjs/common";
 import { DistributionsService } from "./distributions.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
+import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
+import { WaqfMilestonesService } from "../waqf-ledger/waqf-milestones.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import {
   FakePaystackPayoutAdapter,
@@ -17,10 +19,12 @@ describe("DistributionsService", () => {
   const service = new DistributionsService(
     beneficiariesService,
     createFakeNotificationsService(),
+    new WaqfLedgerService(),
     createFakeStripePayoutAdapter() as any,
     fakePaystackPayoutAdapter as any,
     createFakeStablecoinPayoutAdapter() as any,
   );
+  const milestonesService = new WaqfMilestonesService();
 
   // Every fixture beneficiary that ever goes through approve()/
   // initiateDisbursement needs complete Paystack payout details on file
@@ -48,6 +52,9 @@ describe("DistributionsService", () => {
   let investmentBeneficiaryId: string;
   let causeOnWaqfAId: string;
   let causeOnWaqfBId: string;
+  let waqfProjectId: string;
+  let causeOnProjectWaqfId: string;
+  let projectBeneficiaryId: string;
   let actorUserId: string;
 
   beforeAll(async () => {
@@ -112,10 +119,34 @@ describe("DistributionsService", () => {
     });
     causeOnWaqfBId = causeOnB.id;
     waqfCauseIds.push(causeOnB.id);
+
+    // Project-type waqf, for the milestone-gate tests below — milestones
+    // only apply to project-type waqf funds (WaqfMilestonesService
+    // .create()'s own gate), unlike waqfA above.
+    const waqfProject = await prisma.waqf.create({
+      data: { name: "Distributions Fixture Project Waqf", type: "project", jurisdiction: "AE", foundationId: foundation.id },
+    });
+    waqfProjectId = waqfProject.id;
+    waqfIds.push(waqfProject.id);
+
+    const causeOnProject = await prisma.waqfCause.create({
+      data: { waqfId: waqfProjectId, name: "Cause On Project Waqf", allocatedAmount: "1000" },
+    });
+    causeOnProjectWaqfId = causeOnProject.id;
+    waqfCauseIds.push(causeOnProject.id);
+
+    const projectBeneficiary = await prisma.beneficiary.create({
+      data: { waqfId: waqfProjectId, name: "Distributions Fixture Project Beneficiary", eligibilityCriteria: "Fixture", ...paystackReadyBeneficiaryData() },
+    });
+    projectBeneficiaryId = projectBeneficiary.id;
+    beneficiaryIds.push(projectBeneficiary.id);
   });
 
   afterAll(async () => {
     await prisma.distribution.deleteMany({ where: { id: { in: distributionIds } } });
+    await prisma.waqfJournalEntryLine.deleteMany({ where: { journalEntry: { waqfId: { in: waqfIds } } } });
+    await prisma.waqfJournalEntry.deleteMany({ where: { waqfId: { in: waqfIds } } });
+    await prisma.waqfMilestone.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.waqfCause.deleteMany({ where: { id: { in: waqfCauseIds } } });
     await prisma.beneficiary.deleteMany({ where: { id: { in: beneficiaryIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
@@ -780,6 +811,17 @@ describe("DistributionsService", () => {
       // Replay — idempotent no-op, not a second state change.
       const replay = await service.handlePayoutWebhook(rawBody, {});
       expect(replay!.status).toBe("paid");
+
+      // Double-entry auto-post (2026-09-15, ported from
+      // VaultDistributionsService.handlePayoutWebhook's own hook) —
+      // Debit Program Expenses, Credit Cash & Bank.
+      const journalEntry = await prisma.waqfJournalEntry.findFirst({
+        where: { source: "distribution", sourceId: pending.id },
+        include: { lines: { include: { ledgerAccount: true } } },
+      });
+      expect(journalEntry?.lines).toHaveLength(2);
+      expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === "5000")?.debit.toString()).toBe("1");
+      expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === "1000")?.credit.toString()).toBe("1");
     });
 
     test("handlePayoutWebhook() flips disbursing -> payout_failed on transfer.failed", async () => {
@@ -827,6 +869,82 @@ describe("DistributionsService", () => {
         actorUserId,
       );
       distributionIds.push(another.id);
+    });
+  });
+
+  // The milestone gate (2026-09-15, ported from
+  // VaultDistributionsService.create()'s own gate) — create() itself
+  // refuses to build this distribution as a milestone's tranche until
+  // that milestone's own status is "completed" (only reachable via the
+  // governed waqf.milestone_complete action — see governed-actions
+  // .service.ts).
+  describe("milestone-gated tranche disbursement", () => {
+    test("create() rejects a distribution against a milestone that isn't completed yet", async () => {
+      const milestone = await milestonesService.create({ waqfId: waqfProjectId, name: "Not yet done", sequence: 101 }, actorUserId);
+      await expect(
+        service.create(
+          { waqfId: waqfProjectId, causeId: causeOnProjectWaqfId, beneficiaryId: projectBeneficiaryId, waqfMilestoneId: milestone.id, amount: "1", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    test("create() succeeds once the milestone is completed", async () => {
+      const milestone = await milestonesService.create({ waqfId: waqfProjectId, name: "Actually done", sequence: 102 }, actorUserId);
+      await prisma.$transaction((tx) => milestonesService.complete(milestone.id, tx));
+
+      const distribution = await service.create(
+        { waqfId: waqfProjectId, causeId: causeOnProjectWaqfId, beneficiaryId: projectBeneficiaryId, waqfMilestoneId: milestone.id, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      distributionIds.push(distribution.id);
+      expect(distribution.waqfMilestoneId).toBe(milestone.id);
+    });
+
+    // Defense-in-depth: no un-complete path exists today, but approve()
+    // re-checks the milestone's status independently of create()'s own
+    // check, same reasoning as the headroom re-check in "allocation
+    // enforcement" above.
+    test("approve() re-checks the milestone independently and rejects if it's no longer completed", async () => {
+      const milestone = await milestonesService.create({ waqfId: waqfProjectId, name: "Completed then reverted", sequence: 103 }, actorUserId);
+      await prisma.$transaction((tx) => milestonesService.complete(milestone.id, tx));
+
+      const distribution = await service.create(
+        { waqfId: waqfProjectId, causeId: causeOnProjectWaqfId, beneficiaryId: projectBeneficiaryId, waqfMilestoneId: milestone.id, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      distributionIds.push(distribution.id);
+
+      await prisma.waqfMilestone.update({ where: { id: milestone.id }, data: { status: "pending", completedAt: null } });
+
+      await prisma.$transaction(async (tx) => {
+        await expect(service.approve(distribution.id, tx)).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    test("create() rejects a milestone that belongs to a different waqf", async () => {
+      const otherProjectWaqf = await prisma.waqf.create({
+        data: { name: "Milestone Gate Other Project Waqf", type: "project", jurisdiction: "AE", foundationId: (await prisma.waqf.findUniqueOrThrow({ where: { id: waqfProjectId } })).foundationId },
+      });
+      waqfIds.push(otherProjectWaqf.id);
+      const foreignMilestone = await milestonesService.create({ waqfId: otherProjectWaqf.id, name: "Wrong waqf", sequence: 1 }, actorUserId);
+      await prisma.$transaction((tx) => milestonesService.complete(foreignMilestone.id, tx));
+
+      await expect(
+        service.create(
+          { waqfId: waqfProjectId, causeId: causeOnProjectWaqfId, beneficiaryId: projectBeneficiaryId, waqfMilestoneId: foreignMilestone.id, amount: "1", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    test("create() succeeds with no milestone at all — an ad-hoc, non-tranche distribution behaves exactly as before this feature", async () => {
+      const distribution = await service.create(
+        { waqfId: waqfProjectId, causeId: causeOnProjectWaqfId, beneficiaryId: projectBeneficiaryId, amount: "1", currency: "USD" },
+        actorUserId,
+      );
+      distributionIds.push(distribution.id);
+      expect(distribution.waqfMilestoneId).toBeNull();
     });
   });
 

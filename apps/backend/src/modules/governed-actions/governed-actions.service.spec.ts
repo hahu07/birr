@@ -14,6 +14,8 @@ import { VaultDistributionsService } from "../vaults/vault-distributions.service
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import { VaultLedgerService } from "../vaults/vault-ledger.service";
 import { VaultMilestonesService } from "../vaults/vault-milestones.service";
+import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
+import { WaqfMilestonesService } from "../waqf-ledger/waqf-milestones.service";
 import {
   FakePaystackPayoutAdapter,
   createFakeStripePayoutAdapter,
@@ -75,6 +77,7 @@ describe("GovernedActionsService", () => {
     new DistributionsService(
       beneficiariesService,
       notificationsService,
+      new WaqfLedgerService(),
       createFakeStripePayoutAdapter() as any,
       fakePaystackPayoutAdapter as any,
       createFakeStablecoinPayoutAdapter() as any,
@@ -91,6 +94,7 @@ describe("GovernedActionsService", () => {
       new FakeVaultPaymentAdapter() as any,
     ),
     new VaultMilestonesService(),
+    new WaqfMilestonesService(),
     notificationsService,
   );
 
@@ -248,6 +252,8 @@ describe("GovernedActionsService", () => {
     await prisma.vaultDonor.deleteMany({ where: { id: { in: vaultDonorIds } } });
     await prisma.counterparty.deleteMany({ where: { id: { in: counterpartyIds } } });
     await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
+    // RESTRICT on waqfId, same reasoning as vaultMilestone above.
+    await prisma.waqfMilestone.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
     await prisma.$disconnect();
   });
@@ -974,6 +980,7 @@ describe("GovernedActionsService", () => {
     const distributionsService = new DistributionsService(
       beneficiariesService,
       notificationsService,
+      new WaqfLedgerService(),
       createFakeStripePayoutAdapter() as any,
       fakePaystackPayoutAdapter as any,
       createFakeStablecoinPayoutAdapter() as any,
@@ -1617,6 +1624,114 @@ describe("GovernedActionsService", () => {
       ).rejects.toThrow(BadRequestException);
       const stillProposed = await prisma.governedAction.findUniqueOrThrow({ where: { id: action.id } });
       expect(stillProposed.status).toBe("proposed");
+    });
+
+    // Founder/Waqf-side counterpart to vault.milestone_complete above
+    // (2026-09-15) — same maker/checker pairing as distribution.approve
+    // (mutawalli_officer proposes, compliance_officer approves), since
+    // it carries the same fiduciary weight.
+    test("waqf.milestone_complete: approve → status becomes completed, waqfId is derived, audit-logged; reject leaves it unchanged", async () => {
+      const waqf = await prisma.waqf.create({
+        data: { name: "Waqf Milestone Complete Fixture Waqf", type: "project", jurisdiction: "AE", foundationId },
+      });
+      waqfIds.push(waqf.id);
+      const milestone = await prisma.waqfMilestone.create({
+        data: { waqfId: waqf.id, name: "Foundation laid", sequence: 1 },
+      });
+
+      const approveAction = await service.propose({
+        permissionKey: "waqf.milestone_complete",
+        payload: { waqfMilestoneId: milestone.id },
+        makerUserId,
+      });
+      governedActionIds.push(approveAction.id);
+      expect(approveAction.waqfId).toBe(waqf.id);
+
+      const result = await service.decide({
+        governedActionId: approveAction.id,
+        checkerUserId: distributionCheckerUserId,
+        approve: true,
+      });
+      expect(result.governedAction.status).toBe("approved");
+      expect(result.fulfillment?.entityType).toBe("WaqfMilestone");
+
+      const completed = await prisma.waqfMilestone.findUniqueOrThrow({ where: { id: milestone.id } });
+      expect(completed.status).toBe("completed");
+      expect(completed.completedAt).not.toBeNull();
+
+      const logs = await auditLogsFor(milestone.id);
+      expect(logs.some((l) => l.action === "waqf_milestone.completed")).toBe(true);
+
+      // A second, separate milestone, rejected — no onReject handler,
+      // same precedent as vault.milestone_complete — nothing about the
+      // milestone itself changes; only the governed_action's own
+      // decide()-level audit log records it.
+      const secondMilestone = await prisma.waqfMilestone.create({
+        data: { waqfId: waqf.id, name: "Well drilled", sequence: 2 },
+      });
+      const rejectAction = await service.propose({
+        permissionKey: "waqf.milestone_complete",
+        payload: { waqfMilestoneId: secondMilestone.id },
+        makerUserId,
+      });
+      governedActionIds.push(rejectAction.id);
+      const rejectResult = await service.decide({
+        governedActionId: rejectAction.id,
+        checkerUserId: distributionCheckerUserId,
+        approve: false,
+      });
+      expect(rejectResult.governedAction.status).toBe("rejected");
+      const stillPending = await prisma.waqfMilestone.findUniqueOrThrow({ where: { id: secondMilestone.id } });
+      expect(stillPending.status).toBe("pending");
+    });
+
+    test("waqf.milestone_complete: decide(approve: true) throws and the GovernedAction stays proposed for an already-completed milestone", async () => {
+      const waqf = await prisma.waqf.create({
+        data: { name: "Waqf Milestone Already Complete Fixture Waqf", type: "project", jurisdiction: "AE", foundationId },
+      });
+      waqfIds.push(waqf.id);
+      const milestone = await prisma.waqfMilestone.create({
+        data: { waqfId: waqf.id, name: "Already done", sequence: 1, status: "completed", completedAt: new Date() },
+      });
+
+      const action = await service.propose({
+        permissionKey: "waqf.milestone_complete",
+        payload: { waqfMilestoneId: milestone.id },
+        makerUserId,
+      });
+      governedActionIds.push(action.id);
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true }),
+      ).rejects.toThrow(BadRequestException);
+      const stillProposed = await prisma.governedAction.findUniqueOrThrow({ where: { id: action.id } });
+      expect(stillProposed.status).toBe("proposed");
+    });
+
+    // The maker≠checker DB-constraint test CLAUDE.md's own working
+    // process calls for, per governed action — asset.dispose already
+    // has one; waqf.milestone_complete gets its own here rather than
+    // relying solely on that shared table-wide constraint being proven
+    // once (see the comprehensive Founder-side review that flagged this
+    // gap generally).
+    test("waqf.milestone_complete: the database itself rejects checkerUserId === makerUserId, bypassing decide() entirely", async () => {
+      const waqf = await prisma.waqf.create({
+        data: { name: "Waqf Milestone Checker Not Maker Fixture Waqf", type: "project", jurisdiction: "AE", foundationId },
+      });
+      waqfIds.push(waqf.id);
+      const milestone = await prisma.waqfMilestone.create({
+        data: { waqfId: waqf.id, name: "DB constraint fixture", sequence: 1 },
+      });
+      const action = await service.propose({
+        permissionKey: "waqf.milestone_complete",
+        payload: { waqfMilestoneId: milestone.id },
+        makerUserId,
+      });
+      governedActionIds.push(action.id);
+
+      await expect(
+        prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } }),
+      ).rejects.toThrow();
     });
 
     test("vault.contribution_refund: approve → refundStatus becomes requested, vaultId is derived, both audit-logged; the fire-and-forget follow-up eventually refunds it", async () => {
