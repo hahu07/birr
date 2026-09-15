@@ -1,63 +1,30 @@
 "use client";
 
-// Read-only double-entry reports (2026-09-13) — trial balance and
-// income & expenditure statement, sourced from every VaultJournalEntry
-// the three auto-posting hooks (confirmed contribution, paid
-// distribution, recorded expense) have written. Per-currency, never
-// summed across currencies — see VaultsService.withAmountRaised's own
-// comment on why this codebase never converts between currencies.
+// Read-only double-entry reports (2026-09-15) — Founder/Waqf-side
+// counterpart to VaultLedgerSection. No currency switcher — unlike
+// Vault, a Waqf Fund has one declared corpusCurrency, not an
+// additionalCurrencies list.
 //
 // refreshKey (2026-09-15): recording an expense elsewhere on the page
 // posts a journal entry this section's own reports should reflect —
-// same sibling-staleness bug VaultMilestonesSection had, fixed the same
+// same sibling-staleness bug WaqfMilestonesSection had, fixed the same
 // way: the parent page bumps a counter on any change, included in each
 // LedgerTable's own fetch dependency array so it refetches without
 // needing a full page reload.
-import { useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount } from "../../../../lib/format";
-import type { VaultLedgerAccountBalance } from "../../../../lib/ops-types";
+import type { WaqfLedgerAccountBalance } from "../../../../lib/ops-types";
 import { Alert, EmptyState, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
-export function VaultLedgerSection({
-  vaultId,
-  currency,
-  additionalCurrencies,
-  refreshKey,
-}: {
-  vaultId: string;
-  currency: string;
-  additionalCurrencies: string[];
-  refreshKey: number;
-}) {
-  const currencies = [currency, ...additionalCurrencies];
-  const [selectedCurrency, setSelectedCurrency] = useState(currency);
-
+export function WaqfLedgerSection({ waqfId, currency, refreshKey }: { waqfId: string; currency: string; refreshKey: number }) {
   return (
     <section>
       <SectionHeader title="Ledger" description="Double-entry trial balance and income & expenditure statement, sourced from every auto-posted journal entry." />
 
-      {currencies.length > 1 && (
-        <div className="mb-4 flex gap-2">
-          {currencies.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setSelectedCurrency(c)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                selectedCurrency === c ? "bg-primary-700 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-      )}
-
       <div className="grid gap-6 md:grid-cols-2">
-        <LedgerTable title="Trial balance" endpoint={`/vaults/${vaultId}/ledger/trial-balance`} currency={selectedCurrency} refreshKey={refreshKey} />
-        <LedgerTable title="Income & expenditure" endpoint={`/vaults/${vaultId}/ledger/income-statement`} currency={selectedCurrency} refreshKey={refreshKey} />
+        <LedgerTable title="Trial balance" endpoint={`/waqfs/${waqfId}/ledger/trial-balance`} currency={currency} refreshKey={refreshKey} />
+        <LedgerTable title="Income & expenditure" endpoint={`/waqfs/${waqfId}/ledger/income-statement`} currency={currency} refreshKey={refreshKey} />
       </div>
     </section>
   );
@@ -68,7 +35,7 @@ function LedgerTable({ title, endpoint, currency, refreshKey }: { title: string;
     data: rows,
     error,
   } = useLoadedResource(
-    () => apiFetchJson<VaultLedgerAccountBalance[]>(`${endpoint}?currency=${encodeURIComponent(currency)}`),
+    () => apiFetchJson<WaqfLedgerAccountBalance[]>(`${endpoint}?currency=${encodeURIComponent(currency)}`),
     [endpoint, currency, refreshKey],
   );
 

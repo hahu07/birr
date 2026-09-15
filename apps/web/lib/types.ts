@@ -333,6 +333,26 @@ export interface WaqfGovernanceActivity {
   checkerUser: { id: string; fullName: string } | null;
 }
 
+// Founder-facing, read-only (2026-09-15) — GET /waqf-milestones?waqfId=.
+// Project-type Waqf Funds only. evidenceNotes/evidenceFileUrl are shown
+// to the Founder who established this fund — unlike Vault's anonymous
+// public donor, there's no one else this needs gating from, and the
+// Founder is exactly who this proof of completed work is for.
+export interface WaqfMilestone {
+  id: string;
+  waqfId: string;
+  name: string;
+  description: string | null;
+  sequence: number;
+  targetAmount: string | null;
+  status: "pending" | "in_progress" | "completed";
+  completedAt: string | null;
+  evidenceNotes: string | null;
+  evidenceFileUrl: string | null;
+  createdAt: string;
+  actualSpend: { currency: string; amount: string }[];
+}
+
 // GET /audit-logs/me (2026-09-14) — this Founder's own team's activity
 // across every Foundation/Waqf Fund they're part of, scoped server-side
 // by actorFounderId. Deliberately a thinner shape than Ops' own

@@ -28,6 +28,7 @@ import { GovernanceActivitySection } from "./GovernanceActivitySection";
 import { RequestsSection } from "./RequestsSection";
 import { FinancialReportSection } from "./FinancialReportSection";
 import { LifecycleSection } from "./LifecycleSection";
+import { ProjectProgressSection } from "./ProjectProgressSection";
 
 export default function WaqfFundDetailPage() {
   const params = useParams<{ id: string }>();
@@ -132,6 +133,9 @@ export default function WaqfFundDetailPage() {
             )}
 
             {waqf.type === "project" && <LifecycleSection waqfId={waqf.id} />}
+            {waqf.type === "project" && (
+              <ProjectProgressSection waqfId={waqf.id} currency={waqf.corpusCurrency ?? "USD"} />
+            )}
             <ContributionsSection waqf={waqf} onCorpusIncreased={load} />
             <CausesSection
               waqfId={waqf.id}

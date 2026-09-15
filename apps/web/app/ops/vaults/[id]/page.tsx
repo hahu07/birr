@@ -54,6 +54,10 @@ export default function VaultDetailPage() {
   // allocation proposal is decided-in-place refreshed — Distributions
   // needs the fresh cause list to pick from.
   const [causesVersion, setCausesVersion] = useState(0);
+  // Bumped by VaultExpensesSection whenever it records an expense — the
+  // journal entry it auto-posts is exactly what VaultLedgerSection's
+  // own reports read, so those need to refetch too, not just Milestones.
+  const [ledgerVersion, setLedgerVersion] = useState(0);
 
   const load = useCallback(() => {
     apiFetchJson<Vault>(`/vaults/${id}`)
@@ -65,14 +69,22 @@ export default function VaultDetailPage() {
     load();
   }, [load]);
 
-  // Project vaults only (VaultMilestonesService itself rejects
-  // creation against anything else) — fetched at this level, not
-  // inside VaultMilestonesSection alone, since VaultExpensesSection's
-  // own milestone-link dropdown needs the same list. Hooks run
+  // Project vaults only (VaultMilestonesService itself rejects creation
+  // against anything else) — the single shared fetch every section that
+  // touches milestones reads from (VaultMilestonesSection's own
+  // display, VaultExpensesSection's and VaultDistributionsSection's
+  // milestone-link dropdowns) — not fetched independently inside any of
+  // them (found live, 2026-09-15: a milestone-only internal fetch meant
+  // recording an expense elsewhere on the page never refreshed what
+  // VaultMilestonesSection itself was showing). Hooks run
   // unconditionally before the early error/loading returns below, so
   // `vault` may still be null on the first render — the fetcher itself
   // guards against that rather than skipping the hook call.
-  const { data: milestones, reload: reloadMilestones } = useLoadedResource(
+  const {
+    data: milestones,
+    error: milestonesError,
+    reload: reloadMilestones,
+  } = useLoadedResource(
     () => (vault?.type === "project" ? apiFetchJson<VaultMilestone[]>(`/vault-milestones?vaultId=${id}`) : Promise.resolve([])),
     [id, vault?.type],
   );
@@ -142,6 +154,8 @@ export default function VaultDetailPage() {
             <VaultMilestonesSection
               vaultId={id}
               currency={vault.currency}
+              milestones={milestones}
+              error={milestonesError}
               onChanged={reloadMilestones}
             />
             <VaultExpensesSection
@@ -149,12 +163,16 @@ export default function VaultDetailPage() {
               currency={vault.currency}
               additionalCurrencies={vault.additionalCurrencies}
               milestones={milestones ?? []}
+              onChanged={() => {
+                reloadMilestones();
+                setLedgerVersion((v) => v + 1);
+              }}
             />
           </>
         )}
         <VaultDistributionsSection vaultId={id} currency={vault.currency} causes={causes} milestones={milestones ?? []} />
         <VaultContributionsSection vaultId={id} currency={vault.currency} />
-        <VaultLedgerSection vaultId={id} currency={vault.currency} additionalCurrencies={vault.additionalCurrencies} />
+        <VaultLedgerSection vaultId={id} currency={vault.currency} additionalCurrencies={vault.additionalCurrencies} refreshKey={ledgerVersion} />
       </div>
     </div>
   );

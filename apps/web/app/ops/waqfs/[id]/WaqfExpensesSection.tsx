@@ -1,44 +1,44 @@
 "use client";
 
-// Itemized project costs (2026-09-13) — plain staff CRUD, same trust
-// tier as VaultDistributionsSection's own registration form. Each entry
-// auto-posts a balanced journal entry (see VaultLedgerSection below).
+// Itemized project costs (2026-09-15) — Founder/Waqf-side counterpart
+// to VaultExpensesSection. Plain staff CRUD; each entry auto-posts a
+// balanced journal entry (see WaqfLedgerSection below). No
+// additionalCurrencies picker — unlike Vault, a Waqf Fund has one
+// declared corpusCurrency (WaqfExpensesService.create() rejects any
+// other, except for a legacy waqf with none declared at all, which
+// falls through unchecked — see that method's own comment).
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount } from "../../../../lib/format";
-import type { VaultExpense, VaultLedgerAccount, VaultMilestone } from "../../../../lib/ops-types";
+import type { WaqfExpense, WaqfLedgerAccount, WaqfMilestone } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
-export function VaultExpensesSection({
-  vaultId,
+export function WaqfExpensesSection({
+  waqfId,
   currency,
-  additionalCurrencies,
   milestones,
   onChanged,
 }: {
-  vaultId: string;
+  waqfId: string;
   currency: string;
-  additionalCurrencies: string[];
-  milestones: VaultMilestone[];
+  milestones: WaqfMilestone[];
   // Recording an expense against a milestone changes that milestone's
   // own actualSpend figure — this lets the parent page refetch
-  // VaultMilestonesSection's data too, so "Budget vs. actual" doesn't
-  // sit stale until the next full page load. Optional: a page that
-  // doesn't track milestones separately (there isn't one today, but
-  // nothing here requires it) can simply omit it.
+  // WaqfMilestonesSection's data too, so "Budget vs. actual" doesn't
+  // sit stale until the next full page load.
   onChanged?: () => void;
 }) {
   const {
     data: expenses,
     error,
     reload: load,
-  } = useLoadedResource(() => apiFetchJson<VaultExpense[]>(`/vault-expenses?vaultId=${vaultId}`), [vaultId]);
-  const [expenseAccounts, setExpenseAccounts] = useState<VaultLedgerAccount[]>([]);
+  } = useLoadedResource(() => apiFetchJson<WaqfExpense[]>(`/waqf-expenses?waqfId=${waqfId}`), [waqfId]);
+  const [expenseAccounts, setExpenseAccounts] = useState<WaqfLedgerAccount[]>([]);
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
-    apiFetchJson<VaultLedgerAccount[]>("/vault-ledger-accounts")
+    apiFetchJson<WaqfLedgerAccount[]>("/waqf-ledger-accounts")
       .then((accounts) => setExpenseAccounts(accounts.filter((a) => a.type === "expense")))
       .catch(() => setExpenseAccounts([]));
   }, []);
@@ -49,7 +49,7 @@ export function VaultExpensesSection({
     <section>
       <SectionHeader
         title="Expenses"
-        description="Itemized project spend — each one posts a balanced entry to this vault's ledger below."
+        description="Itemized project spend — each one posts a balanced entry to this waqf's ledger below."
         actionLabel={showForm ? "Cancel" : "Add expense"}
         onAction={() => setShowForm((v) => !v)}
       />
@@ -63,13 +63,12 @@ export function VaultExpensesSection({
       {showForm &&
         (expenseAccounts.length === 0 ? (
           <Alert tone="warning" title="No expense accounts yet" className="mb-4">
-            Add an expense account on the Vault Ledger Accounts page first.
+            Add an expense account on the Waqf Ledger Accounts page first.
           </Alert>
         ) : (
           <ExpenseForm
-            vaultId={vaultId}
+            waqfId={waqfId}
             currency={currency}
-            additionalCurrencies={additionalCurrencies}
             expenseAccounts={expenseAccounts}
             milestones={milestones}
             onCreated={() => {
@@ -99,7 +98,7 @@ export function VaultExpensesSection({
             {expenses.map((e) => (
               <TableRow key={e.id}>
                 <TableCell className="font-medium text-slate-900">{e.description}</TableCell>
-                <TableCell className="text-slate-500">{milestoneName(e.vaultMilestoneId)}</TableCell>
+                <TableCell className="text-slate-500">{milestoneName(e.waqfMilestoneId)}</TableCell>
                 <TableCell className="tabular-nums text-slate-500">
                   {formatAmount(e.amount)} {e.currency}
                 </TableCell>
@@ -113,29 +112,20 @@ export function VaultExpensesSection({
 }
 
 function ExpenseForm({
-  vaultId,
+  waqfId,
   currency,
-  additionalCurrencies,
   expenseAccounts,
   milestones,
   onCreated,
 }: {
-  vaultId: string;
+  waqfId: string;
   currency: string;
-  additionalCurrencies: string[];
-  expenseAccounts: VaultLedgerAccount[];
-  milestones: VaultMilestone[];
+  expenseAccounts: WaqfLedgerAccount[];
+  milestones: WaqfMilestone[];
   onCreated: () => void;
 }) {
-  // Found in a codebase audit: this form used to hardcode `currency`
-  // (the vault's primary one), so staff had no way to record a real
-  // expense actually paid in one of the vault's additionalCurrencies —
-  // same picker the public contribution form already has, for the same
-  // reason.
-  const acceptedCurrencies = [currency, ...additionalCurrencies];
-  const [expenseCurrency, setExpenseCurrency] = useState(currency);
   const [ledgerAccountId, setLedgerAccountId] = useState(expenseAccounts[0]?.id ?? "");
-  const [vaultMilestoneId, setVaultMilestoneId] = useState("");
+  const [waqfMilestoneId, setWaqfMilestoneId] = useState("");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -146,14 +136,14 @@ function ExpenseForm({
     setError(null);
     setSubmitting(true);
     try {
-      await apiFetchJson("/vault-expenses", {
+      await apiFetchJson("/waqf-expenses", {
         method: "POST",
         body: JSON.stringify({
-          vaultId,
-          vaultMilestoneId: vaultMilestoneId || undefined,
+          waqfId,
+          waqfMilestoneId: waqfMilestoneId || undefined,
           ledgerAccountId,
           amount,
-          currency: expenseCurrency,
+          currency,
           description,
         }),
       });
@@ -189,7 +179,7 @@ function ExpenseForm({
         {milestones.length > 0 && (
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-slate-700">Milestone (optional)</label>
-            <Select value={vaultMilestoneId} onChange={(e) => setVaultMilestoneId(e.target.value)}>
+            <Select value={waqfMilestoneId} onChange={(e) => setWaqfMilestoneId(e.target.value)}>
               <option value="">None</option>
               {milestones.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -199,20 +189,8 @@ function ExpenseForm({
             </Select>
           </div>
         )}
-        {acceptedCurrencies.length > 1 && (
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Currency</label>
-            <Select value={expenseCurrency} onChange={(e) => setExpenseCurrency(e.target.value)}>
-              {acceptedCurrencies.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
         <div className="w-32 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Amount ({expenseCurrency})</label>
+          <label className="text-sm font-medium text-slate-700">Amount ({currency})</label>
           <Input type="number" min="0" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
         <Button type="submit" disabled={submitting}>

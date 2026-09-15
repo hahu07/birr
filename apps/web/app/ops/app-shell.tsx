@@ -78,6 +78,7 @@ const NAV_GROUPS: {
       { href: "/ops/counterparties", label: "Counterparties", icon: IconLandmark },
       { href: "/ops/cause-categories", label: "Cause Categories", icon: IconSparkle },
       { href: "/ops/vault-ledger-accounts", label: "Vault Ledger Accounts", icon: IconFileText },
+      { href: "/ops/waqf-ledger-accounts", label: "Waqf Ledger Accounts", icon: IconFileText },
     ],
   },
   {

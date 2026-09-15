@@ -14,7 +14,7 @@ import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize, formatDate } from "../../../../lib/format";
 import { useMarkNotificationsReadForEntity } from "../../../../lib/notifications";
-import type { Waqf } from "../../../../lib/ops-types";
+import type { Waqf, WaqfMilestone } from "../../../../lib/ops-types";
 import { Alert, Badge, IconBriefcase, Skeleton } from "@birr/ui";
 import { LicenseStatusBanner } from "./LicenseStatusBanner";
 import { CaseAssignmentsSection } from "./CaseAssignmentsSection";
@@ -29,6 +29,10 @@ import { ProceedsSection } from "./ProceedsSection";
 import { DistributionsSection } from "./DistributionsSection";
 import { ComplianceReportSection } from "./ComplianceReportSection";
 import { FinancialReportSection } from "./FinancialReportSection";
+import { WaqfMilestonesSection } from "./WaqfMilestonesSection";
+import { WaqfExpensesSection } from "./WaqfExpensesSection";
+import { WaqfLedgerSection } from "./WaqfLedgerSection";
+import { useLoadedResource } from "../../_components/SectionChrome";
 
 const STATUS_TONE: Record<Waqf["status"], "success" | "warning" | "neutral" | "danger"> = {
   active: "success",
@@ -52,6 +56,10 @@ export default function WaqfDetailPage() {
   // on every record() now, so CausesSection needs to refetch to show
   // each cause's freshly recomputed proceedsAllocatedAmount.
   const [proceedsVersion, setProceedsVersion] = useState(0);
+  // Bumped by WaqfExpensesSection whenever it records an expense — the
+  // journal entry it auto-posts is exactly what WaqfLedgerSection's own
+  // reports read, so those need to refetch too, not just Milestones.
+  const [ledgerVersion, setLedgerVersion] = useState(0);
 
   const load = useCallback(() => {
     apiFetchJson<Waqf>(`/waqfs/${id}`)
@@ -62,6 +70,26 @@ export default function WaqfDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Project-type waqfs only (WaqfMilestonesService itself rejects
+  // creation against anything else) — the single shared fetch every
+  // section that touches milestones reads from (WaqfMilestonesSection's
+  // own display, WaqfExpensesSection's and DistributionsSection's
+  // milestone-link dropdowns) — not fetched independently inside any of
+  // them (found live, 2026-09-15: a milestone-only internal fetch meant
+  // recording an expense elsewhere on the page never refreshed what
+  // WaqfMilestonesSection itself was showing). Hooks run unconditionally
+  // before the early error/loading returns below, so `waqf` may still
+  // be null on the first render — the fetcher itself guards against
+  // that rather than skipping the hook call.
+  const {
+    data: milestones,
+    error: milestonesError,
+    reload: reloadMilestones,
+  } = useLoadedResource(
+    () => (waqf?.type === "project" ? apiFetchJson<WaqfMilestone[]>(`/waqf-milestones?waqfId=${id}`) : Promise.resolve([])),
+    [id, waqf?.type],
+  );
 
   // Fix for the notification read-state gap (see
   // lib/notifications.ts's own comment) — covers
@@ -151,9 +179,35 @@ export default function WaqfDetailPage() {
             <ProceedsSection waqfId={id} onChanged={() => setProceedsVersion((v) => v + 1)} />
           </>
         )}
-        <DistributionsSection waqfId={id} causesVersion={causesVersion} beneficiariesVersion={beneficiariesVersion} />
+        {waqf.type === "project" && (
+          <>
+            <WaqfMilestonesSection
+              waqfId={id}
+              currency={waqf.corpusCurrency ?? "USD"}
+              milestones={milestones}
+              error={milestonesError}
+              onChanged={reloadMilestones}
+            />
+            <WaqfExpensesSection
+              waqfId={id}
+              currency={waqf.corpusCurrency ?? "USD"}
+              milestones={milestones ?? []}
+              onChanged={() => {
+                reloadMilestones();
+                setLedgerVersion((v) => v + 1);
+              }}
+            />
+          </>
+        )}
+        <DistributionsSection
+          waqfId={id}
+          causesVersion={causesVersion}
+          beneficiariesVersion={beneficiariesVersion}
+          milestones={milestones ?? []}
+        />
         <FinancialReportSection waqfId={id} />
         <ComplianceReportSection waqfId={id} />
+        <WaqfLedgerSection waqfId={id} currency={waqf.corpusCurrency ?? "USD"} refreshKey={ledgerVersion} />
       </div>
     </div>
   );

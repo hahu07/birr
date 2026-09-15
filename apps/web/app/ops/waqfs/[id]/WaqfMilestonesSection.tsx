@@ -1,44 +1,43 @@
 "use client";
 
-// Project-vault lifecycle tracking (2026-09-13) — milestone creation is
-// plain CRUD; marking one "completed" is always the governed
-// vault.milestone_complete action, proposed here, decided on the
-// Approval Queue page (never here) — same posture
-// VaultDistributionsSection already established for
-// vault.distribution_approve.
+// Project-waqf lifecycle tracking (2026-09-15) — Founder/Waqf-side
+// counterpart to VaultMilestonesSection. Milestone creation is plain
+// CRUD; marking one "completed" is always the governed
+// waqf.milestone_complete action, proposed here, decided on the
+// Approval Queue page (never here).
 //
-// Milestones/error/reload are owned by the parent page
-// (VaultExpensesSection and VaultDistributionsSection need the same
-// list for their own pickers), not fetched independently here — found
-// live, 2026-09-15: an earlier version of this component fetched its
-// own separate copy, so recording an expense against a milestone (a
-// sibling component's action) had no way to refresh what THIS
-// component was showing; "Budget vs. actual" stayed stale until a full
-// page reload. One shared fetch, passed down, closes that for good.
+// Milestones/error/reload are owned by the parent page (WaqfExpensesSection
+// and DistributionsSection need the same list for their own pickers),
+// not fetched independently here — found live, 2026-09-15: an earlier
+// version of this component fetched its own separate copy, so recording
+// an expense against a milestone (a sibling component's action) had no
+// way to refresh what THIS component was showing; "Budget vs. actual"
+// stayed stale until a full page reload. One shared fetch, passed down,
+// closes that for good.
 import { Fragment, useRef, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize } from "../../../../lib/format";
-import type { VaultMilestone } from "../../../../lib/ops-types";
+import type { WaqfMilestone } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 
-const STATUS_TONE: Record<VaultMilestone["status"], "neutral" | "warning" | "success"> = {
+const STATUS_TONE: Record<WaqfMilestone["status"], "neutral" | "warning" | "success"> = {
   pending: "neutral",
   in_progress: "warning",
   completed: "success",
 };
 
-export function VaultMilestonesSection({
-  vaultId,
+export function WaqfMilestonesSection({
+  waqfId,
   currency,
   milestones,
   error,
   onChanged,
 }: {
-  vaultId: string;
+  waqfId: string;
   currency: string;
-  milestones: VaultMilestone[] | null;
+  milestones: WaqfMilestone[] | null;
   error: string | null;
   onChanged: () => void;
 }) {
@@ -62,7 +61,7 @@ export function VaultMilestonesSection({
 
       {showForm && (
         <MilestoneForm
-          vaultId={vaultId}
+          waqfId={waqfId}
           nextSequence={(milestones?.length ?? 0) + 1}
           onCreated={() => {
             setShowForm(false);
@@ -110,8 +109,8 @@ export function VaultMilestonesSection({
                       {m.status === "pending" && <StartButton milestoneId={m.id} onStarted={onChanged} />}
                       {m.status !== "completed" && (
                         <ProposeGovernedActionButton
-                          permissionKey="vault.milestone_complete"
-                          payload={{ vaultMilestoneId: m.id }}
+                          permissionKey="waqf.milestone_complete"
+                          payload={{ waqfMilestoneId: m.id }}
                           label="Propose completion"
                           onProposed={onChanged}
                         />
@@ -142,13 +141,12 @@ export function VaultMilestonesSection({
   );
 }
 
-// Budget-vs-actual (2026-09-14) — targetAmount is always the vault's
-// primary currency (see Vault.additionalCurrencies's own comment);
-// actualSpend is per-currency (a milestone's expenses aren't
-// currency-locked the same way), so the primary-currency entry is what
-// gets compared against the target, and anything spent in another
-// currency gets its own line rather than being folded in.
-function BudgetVsActual({ milestone, currency }: { milestone: VaultMilestone; currency: string }) {
+// Budget-vs-actual — targetAmount is always the waqf's own
+// corpusCurrency; actualSpend is per-currency (a milestone's expenses
+// aren't currency-locked the same way), so the primary-currency entry
+// is what gets compared against the target, and anything spent in
+// another currency gets its own line rather than being folded in.
+function BudgetVsActual({ milestone, currency }: { milestone: WaqfMilestone; currency: string }) {
   const spent = Number(milestone.actualSpend.find((s) => s.currency === currency)?.amount ?? "0");
   const otherSpend = milestone.actualSpend.filter((s) => s.currency !== currency && Number(s.amount) > 0);
   const target = milestone.targetAmount ? Number(milestone.targetAmount) : null;
@@ -178,7 +176,7 @@ function BudgetVsActual({ milestone, currency }: { milestone: VaultMilestone; cu
 }
 
 // Plain staff action, not governed — marking work as started moves no
-// money (see VaultMilestonesService.markInProgress's own comment), so
+// money (see WaqfMilestonesService.markInProgress's own comment), so
 // this is a direct call, not a ProposeGovernedActionButton.
 function StartButton({ milestoneId, onStarted }: { milestoneId: string; onStarted: () => void }) {
   const [submitting, setSubmitting] = useState(false);
@@ -188,7 +186,7 @@ function StartButton({ milestoneId, onStarted }: { milestoneId: string; onStarte
     setSubmitting(true);
     setError(null);
     try {
-      await apiFetchJson(`/vault-milestones/${milestoneId}/start`, { method: "POST" });
+      await apiFetchJson(`/waqf-milestones/${milestoneId}/start`, { method: "POST" });
       onStarted();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -206,7 +204,7 @@ function StartButton({ milestoneId, onStarted }: { milestoneId: string; onStarte
   );
 }
 
-function MilestoneForm({ vaultId, nextSequence, onCreated }: { vaultId: string; nextSequence: number; onCreated: () => void }) {
+function MilestoneForm({ waqfId, nextSequence, onCreated }: { waqfId: string; nextSequence: number; onCreated: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [sequence, setSequence] = useState(String(nextSequence));
@@ -219,10 +217,10 @@ function MilestoneForm({ vaultId, nextSequence, onCreated }: { vaultId: string; 
     setError(null);
     setSubmitting(true);
     try {
-      await apiFetchJson("/vault-milestones", {
+      await apiFetchJson("/waqf-milestones", {
         method: "POST",
         body: JSON.stringify({
-          vaultId,
+          waqfId,
           name,
           description: description || undefined,
           sequence: Number(sequence),
@@ -273,14 +271,10 @@ function MilestoneForm({ vaultId, nextSequence, onCreated }: { vaultId: string; 
   );
 }
 
-// Milestone evidence (2026-09-14) — a photo or completion-report PDF,
-// plus free-text notes, independent of vault.milestone_complete (see
-// VaultMilestonesService.setEvidence's own comment on why this isn't a
-// second governed checkpoint). Notes and file are saved separately —
-// picking a file uploads it immediately, since a staff member expects
-// "I chose a file" to mean "it's attached," not "attached once I also
-// remember to click a separate Save."
-function EvidencePanel({ milestone, onSaved }: { milestone: VaultMilestone; onSaved: () => void }) {
+// Milestone evidence — a photo or completion-report PDF, plus
+// free-text notes, independent of waqf.milestone_complete. Notes and
+// file are saved separately — picking a file uploads it immediately.
+function EvidencePanel({ milestone, onSaved }: { milestone: WaqfMilestone; onSaved: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [notes, setNotes] = useState(milestone.evidenceNotes ?? "");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -291,7 +285,7 @@ function EvidencePanel({ milestone, onSaved }: { milestone: VaultMilestone; onSa
     setSavingNotes(true);
     setError(null);
     try {
-      await apiFetchJson(`/vault-milestones/${milestone.id}/evidence`, { method: "POST", body: JSON.stringify({ evidenceNotes: notes }) });
+      await apiFetchJson(`/waqf-milestones/${milestone.id}/evidence`, { method: "POST", body: JSON.stringify({ evidenceNotes: notes }) });
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -309,7 +303,7 @@ function EvidencePanel({ milestone, onSaved }: { milestone: VaultMilestone; onSa
     try {
       const formData = new FormData();
       formData.append("evidence", file);
-      await apiFetchJson(`/vault-milestones/${milestone.id}/evidence`, { method: "POST", body: formData });
+      await apiFetchJson(`/waqf-milestones/${milestone.id}/evidence`, { method: "POST", body: formData });
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");

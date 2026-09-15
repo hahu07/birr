@@ -310,6 +310,9 @@ export interface Distribution {
   waqfId: string;
   causeId: string;
   beneficiaryId: string;
+  // Optional — see WaqfMilestone's own schema comment. Set only when
+  // this distribution is a project-type waqf's milestone tranche.
+  waqfMilestoneId: string | null;
   amount: string;
   currency: string;
   // "approved" no longer means money moved — it only means the
@@ -927,6 +930,55 @@ export interface VaultExpense {
 }
 
 export interface VaultLedgerAccountBalance {
+  ledgerAccountId: string;
+  code: string;
+  name: string;
+  type: string;
+  debit: string;
+  credit: string;
+  balance: string;
+}
+
+// Founder/Waqf-side counterparts to the four above (2026-09-15) — same
+// shapes, ported alongside WaqfLedgerService/WaqfExpensesService/
+// WaqfMilestonesService. status only ever reaches "completed" via the
+// governed waqf.milestone_complete action.
+export interface WaqfMilestone {
+  id: string;
+  waqfId: string;
+  name: string;
+  description: string | null;
+  sequence: number;
+  targetAmount: string | null;
+  status: "pending" | "in_progress" | "completed";
+  completedAt: string | null;
+  evidenceNotes: string | null;
+  evidenceFileUrl: string | null;
+  createdAt: string;
+  actualSpend: { currency: string; amount: string }[];
+}
+
+export interface WaqfLedgerAccount {
+  id: string;
+  code: string;
+  name: string;
+  type: "asset" | "liability" | "equity" | "revenue" | "expense";
+  isSystemDefault: boolean;
+}
+
+export interface WaqfExpense {
+  id: string;
+  waqfId: string;
+  waqfMilestoneId: string | null;
+  ledgerAccountId: string;
+  amount: string;
+  currency: string;
+  description: string;
+  recordedByUserId: string;
+  createdAt: string;
+}
+
+export interface WaqfLedgerAccountBalance {
   ledgerAccountId: string;
   code: string;
   name: string;

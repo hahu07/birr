@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize } from "../../../../lib/format";
-import type { Beneficiary, Distribution, DistributionCauseSummary, WaqfCause } from "../../../../lib/ops-types";
+import type { Beneficiary, Distribution, DistributionCauseSummary, WaqfCause, WaqfMilestone } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, StatCard, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
@@ -34,10 +34,15 @@ export function DistributionsSection({
   waqfId,
   causesVersion,
   beneficiariesVersion,
+  milestones = [],
 }: {
   waqfId: string;
   causesVersion: number;
   beneficiariesVersion: number;
+  // Project-type waqfs only — see WaqfMilestone's own schema comment.
+  // Empty (the default) for every other type, which simply never shows
+  // the milestone picker/column below.
+  milestones?: WaqfMilestone[];
 }) {
   const {
     data: distributions,
@@ -80,6 +85,7 @@ export function DistributionsSection({
   const activeCauses = causes.filter((c) => !c.deletedAt);
   const causeName = (id: string) => causes.find((c) => c.id === id)?.name ?? "—";
   const beneficiaryName = (id: string) => beneficiaries.find((b) => b.id === id)?.name ?? "—";
+  const milestoneName = (id: string | null) => (id ? (milestones.find((m) => m.id === id)?.name ?? "—") : null);
 
   return (
     <section>
@@ -106,6 +112,7 @@ export function DistributionsSection({
             waqfId={waqfId}
             causes={activeCauses}
             beneficiaries={beneficiaries}
+            milestones={milestones}
             onCreated={() => {
               setShowForm(false);
               load();
@@ -143,6 +150,7 @@ export function DistributionsSection({
             <TableRow>
               <TableHeaderCell>Beneficiary</TableHeaderCell>
               <TableHeaderCell>Cause</TableHeaderCell>
+              {milestones.length > 0 && <TableHeaderCell>Milestone</TableHeaderCell>}
               <TableHeaderCell>Amount</TableHeaderCell>
               <TableHeaderCell>Status</TableHeaderCell>
               <TableHeaderCell />
@@ -153,6 +161,9 @@ export function DistributionsSection({
               <TableRow key={d.id}>
                 <TableCell className="font-medium text-slate-900">{beneficiaryName(d.beneficiaryId)}</TableCell>
                 <TableCell className="text-slate-500">{causeName(d.causeId)}</TableCell>
+                {milestones.length > 0 && (
+                  <TableCell className="text-slate-500">{milestoneName(d.waqfMilestoneId) ?? "—"}</TableCell>
+                )}
                 <TableCell className="text-slate-500">
                   {formatAmount(d.amount)} {d.currency}
                 </TableCell>
@@ -218,19 +229,28 @@ function DistributionForm({
   waqfId,
   causes,
   beneficiaries,
+  milestones,
   onCreated,
 }: {
   waqfId: string;
   causes: WaqfCause[];
   beneficiaries: Beneficiary[];
+  milestones: WaqfMilestone[];
   onCreated: () => void;
 }) {
   const [causeId, setCauseId] = useState(causes[0]?.id ?? "");
   const [beneficiaryId, setBeneficiaryId] = useState(beneficiaries[0]?.id ?? "");
+  const [waqfMilestoneId, setWaqfMilestoneId] = useState("");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<(typeof CURRENCIES)[number]>("USD");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Only a completed milestone can actually be attached — see
+  // DistributionsService.create()'s own gate (it flatly rejects a
+  // non-completed one). Filtering here means the dropdown never offers
+  // a choice that's guaranteed to fail.
+  const completedMilestones = milestones.filter((m) => m.status === "completed");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -239,7 +259,7 @@ function DistributionForm({
     try {
       await apiFetchJson("/distributions", {
         method: "POST",
-        body: JSON.stringify({ waqfId, causeId, beneficiaryId, amount, currency }),
+        body: JSON.stringify({ waqfId, causeId, beneficiaryId, waqfMilestoneId: waqfMilestoneId || undefined, amount, currency }),
       });
       onCreated();
     } catch (err) {
@@ -284,6 +304,26 @@ function DistributionForm({
             ))}
           </select>
         </div>
+        {milestones.length > 0 && (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Milestone tranche (optional)</label>
+            <select
+              value={waqfMilestoneId}
+              onChange={(e) => setWaqfMilestoneId(e.target.value)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              <option value="">Ad-hoc (no milestone)</option>
+              {completedMilestones.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            {completedMilestones.length === 0 && (
+              <p className="text-xs text-slate-500">No milestone is completed yet — propose one's completion first.</p>
+            )}
+          </div>
+        )}
         <div className="w-32 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Amount</label>
           <Input type="number" min="0" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />
