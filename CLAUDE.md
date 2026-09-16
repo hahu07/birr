@@ -453,6 +453,22 @@ itself isn't seeded with this automatically — that's still a real
 compliance/legal call for a human to make through the Ops Console, not
 something to hardcode from a chat instruction.
 
+**Update, 2026-09-16 — corrects the note above: Nigeria does have a real
+trustee-registration regime, and Birr already holds it.** The 2026-09-01
+claim that Nigeria has "no such thing as a trustee license" was wrong.
+An NGO's trustee standing in Nigeria is established through registration
+as an Incorporated Trustee with the Corporate Affairs Commission (CAC)
+— that registration IS Nigeria's trustee license, and Birr has already
+registered. This isn't the `CompliancePolicySet.requiresTrusteeLicense
+: false` ("not_required," a jurisdiction with no such regime) case the
+2026-09-01 note reached for — Nigeria does require this, Birr just
+hadn't recorded holding it. Fixed by entering it through the Ops Console
+exactly as the model was built for: an active `TrusteeLicense` row for
+jurisdiction `NG`, licensing authority Corporate Affairs Commission
+(CAC) — once that row exists, `TrusteeLicensesService
+.statusForJurisdiction` returns `"active"` on its own, no code change
+needed. This was a data-entry gap, not a modeling gap.
+
 ## Tech principles
 - Cloud-native, API-first (every feature needs an API before/alongside UI)
 - Security and privacy by design
