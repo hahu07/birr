@@ -66,4 +66,22 @@ describe("assertWithinAllocation", () => {
     const config = configFor({ allocatedAmount: null, proceedsAllocatedAmount: null });
     await expect(assertWithinAllocation("cause-1", new Prisma.Decimal("0.01"), "USD", config)).rejects.toThrow(BadRequestException);
   });
+
+  test("passes the currency through to loadCauseAndParentType, for a caller whose ceiling is itself currency-scoped (VaultCauseAllocation)", async () => {
+    const config = configFor({ allocatedAmount: "100" });
+    await assertWithinAllocation("cause-1", new Prisma.Decimal("1"), "EUR", config);
+    expect(config.loadCauseAndParentType).toHaveBeenCalledWith("cause-1", "EUR");
+  });
+
+  test("a caller with a genuinely per-currency ceiling (findCommittedInOtherCurrency always null) allows independent commitments in two different currencies against the same cause", async () => {
+    // Mirrors VaultDistributionsService's own config: unlike the bare,
+    // currency-less WaqfCause ceiling this module originally guarded
+    // (see the "rejects switching currency" test above), a genuinely
+    // per-currency ceiling has nothing to guard against here — a cause
+    // committed in USD and also committed in NGN is exactly the point.
+    const usdConfig = configFor({ allocatedAmount: "1000", otherCurrencyCommitment: null, alreadyCommitted: "0" });
+    const ngnConfig = configFor({ allocatedAmount: "500000", otherCurrencyCommitment: null, alreadyCommitted: "0" });
+    await expect(assertWithinAllocation("cause-1", new Prisma.Decimal("1000"), "USD", usdConfig)).resolves.toBeUndefined();
+    await expect(assertWithinAllocation("cause-1", new Prisma.Decimal("500000"), "NGN", ngnConfig)).resolves.toBeUndefined();
+  });
 });

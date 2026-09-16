@@ -65,10 +65,15 @@ export class VaultDistributionsService {
     if (!cause || cause.vaultId !== input.vaultId) {
       throw new BadRequestException(`Cause "${input.vaultCauseId}" does not belong to vault "${input.vaultId}".`);
     }
-    if (vault && vault.currency !== input.currency) {
-      throw new BadRequestException(
-        `This vault is denominated in ${vault.currency} — a distribution must use that same currency, not ${input.currency}.`,
-      );
+    // Same accepted-currency set VaultContributionsService.initiate()
+    // already validates giving against (2026-09-13's additionalCurrencies)
+    // — a payout can now be made in any currency the vault actually
+    // accepted contributions in, not just its primary one.
+    if (vault) {
+      const acceptedCurrencies = [vault.currency, ...vault.additionalCurrencies];
+      if (!acceptedCurrencies.includes(input.currency)) {
+        throw new BadRequestException(`This vault only accepts distributions in ${acceptedCurrencies.join(", ")}, not ${input.currency}.`);
+      }
     }
     const counterparty = await prisma.counterparty.findUnique({ where: { id: input.counterpartyId } });
     if (!counterparty) throw new NotFoundException(`Counterparty "${input.counterpartyId}" not found.`);
@@ -384,13 +389,21 @@ export class VaultDistributionsService {
       lockCause: async (id) => {
         await tx.$queryRaw`SELECT id FROM "vault_causes" WHERE id = ${id} FOR UPDATE`;
       },
-      loadCauseAndParentType: async (id) => {
-        const cause = await tx.vaultCause.findUnique({ where: { id } });
-        const vault = cause ? await tx.vault.findUnique({ where: { id: cause.vaultId }, select: { type: true } }) : null;
-        return { cause, parentType: vault?.type ?? null };
+      loadCauseAndParentType: async (id, curr) => {
+        const [allocation, vaultCause] = await Promise.all([
+          tx.vaultCauseAllocation.findUnique({ where: { vaultCauseId_currency: { vaultCauseId: id, currency: curr } } }),
+          tx.vaultCause.findUnique({ where: { id }, select: { vaultId: true } }),
+        ]);
+        const vault = vaultCause ? await tx.vault.findUnique({ where: { id: vaultCause.vaultId }, select: { type: true } }) : null;
+        return { cause: allocation, parentType: vault?.type ?? null };
       },
-      findCommittedInOtherCurrency: (curr) =>
-        tx.vaultDistribution.findFirst({ where: { ...committedWhere, currency: { not: curr } }, select: { currency: true } }),
+      // VaultCauseAllocation's ceiling is genuinely per-currency (one row
+      // per (vaultCauseId, currency)) — a cause legitimately having
+      // committed distributions in more than one currency at once is
+      // exactly the point of this feature, not something to guard
+      // against (unlike WaqfCause's still-bare, currency-less ceiling —
+      // see this callback's own interface comment).
+      findCommittedInOtherCurrency: async () => null,
       sumCommittedInCurrency: async (curr) =>
         (await tx.vaultDistribution.aggregate({ where: { ...committedWhere, currency: curr }, _sum: { amount: true } }))._sum.amount,
     });

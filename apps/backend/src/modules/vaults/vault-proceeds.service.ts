@@ -42,6 +42,16 @@ export class VaultProceedsService {
           `Only investment-style vaults have investment proceeds to record — "${vault.name}" is ${vault.type}.`,
         );
       }
+      // Same accepted-currency set VaultContributionsService.initiate()
+      // validates giving against — without this, a proceeds row in an
+      // untracked currency would be silently invisible to
+      // sumForVault(vaultId, currency)'s per-currency pool below, since
+      // that currency was never one a cause could actually be allocated
+      // against.
+      const acceptedCurrencies = [vault.currency, ...vault.additionalCurrencies];
+      if (!acceptedCurrencies.includes(input.currency)) {
+        throw new BadRequestException(`This vault only accepts proceeds in ${acceptedCurrencies.join(", ")}, not ${input.currency}.`);
+      }
 
       const proceeds = await tx.vaultProceeds.create({ data: { ...input, recordedByUserId: actorUserId } });
       await tx.auditLog.create({
@@ -59,9 +69,20 @@ export class VaultProceedsService {
     });
   }
 
-  /** Same aggregate WaqfProceedsService.sumForWaqf provides, vault-scoped. */
-  async sumForVault(vaultId: string, client: Prisma.TransactionClient | typeof prisma = prisma): Promise<Prisma.Decimal> {
-    const result = await client.vaultProceeds.aggregate({ where: { vaultId }, _sum: { amount: true } });
+  /**
+   * Same aggregate WaqfProceedsService.sumForWaqf provides, vault-scoped
+   * — but unlike a Waqf (single corpusCurrency), a Vault can accept
+   * proceeds in more than one currency (additionalCurrencies), so this
+   * must be scoped to one currency at a time. Summing across currencies
+   * without this filter would silently add e.g. USD and NGN proceeds
+   * together as one meaningless number.
+   */
+  async sumForVault(
+    vaultId: string,
+    currency: string,
+    client: Prisma.TransactionClient | typeof prisma = prisma,
+  ): Promise<Prisma.Decimal> {
+    const result = await client.vaultProceeds.aggregate({ where: { vaultId, currency }, _sum: { amount: true } });
     return result._sum.amount ?? new Prisma.Decimal(0);
   }
 

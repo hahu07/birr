@@ -25,11 +25,13 @@ const STATUS_TONE: Record<VaultDistribution["status"], "success" | "warning" | "
 export function VaultDistributionsSection({
   vaultId,
   currency,
+  additionalCurrencies,
   causes,
   milestones,
 }: {
   vaultId: string;
   currency: string;
+  additionalCurrencies: string[];
   causes: VaultCause[];
   // Project vaults only — see VaultMilestone's own schema comment.
   // Empty for an investment vault, which simply never shows the
@@ -78,6 +80,7 @@ export function VaultDistributionsSection({
           <DistributionForm
             vaultId={vaultId}
             currency={currency}
+            additionalCurrencies={additionalCurrencies}
             causes={causes}
             counterparties={activeCounterparties}
             milestones={milestones}
@@ -178,6 +181,7 @@ function RetryDisbursementAction({ distributionId, onRetried }: { distributionId
 function DistributionForm({
   vaultId,
   currency,
+  additionalCurrencies,
   causes,
   counterparties,
   milestones,
@@ -185,11 +189,18 @@ function DistributionForm({
 }: {
   vaultId: string;
   currency: string;
+  additionalCurrencies: string[];
   causes: VaultCause[];
   counterparties: Counterparty[];
   milestones: VaultMilestone[];
   onCreated: () => void;
 }) {
+  // 2026-09-15 — a distribution can now be made in any currency the
+  // vault actually accepts (VaultDistributionsService.create()'s own
+  // check), same shape VaultExpensesSection's own acceptedCurrencies
+  // selector already uses.
+  const acceptedCurrencies = [currency, ...additionalCurrencies];
+  const [distributionCurrency, setDistributionCurrency] = useState(currency);
   const [vaultCauseId, setVaultCauseId] = useState(causes[0]?.id ?? "");
   const [counterpartyId, setCounterpartyId] = useState(counterparties[0]?.id ?? "");
   const [vaultMilestoneId, setVaultMilestoneId] = useState("");
@@ -211,7 +222,14 @@ function DistributionForm({
     try {
       await apiFetchJson("/vault-distributions", {
         method: "POST",
-        body: JSON.stringify({ vaultId, vaultCauseId, counterpartyId, vaultMilestoneId: vaultMilestoneId || undefined, amount, currency }),
+        body: JSON.stringify({
+          vaultId,
+          vaultCauseId,
+          counterpartyId,
+          vaultMilestoneId: vaultMilestoneId || undefined,
+          amount,
+          currency: distributionCurrency,
+        }),
       });
       onCreated();
     } catch (err) {
@@ -264,8 +282,20 @@ function DistributionForm({
             )}
           </div>
         )}
+        {acceptedCurrencies.length > 1 && (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Currency</label>
+            <Select value={distributionCurrency} onChange={(e) => setDistributionCurrency(e.target.value)}>
+              {acceptedCurrencies.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
         <div className="w-32 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Amount ({currency})</label>
+          <label className="text-sm font-medium text-slate-700">Amount ({distributionCurrency})</label>
           <Input type="number" min="0" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
         <Button type="submit" disabled={submitting}>

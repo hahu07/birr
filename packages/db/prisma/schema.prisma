@@ -2091,13 +2091,12 @@ model Vault {
 }
 
 // Mirrors WaqfCause structurally (see that model's own comment for the
-// shared CauseCategory catalog convention this reuses) — allocatedAmount/
-// proceedsAllocatedAmount are left off THIS slice's migration
-// deliberately; they land in the governed-action slice, since (per the
-// approved plan) both move only via a governed action here, never
-// unilateral staff CRUD the way WaqfCause.allocatedAmount is for a
-// Founder's own waqf — there's no Founder to hold that self-service half
-// of the decision, and it's public money.
+// shared CauseCategory catalog convention this reuses), with one real
+// difference: allocation itself lives on VaultCauseAllocation below, not
+// a bare field here — there's no Founder to hold WaqfCause.allocatedAmount's
+// self-service half of that decision, and it's public money, so both
+// allocatedAmount and proceedsAllocatedAmount only ever move via a
+// governed action (vault.cause_allocate / vault.proceeds_allocate).
 model VaultCause {
   id                      String         @id @default(uuid())
   vaultId                 String
@@ -2106,28 +2105,44 @@ model VaultCause {
   causeCategory           CauseCategory? @relation(fields: [causeCategoryId], references: [id])
   name                    String
   description             String?
-  // How much of the vault's pooled confirmed VaultContributions has been
-  // earmarked to this cause. Unlike WaqfCause.allocatedAmount (Founder
-  // self-service), this only ever moves via the vault.cause_allocate
-  // governed action — there's no Founder here to hold the self-service
-  // half of that decision, and it's public money (see this section's
-  // own top comment).
-  allocatedAmount         Decimal?
-  // Investment-style vaults only — how much of the vault's recorded
-  // VaultProceeds total has been earmarked to this cause, a second,
-  // additive pool on top of allocatedAmount above (same relationship as
-  // WaqfCause's own two fields). Only ever moves via the
-  // vault.proceeds_allocate governed action.
-  proceedsAllocatedAmount Decimal?
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
   deletedAt               DateTime?
 
   contributions VaultContribution[]
   distributions VaultDistribution[]
+  allocations   VaultCauseAllocation[]
 
   @@unique([vaultId, name])
   @@map("vault_causes")
+}
+
+// Update, 2026-09-15 — a vault's causes can now be allocated in more
+// than one currency, since Vault.additionalCurrencies (2026-09-13)
+// already let a vault accept contributions in more than one. Replaces
+// VaultCause's own former bare allocatedAmount/proceedsAllocatedAmount
+// Decimal fields, which had no currency of their own and were
+// implicitly assumed to be in the parent Vault's primary currency —
+// unlike VaultsService.withAmountRaised (a read-only aggregate over
+// child rows that already carry their own currency), this ceiling is
+// itself the thing staff write, via vault.cause_allocate/
+// vault.proceeds_allocate, so it needs one row per currency rather than
+// a groupBy at read time. allocatedAmount only ever moves via
+// vault.cause_allocate; proceedsAllocatedAmount (investment-style
+// vaults only, additive on top of allocatedAmount, same relationship
+// as WaqfCause's own two fields) only via vault.proceeds_allocate.
+model VaultCauseAllocation {
+  id                      String     @id @default(uuid())
+  vaultCauseId            String
+  vaultCause              VaultCause @relation(fields: [vaultCauseId], references: [id])
+  currency                String
+  allocatedAmount         Decimal    @default(0)
+  proceedsAllocatedAmount Decimal    @default(0)
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+
+  @@unique([vaultCauseId, currency])
+  @@map("vault_cause_allocations")
 }
 
 enum IdType {

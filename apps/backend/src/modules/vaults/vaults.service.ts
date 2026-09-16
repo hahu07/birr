@@ -270,16 +270,21 @@ export class VaultsService {
   }
 
   findById(id: string) {
-    return prisma.vault.findFirst({ where: { id, deletedAt: null }, include: { causes: { where: { deletedAt: null } } } });
+    return prisma.vault.findFirst({
+      where: { id, deletedAt: null },
+      include: { causes: { where: { deletedAt: null }, include: { allocations: true } } },
+    });
   }
 
   // Field whitelist for the two @Public() routes below — a public
   // visitor's browser gets exactly what apps/web/lib/types.ts's Vault/
   // VaultCause interfaces declare, never the staff-only fields on the
   // same rows (createdByUserId identifies a staff member;
-  // allocatedAmount/proceedsAllocatedAmount are governed-action-gated
-  // internal ceilings) — findById/list below stay on `include` since
-  // those two routes are staff-only (no @Public()).
+  // VaultCauseAllocation's own allocatedAmount/proceedsAllocatedAmount
+  // are governed-action-gated internal ceilings, deliberately not
+  // included in this cause's own `select` below) — findById/list below
+  // stay on `include` since those two routes are staff-only (no
+  // @Public()).
   private static readonly PUBLIC_VAULT_SELECT = {
     id: true,
     name: true,
@@ -450,7 +455,11 @@ export class VaultsService {
   }
 
   listCauses(vaultId: string) {
-    return prisma.vaultCause.findMany({ where: { vaultId, deletedAt: null }, orderBy: { createdAt: "desc" } });
+    return prisma.vaultCause.findMany({
+      where: { vaultId, deletedAt: null },
+      include: { allocations: true },
+      orderBy: { createdAt: "desc" },
+    });
   }
 
   /**
@@ -463,8 +472,19 @@ export class VaultsService {
    * governed here rather than Founder self-service — there's no Founder
    * to hold that half of the decision for a Vault (see this section's
    * own top comment), and it's public money.
+   *
+   * Update, 2026-09-15: allocation is now per-currency
+   * (VaultCauseAllocation, one row per (vaultCauseId, currency)) — a
+   * vault with additionalCurrencies can allocate each currency's raised
+   * pool independently to the same set of causes, rather than every
+   * cause sharing one bare, primary-currency-only ceiling.
    */
-  async setCauseAllocation(vaultCauseId: string, newAllocatedAmount: Prisma.Decimal | number | string, tx: Prisma.TransactionClient) {
+  async setCauseAllocation(
+    vaultCauseId: string,
+    currency: string,
+    newAllocatedAmount: Prisma.Decimal | number | string,
+    tx: Prisma.TransactionClient,
+  ) {
     const cause = await tx.vaultCause.findFirst({ where: { id: vaultCauseId, deletedAt: null } });
     if (!cause) throw new NotFoundException(`VaultCause "${vaultCauseId}" not found.`);
 
@@ -474,26 +494,35 @@ export class VaultsService {
     await tx.$queryRaw`SELECT id FROM "vaults" WHERE id = ${cause.vaultId} FOR UPDATE`;
     const vault = await tx.vault.findUniqueOrThrow({ where: { id: cause.vaultId } });
 
+    const acceptedCurrencies = [vault.currency, ...vault.additionalCurrencies];
+    if (!acceptedCurrencies.includes(currency)) {
+      throw new BadRequestException(`This vault only accepts contributions in ${acceptedCurrencies.join(", ")}, not ${currency}.`);
+    }
+
     const raised = await tx.vaultContribution.aggregate({
-      where: { vaultId: cause.vaultId, currency: vault.currency, status: "confirmed" },
+      where: { vaultId: cause.vaultId, currency, status: "confirmed" },
       _sum: { amount: true },
     });
     const pool = raised._sum.amount ?? new Prisma.Decimal(0);
 
-    const otherCauses = await tx.vaultCause.findMany({
-      where: { vaultId: cause.vaultId, deletedAt: null, id: { not: vaultCauseId } },
+    const otherAllocations = await tx.vaultCauseAllocation.findMany({
+      where: { currency, vaultCause: { vaultId: cause.vaultId, deletedAt: null }, vaultCauseId: { not: vaultCauseId } },
       select: { allocatedAmount: true },
     });
-    const alreadyAllocated = otherCauses.reduce((sum, c) => sum.plus(c.allocatedAmount ?? 0), new Prisma.Decimal(0));
+    const alreadyAllocated = otherAllocations.reduce((sum, a) => sum.plus(a.allocatedAmount), new Prisma.Decimal(0));
 
     const requested = new Prisma.Decimal(newAllocatedAmount);
     if (requested.lt(0)) throw new BadRequestException("Allocation can't be negative.");
     const available = pool.minus(alreadyAllocated);
     if (requested.gt(available)) {
-      throw new BadRequestException(`Only ${available} of ${pool} raised is unallocated across this vault's causes.`);
+      throw new BadRequestException(`Only ${available} ${currency} of ${pool} ${currency} raised is unallocated across this vault's causes.`);
     }
 
-    return tx.vaultCause.update({ where: { id: vaultCauseId }, data: { allocatedAmount: newAllocatedAmount } });
+    return tx.vaultCauseAllocation.upsert({
+      where: { vaultCauseId_currency: { vaultCauseId, currency } },
+      create: { vaultCauseId, currency, allocatedAmount: newAllocatedAmount },
+      update: { allocatedAmount: newAllocatedAmount },
+    });
   }
 
   /**
@@ -502,9 +531,13 @@ export class VaultsService {
    * WaqfCausesService.allocateProceeds()'s own ceiling logic, pool
    * sourced from VaultProceedsService.sumForVault instead of
    * WaqfProceedsService.sumForWaqf.
+   *
+   * Update, 2026-09-15: per-currency, same reasoning as
+   * setCauseAllocation above.
    */
   async setCauseProceedsAllocation(
     vaultCauseId: string,
+    currency: string,
     newProceedsAllocatedAmount: Prisma.Decimal | number | string,
     tx: Prisma.TransactionClient,
   ) {
@@ -517,16 +550,20 @@ export class VaultsService {
         `Only investment-style vaults have investment proceeds to allocate — "${vault.name}" is ${vault.type}.`,
       );
     }
+    const acceptedCurrencies = [vault.currency, ...vault.additionalCurrencies];
+    if (!acceptedCurrencies.includes(currency)) {
+      throw new BadRequestException(`This vault only accepts proceeds in ${acceptedCurrencies.join(", ")}, not ${currency}.`);
+    }
 
     await tx.$queryRaw`SELECT id FROM "vaults" WHERE id = ${vault.id} FOR UPDATE`;
-    const pool = await this.vaultProceedsService.sumForVault(vault.id, tx);
+    const pool = await this.vaultProceedsService.sumForVault(vault.id, currency, tx);
 
-    const otherCauses = await tx.vaultCause.findMany({
-      where: { vaultId: vault.id, deletedAt: null, id: { not: vaultCauseId } },
+    const otherAllocations = await tx.vaultCauseAllocation.findMany({
+      where: { currency, vaultCause: { vaultId: vault.id, deletedAt: null }, vaultCauseId: { not: vaultCauseId } },
       select: { proceedsAllocatedAmount: true },
     });
-    const alreadyAllocated = otherCauses.reduce(
-      (sum, c) => sum.plus(c.proceedsAllocatedAmount ?? 0),
+    const alreadyAllocated = otherAllocations.reduce(
+      (sum, a) => sum.plus(a.proceedsAllocatedAmount),
       new Prisma.Decimal(0),
     );
 
@@ -534,9 +571,15 @@ export class VaultsService {
     if (requested.lt(0)) throw new BadRequestException("Allocation can't be negative.");
     const available = pool.minus(alreadyAllocated);
     if (requested.gt(available)) {
-      throw new BadRequestException(`Only ${available} of ${pool} recorded proceeds is unallocated across this vault's causes.`);
+      throw new BadRequestException(
+        `Only ${available} ${currency} of ${pool} ${currency} recorded proceeds is unallocated across this vault's causes.`,
+      );
     }
 
-    return tx.vaultCause.update({ where: { id: vaultCauseId }, data: { proceedsAllocatedAmount: newProceedsAllocatedAmount } });
+    return tx.vaultCauseAllocation.upsert({
+      where: { vaultCauseId_currency: { vaultCauseId, currency } },
+      create: { vaultCauseId, currency, proceedsAllocatedAmount: newProceedsAllocatedAmount },
+      update: { proceedsAllocatedAmount: newProceedsAllocatedAmount },
+    });
   }
 }

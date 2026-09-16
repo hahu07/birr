@@ -21,7 +21,14 @@ describe("VaultProceedsService", () => {
     await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "mutawalli_officer" } });
 
     const investmentVault = await vaultsService.create(
-      { name: "Proceeds Test Vault", slug: `proceeds-test-${Date.now()}`, type: "investment", currency: "USD", jurisdiction: "NG" },
+      {
+        name: "Proceeds Test Vault",
+        slug: `proceeds-test-${Date.now()}`,
+        type: "investment",
+        currency: "USD",
+        additionalCurrencies: ["NGN"],
+        jurisdiction: "NG",
+      },
       actorUserId,
     );
     investmentVaultId = investmentVault.id;
@@ -57,9 +64,23 @@ describe("VaultProceedsService", () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  test("sumForVault() sums every recorded proceeds row for that vault", async () => {
+  test("sumForVault() sums every recorded proceeds row for that vault in the given currency", async () => {
     await service.record({ vaultId: investmentVaultId, amount: "250", currency: "USD", description: "Q2 return" }, actorUserId);
-    const sum = await service.sumForVault(investmentVaultId);
+    const sum = await service.sumForVault(investmentVaultId, "USD");
     expect(sum.toString()).toBe("750");
+  });
+
+  test("sumForVault() doesn't mix currencies — NGN proceeds are invisible to a USD sum and vice versa", async () => {
+    await service.record({ vaultId: investmentVaultId, amount: "100000", currency: "NGN", description: "NGN return" }, actorUserId);
+    const usdSum = await service.sumForVault(investmentVaultId, "USD");
+    const ngnSum = await service.sumForVault(investmentVaultId, "NGN");
+    expect(usdSum.toString()).toBe("750");
+    expect(ngnSum.toString()).toBe("100000");
+  });
+
+  test("record() rejects a currency the vault doesn't accept", async () => {
+    await expect(
+      service.record({ vaultId: investmentVaultId, amount: "50", currency: "EUR", description: "Untracked currency" }, actorUserId),
+    ).rejects.toThrow(BadRequestException);
   });
 });

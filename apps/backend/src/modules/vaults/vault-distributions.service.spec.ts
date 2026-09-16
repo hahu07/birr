@@ -26,11 +26,27 @@ describe("VaultDistributionsService", () => {
   let investmentVaultId: string;
   let payoutReadyCounterpartyId: string;
   let noPayoutDetailsCounterpartyId: string;
+  let multiCurrencyVaultId: string;
+  let multiCurrencyCauseId: string;
 
   function paystackReadyBankDetails() {
     return encryption.encrypt(
       JSON.stringify({ bankName: "Test Bank", accountNumber: "0123456789", accountName: "Test Relief Partner", bankCode: "058" }),
     );
+  }
+
+  // Test-only shortcut writing straight to VaultCauseAllocation, same
+  // reasoning as this file's own comment on the original
+  // vaultCause.update fixture calls: allocation itself is governed
+  // (vault.cause_allocate/vault.proceeds_allocate) and covered by
+  // governed-actions.service.spec.ts — these fixtures just need a real
+  // per-currency ceiling in place already.
+  function setAllocation(vaultCauseId: string, currency: string, allocatedAmount: string, proceedsAllocatedAmount = "0") {
+    return prisma.vaultCauseAllocation.upsert({
+      where: { vaultCauseId_currency: { vaultCauseId, currency } },
+      create: { vaultCauseId, currency, allocatedAmount, proceedsAllocatedAmount },
+      update: { allocatedAmount, proceedsAllocatedAmount },
+    });
   }
 
   beforeAll(async () => {
@@ -48,11 +64,7 @@ describe("VaultDistributionsService", () => {
     vaultIds.push(vault.id);
     const cause = await vaultsService.createCause({ vaultId, name: "Flood Relief" }, actorUserId);
     causeId = cause.id;
-    // Allocate directly for test simplicity — allocation itself is
-    // governed (vault.cause_allocate) and covered by
-    // governed-actions.service.spec.ts; this fixture just needs a real
-    // ceiling in place already.
-    await prisma.vaultCause.update({ where: { id: causeId }, data: { allocatedAmount: "1000" } });
+    await setAllocation(causeId, "USD", "1000");
 
     const investmentVault = await vaultsService.create(
       { name: "Distributions Test Investment Vault", slug: `distributions-investment-test-${Date.now()}`, type: "investment", currency: "USD", jurisdiction: "NG" },
@@ -60,6 +72,24 @@ describe("VaultDistributionsService", () => {
     );
     investmentVaultId = investmentVault.id;
     vaultIds.push(investmentVault.id);
+
+    const multiCurrencyVault = await vaultsService.create(
+      {
+        name: "Distributions Multi-Currency Test Vault",
+        slug: `distributions-multicur-test-${Date.now()}`,
+        type: "project",
+        currency: "USD",
+        additionalCurrencies: ["NGN"],
+        jurisdiction: "NG",
+      },
+      actorUserId,
+    );
+    multiCurrencyVaultId = multiCurrencyVault.id;
+    vaultIds.push(multiCurrencyVault.id);
+    const multiCurrencyCause = await vaultsService.createCause({ vaultId: multiCurrencyVaultId, name: "Multi-Currency Relief" }, actorUserId);
+    multiCurrencyCauseId = multiCurrencyCause.id;
+    await setAllocation(multiCurrencyCauseId, "USD", "1000");
+    await setAllocation(multiCurrencyCauseId, "NGN", "500000");
 
     const payoutReady = await prisma.counterparty.create({
       data: {
@@ -98,6 +128,8 @@ describe("VaultDistributionsService", () => {
     // (already deleted above) — see the "milestone-gated tranche
     // disbursement" describe block (2026-09-13).
     await prisma.vaultMilestone.deleteMany({ where: { vaultId: { in: vaultIds } } });
+    // RESTRICT on vaultCauseId, must go before VaultCause itself.
+    await prisma.vaultCauseAllocation.deleteMany({ where: { vaultCause: { vaultId: { in: vaultIds } } } });
     await prisma.vaultCause.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.counterparty.deleteMany({ where: { id: { in: counterpartyIds } } });
@@ -220,21 +252,19 @@ describe("VaultDistributionsService", () => {
   // Mirrors DistributionsService's own "allocation enforcement" describe
   // block, against the shared common/money/allocation-ceiling helper
   // both services now delegate to (see that module's own spec for the
-  // policy's pure-logic unit tests — race-safety, corpus-vs-proceeds,
-  // multi-currency lock-in). These are the integration-level tests
-  // proving the wiring into VaultCause/VaultDistribution actually works.
+  // policy's pure-logic unit tests — race-safety, corpus-vs-proceeds).
+  // These are the integration-level tests proving the wiring into
+  // VaultCause/VaultDistribution actually works.
   //
-  // One test from the Waqf side is deliberately NOT ported here: the
-  // multi-currency lock-in test. Distribution's own currency-lock only
-  // applies "if waqf.corpusCurrency is set" (many waqf fixtures leave it
-  // unset), so a Waqf-side distribution can genuinely reach
-  // assertWithinAllocation with two different currencies against one
-  // cause. VaultDistributionsService.create() has no such escape hatch
-  // — vault.currency is a required field, always set, and every
-  // VaultDistribution is rejected outright at create() if its currency
-  // doesn't match the vault's own. A second currency can therefore never
-  // reach assertWithinAllocation for a real Vault at all; that branch of
-  // the shared helper is exercised only by its own unit test.
+  // Update, 2026-09-15: a distribution CAN now be created in more than
+  // one currency (Vault.additionalCurrencies) — see the dedicated
+  // "multi-currency distributions" describe block below for that
+  // coverage. This describe block stays single-currency (USD) on
+  // purpose: it's testing the ceiling policy itself, not currency
+  // handling, and VaultCauseAllocation's per-currency ceiling means a
+  // second currency here would just be a second, wholly independent
+  // ceiling — not a "lock-in" scenario the way the pre-2026-09-15 bare
+  // WaqfCause ceiling had.
   describe("allocation enforcement", () => {
     test("rejects a distribution with no allocation set on its cause", async () => {
       const cause = await vaultsService.createCause({ vaultId, name: "No Allocation Fixture Cause" }, actorUserId);
@@ -248,7 +278,7 @@ describe("VaultDistributionsService", () => {
 
     test("approve() re-checks headroom and rejects if it shrank since creation", async () => {
       const cause = await vaultsService.createCause({ vaultId, name: "Approve Recheck Fixture Cause" }, actorUserId);
-      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "100" } });
+      await setAllocation(cause.id, "USD", "100");
 
       const pending = await service.create(
         { vaultId, vaultCauseId: cause.id, counterpartyId: payoutReadyCounterpartyId, amount: "80", currency: "USD" },
@@ -258,7 +288,7 @@ describe("VaultDistributionsService", () => {
 
       // Headroom shrinks after the distribution was created against the
       // old, larger figure.
-      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "50" } });
+      await setAllocation(cause.id, "USD", "50");
 
       await prisma.$transaction(async (tx) => {
         await expect(service.approve(pending.id, tx)).rejects.toThrow(BadRequestException);
@@ -267,7 +297,7 @@ describe("VaultDistributionsService", () => {
 
     test("concurrent create() calls against the same cause can't jointly exceed the ceiling (TOCTOU regression)", async () => {
       const cause = await vaultsService.createCause({ vaultId, name: "Concurrency Fixture Cause" }, actorUserId);
-      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "100" } });
+      await setAllocation(cause.id, "USD", "100");
 
       // Each individually fits under the 100 ceiling (60 < 100), but
       // together they total 120 — exceeding it. Without the shared
@@ -294,7 +324,7 @@ describe("VaultDistributionsService", () => {
 
     test("non-Investment vault: ceiling is the sum of allocatedAmount and proceedsAllocatedAmount", async () => {
       const cause = await vaultsService.createCause({ vaultId, name: "Two Pools Fixture Cause" }, actorUserId);
-      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "60", proceedsAllocatedAmount: "40" } });
+      await setAllocation(cause.id, "USD", "60", "40");
 
       // 60 + 40 = 100 combined ceiling — exceeding it by 1 rejects.
       await expect(
@@ -314,7 +344,7 @@ describe("VaultDistributionsService", () => {
 
     test("Investment vault: only proceedsAllocatedAmount counts toward the ceiling — corpus is excluded", async () => {
       const cause = await vaultsService.createCause({ vaultId: investmentVaultId, name: "Investment Fixture Cause" }, actorUserId);
-      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "1000", proceedsAllocatedAmount: "40" } });
+      await setAllocation(cause.id, "USD", "1000", "40");
 
       // Corpus (1000) is NOT part of the ceiling here — only proceeds
       // (40) is, so even a modest 41 against a cause with 1000 of corpus
@@ -332,6 +362,57 @@ describe("VaultDistributionsService", () => {
         actorUserId,
       );
       vaultDistributionIds.push(distribution.id);
+    });
+  });
+
+  // Update, 2026-09-15 — a distribution can now be made in any currency
+  // the vault accepts (Vault.additionalCurrencies), not just its primary
+  // one, and each currency's ceiling (VaultCauseAllocation) is genuinely
+  // independent — see allocation-ceiling.spec.ts's own unit test for the
+  // pure-logic version of this.
+  describe("multi-currency distributions", () => {
+    test("create() succeeds in an additional currency the vault accepts", async () => {
+      const distribution = await service.create(
+        { vaultId: multiCurrencyVaultId, vaultCauseId: multiCurrencyCauseId, counterpartyId: payoutReadyCounterpartyId, amount: "1000", currency: "NGN" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      expect(distribution.currency).toBe("NGN");
+    });
+
+    test("create() rejects a currency the vault doesn't accept", async () => {
+      await expect(
+        service.create(
+          { vaultId: multiCurrencyVaultId, vaultCauseId: multiCurrencyCauseId, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "EUR" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    test("USD and NGN ceilings against the same cause are independent — exhausting one doesn't affect the other", async () => {
+      // Exhaust the cause's entire 1000 USD ceiling first.
+      const usdDistribution = await service.create(
+        { vaultId: multiCurrencyVaultId, vaultCauseId: multiCurrencyCauseId, counterpartyId: payoutReadyCounterpartyId, amount: "1000", currency: "USD" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(usdDistribution.id);
+
+      await expect(
+        service.create(
+          { vaultId: multiCurrencyVaultId, vaultCauseId: multiCurrencyCauseId, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "USD" },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      // NGN's own 500,000 ceiling is untouched by USD's being fully spent
+      // (1,000 of it already committed by the earlier "succeeds in an
+      // additional currency" test in this block, leaving 499,000 — still
+      // plenty of headroom for this 1 NGN distribution).
+      const ngnDistribution = await service.create(
+        { vaultId: multiCurrencyVaultId, vaultCauseId: multiCurrencyCauseId, counterpartyId: payoutReadyCounterpartyId, amount: "1", currency: "NGN" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(ngnDistribution.id);
     });
   });
 
@@ -442,7 +523,7 @@ describe("VaultDistributionsService", () => {
 
     test("rejects if headroom was consumed by another distribution in the meantime", async () => {
       const tightCause = await vaultsService.createCause({ vaultId, name: "Retry Headroom Fixture Cause" }, actorUserId);
-      await prisma.vaultCause.update({ where: { id: tightCause.id }, data: { allocatedAmount: "10" } });
+      await setAllocation(tightCause.id, "USD", "10");
 
       fakePayoutAdapter.shouldFail = true;
       const distribution = await service.create(

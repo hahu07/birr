@@ -16,18 +16,20 @@ import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate } from "../../../../lib/format";
 import type { CauseCategory, Vault, VaultCause } from "../../../../lib/ops-types";
-import { Alert, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { Alert, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
 export function VaultCausesSection({
   vaultId,
   vaultType,
   currency,
+  additionalCurrencies,
   onChanged,
 }: {
   vaultId: string;
   vaultType: Vault["type"];
   currency: string;
+  additionalCurrencies: string[];
   onChanged: () => void;
 }) {
   const { data: causes, error, reload: load } = useLoadedResource(() => apiFetchJson<VaultCause[]>(`/vaults/${vaultId}/causes`), [vaultId]);
@@ -96,9 +98,10 @@ export function VaultCausesSection({
                   <AllocationCell
                     label="Set"
                     currency={currency}
-                    current={c.allocatedAmount}
+                    additionalCurrencies={additionalCurrencies}
+                    current={(c.allocations ?? []).map((a) => ({ currency: a.currency, amount: a.allocatedAmount }))}
                     permissionKey="vault.cause_allocate"
-                    payload={(newAllocatedAmount) => ({ vaultCauseId: c.id, newAllocatedAmount })}
+                    payload={(allocCurrency, newAllocatedAmount) => ({ vaultCauseId: c.id, currency: allocCurrency, newAllocatedAmount })}
                     onProposed={() => {
                       load();
                       onChanged();
@@ -110,9 +113,14 @@ export function VaultCausesSection({
                     <AllocationCell
                       label="Set"
                       currency={currency}
-                      current={c.proceedsAllocatedAmount}
+                      additionalCurrencies={additionalCurrencies}
+                      current={(c.allocations ?? []).map((a) => ({ currency: a.currency, amount: a.proceedsAllocatedAmount }))}
                       permissionKey="vault.proceeds_allocate"
-                      payload={(newProceedsAllocatedAmount) => ({ vaultCauseId: c.id, newProceedsAllocatedAmount })}
+                      payload={(allocCurrency, newProceedsAllocatedAmount) => ({
+                        vaultCauseId: c.id,
+                        currency: allocCurrency,
+                        newProceedsAllocatedAmount,
+                      })}
                       onProposed={() => {
                         load();
                         onChanged();
@@ -133,10 +141,16 @@ export function VaultCausesSection({
 // Governed, value-taking propose control — same shape as the Waqf side's
 // InvestmentChangeAction, generalized over which permission/payload it
 // proposes since this section needs it twice (corpus vs proceeds
-// allocation).
+// allocation). Update, 2026-09-15: allocation is now per-currency
+// (VaultCauseAllocation) — `current` is every currency this cause has
+// an allocation row for, shown as a short list, and the propose form
+// picks which currency it's setting (only shown when the vault accepts
+// more than one), same acceptedCurrencies-selector shape
+// VaultExpensesSection's own form already uses.
 function AllocationCell({
   label,
   currency,
+  additionalCurrencies,
   current,
   permissionKey,
   payload,
@@ -144,13 +158,16 @@ function AllocationCell({
 }: {
   label: string;
   currency: string;
-  current: string | null;
+  additionalCurrencies: string[];
+  current: { currency: string; amount: string }[];
   permissionKey: string;
-  payload: (amount: string) => Record<string, unknown>;
+  payload: (currency: string, amount: string) => Record<string, unknown>;
   onProposed: () => void;
 }) {
+  const acceptedCurrencies = [currency, ...additionalCurrencies];
   const [editing, setEditing] = useState(false);
-  const [amount, setAmount] = useState(current ?? "");
+  const [allocCurrency, setAllocCurrency] = useState(currency);
+  const [amount, setAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [proposed, setProposed] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,14 +177,18 @@ function AllocationCell({
   }
 
   if (!editing) {
+    const nonZero = current.filter((a) => Number(a.amount) !== 0);
     return (
       <div className="flex items-center gap-2">
-        <span>{current !== null ? `${currency} ${formatAmount(current)}` : "—"}</span>
+        <span>
+          {nonZero.length > 0 ? nonZero.map((a) => `${a.currency} ${formatAmount(a.amount)}`).join(" · ") : "—"}
+        </span>
         <button
           type="button"
           className="text-xs font-medium text-primary-700 hover:underline"
           onClick={() => {
-            setAmount(current ?? "");
+            setAllocCurrency(currency);
+            setAmount(current.find((a) => a.currency === currency)?.amount ?? "");
             setError(null);
             setEditing(true);
           }}
@@ -185,7 +206,7 @@ function AllocationCell({
     try {
       await apiFetchJson("/governed-actions", {
         method: "POST",
-        body: JSON.stringify({ permissionKey, payload: payload(amount) }),
+        body: JSON.stringify({ permissionKey, payload: payload(allocCurrency, amount) }),
       });
       setEditing(false);
       setProposed(true);
@@ -200,6 +221,23 @@ function AllocationCell({
   return (
     <form onSubmit={handlePropose} className="space-y-1">
       <div className="flex items-center gap-1.5">
+        {acceptedCurrencies.length > 1 && (
+          <Select
+            className="w-20 px-2 py-1.5 text-xs"
+            value={allocCurrency}
+            onChange={(e) => {
+              const next = e.target.value;
+              setAllocCurrency(next);
+              setAmount(current.find((a) => a.currency === next)?.amount ?? "");
+            }}
+          >
+            {acceptedCurrencies.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
+        )}
         <Input
           type="number"
           min="0"

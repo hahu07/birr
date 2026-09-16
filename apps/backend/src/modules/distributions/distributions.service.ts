@@ -596,6 +596,9 @@ export class DistributionsService {
       lockCause: async (id) => {
         await tx.$queryRaw`SELECT id FROM "waqf_causes" WHERE id = ${id} FOR UPDATE`;
       },
+      // WaqfCause's ceiling has no currency dimension (unlike
+      // VaultCauseAllocation) — the `currency` param is ignored here on
+      // purpose, see loadCauseAndParentType's own interface comment.
       loadCauseAndParentType: async (id) => {
         const cause = await tx.waqfCause.findUnique({ where: { id } });
         const waqf = cause ? await tx.waqf.findUnique({ where: { id: cause.waqfId }, select: { type: true } }) : null;

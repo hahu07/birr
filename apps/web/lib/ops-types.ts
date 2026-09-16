@@ -842,19 +842,29 @@ export interface Vault {
   causes?: VaultCause[];
 }
 
+export interface VaultCauseAllocation {
+  currency: string;
+  // Only ever moves via the vault.cause_allocate governed action — no
+  // Founder self-service equivalent exists for a Vault. See
+  // VaultCause's own schema comment.
+  allocatedAmount: string;
+  // Investment-style vaults only — only ever moves via the
+  // vault.proceeds_allocate governed action.
+  proceedsAllocatedAmount: string;
+}
+
 export interface VaultCause {
   id: string;
   vaultId: string;
   causeCategoryId: string | null;
   name: string;
   description: string | null;
-  // Only ever moves via the vault.cause_allocate governed action — no
-  // Founder self-service equivalent exists for a Vault. See
-  // VaultCause's own schema comment.
-  allocatedAmount: string | null;
-  // Investment-style vaults only — only ever moves via the
-  // vault.proceeds_allocate governed action.
-  proceedsAllocatedAmount: string | null;
+  // Update, 2026-09-15 — one row per currency the vault accepts
+  // (VaultCauseAllocation), replacing what used to be a bare
+  // allocatedAmount/proceedsAllocatedAmount scalar with no currency of
+  // its own. A currency with no allocation set yet simply has no entry
+  // here.
+  allocations: VaultCauseAllocation[];
   createdAt: string;
   deletedAt: string | null;
 }

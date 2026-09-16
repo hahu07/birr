@@ -252,6 +252,8 @@ describe("GovernedActionsService", () => {
     await prisma.vaultMilestone.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultProceeds.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultContribution.deleteMany({ where: { vaultId: { in: vaultIds } } });
+    // RESTRICT on vaultCauseId, must go before VaultCause itself.
+    await prisma.vaultCauseAllocation.deleteMany({ where: { vaultCauseId: { in: vaultCauseIds } } });
     await prisma.vaultCause.deleteMany({ where: { id: { in: vaultCauseIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.vaultDonor.deleteMany({ where: { id: { in: vaultDonorIds } } });
@@ -1386,12 +1388,12 @@ describe("GovernedActionsService", () => {
       expect(stillProposed.status).toBe("proposed");
     });
 
-    test("vault.cause_allocate: approve → VaultCause.allocatedAmount is set, vaultId is derived (not client-supplied), both audit-logged", async () => {
+    test("vault.cause_allocate: approve → VaultCauseAllocation.allocatedAmount is set for that currency, vaultId is derived (not client-supplied), both audit-logged", async () => {
       const { vault, cause } = await createProjectVaultWithCause();
 
       const action = await service.propose({
         permissionKey: "vault.cause_allocate",
-        payload: { vaultCauseId: cause.id, newAllocatedAmount: "600" },
+        payload: { vaultCauseId: cause.id, currency: "USD", newAllocatedAmount: "600" },
         makerUserId,
       });
       governedActionIds.push(action.id);
@@ -1405,8 +1407,10 @@ describe("GovernedActionsService", () => {
       expect(result.governedAction.status).toBe("approved");
       expect(result.fulfillment?.entityType).toBe("VaultCause");
 
-      const updated = await prisma.vaultCause.findUniqueOrThrow({ where: { id: cause.id } });
-      expect(updated.allocatedAmount?.toString()).toBe("600");
+      const updated = await prisma.vaultCauseAllocation.findUniqueOrThrow({
+        where: { vaultCauseId_currency: { vaultCauseId: cause.id, currency: "USD" } },
+      });
+      expect(updated.allocatedAmount.toString()).toBe("600");
 
       const logs = await auditLogsFor(cause.id);
       expect(logs.some((l) => l.action === "vault_cause.allocation_set" && l.vaultId === vault.id)).toBe(true);
@@ -1416,7 +1420,7 @@ describe("GovernedActionsService", () => {
       const { cause } = await createProjectVaultWithCause();
       const action = await service.propose({
         permissionKey: "vault.cause_allocate",
-        payload: { vaultCauseId: cause.id, newAllocatedAmount: "999999" },
+        payload: { vaultCauseId: cause.id, currency: "USD", newAllocatedAmount: "999999" },
         makerUserId,
       });
       governedActionIds.push(action.id);
@@ -1428,7 +1432,78 @@ describe("GovernedActionsService", () => {
       expect(stillProposed.status).toBe("proposed");
     });
 
-    test("vault.proceeds_allocate: approve → VaultCause.proceedsAllocatedAmount is set (investment-style vault only)", async () => {
+    test("vault.cause_allocate: a second currency's allocation is independent of the primary currency's pool/ceiling", async () => {
+      const vault = await prisma.vault.create({
+        data: {
+          name: `Governed Actions Fixture Multi-Currency Vault ${randomUUID()}`,
+          slug: `governed-actions-fixture-multicur-${randomUUID()}`,
+          type: "project",
+          currency: "USD",
+          additionalCurrencies: ["NGN"],
+          jurisdiction: "NG",
+          createdByUserId: makerUserId,
+        },
+      });
+      vaultIds.push(vault.id);
+      const cause = await prisma.vaultCause.create({ data: { vaultId: vault.id, name: "Multi-Currency Fixture Cause" } });
+      vaultCauseIds.push(cause.id);
+      const donor = await prisma.vaultDonor.create({ data: { email: `governed-actions-multicur-donor-${randomUUID()}@example.com` } });
+      vaultDonorIds.push(donor.id);
+      await prisma.vaultContribution.create({
+        data: {
+          vaultId: vault.id,
+          donorId: donor.id,
+          amount: "1000",
+          currency: "USD",
+          provider: "paystack",
+          providerReference: `governed-actions-multicur-usd-${randomUUID()}`,
+          status: "confirmed",
+        },
+      });
+      await prisma.vaultContribution.create({
+        data: {
+          vaultId: vault.id,
+          donorId: donor.id,
+          amount: "500000",
+          currency: "NGN",
+          provider: "paystack",
+          providerReference: `governed-actions-multicur-ngn-${randomUUID()}`,
+          status: "confirmed",
+        },
+      });
+
+      // Fully allocate the USD pool first.
+      const usdAction = await service.propose({
+        permissionKey: "vault.cause_allocate",
+        payload: { vaultCauseId: cause.id, currency: "USD", newAllocatedAmount: "1000" },
+        makerUserId,
+      });
+      governedActionIds.push(usdAction.id);
+      await service.decide({ governedActionId: usdAction.id, checkerUserId: distributionCheckerUserId, approve: true });
+
+      // NGN's own pool is untouched by USD's already being fully
+      // allocated — a genuinely independent ceiling, not a shared bare
+      // number.
+      const ngnAction = await service.propose({
+        permissionKey: "vault.cause_allocate",
+        payload: { vaultCauseId: cause.id, currency: "NGN", newAllocatedAmount: "500000" },
+        makerUserId,
+      });
+      governedActionIds.push(ngnAction.id);
+      const ngnResult = await service.decide({ governedActionId: ngnAction.id, checkerUserId: distributionCheckerUserId, approve: true });
+      expect(ngnResult.governedAction.status).toBe("approved");
+
+      const usdAllocation = await prisma.vaultCauseAllocation.findUniqueOrThrow({
+        where: { vaultCauseId_currency: { vaultCauseId: cause.id, currency: "USD" } },
+      });
+      const ngnAllocation = await prisma.vaultCauseAllocation.findUniqueOrThrow({
+        where: { vaultCauseId_currency: { vaultCauseId: cause.id, currency: "NGN" } },
+      });
+      expect(usdAllocation.allocatedAmount.toString()).toBe("1000");
+      expect(ngnAllocation.allocatedAmount.toString()).toBe("500000");
+    });
+
+    test("vault.proceeds_allocate: approve → VaultCauseAllocation.proceedsAllocatedAmount is set for that currency (investment-style vault only)", async () => {
       const vault = await prisma.vault.create({
         data: {
           name: `Governed Actions Fixture Investment Vault ${randomUUID()}`,
@@ -1448,7 +1523,7 @@ describe("GovernedActionsService", () => {
 
       const action = await service.propose({
         permissionKey: "vault.proceeds_allocate",
-        payload: { vaultCauseId: cause.id, newProceedsAllocatedAmount: "300" },
+        payload: { vaultCauseId: cause.id, currency: "USD", newProceedsAllocatedAmount: "300" },
         makerUserId: investmentMakerUserId,
       });
       governedActionIds.push(action.id);
@@ -1460,8 +1535,10 @@ describe("GovernedActionsService", () => {
       });
       expect(result.governedAction.status).toBe("approved");
 
-      const updated = await prisma.vaultCause.findUniqueOrThrow({ where: { id: cause.id } });
-      expect(updated.proceedsAllocatedAmount?.toString()).toBe("300");
+      const updated = await prisma.vaultCauseAllocation.findUniqueOrThrow({
+        where: { vaultCauseId_currency: { vaultCauseId: cause.id, currency: "USD" } },
+      });
+      expect(updated.proceedsAllocatedAmount.toString()).toBe("300");
     });
 
     test("vault.investment_change: approve → VaultInvestment.allocatedAmount is updated, vaultId is derived", async () => {
@@ -1519,7 +1596,7 @@ describe("GovernedActionsService", () => {
 
     test("vault.distribution_approve: approve → status is approved, vaultId is derived, both audit-logged; reject → status is rejected", async () => {
       const { vault, cause } = await createProjectVaultWithCause();
-      await prisma.vaultCause.update({ where: { id: cause.id }, data: { allocatedAmount: "1000" } });
+      await prisma.vaultCauseAllocation.create({ data: { vaultCauseId: cause.id, currency: "USD", allocatedAmount: "1000" } });
       const counterparty = await prisma.counterparty.create({
         data: {
           name: `Governed Actions Vault Distribution Fixture Partner ${randomUUID()}`,

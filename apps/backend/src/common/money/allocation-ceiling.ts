@@ -24,22 +24,34 @@ export interface AllocationCeilingConfig {
    */
   lockCause(causeId: string): Promise<void>;
   /**
-   * The cause's own allocation fields, plus its parent's (Waqf/Vault)
-   * type. Investment-type parents only count proceedsAllocatedAmount
-   * toward the ceiling — corpus (allocatedAmount) is preserved
-   * principal, not itself distributable, per classical waqf perpetuity
-   * (see CLAUDE.md's 2026-09-04 update). Every other type has no
-   * proceeds concept at all, so allocatedAmount stays its only, fully
-   * distributable, pool.
+   * The cause's own allocation fields for the given currency, plus its
+   * parent's (Waqf/Vault) type. Investment-type parents only count
+   * proceedsAllocatedAmount toward the ceiling — corpus (allocatedAmount)
+   * is preserved principal, not itself distributable, per classical
+   * waqf perpetuity (see CLAUDE.md's 2026-09-04 update). Every other
+   * type has no proceeds concept at all, so allocatedAmount stays its
+   * only, fully distributable, pool. `currency` lets a caller whose
+   * ceiling genuinely varies by currency (VaultCauseAllocation) return
+   * the right row; a caller whose ceiling has no currency dimension at
+   * all (WaqfCause) can just ignore the parameter.
    */
-  loadCauseAndParentType(causeId: string): Promise<{ cause: AllocationCeilingCause | null; parentType: string | null }>;
+  loadCauseAndParentType(
+    causeId: string,
+    currency: string,
+  ): Promise<{ cause: AllocationCeilingCause | null; parentType: string | null }>;
   /**
    * A committed row (any status counted toward the ceiling) against
    * this cause in a currency other than the one being checked, if one
-   * exists — used to reject a currency switch mid-cause, since
-   * allocatedAmount/proceedsAllocatedAmount carry no currency of their
-   * own and comparing raw numbers across currencies would be
-   * meaningless.
+   * exists — was originally a guard against a *bare, currency-less*
+   * ceiling number silently being reused across two different
+   * currencies (found 2026-09-04). A caller whose ceiling is itself
+   * genuinely currency-scoped (VaultCauseAllocation, one row per
+   * currency) has nothing to guard against here and should just return
+   * `null` unconditionally — legitimate multi-currency commitments
+   * against the same cause are exactly the point. A caller whose
+   * ceiling has no currency dimension (WaqfCause, on a legacy waqf with
+   * no declared corpusCurrency) still needs this to catch that edge
+   * case for real.
    */
   findCommittedInOtherCurrency(currency: string): Promise<{ currency: string } | null>;
   /** Sum of every committed row's amount against this cause in the given currency. */
@@ -65,7 +77,7 @@ export async function assertWithinAllocation(
   config: AllocationCeilingConfig,
 ): Promise<void> {
   await config.lockCause(causeId);
-  const { cause, parentType } = await config.loadCauseAndParentType(causeId);
+  const { cause, parentType } = await config.loadCauseAndParentType(causeId, currency);
   const allocated =
     parentType === "investment"
       ? new Prisma.Decimal(cause?.proceedsAllocatedAmount ?? 0)

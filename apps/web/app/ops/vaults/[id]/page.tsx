@@ -138,6 +138,7 @@ export default function VaultDetailPage() {
           vaultId={id}
           vaultType={vault.type}
           currency={vault.currency}
+          additionalCurrencies={vault.additionalCurrencies}
           onChanged={() => {
             load();
             setCausesVersion((v) => v + 1);
@@ -170,7 +171,13 @@ export default function VaultDetailPage() {
             />
           </>
         )}
-        <VaultDistributionsSection vaultId={id} currency={vault.currency} causes={causes} milestones={milestones ?? []} />
+        <VaultDistributionsSection
+          vaultId={id}
+          currency={vault.currency}
+          additionalCurrencies={vault.additionalCurrencies}
+          causes={causes}
+          milestones={milestones ?? []}
+        />
         <VaultContributionsSection vaultId={id} currency={vault.currency} />
         <VaultLedgerSection vaultId={id} currency={vault.currency} additionalCurrencies={vault.additionalCurrencies} refreshKey={ledgerVersion} />
       </div>

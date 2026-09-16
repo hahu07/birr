@@ -597,40 +597,67 @@ export class GovernedActionsService {
             const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId } });
             return cause?.vaultId;
           },
+          // 2026-09-15: matches on currency too, not just vaultCauseId —
+          // a USD allocation proposal and an NGN one for the same cause
+          // are independent ceilings now (VaultCauseAllocation), not
+          // duplicates of each other.
           checkDuplicate: async (payload) => {
-            const { vaultCauseId } = payload as { vaultCauseId: string };
+            const { vaultCauseId, currency } = payload as { vaultCauseId: string; currency: string };
             const permission = await prisma.permission.findUnique({ where: { key: "vault.cause_allocate" } });
-            const existing = await prisma.governedAction.findFirst({
-              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["vaultCauseId"], equals: vaultCauseId } },
+            // Prisma's JSON path filter doesn't support two `path`
+            // conditions on the same field combined via AND — matches on
+            // vaultCauseId in the query (same as before 2026-09-15), then
+            // checks currency in JS.
+            const candidates = await prisma.governedAction.findMany({
+              where: {
+                permissionId: permission?.id,
+                status: "proposed",
+                payload: { path: ["vaultCauseId"], equals: vaultCauseId },
+              },
             });
+            const existing = candidates.find((c) => (c.payload as { currency?: string })?.currency === currency);
             if (existing) {
               throw new ConflictException(
-                "A cause-allocation proposal for this vault cause is already awaiting a decision — check the Approvals queue instead of proposing again.",
+                "A cause-allocation proposal for this vault cause and currency is already awaiting a decision — check the Approvals queue instead of proposing again.",
               );
             }
           },
           describePayload: async (payload) => {
-            const { vaultCauseId, newAllocatedAmount } = payload as { vaultCauseId: string; newAllocatedAmount: string | number };
-            const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId } });
+            const { vaultCauseId, currency, newAllocatedAmount } = payload as {
+              vaultCauseId: string;
+              currency: string;
+              newAllocatedAmount: string | number;
+            };
+            const [cause, allocation] = await Promise.all([
+              prisma.vaultCause.findUnique({ where: { id: vaultCauseId } }),
+              prisma.vaultCauseAllocation.findUnique({ where: { vaultCauseId_currency: { vaultCauseId, currency } } }),
+            ]);
             return cause
-              ? `${cause.name}: ${cause.allocatedAmount ?? 0} → ${newAllocatedAmount}`
+              ? `${cause.name}: ${allocation?.allocatedAmount ?? 0} ${currency} → ${newAllocatedAmount} ${currency}`
               : `VaultCause "${vaultCauseId}" not found.`;
           },
           describeCurrentState: async (payload) => {
-            const { vaultCauseId } = payload as { vaultCauseId: string };
-            const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId }, select: { allocatedAmount: true } });
-            return cause ? { newAllocatedAmount: cause.allocatedAmount } : null;
+            const { vaultCauseId, currency } = payload as { vaultCauseId: string; currency: string };
+            const [cause, allocation] = await Promise.all([
+              prisma.vaultCause.findUnique({ where: { id: vaultCauseId }, select: { id: true } }),
+              prisma.vaultCauseAllocation.findUnique({ where: { vaultCauseId_currency: { vaultCauseId, currency } } }),
+            ]);
+            return cause ? { currency, newAllocatedAmount: allocation?.allocatedAmount ?? 0 } : null;
           },
           onApprove: async (payload, tx) => {
-            const { vaultCauseId, newAllocatedAmount } = payload as { vaultCauseId: string; newAllocatedAmount: string | number };
-            const before = await tx.vaultCause.findUnique({ where: { id: vaultCauseId } });
-            const cause = await this.vaultsService.setCauseAllocation(vaultCauseId, newAllocatedAmount, tx);
+            const { vaultCauseId, currency, newAllocatedAmount } = payload as {
+              vaultCauseId: string;
+              currency: string;
+              newAllocatedAmount: string | number;
+            };
+            const before = await tx.vaultCauseAllocation.findUnique({ where: { vaultCauseId_currency: { vaultCauseId, currency } } });
+            const allocation = await this.vaultsService.setCauseAllocation(vaultCauseId, currency, newAllocatedAmount, tx);
             return {
               auditAction: "vault_cause.allocation_set",
               entityType: "VaultCause",
-              entityId: cause.id,
+              entityId: vaultCauseId,
               before,
-              after: cause,
+              after: allocation,
             };
           },
         },
@@ -643,49 +670,64 @@ export class GovernedActionsService {
             const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId } });
             return cause?.vaultId;
           },
+          // 2026-09-15: see vault.cause_allocate's own comment — matches
+          // on currency too, not just vaultCauseId.
           checkDuplicate: async (payload) => {
-            const { vaultCauseId } = payload as { vaultCauseId: string };
+            const { vaultCauseId, currency } = payload as { vaultCauseId: string; currency: string };
             const permission = await prisma.permission.findUnique({ where: { key: "vault.proceeds_allocate" } });
-            const existing = await prisma.governedAction.findFirst({
-              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["vaultCauseId"], equals: vaultCauseId } },
+            // See vault.cause_allocate's own checkDuplicate comment —
+            // Prisma's JSON path filter doesn't support two `path`
+            // conditions on the same field combined via AND.
+            const candidates = await prisma.governedAction.findMany({
+              where: {
+                permissionId: permission?.id,
+                status: "proposed",
+                payload: { path: ["vaultCauseId"], equals: vaultCauseId },
+              },
             });
+            const existing = candidates.find((c) => (c.payload as { currency?: string })?.currency === currency);
             if (existing) {
               throw new ConflictException(
-                "A proceeds-allocation proposal for this vault cause is already awaiting a decision — check the Approvals queue instead of proposing again.",
+                "A proceeds-allocation proposal for this vault cause and currency is already awaiting a decision — check the Approvals queue instead of proposing again.",
               );
             }
           },
           describePayload: async (payload) => {
-            const { vaultCauseId, newProceedsAllocatedAmount } = payload as {
+            const { vaultCauseId, currency, newProceedsAllocatedAmount } = payload as {
               vaultCauseId: string;
+              currency: string;
               newProceedsAllocatedAmount: string | number;
             };
-            const cause = await prisma.vaultCause.findUnique({ where: { id: vaultCauseId } });
+            const [cause, allocation] = await Promise.all([
+              prisma.vaultCause.findUnique({ where: { id: vaultCauseId } }),
+              prisma.vaultCauseAllocation.findUnique({ where: { vaultCauseId_currency: { vaultCauseId, currency } } }),
+            ]);
             return cause
-              ? `${cause.name}: ${cause.proceedsAllocatedAmount ?? 0} → ${newProceedsAllocatedAmount}`
+              ? `${cause.name}: ${allocation?.proceedsAllocatedAmount ?? 0} ${currency} → ${newProceedsAllocatedAmount} ${currency}`
               : `VaultCause "${vaultCauseId}" not found.`;
           },
           describeCurrentState: async (payload) => {
-            const { vaultCauseId } = payload as { vaultCauseId: string };
-            const cause = await prisma.vaultCause.findUnique({
-              where: { id: vaultCauseId },
-              select: { proceedsAllocatedAmount: true },
-            });
-            return cause ? { newProceedsAllocatedAmount: cause.proceedsAllocatedAmount } : null;
+            const { vaultCauseId, currency } = payload as { vaultCauseId: string; currency: string };
+            const [cause, allocation] = await Promise.all([
+              prisma.vaultCause.findUnique({ where: { id: vaultCauseId }, select: { id: true } }),
+              prisma.vaultCauseAllocation.findUnique({ where: { vaultCauseId_currency: { vaultCauseId, currency } } }),
+            ]);
+            return cause ? { currency, newProceedsAllocatedAmount: allocation?.proceedsAllocatedAmount ?? 0 } : null;
           },
           onApprove: async (payload, tx) => {
-            const { vaultCauseId, newProceedsAllocatedAmount } = payload as {
+            const { vaultCauseId, currency, newProceedsAllocatedAmount } = payload as {
               vaultCauseId: string;
+              currency: string;
               newProceedsAllocatedAmount: string | number;
             };
-            const before = await tx.vaultCause.findUnique({ where: { id: vaultCauseId } });
-            const cause = await this.vaultsService.setCauseProceedsAllocation(vaultCauseId, newProceedsAllocatedAmount, tx);
+            const before = await tx.vaultCauseAllocation.findUnique({ where: { vaultCauseId_currency: { vaultCauseId, currency } } });
+            const allocation = await this.vaultsService.setCauseProceedsAllocation(vaultCauseId, currency, newProceedsAllocatedAmount, tx);
             return {
               auditAction: "vault_cause.proceeds_allocation_set",
               entityType: "VaultCause",
-              entityId: cause.id,
+              entityId: vaultCauseId,
               before,
-              after: cause,
+              after: allocation,
             };
           },
         },
