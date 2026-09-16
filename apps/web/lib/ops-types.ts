@@ -297,27 +297,6 @@ export interface Counterparty {
   totalInvested?: string;
 }
 
-// GET /counterparties/:id/screenings (2026-09-15) — the first slice of
-// the sanctions/PEP screening vendor decision CLAUDE.md documents
-// (ScreenShield), scoped to Counterparty onboarding only. "error" is a
-// screening-infra failure (vendor unconfigured, network error) — not
-// "clear" — see the backend's own SanctionsScreeningStatus schema
-// comment on why CounterpartiesService.onboard() blocks on it exactly
-// like a real hit (fail-closed).
-export interface SanctionsScreening {
-  id: string;
-  counterpartyId: string;
-  provider: "screenshield";
-  status: "clear" | "hit" | "error" | "cleared";
-  screenedName: string;
-  errorMessage: string | null;
-  resolvedAt: string | null;
-  resolvedByUserId: string | null;
-  resolvedByUser: { id: string; fullName: string } | null;
-  resolutionNotes: string | null;
-  createdAt: string;
-}
-
 export interface CounterpartyExposure {
   counterpartyId: string;
   totalInvested: string;

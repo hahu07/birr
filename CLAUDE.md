@@ -275,6 +275,32 @@ contribution — if Vault donor screening is revisited, it takes the same
 observational-flag-for-manual-review shape already chosen for the AML
 gap, not a payment-blocking gate.
 
+**Update, 2026-09-16 — Counterparty onboarding screening reverted
+before launch: Birr does not run ScreenShield at all for now.** The
+Counterparty-onboarding slice described above (`SanctionsScreening`,
+`ScreenShieldAdapter`, `SanctionsScreeningService` — commit `8177b0e`)
+was built, tested (77 passing specs), and verified working end-to-end
+through the Ops Console the same day it shipped: a screening hit or an
+unconfigured-vendor error correctly landed a Counterparty in
+`under_review` until a compliance officer resolved it. Reverted the
+following day, on the owner's direct instruction: Birr cannot run
+ScreenShield for now — the actual engineering work waits until after a
+successful launch, or until a specific regulatory authority actually
+asks for it, not built and left running ahead of that need.
+
+This is a different kind of call from the Founder/Vault-donor rejections
+above — those were architecture objections ("self-service should never
+be gated on an automated result," a standing principle regardless of
+vendor readiness). This one isn't: the Counterparty-onboarding shape
+itself was sound and already proven working end-to-end; it's a
+launch-timing call on code that worked, not a design flaw. `counterparty
+.onboard` is back to its original two-gate shape (Shariah sign-off, then
+the governed action itself) — exactly as it was before ScreenShield
+existed, no `under_review`-for-screening path, no `SanctionsScreening`
+model. Whenever this is picked back up (post-launch, or on a specific
+regulatory ask), the same shape documented above should still hold —
+nothing about the design was wrong, only its timing.
+
 **Update, 2026-09-13 — a Vault can now accept giving in more than one
 currency.** Until now `Vault.currency` was the one currency a vault
 could ever take a contribution in — raised directly by the owner

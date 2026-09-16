@@ -23,7 +23,6 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI (image generation)",
   replicate: "Replicate (image generation)",
   image_generation: "Image generation — active provider",
-  screenshield: "ScreenShield (sanctions/PEP screening)",
 };
 
 export default function PlatformSettingsPage() {

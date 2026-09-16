@@ -11,7 +11,6 @@ import { AssetsService } from "../assets/assets.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { InvestmentsService } from "../investments/investments.service";
 import { CounterpartiesService } from "../counterparties/counterparties.service";
-import { SanctionsScreeningService } from "../counterparties/sanctions-screening.service";
 import { DistributionsService } from "../distributions/distributions.service";
 import { VaultsService } from "../vaults/vaults.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
@@ -159,7 +158,6 @@ export class GovernedActionsService {
     private readonly beneficiariesService: BeneficiariesService,
     private readonly investmentsService: InvestmentsService,
     private readonly counterpartiesService: CounterpartiesService,
-    private readonly sanctionsScreeningService: SanctionsScreeningService,
     private readonly distributionsService: DistributionsService,
     private readonly vaultsService: VaultsService,
     private readonly vaultInvestmentsService: VaultInvestmentsService,
@@ -435,17 +433,6 @@ export class GovernedActionsService {
             const { counterpartyId } = payload as { counterpartyId: string };
             const counterparty = await prisma.counterparty.findUnique({ where: { id: counterpartyId } });
             return counterparty ? counterparty.name : `Counterparty "${counterpartyId}" not found.`;
-          },
-          // 2026-09-15 — surfaces sanctions/PEP screening status
-          // alongside Shariah approval so a checker sees both of
-          // onboard()'s real gates before deciding, not just one of them.
-          describeCurrentState: async (payload) => {
-            const { counterpartyId } = payload as { counterpartyId: string };
-            const [counterparty, screening] = await Promise.all([
-              prisma.counterparty.findUnique({ where: { id: counterpartyId }, select: { status: true, shariahApprovedAt: true } }),
-              this.sanctionsScreeningService.latestFor(counterpartyId),
-            ]);
-            return counterparty ? { ...counterparty, latestScreeningStatus: screening?.status ?? null } : null;
           },
           onApprove: async (payload, tx) => {
             const { counterpartyId } = payload as { counterpartyId: string };

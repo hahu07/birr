@@ -38,14 +38,6 @@ export const PROVIDER_FIELDS: Record<string, ProviderFieldSpec[]> = {
   ],
   openai: [{ key: "API_KEY", label: "API key", secret: true }],
   replicate: [{ key: "API_KEY", label: "API key", secret: true }],
-  // Sanctions/PEP screening (2026-09-15) — see ScreenShieldAdapter's
-  // own comment: BASE_URL is a real config field, not a hardcoded
-  // constant, specifically so Ops staff can point this at ScreenShield's
-  // real API root without a code change once real docs/access exist.
-  screenshield: [
-    { key: "API_KEY", label: "API key", secret: true },
-    { key: "BASE_URL", label: "API base URL", secret: false },
-  ],
   // Not a real vendor — a pseudo-provider reusing this same generic
   // storage/audit/UI mechanism to hold the one "which image provider is
   // active" switch (see ImageGenerationService), rather than inventing

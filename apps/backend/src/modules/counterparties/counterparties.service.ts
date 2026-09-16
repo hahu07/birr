@@ -2,7 +2,6 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
 import { prisma, Prisma, CounterpartyType, CounterpartyStatus, PayoutProvider } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
-import { SanctionsScreeningService } from "./sanctions-screening.service";
 
 export class RegisterCounterpartyInput {
   @IsString()
@@ -163,28 +162,15 @@ export class SetPayoutDetailsInput {
 
 @Injectable()
 export class CounterpartiesService {
-  constructor(
-    private readonly encryption: EncryptionService,
-    private readonly sanctionsScreening: SanctionsScreeningService,
-  ) {}
+  constructor(private readonly encryption: EncryptionService) {}
 
   /**
    * Plain CRUD, gated to investment_committee (they source and vet
    * counterparty relationships day-to-day) — registering a candidate
-   * moves nothing, commits nothing. Three gates now stand between this
-   * and `active`: Shariah sign-off, the automatic sanctions/PEP
-   * screening below (2026-09-15), and the counterparty.onboard governed
-   * action — see this model's own schema comment.
-   *
-   * The screening call happens right here, in the same transaction as
-   * the create — a hit or an outright screening failure (vendor
-   * unconfigured, network error) both land this row at `under_review`
-   * instead of the default `pending_review`, fail-closed: see
-   * SanctionsScreeningStatus's own schema comment on why "error" isn't
-   * treated as "clear." onboard() re-checks the latest screening
-   * independently, so this isn't the only enforcement point — it's what
-   * makes the need for review visible immediately, on the Counterparties
-   * list, rather than only discovered when someone tries to onboard.
+   * moves nothing, commits nothing, and starts at `pending_review`.
+   * Neither of the two real gates (Shariah sign-off, the
+   * counterparty.onboard governed action) has happened yet — see this
+   * model's own schema comment.
    */
   async register(input: RegisterCounterpartyInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
@@ -194,13 +180,6 @@ export class CounterpartiesService {
           licenseExpiresAt: input.licenseExpiresAt ? new Date(input.licenseExpiresAt) : undefined,
         },
       });
-
-      const screening = await this.sanctionsScreening.screen(counterparty.id, counterparty.name, tx);
-      const flagged = screening.status === "hit" || screening.status === "error";
-      const withScreeningStatus = flagged
-        ? await tx.counterparty.update({ where: { id: counterparty.id }, data: { status: "under_review" } })
-        : counterparty;
-
       await tx.auditLog.create({
         data: {
           actorType: "birr_staff",
@@ -208,10 +187,10 @@ export class CounterpartiesService {
           action: "counterparty.registered",
           entityType: "Counterparty",
           entityId: counterparty.id,
-          after: withScreeningStatus as any,
+          after: counterparty as any,
         },
       });
-      return withScreeningStatus;
+      return counterparty;
     });
   }
 
@@ -451,18 +430,14 @@ export class CounterpartiesService {
   }
 
   /**
-   * Gate 3 of 3 (2026-09-15: was gate 2 of 2 before sanctions/PEP
-   * screening) — internal only, never a public route. counterparty.onboard
+   * Gate 2 of 2 — internal only, never a public route. counterparty.onboard
    * is a governed action (see this model's own schema comment); the only
    * caller is GovernedActionsService's handler map, on approval, inside
-   * its own transaction. Refuses to flip `status` to `active` unless
-   * gate 1 (Shariah sign-off) already passed AND gate 2 (screening) is
-   * clear — re-checked here independently of whatever register() set
-   * `status` to, since a screening result can be resolve()'d well after
-   * registration, and this is the actual money-adjacent moment that
-   * matters, not a status label read at proposal time. Missing screening
-   * entirely (a counterparty that predates this feature) blocks the same
-   * as a real hit — fail-closed, not "no record means fine."
+   * its own transaction. Refuses to flip `status` to `active` unless gate
+   * 1 (Shariah sign-off) already passed — the hard dependency between
+   * the two gates lives here, not in the governed_actions machinery
+   * itself, so it applies identically whether this is a first onboarding
+   * or a reactivation after suspension.
    */
   async onboard(id: string, tx: Prisma.TransactionClient) {
     const counterparty = await tx.counterparty.findUnique({ where: { id } });
@@ -470,14 +445,6 @@ export class CounterpartiesService {
     if (!counterparty.shariahApprovedAt) {
       throw new BadRequestException(
         "This counterparty has no recorded Shariah approval yet — that must happen before onboarding can be approved.",
-      );
-    }
-    const screening = await this.sanctionsScreening.latestFor(id, tx);
-    if (!screening || screening.status === "hit" || screening.status === "error") {
-      throw new BadRequestException(
-        screening
-          ? `This counterparty's sanctions/PEP screening is unresolved (${screening.status}) — a compliance officer must resolve it before onboarding can be approved.`
-          : "This counterparty has no sanctions/PEP screening on file — a compliance officer must resolve one before onboarding can be approved.",
       );
     }
     return tx.counterparty.update({ where: { id }, data: { status: "active" } });

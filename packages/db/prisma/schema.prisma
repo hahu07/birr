@@ -348,7 +348,6 @@ model User {
   recordedVaultProceeds          VaultProceeds[]
   recordedVaultExpenses          VaultExpense[]
   recordedWaqfExpenses           WaqfExpense[]
-  resolvedSanctionsScreenings    SanctionsScreening[]            @relation("SanctionsScreeningResolver")
 
   @@map("users")
 }
@@ -1356,69 +1355,8 @@ model Counterparty {
   investmentPlacements InvestmentPlacement[]
   vaultInvestments     VaultInvestment[]
   vaultDistributions   VaultDistribution[]
-  sanctionsScreenings  SanctionsScreening[]
 
   @@map("counterparties")
-}
-
-// Only one vendor exists today (ScreenShield — see CLAUDE.md's own
-// dated note on why it was picked); a real enum, not a plain string,
-// matching this codebase's ContributionProvider/PayoutProvider
-// convention of a small closed set that grows by adding a value, not by
-// becoming free text.
-enum SanctionsScreeningProvider {
-  screenshield
-}
-
-// "error" is deliberately distinct from "clear" — a network/API/
-// unconfigured-vendor failure means screening never actually ran, not
-// that it ran and found nothing. CounterpartiesService.onboard() treats
-// both "hit" and "error" as unresolved (fail-closed), and "cleared" is
-// the only way either one stops blocking onboarding — see
-// SanctionsScreeningService.resolve()'s own comment.
-enum SanctionsScreeningStatus {
-  clear
-  hit
-  error
-  cleared
-}
-
-// 2026-09-15 — the first slice of the sanctions/PEP screening CLAUDE.md
-// documents as a picked-but-unbuilt vendor decision (ScreenShield),
-// scoped to Counterparty onboarding only (owner's explicit choice —
-// Founder establishment and Vault donor ID-capture screening are
-// deferred to their own later slices). A single counterpartyId FK, not
-// a generic polymorphic "subject" — inventing that shape before a
-// second concrete consumer exists would be guessing, the same reasoning
-// this codebase already applies to keeping Vault/Waqf-side ledger
-// models deliberately parallel rather than prematurely shared.
-model SanctionsScreening {
-  id                   String                     @id @default(uuid())
-  counterpartyId       String
-  counterparty         Counterparty               @relation(fields: [counterpartyId], references: [id])
-  provider             SanctionsScreeningProvider
-  status               SanctionsScreeningStatus
-  // The name actually submitted for screening, captured here even
-  // though Counterparty.name is unique/stable today — this row should
-  // stay a faithful record of what was screened regardless of any
-  // future change to that assumption.
-  screenedName         String
-  // AES-256-GCM via EncryptionService, same reuse as
-  // Counterparty.payoutBankDetailsEncrypted — a real hit's matched-entity
-  // details (aliases, DOB, list source) are sensitive PII, not something
-  // to leave in plaintext even internally.
-  rawResponseEncrypted String?
-  // Set only when status: error — the adapter/network failure message,
-  // for whoever resolves this to see why screening didn't actually run.
-  errorMessage         String?
-  resolvedAt           DateTime?
-  resolvedByUserId     String?
-  resolvedByUser       User?                      @relation("SanctionsScreeningResolver", fields: [resolvedByUserId], references: [id])
-  resolutionNotes      String?
-  createdAt            DateTime                   @default(now())
-
-  @@index([counterpartyId])
-  @@map("sanctions_screenings")
 }
 
 // A recorded return/proceeds event for an Investment-type waqf — Birr

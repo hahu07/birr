@@ -6,8 +6,6 @@ import { AssetsService } from "../assets/assets.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { InvestmentsService } from "../investments/investments.service";
 import { CounterpartiesService } from "../counterparties/counterparties.service";
-import { SanctionsScreeningService } from "../counterparties/sanctions-screening.service";
-import { FakeScreeningAdapter } from "../counterparties/test-support/fake-screening-adapter";
 import { DistributionsService } from "../distributions/distributions.service";
 import { VaultsService } from "../vaults/vaults.service";
 import { VaultProceedsService } from "../vaults/vault-proceeds.service";
@@ -60,8 +58,6 @@ describe("GovernedActionsService", () => {
   const beneficiariesService = new BeneficiariesService(encryption);
   const fakePaystackPayoutAdapter = new FakePaystackPayoutAdapter();
   const vaultLedgerService = new VaultLedgerService();
-  const screeningAdapter = new FakeScreeningAdapter();
-  const sanctionsScreeningService = new SanctionsScreeningService(screeningAdapter as any, encryption);
   // Any fixture beneficiary that gets decided with approve: true on
   // distribution.approve needs complete Paystack payout details now that
   // approve() gates on DistributionsService.assertPayoutReady.
@@ -77,8 +73,7 @@ describe("GovernedActionsService", () => {
     new AssetsService(),
     beneficiariesService,
     new InvestmentsService(),
-    new CounterpartiesService(encryption, sanctionsScreeningService),
-    sanctionsScreeningService,
+    new CounterpartiesService(encryption),
     new DistributionsService(
       beneficiariesService,
       notificationsService,
@@ -257,8 +252,6 @@ describe("GovernedActionsService", () => {
     await prisma.vaultCause.deleteMany({ where: { id: { in: vaultCauseIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.vaultDonor.deleteMany({ where: { id: { in: vaultDonorIds } } });
-    // RESTRICT on counterpartyId, must go before the counterparty itself.
-    await prisma.sanctionsScreening.deleteMany({ where: { counterpartyId: { in: counterpartyIds } } });
     await prisma.counterparty.deleteMany({ where: { id: { in: counterpartyIds } } });
     await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
     // RESTRICT on waqfId, same reasoning as vaultMilestone above.
@@ -713,7 +706,7 @@ describe("GovernedActionsService", () => {
     expect(investmentLogs.some((l) => l.action === "investment.allocation_changed")).toBe(true);
   });
 
-  test("counterparty.onboard: rejects approval with no Shariah sign-off or sanctions screening, then succeeds once both are recorded", async () => {
+  test("counterparty.onboard: rejects approval with no Shariah sign-off, then succeeds once recorded", async () => {
     // Same reversed pairing as investment.change: investment_committee
     // proposes, mutawalli_officer checks — matching seed-data.ts exactly.
     // No resolveWaqfId — a Counterparty is a global registry entry, not
@@ -732,10 +725,9 @@ describe("GovernedActionsService", () => {
     governedActionIds.push(action.id);
     expect(action.waqfId).toBeNull();
 
-    // Neither gate 1 (Shariah sign-off) nor gate 2 (sanctions/PEP
-    // screening) has happened yet — decide() itself succeeds (the
-    // maker/checker exchange is valid), but the transaction's onApprove
-    // call rejects, so nothing should flip.
+    // Gate 1 (Shariah sign-off) hasn't happened yet — decide() itself
+    // succeeds (the maker/checker exchange is valid), but the
+    // transaction's onApprove call rejects, so nothing should flip.
     await expect(
       service.decide({ governedActionId: action.id, checkerUserId: makerUserId, approve: true }),
     ).rejects.toThrow(BadRequestException);
@@ -746,19 +738,7 @@ describe("GovernedActionsService", () => {
     // beneficiaryCheckerUserId is seeded as shariah_board_member (see
     // beforeAll above) — reused here for the Shariah sign-off itself,
     // not as a governed-action checker.
-    await new CounterpartiesService(encryption, sanctionsScreeningService).recordShariahApproval(counterparty.id, beneficiaryCheckerUserId);
-
-    // Gate 1 alone still isn't enough — this fixture counterparty was
-    // created directly via prisma.counterparty.create() above, bypassing
-    // CounterpartiesService.register() (and the automatic screening call
-    // inside it), so onboard() still has nothing to check yet.
-    await expect(
-      service.decide({ governedActionId: action.id, checkerUserId: makerUserId, approve: true }),
-    ).rejects.toThrow(BadRequestException);
-
-    await prisma.sanctionsScreening.create({
-      data: { counterpartyId: counterparty.id, provider: "screenshield", status: "cleared", screenedName: counterparty.name },
-    });
+    await new CounterpartiesService(encryption).recordShariahApproval(counterparty.id, beneficiaryCheckerUserId);
 
     const result = await service.decide({
       governedActionId: action.id,
@@ -1248,7 +1228,7 @@ describe("GovernedActionsService", () => {
     expect(missing).toBeNull();
   });
 
-  test("findById(): currentState reflects counterparty.onboard's own describeCurrentState (2026-09-15: now includes sanctions/PEP screening status alongside Shariah approval), and strips no PII it never selected for beneficiary.criteria_update", async () => {
+  test("findById(): currentState is null for a handler with no describeCurrentState (counterparty.onboard), and strips no PII it never selected for beneficiary.criteria_update", async () => {
     const counterparty = await prisma.counterparty.create({
       data: { name: `FindById Test Fixture Counterparty ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
     });
@@ -1260,11 +1240,7 @@ describe("GovernedActionsService", () => {
     });
     governedActionIds.push(onboardAction.id);
     const foundOnboard = await service.findById(onboardAction.id);
-    // No SanctionsScreening row exists yet (this fixture bypassed
-    // CounterpartiesService.register(), same as every other direct
-    // prisma.counterparty.create() fixture in this file) — null, not
-    // "clear", matching the fail-closed posture onboard() itself enforces.
-    expect(foundOnboard?.currentState).toEqual({ status: "pending_review", shariahApprovedAt: null, latestScreeningStatus: null });
+    expect(foundOnboard?.currentState).toBeNull();
 
     const waqf = await prisma.waqf.create({
       data: { name: "FindById Criteria Test Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId },
