@@ -56,6 +56,13 @@ export class AiAgentsController {
     return this.service.caseDigestData();
   }
 
+  @Get(":name/portfolio-data")
+  @Public()
+  async portfolioData(@Param("name") name: string, @Headers("x-agent-api-key") apiKey?: string) {
+    await verifyAiAgentApiKey(name, apiKey);
+    return this.service.portfolioData();
+  }
+
   // Agent-authenticated, same shape as the two GET routes above — a
   // cost-incurring external API call, so worth its own audit trail
   // entry (action: "image.generated") for the same reason every other

@@ -1,11 +1,26 @@
 import { prisma } from "@birr/db";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { AiAgentsService } from "./ai-agents.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { AuthenticatedBirrStaff } from "../../common/auth/current-birr-staff";
+import { InvestmentsService } from "../investments/investments.service";
+import { InvestmentTargetsService } from "../investments/investment-targets.service";
+import { VaultInvestmentsService } from "../vaults/vault-investments.service";
+import { VaultInvestmentTargetsService } from "../vaults/vault-investment-targets.service";
 
 describe("AiAgentsService", () => {
-  const service = new AiAgentsService(new AuditLogsService());
+  const investmentsService = new InvestmentsService();
+  const investmentTargetsService = new InvestmentTargetsService();
+  const vaultInvestmentsService = new VaultInvestmentsService();
+  const vaultInvestmentTargetsService = new VaultInvestmentTargetsService();
+  const service = new AiAgentsService(
+    new AuditLogsService(),
+    investmentsService,
+    investmentTargetsService,
+    vaultInvestmentsService,
+    vaultInvestmentTargetsService,
+  );
 
   let rasidAgentId: string;
   let rasidAgentName: string;
@@ -140,6 +155,174 @@ describe("AiAgentsService", () => {
     expect(data).toHaveProperty("caseAssignments");
     expect(Array.isArray(data.openGovernedActions)).toBe(true);
     expect(Array.isArray(data.caseAssignments)).toBe(true);
+  });
+
+  describe("portfolioData()", () => {
+    const waqfIds: string[] = [];
+    const vaultIds: string[] = [];
+    const investmentIds: string[] = [];
+    const vaultInvestmentIds: string[] = [];
+
+    let portfolioActorUserId: string;
+    let counterpartyId: string;
+    let withTargetWaqfId: string;
+    let noTargetWaqfId: string;
+    let assetWaqfId: string;
+    let withTargetVaultId: string;
+    let noTargetVaultId: string;
+    let projectVaultId: string;
+
+    async function makeInvestmentWaqf(name: string) {
+      const foundation = await prisma.foundation.create({ data: { name: `${name} Foundation` } });
+      const waqf = await prisma.waqf.create({
+        data: { name, type: "investment", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "USD" },
+      });
+      waqfIds.push(waqf.id);
+      await prisma.contribution.create({
+        data: {
+          waqfId: waqf.id,
+          amount: "1000",
+          currency: "USD",
+          provider: "paystack",
+          providerReference: `ai-agents-portfolio-spec-${randomUUID()}`,
+          status: "confirmed",
+        },
+      });
+      return waqf.id;
+    }
+
+    async function makeInvestmentVault(name: string) {
+      const vault = await prisma.vault.create({
+        data: { name, slug: `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${randomUUID()}`, type: "investment", currency: "USD", jurisdiction: "NG", createdByUserId: portfolioActorUserId },
+      });
+      vaultIds.push(vault.id);
+      await prisma.vaultContribution.create({
+        data: {
+          vaultId: vault.id,
+          amount: "1000",
+          currency: "USD",
+          provider: "paystack",
+          providerReference: `ai-agents-portfolio-spec-${randomUUID()}`,
+          status: "confirmed",
+        },
+      });
+      return vault.id;
+    }
+
+    beforeAll(async () => {
+      const actorUser = await prisma.user.create({
+        data: { email: `ai-agents-portfolio-actor-${Date.now()}@example.com`, fullName: "Test Actor" },
+      });
+      portfolioActorUserId = actorUser.id;
+      await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "investment_committee" } });
+
+      const counterparty = await prisma.counterparty.create({
+        data: { name: `AI Agents Portfolio Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", status: "active" },
+      });
+      counterpartyId = counterparty.id;
+
+      withTargetWaqfId = await makeInvestmentWaqf(`Portfolio Data With Target Waqf ${randomUUID()}`);
+      const withTargetInvestment = await investmentsService.create(
+        { waqfId: withTargetWaqfId, name: "Fixture Sukuk", instrumentType: "sukuk", allocatedAmount: "500", counterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
+        portfolioActorUserId,
+      );
+      investmentIds.push(withTargetInvestment.id);
+      await investmentTargetsService.upsertTarget(withTargetWaqfId, { instrumentType: "sukuk", targetPercent: "50" }, portfolioActorUserId);
+
+      noTargetWaqfId = await makeInvestmentWaqf(`Portfolio Data No Target Waqf ${randomUUID()}`);
+      const noTargetInvestment = await investmentsService.create(
+        { waqfId: noTargetWaqfId, name: "Fixture Murabaha", instrumentType: "murabaha", allocatedAmount: "300", counterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
+        portfolioActorUserId,
+      );
+      investmentIds.push(noTargetInvestment.id);
+
+      const assetFoundation = await prisma.foundation.create({ data: { name: `Portfolio Data Asset Fixture Foundation ${randomUUID()}` } });
+      const assetWaqf = await prisma.waqf.create({
+        data: { name: `Portfolio Data Asset Waqf ${randomUUID()}`, type: "asset", jurisdiction: "AE", foundationId: assetFoundation.id },
+      });
+      assetWaqfId = assetWaqf.id;
+      waqfIds.push(assetWaqfId);
+
+      withTargetVaultId = await makeInvestmentVault(`Portfolio Data With Target Vault ${randomUUID()}`);
+      const withTargetVaultInvestment = await vaultInvestmentsService.create(
+        { vaultId: withTargetVaultId, name: "Vault Fixture Sukuk", instrumentType: "sukuk", allocatedAmount: "500", counterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
+        portfolioActorUserId,
+      );
+      vaultInvestmentIds.push(withTargetVaultInvestment.id);
+      await vaultInvestmentTargetsService.upsertTarget(withTargetVaultId, { instrumentType: "sukuk", targetPercent: "50" }, portfolioActorUserId);
+
+      noTargetVaultId = await makeInvestmentVault(`Portfolio Data No Target Vault ${randomUUID()}`);
+      const noTargetVaultInvestment = await vaultInvestmentsService.create(
+        { vaultId: noTargetVaultId, name: "Vault Fixture Murabaha", instrumentType: "murabaha", allocatedAmount: "300", counterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
+        portfolioActorUserId,
+      );
+      vaultInvestmentIds.push(noTargetVaultInvestment.id);
+
+      const projVault = await prisma.vault.create({
+        data: { name: `Portfolio Data Project Vault ${randomUUID()}`, slug: `portfolio-data-project-vault-${randomUUID()}`, type: "project", currency: "USD", jurisdiction: "NG", createdByUserId: portfolioActorUserId },
+      });
+      projectVaultId = projVault.id;
+      vaultIds.push(projectVaultId);
+    });
+
+    afterAll(async () => {
+      await prisma.investmentTarget.deleteMany({ where: { waqfId: { in: waqfIds } } });
+      await prisma.shariahScreening.deleteMany({ where: { investmentId: { in: investmentIds } } });
+      await prisma.investment.deleteMany({ where: { id: { in: investmentIds } } });
+      await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
+      await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
+
+      await prisma.vaultInvestmentTarget.deleteMany({ where: { vaultId: { in: vaultIds } } });
+      await prisma.vaultShariahScreening.deleteMany({ where: { vaultInvestmentId: { in: vaultInvestmentIds } } });
+      await prisma.vaultInvestment.deleteMany({ where: { id: { in: vaultInvestmentIds } } });
+      await prisma.vaultContribution.deleteMany({ where: { vaultId: { in: vaultIds } } });
+      await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
+
+      await prisma.counterparty.deleteMany({ where: { id: counterpartyId } });
+    });
+
+    test("includes an Investment-type waqf's investments (with shariahScreening) and a non-empty drift breakdown", async () => {
+      const data = await service.portfolioData();
+      const portfolio = data.waqfPortfolios.find((p) => p.waqfId === withTargetWaqfId);
+      expect(portfolio).toBeDefined();
+      expect(portfolio!.investments).toHaveLength(1);
+      expect(portfolio!.investments[0]).toHaveProperty("shariahScreening");
+      expect(portfolio!.drift.breakdown.length).toBeGreaterThan(0);
+    });
+
+    test("includes a waqf with investments but no targets set, with an empty drift breakdown", async () => {
+      const data = await service.portfolioData();
+      const portfolio = data.waqfPortfolios.find((p) => p.waqfId === noTargetWaqfId);
+      expect(portfolio).toBeDefined();
+      expect(portfolio!.investments).toHaveLength(1);
+      expect(portfolio!.drift).toMatchObject({ breakdown: [], anyDrifted: false });
+    });
+
+    test("excludes a non-Investment-type waqf entirely", async () => {
+      const data = await service.portfolioData();
+      expect(data.waqfPortfolios.some((p) => p.waqfId === assetWaqfId)).toBe(false);
+    });
+
+    test("includes an investment-style vault's investments and a non-empty drift breakdown", async () => {
+      const data = await service.portfolioData();
+      const portfolio = data.vaultPortfolios.find((p) => p.vaultId === withTargetVaultId);
+      expect(portfolio).toBeDefined();
+      expect(portfolio!.investments).toHaveLength(1);
+      expect(portfolio!.investments[0]).toHaveProperty("vaultShariahScreening");
+      expect(portfolio!.drift.breakdown.length).toBeGreaterThan(0);
+    });
+
+    test("includes a vault with investments but no targets set, with an empty drift breakdown", async () => {
+      const data = await service.portfolioData();
+      const portfolio = data.vaultPortfolios.find((p) => p.vaultId === noTargetVaultId);
+      expect(portfolio).toBeDefined();
+      expect(portfolio!.drift).toMatchObject({ breakdown: [], anyDrifted: false });
+    });
+
+    test("excludes a project-style vault entirely", async () => {
+      const data = await service.portfolioData();
+      expect(data.vaultPortfolios.some((p) => p.vaultId === projectVaultId)).toBe(false);
+    });
   });
 
   describe("publishDraft()", () => {

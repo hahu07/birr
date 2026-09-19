@@ -3,6 +3,10 @@ import { IsObject, IsOptional, IsString } from "class-validator";
 import { prisma, AiAgent } from "@birr/db";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { AuthenticatedBirrStaff } from "../../common/auth/current-birr-staff";
+import { InvestmentsService } from "../investments/investments.service";
+import { InvestmentTargetsService } from "../investments/investment-targets.service";
+import { VaultInvestmentsService } from "../vaults/vault-investments.service";
+import { VaultInvestmentTargetsService } from "../vaults/vault-investment-targets.service";
 
 // Never select apiKeyHash onto a response body — same principle as
 // BirrStaffService's SAFE_USER_SELECT for User.passwordHash. list() had
@@ -52,7 +56,13 @@ const ALLOWED_DRAFT_ACTIONS: Record<string, string[]> = {
 
 @Injectable()
 export class AiAgentsService {
-  constructor(private readonly auditLogs: AuditLogsService) {}
+  constructor(
+    private readonly auditLogs: AuditLogsService,
+    private readonly investmentsService: InvestmentsService,
+    private readonly investmentTargetsService: InvestmentTargetsService,
+    private readonly vaultInvestmentsService: VaultInvestmentsService,
+    private readonly vaultInvestmentTargetsService: VaultInvestmentTargetsService,
+  ) {}
 
   // Registry lookups only. Agents authenticate to the backend with their
   // own scoped credentials (see common/auth/ai-agent-auth.ts) and call
@@ -134,6 +144,45 @@ export class AiAgentsService {
       }),
     ]);
     return { openGovernedActions, caseAssignments };
+  }
+
+  /**
+   * GET /ai-agents/:name/portfolio-data — Rashid's read_portfolio_data
+   * tool. Platform-wide, unscoped (same posture as jurisdictionData/
+   * caseDigestData above — no per-agent-to-waqf/vault assignment
+   * concept exists anywhere in this schema). Scoped to Investment-type
+   * Waqfs/Vaults only, since every other type never has investments to
+   * begin with (see InvestmentsService.createOne's own restriction).
+   * Every fund appears in the snapshot even with no investments/targets
+   * yet — computeDrift() already returns an empty, non-drifted report
+   * in that case, so nothing is silently omitted.
+   */
+  async portfolioData() {
+    const [waqfs, vaults] = await Promise.all([
+      prisma.waqf.findMany({ where: { type: "investment", deletedAt: null }, select: { id: true, name: true } }),
+      prisma.vault.findMany({ where: { type: "investment" }, select: { id: true, name: true } }),
+    ]);
+
+    const [waqfPortfolios, vaultPortfolios] = await Promise.all([
+      Promise.all(
+        waqfs.map(async (w) => ({
+          waqfId: w.id,
+          waqfName: w.name,
+          investments: await this.investmentsService.list(w.id),
+          drift: await this.investmentTargetsService.computeDrift(w.id),
+        })),
+      ),
+      Promise.all(
+        vaults.map(async (v) => ({
+          vaultId: v.id,
+          vaultName: v.name,
+          investments: await this.vaultInvestmentsService.list(v.id),
+          drift: await this.vaultInvestmentTargetsService.computeDrift(v.id),
+        })),
+      ),
+    ]);
+
+    return { waqfPortfolios, vaultPortfolios };
   }
 
   /** POST /ai-agents/:name/drafts — shared draft-persistence path. */
