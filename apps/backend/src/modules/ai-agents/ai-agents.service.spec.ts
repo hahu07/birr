@@ -127,6 +127,43 @@ describe("AiAgentsService", () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  test("recordDraft() persists an allowed investment_memo.drafted action for rashid", async () => {
+    // Unlike rasid/bashir above, rashid has no seeded row (see
+    // packages/db/prisma/seed.ts's own comment — deliberately not
+    // activated yet). A throwaway row here is enough to prove
+    // ALLOWED_DRAFT_ACTIONS["rashid"] is wired correctly; upsert so
+    // repeated test runs don't collide on the unique `name`.
+    const rashid = await prisma.aiAgent.upsert({
+      where: { name: "rashid" },
+      update: {},
+      create: { name: "rashid", taskType: "investment_research", status: "active" },
+    });
+
+    const log = await service.recordDraft(rashid, {
+      action: "investment_memo.drafted",
+      entityType: "AiAgent",
+      entityId: "portfolio-memo",
+      draft: { summary: "Fixture memo content.", findings: [] },
+    });
+
+    expect(log).toMatchObject({
+      actorType: "ai_agent",
+      actorAgentId: rashid.id,
+      action: "investment_memo.drafted",
+      entityType: "AiAgent",
+      entityId: "portfolio-memo",
+    });
+
+    await expect(
+      service.recordDraft(rashid, {
+        action: "something_else.drafted",
+        entityType: "AiAgent",
+        entityId: "portfolio-memo",
+        draft: {},
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   test("drafts() returns this agent's own recorded drafts, most recent first", async () => {
     const list = await service.drafts(rasidAgentId);
     expect(list.length).toBeGreaterThan(0);

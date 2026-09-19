@@ -5,3 +5,4 @@
 process.env.RASID_API_KEY = "test-rasid-key";
 process.env.NAZIM_API_KEY = "test-nazim-key";
 process.env.BASHIR_API_KEY = "test-bashir-key";
+process.env.RASHID_API_KEY = "test-rashid-key";

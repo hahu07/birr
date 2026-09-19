@@ -52,6 +52,7 @@ const ALLOWED_DRAFT_ACTIONS: Record<string, string[]> = {
   rasid: ["compliance_report.drafted"],
   nazim: ["caseload_digest.drafted"],
   bashir: ["content.drafted"],
+  rashid: ["investment_memo.drafted"],
 };
 
 @Injectable()
