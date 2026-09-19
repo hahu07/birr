@@ -350,6 +350,55 @@ The goal/progress bar on the public page is still primary-currency-only
 per the note above; that part of the "not the full picture" scoping
 still stands.
 
+**Update, 2026-09-19 — Stripe removed as a donation option: Nigeria
+isn't a country Stripe operates in at all.** `apps/backend/src/modules
+/contributions/providers/stripe.adapter.ts` was, and still is, a
+genuinely real integration — real Checkout Sessions, real webhook
+signature verification, real refunds — not a stub. It never worked in
+practice for one reason that has nothing to do with the code: Stripe
+does not support Nigeria as a country for opening a Stripe account at
+all, for any purpose. Confirmed two ways — against Stripe's own current
+documentation, and by the owner directly trying to open one, where
+Nigeria simply isn't offered as a country option. This is exactly why
+Paystack (which Stripe itself acquired) exists as a separate product
+for this market in the first place; there is no route to a
+Birr-owned Stripe account under Birr's current legal entity, so
+"Card (international)" could never have processed a real donation
+regardless of how correct the adapter code was.
+
+This is the same underlying blocker `PayoutProvider`'s own schema
+comment already flagged for the *payout* side (Stripe Connect can't
+hold a Nigerian recipient account either) — this update extends it to
+the *contribution* side too, where it hadn't been noticed yet because
+the adapter looked, and was, fully built.
+
+Removed "Card (international)" from both donation entry points
+(`WaqfFundForm.tsx`, `vaults/[slug]/page.tsx`) rather than leaving a
+selectable option that always fails. The backend adapter itself is
+untouched — deliberately not deleted, on the same reasoning as
+`WaqfDeed`/`CompliancePolicySet.requiresTrusteeLicense: false`
+elsewhere in this file: the code isn't wrong, only unusable under
+Birr's current entity, and would become real again if Birr ever
+operates through a different legal entity in a Stripe-supported
+country. Platform Settings' own Stripe configuration section is left
+in place for the same reason.
+
+**Real consequence, not yet resolved:** any Waqf Fund or Vault
+denominated in USD, EUR, or GBP now has **no working donation method at
+all** — Paystack only accepts NGN today, and the stablecoin gateway only
+takes USDC/USDT. Two live fixture vaults in the dev database
+("Second Currency Fixture Vault", "Multi Currency Fixture Vault") and
+at least one real-shaped one ("Clean Water for Kaduna Communities", a
+USD-denominated Project vault) already exercise this gap live. Two
+paths forward, neither built yet: (1) Paystack itself supports enabling
+USD as a second currency for a Nigeria-based business — this needs a
+real application to Paystack plus a Zenith Bank USD domiciliary account
+for payouts, i.e. business/paperwork steps, not a code change, before
+any adapter work would make sense; (2) simply keep new campaigns to
+NGN/stablecoin and treat USD/EUR/GBP giving as unsupported for now. No
+decision has been made yet on which path to take — this is flagged
+follow-on work, not resolved by this update.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
