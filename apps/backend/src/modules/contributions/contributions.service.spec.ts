@@ -425,6 +425,12 @@ describe("ContributionsService", () => {
     const logs = await prisma.auditLog.findMany({ where: { entityId: confirmed!.id } });
     expect(logs.some((l) => l.action === "contribution.confirmed")).toBe(true);
 
+    // 2026-09-16 codebase audit finding — the Waqf's own draft→active
+    // transition needs its own audit row, not just the triggering
+    // Contribution's.
+    const waqfLogs = await prisma.auditLog.findMany({ where: { entityId: waqfId, entityType: "Waqf" } });
+    expect(waqfLogs.some((l) => l.action === "waqf.activated")).toBe(true);
+
     // Double-entry auto-post (2026-09-15, ported from
     // VaultContributionsService's own equivalent hook) — confirming a
     // contribution should post a balanced Cash & Bank debit /

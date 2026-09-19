@@ -303,8 +303,9 @@ export class ContributionsService {
       // fired after commit can tell "just activated" apart from "already
       // active, this is a later contribution" — the update itself
       // doesn't distinguish the two.
-      const waqfBefore = await tx.waqf.findUnique({ where: { id: contribution.waqfId }, select: { status: true } });
-      await tx.waqf.update({ where: { id: contribution.waqfId }, data: { status: "active" } });
+      const waqfBefore = await tx.waqf.findUnique({ where: { id: contribution.waqfId } });
+      const waqfActivated = waqfBefore?.status === "draft";
+      const waqfAfter = await tx.waqf.update({ where: { id: contribution.waqfId }, data: { status: "active" } });
 
       await tx.auditLog.create({
         data: {
@@ -317,6 +318,28 @@ export class ContributionsService {
           after: confirmed as any,
         },
       });
+
+      // 2026-09-16 codebase audit finding: activating a Waqf Fund (draft
+      // → active, its very first real money) is a governed-entity state
+      // change with no audit trail of its own before this — only the
+      // triggering Contribution was logged. Only written when the
+      // transition actually happens, not on every later confirmed
+      // contribution (matching notifyWaqfActivated's own condition
+      // below, and WaqfsService.increaseCorpusTarget's established
+      // convention of a dedicated audit row per Waqf-entity mutation).
+      if (waqfActivated) {
+        await tx.auditLog.create({
+          data: {
+            waqfId: contribution.waqfId,
+            actorType: "system",
+            action: "waqf.activated",
+            entityType: "Waqf",
+            entityId: contribution.waqfId,
+            before: waqfBefore as any,
+            after: waqfAfter as any,
+          },
+        });
+      }
 
       // Double-entry auto-post (2026-09-15, ported alongside Vault's
       // own equivalent contribution hook) — Debit Cash & Bank, Credit
@@ -336,7 +359,7 @@ export class ContributionsService {
         ],
       });
 
-      return { confirmed, waqfActivated: waqfBefore?.status === "draft" };
+      return { confirmed, waqfActivated };
     });
 
     this.notifyContributionOutcome(contribution.waqfId, "confirmed", confirmed).catch((err) => {
@@ -410,6 +433,23 @@ export class ContributionsService {
 
   findById(id: string) {
     return prisma.contribution.findUnique({ where: { id } });
+  }
+
+  // Founder-session-scoped counterpart to findById() above — same
+  // ownership-checked, indistinguishable-from-404 convention as
+  // listForWaqf()/WaqfsService.findByIdForFounder. 2026-09-16 codebase
+  // audit finding: ContributionsController.findById() previously had no
+  // session or ownership check at all (public, unauthenticated), letting
+  // any caller who knew/guessed a Contribution id read another Founder's
+  // amount/currency/waqfId. Routed through withFounderScope so
+  // founder_isolation RLS is actually engaged, not just the app-layer
+  // WHERE clause.
+  async findByIdForFounder(id: string, founderId: string) {
+    return withFounderScope(founderId, (tx) =>
+      tx.contribution.findFirst({
+        where: { id, waqf: { foundation: { foundationFounders: { some: { founderId } } } } },
+      }),
+    );
   }
 
   // Founder-Portal read — the contribution history + running total the

@@ -116,11 +116,21 @@ export class ContributionsController {
     return this.service.founderSummary(founder.id);
   }
 
-  // Polling target for the frontend after redirect/QR display — no
-  // founder-session check needed beyond knowing the id, same posture
-  // as GET /waqfs/:id.
+  // Polling target for the frontend after redirect/QR display — same
+  // session/ownership shape as WaqfsController.findById() (2026-09-16
+  // codebase audit fix: this route previously had no auth check at all,
+  // letting any caller read another Founder's contribution by id).
   @Get("contributions/:id")
-  async findById(@Param("id") id: string) {
+  async findById(@Param("id") id: string, @Req() request: Request) {
+    if (!hasAnySessionCookie(request)) {
+      throw new UnauthorizedException("Not signed in.");
+    }
+    if (!(await isBirrStaffSession(request))) {
+      const founder = await resolveFounderFromSession(request);
+      const contribution = await this.service.findByIdForFounder(id, founder.id);
+      if (!contribution) throw new NotFoundException(`Contribution "${id}" not found.`);
+      return contribution;
+    }
     const contribution = await this.service.findById(id);
     if (!contribution) throw new NotFoundException(`Contribution "${id}" not found.`);
     return contribution;
