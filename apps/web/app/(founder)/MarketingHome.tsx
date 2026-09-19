@@ -66,7 +66,17 @@ const HOW_IT_WORKS_FOUNDER = [
   {
     n: "03",
     title: "Distribute",
-    body: "Approved distributions reach the causes you've selected, capped at exactly the amount you've allocated to each — never a cent more.",
+    // 2026-09-19 founder-facing copy pass (CLAUDE.md's 2026-09-04
+    // decision): the old wording ("capped at exactly the amount you've
+    // allocated... never a cent more") is only true for Asset/Project
+    // funds. For an Investment fund, corpus allocation is a
+    // preservation target, not a spending ceiling — investment
+    // proceeds are what's actually distributable there (see
+    // CausesSection.tsx/ProceedsSection.tsx's own type-aware copy).
+    // Kept type-neutral here rather than caveated, since this is a
+    // 4-step marketing summary, not the place for that distinction —
+    // the dedicated pages above carry the full explanation.
+    body: "Approved distributions reach the causes you've selected, never past the ceiling you've set for each.",
     icon: IconCheckCircle,
   },
   {
