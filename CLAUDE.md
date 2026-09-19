@@ -330,6 +330,26 @@ fixed currency). Two decisions, both the owner's:
   oversight — the owner chose to ship giving-side support now rather
   than hold it for the larger redesign.
 
+**Update, 2026-09-16 — that follow-on work is done: Vault cause
+allocation and distributions are now currency-aware too.** `VaultCause
+.allocatedAmount`/`proceedsAllocatedAmount` (bare, single-currency
+Decimal fields) are replaced by `VaultCauseAllocation` — one row per
+`(vaultCause, currency)` — so a vault with `additionalCurrencies` can
+allocate and pay out each accepted currency's own raised pool
+independently, the same "never blend currencies together" posture
+`withAmountRaised` above already established for giving. A
+`VaultDistribution` can now be created in any of the vault's accepted
+currencies, not just its primary one; each currency's allocation
+ceiling is enforced completely independently of the others (committing
+against one currency never eats into another's headroom). Found and
+fixed two related bugs while wiring this up: `VaultProceedsService
+.sumForVault` was aggregating with no currency filter at all (silently
+blending currencies), and `record()` never validated a proceeds
+currency against the vault's accepted set — both fixed the same way.
+The goal/progress bar on the public page is still primary-currency-only
+per the note above; that part of the "not the full picture" scoping
+still stands.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
