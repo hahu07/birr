@@ -1,7 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsEnum, IsNumberString, IsString } from "class-validator";
-import { prisma, Prisma, InvestmentInstrumentType } from "@birr/db";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsNumberString, IsOptional, IsString, MinLength } from "class-validator";
+import { prisma, Prisma, InvestmentInstrumentType, InvestmentStatus, ShariahScreeningDecision } from "@birr/db";
 import { findVaultOrThrow } from "./find-vault-or-throw";
+
+// See InvestmentsService's own identical constant/comment.
+const COMMITTED_INVESTMENT_STATUSES: InvestmentStatus[] = ["pending_shariah_review", "active"];
 
 export class CreateVaultInvestmentInput {
   @IsString()
@@ -18,6 +21,34 @@ export class CreateVaultInvestmentInput {
 
   @IsString()
   counterpartyId!: string;
+
+  // See InvestmentsService's CreateInvestmentInput.businessDescription
+  // for what this is and why it's required.
+  @IsString()
+  @MinLength(20)
+  businessDescription!: string;
+}
+
+export class RecordVaultShariahScreeningInput {
+  @IsEnum(ShariahScreeningDecision)
+  decision!: ShariahScreeningDecision;
+
+  @IsOptional()
+  @IsBoolean()
+  interestBearingDebtConcern?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  nonCompliantIncomeConcern?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  flaggedSectorIds?: string[];
+
+  @IsString()
+  @IsNotEmpty()
+  reviewerNotes!: string;
 }
 
 @Injectable()
@@ -52,7 +83,11 @@ export class VaultInvestmentsService {
     await this.assertWithinRaised(input.vaultId, new Prisma.Decimal(input.allocatedAmount), tx);
     await this.assertWithinConcentrationLimit(counterparty, new Prisma.Decimal(input.allocatedAmount), vault.currency, tx);
 
-    const investment = await tx.vaultInvestment.create({ data: { ...input, currency: vault.currency } });
+    const { businessDescription, ...investmentInput } = input;
+    const investment = await tx.vaultInvestment.create({ data: { ...investmentInput, currency: vault.currency } });
+    // Starts at pending_shariah_review — see VaultShariahScreening's own
+    // schema comment.
+    await tx.vaultShariahScreening.create({ data: { vaultInvestmentId: investment.id, businessDescription } });
     await tx.auditLog.create({
       data: {
         vaultId: input.vaultId,
@@ -65,6 +100,58 @@ export class VaultInvestmentsService {
       },
     });
     return investment;
+  }
+
+  /**
+   * shariah_board_member-only — mirrors InvestmentsService
+   * .recordShariahScreening exactly, against VaultInvestment/
+   * VaultShariahScreening instead.
+   */
+  async recordShariahScreening(vaultInvestmentId: string, input: RecordVaultShariahScreeningInput, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const investment = await tx.vaultInvestment.findUnique({
+        where: { id: vaultInvestmentId },
+        include: { vaultShariahScreening: true },
+      });
+      if (!investment) throw new NotFoundException(`VaultInvestment "${vaultInvestmentId}" not found.`);
+      if (!investment.vaultShariahScreening) {
+        throw new NotFoundException(`VaultInvestment "${vaultInvestmentId}" has no Shariah screening on file.`);
+      }
+      if (investment.vaultShariahScreening.decision) {
+        throw new ConflictException("This investment's Shariah screening has already been decided.");
+      }
+
+      await tx.vaultShariahScreening.update({
+        where: { id: investment.vaultShariahScreening.id },
+        data: {
+          decision: input.decision,
+          interestBearingDebtConcern: input.interestBearingDebtConcern ?? false,
+          nonCompliantIncomeConcern: input.nonCompliantIncomeConcern ?? false,
+          flaggedSectorIds: input.flaggedSectorIds ?? [],
+          reviewerNotes: input.reviewerNotes,
+          decidedAt: new Date(),
+          decidedByUserId: actorUserId,
+        },
+      });
+
+      const newStatus: InvestmentStatus = input.decision === "approved" ? "active" : "shariah_rejected";
+      const updated = await tx.vaultInvestment.update({ where: { id: vaultInvestmentId }, data: { status: newStatus } });
+
+      await tx.auditLog.create({
+        data: {
+          vaultId: investment.vaultId,
+          actorType: "birr_staff",
+          actorUserId,
+          action: input.decision === "approved" ? "vault_investment.shariah_approved" : "vault_investment.shariah_rejected",
+          entityType: "VaultInvestment",
+          entityId: vaultInvestmentId,
+          before: investment as any,
+          after: updated as any,
+        },
+      });
+
+      return updated;
+    });
   }
 
   /**
@@ -111,8 +198,14 @@ export class VaultInvestmentsService {
     });
     const amountRaised = raised._sum.amount ?? new Prisma.Decimal(0);
 
+    // See InvestmentsService.assertWithinRaised's own 2026-09-19 comment
+    // — pending_shariah_review investments still count.
     const others = await tx.vaultInvestment.findMany({
-      where: { vaultId, status: "active", ...(excludeInvestmentId ? { id: { not: excludeInvestmentId } } : {}) },
+      where: {
+        vaultId,
+        status: { in: COMMITTED_INVESTMENT_STATUSES },
+        ...(excludeInvestmentId ? { id: { not: excludeInvestmentId } } : {}),
+      },
       select: { allocatedAmount: true },
     });
     const alreadyInvested = others.reduce((sum, i) => sum.plus(i.allocatedAmount), new Prisma.Decimal(0));
@@ -150,15 +243,17 @@ export class VaultInvestmentsService {
       return;
     }
 
+    // Same 2026-09-19 fix as InvestmentsService's own mirror — pending
+    // investments on either side still count toward exposure.
     const [waqfInvestments, vaultInvestments] = await Promise.all([
       tx.investment.findMany({
-        where: { counterpartyId: counterparty.id, status: "active" },
+        where: { counterpartyId: counterparty.id, status: { in: COMMITTED_INVESTMENT_STATUSES } },
         select: { allocatedAmount: true, currency: true },
       }),
       tx.vaultInvestment.findMany({
         where: {
           counterpartyId: counterparty.id,
-          status: "active",
+          status: { in: COMMITTED_INVESTMENT_STATUSES },
           ...(excludeInvestmentId ? { id: { not: excludeInvestmentId } } : {}),
         },
         select: { allocatedAmount: true, currency: true },
@@ -177,12 +272,13 @@ export class VaultInvestmentsService {
   }
 
   findById(id: string) {
-    return prisma.vaultInvestment.findUnique({ where: { id } });
+    return prisma.vaultInvestment.findUnique({ where: { id }, include: { vaultShariahScreening: true } });
   }
 
   list(vaultId?: string) {
     return prisma.vaultInvestment.findMany({
       where: vaultId ? { vaultId } : undefined,
+      include: { vaultShariahScreening: true },
       orderBy: { createdAt: "desc" },
     });
   }

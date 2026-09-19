@@ -246,6 +246,22 @@ export const causeCategories = [
 // system itself writes to automatically. Distributions Payable is
 // reserved, not yet used by any posting rule — kept for a later
 // accrual-basis slice rather than added only once actually needed.
+// Classical Islamic finance screening exclusions — the sectors a
+// ShariahScreening/VaultShariahScreening reviewer checks an investment
+// against (see that model's own schema comment). Staff-curated via the
+// Ops Console going forward; this seed only covers the well-established
+// starting list.
+export const shariahProhibitedSectors = [
+  { name: "Conventional interest-based banking/lending", description: "Riba — conventional banks, lenders, and interest-bearing debt instruments." },
+  { name: "Alcohol", description: "Production, distribution, or sale of alcoholic beverages." },
+  { name: "Gambling", description: "Casinos, betting, lotteries, and other gambling/gaming operations." },
+  { name: "Pork products", description: "Production or processing of pork or pork-derived products." },
+  { name: "Conventional insurance", description: "Non-Takaful (conventional) insurance underwriting." },
+  { name: "Weapons and defense", description: "Manufacture or sale of weapons, arms, and defense equipment." },
+  { name: "Adult entertainment", description: "Pornography and adult entertainment production or distribution." },
+  { name: "Tobacco", description: "Production or sale of tobacco and tobacco products." },
+] as const;
+
 export const vaultLedgerAccounts = [
   { code: "1000", name: "Cash & Bank", type: "asset", isSystemDefault: true },
   { code: "2000", name: "Distributions Payable", type: "liability", isSystemDefault: true },

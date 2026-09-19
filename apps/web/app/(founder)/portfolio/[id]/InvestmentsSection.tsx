@@ -10,6 +10,13 @@ import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import type { Investment } from "../../../../lib/types";
 import { Alert, Badge, Skeleton, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 
+const STATUS_TONE: Record<Investment["status"], "success" | "warning" | "danger" | "neutral"> = {
+  pending_shariah_review: "warning",
+  active: "success",
+  shariah_rejected: "danger",
+  liquidated: "neutral",
+};
+
 export function InvestmentsSection({ waqfId }: { waqfId: string }) {
   const [investments, setInvestments] = useState<Investment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,9 +75,7 @@ export function InvestmentsSection({ waqfId }: { waqfId: string }) {
                 <TableCell className="text-slate-500">{humanize(investment.instrumentType)}</TableCell>
                 <TableCell className="text-slate-500">{investment.currency} {formatAmount(investment.allocatedAmount)}</TableCell>
                 <TableCell>
-                  <Badge tone={investment.status === "active" ? "success" : "neutral"}>
-                    {humanize(investment.status)}
-                  </Badge>
+                  <Badge tone={STATUS_TONE[investment.status]}>{humanize(investment.status)}</Badge>
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-slate-500">{formatDate(investment.createdAt)}</TableCell>
               </TableRow>

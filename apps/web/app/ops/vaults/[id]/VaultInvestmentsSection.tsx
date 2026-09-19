@@ -4,11 +4,12 @@
 // InvestmentsSection: registration is plain staff CRUD, changing an
 // existing investment's allocation is always the vault.investment_change
 // governed action, decided on the Approval Queue.
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
-import type { Counterparty, Investment, VaultInvestment } from "../../../../lib/ops-types";
+import { useStaffSession } from "../../../../lib/staff-session";
+import type { Counterparty, Investment, ShariahProhibitedSector, ShariahScreeningDecision, VaultInvestment } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 
@@ -20,6 +21,13 @@ const INSTRUMENT_TYPES: Investment["instrumentType"][] = [
   "other",
 ];
 
+const STATUS_TONE: Record<VaultInvestment["status"], "success" | "warning" | "danger" | "neutral"> = {
+  pending_shariah_review: "warning",
+  active: "success",
+  shariah_rejected: "danger",
+  liquidated: "neutral",
+};
+
 export function VaultInvestmentsSection({ vaultId, currency }: { vaultId: string; currency: string }) {
   const {
     data: investments,
@@ -27,12 +35,18 @@ export function VaultInvestmentsSection({ vaultId, currency }: { vaultId: string
     reload: load,
   } = useLoadedResource(() => apiFetchJson<VaultInvestment[]>(`/vault-investments?vaultId=${vaultId}`), [vaultId]);
   const [activeCounterparties, setActiveCounterparties] = useState<Counterparty[]>([]);
+  const [prohibitedSectors, setProhibitedSectors] = useState<ShariahProhibitedSector[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  const isShariahBoard = staff?.staffRole === "shariah_board_member";
 
   useEffect(() => {
     apiFetchJson<Counterparty[]>("/counterparties?status=active")
       .then(setActiveCounterparties)
       .catch(() => setActiveCounterparties([]));
+    apiFetchJson<ShariahProhibitedSector[]>("/shariah-prohibited-sectors")
+      .then(setProhibitedSectors)
+      .catch(() => setProhibitedSectors([]));
   }, []);
 
   return (
@@ -92,29 +106,55 @@ export function VaultInvestmentsSection({ vaultId, currency }: { vaultId: string
           </TableHead>
           <TableBody>
             {investments.map((i) => (
-              <TableRow key={i.id}>
-                <TableCell className="font-medium text-slate-900">{i.name}</TableCell>
-                <TableCell className="text-slate-500">
-                  {i.counterpartyId ? (
-                    <Link href={`/ops/counterparties/${i.counterpartyId}`} className="hover:text-primary-700">
-                      {activeCounterparties.find((c) => c.id === i.counterpartyId)?.name ?? "View →"}
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell>{humanize(i.instrumentType)}</TableCell>
-                <TableCell className="text-slate-500">
-                  {i.currency} {formatAmount(i.allocatedAmount)}
-                </TableCell>
-                <TableCell>
-                  <Badge tone={i.status === "active" ? "success" : "neutral"}>{humanize(i.status)}</Badge>
-                </TableCell>
-                <TableCell className="text-slate-500">{formatDate(i.createdAt)}</TableCell>
-                <TableCell>
-                  {i.status === "active" && <InvestmentChangeAction investment={i} onProposed={load} />}
-                </TableCell>
-              </TableRow>
+              <Fragment key={i.id}>
+                <TableRow>
+                  <TableCell className="font-medium text-slate-900">
+                    {i.name}
+                    {i.vaultShariahScreening && (
+                      <p
+                        className="mt-0.5 max-w-xs truncate text-xs font-normal text-slate-500"
+                        title={i.vaultShariahScreening.businessDescription}
+                      >
+                        {i.vaultShariahScreening.businessDescription}
+                      </p>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-slate-500">
+                    {i.counterpartyId ? (
+                      <Link href={`/ops/counterparties/${i.counterpartyId}`} className="hover:text-primary-700">
+                        {activeCounterparties.find((c) => c.id === i.counterpartyId)?.name ?? "View →"}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell>{humanize(i.instrumentType)}</TableCell>
+                  <TableCell className="text-slate-500">
+                    {i.currency} {formatAmount(i.allocatedAmount)}
+                  </TableCell>
+                  <TableCell>
+                    <Badge tone={STATUS_TONE[i.status]}>{humanize(i.status)}</Badge>
+                  </TableCell>
+                  <TableCell className="text-slate-500">{formatDate(i.createdAt)}</TableCell>
+                  <TableCell>
+                    {i.status === "active" && <InvestmentChangeAction investment={i} onProposed={load} />}
+                  </TableCell>
+                </TableRow>
+                {i.vaultShariahScreening && !i.vaultShariahScreening.decision && isShariahBoard && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="bg-slate-50">
+                      <ShariahScreeningDecideForm vaultInvestmentId={i.id} sectors={prohibitedSectors} onDecided={load} />
+                    </TableCell>
+                  </TableRow>
+                )}
+                {i.vaultShariahScreening && !i.vaultShariahScreening.decision && !isShariahBoard && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="bg-slate-50 text-xs text-slate-500">
+                      Awaiting a shariah_board_member's decision on this investment's Shariah screening.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
             ))}
           </TableBody>
         </Table>
@@ -138,6 +178,7 @@ function InvestmentForm({
   const [instrumentType, setInstrumentType] = useState<Investment["instrumentType"]>("sukuk");
   const [counterpartyId, setCounterpartyId] = useState(counterparties[0]?.id ?? "");
   const [allocatedAmount, setAllocatedAmount] = useState("");
+  const [businessDescription, setBusinessDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -148,7 +189,7 @@ function InvestmentForm({
     try {
       await apiFetchJson("/vault-investments", {
         method: "POST",
-        body: JSON.stringify({ vaultId, name, instrumentType, allocatedAmount, counterpartyId }),
+        body: JSON.stringify({ vaultId, name, instrumentType, allocatedAmount, counterpartyId, businessDescription }),
       });
       onCreated();
     } catch (err) {
@@ -210,6 +251,18 @@ function InvestmentForm({
         <Button type="submit" disabled={submitting}>
           {submitting ? "Adding…" : "Add"}
         </Button>
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-slate-700">Business description</label>
+        <textarea
+          required
+          minLength={20}
+          rows={2}
+          placeholder="What the underlying business/asset/fund actually does — the material a shariah_board_member evaluates for Shariah screening."
+          value={businessDescription}
+          onChange={(e) => setBusinessDescription(e.target.value)}
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
       </div>
     </form>
   );
@@ -285,6 +338,121 @@ function InvestmentChangeAction({ investment, onProposed }: { investment: VaultI
         </button>
       </div>
       {error && <p className="text-[11px] text-red-600">{error}</p>}
+    </form>
+  );
+}
+
+// Vault-side mirror of InvestmentsSection.tsx's own ShariahScreeningDecideForm.
+function ShariahScreeningDecideForm({
+  vaultInvestmentId,
+  sectors,
+  onDecided,
+}: {
+  vaultInvestmentId: string;
+  sectors: ShariahProhibitedSector[];
+  onDecided: () => void;
+}) {
+  const [decision, setDecision] = useState<ShariahScreeningDecision>("approved");
+  const [interestBearingDebtConcern, setInterestBearingDebtConcern] = useState(false);
+  const [nonCompliantIncomeConcern, setNonCompliantIncomeConcern] = useState(false);
+  const [flaggedSectorIds, setFlaggedSectorIds] = useState<string[]>([]);
+  const [reviewerNotes, setReviewerNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggleSector(id: string) {
+    setFlaggedSectorIds((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await apiFetchJson(`/vault-investments/${vaultInvestmentId}/shariah-screening/decide`, {
+        method: "POST",
+        body: JSON.stringify({
+          decision,
+          interestBearingDebtConcern,
+          nonCompliantIncomeConcern,
+          flaggedSectorIds,
+          reviewerNotes,
+        }),
+      });
+      onDecided();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3 py-2">
+      {error && (
+        <Alert tone="danger" title="Couldn't record this decision">
+          {error}
+        </Alert>
+      )}
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Shariah screening</p>
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-slate-700">Decision</label>
+          <Select value={decision} onChange={(e) => setDecision(e.target.value as ShariahScreeningDecision)}>
+            <option value="approved">Approve</option>
+            <option value="rejected">Reject</option>
+          </Select>
+        </div>
+        <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={interestBearingDebtConcern}
+            onChange={(e) => setInterestBearingDebtConcern(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+          />
+          Interest-bearing debt concern
+        </label>
+        <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={nonCompliantIncomeConcern}
+            onChange={(e) => setNonCompliantIncomeConcern(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+          />
+          Non-compliant income concern
+        </label>
+      </div>
+      {sectors.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium text-slate-700">Flagged prohibited sectors</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {sectors.map((s) => (
+              <label key={s.id} className="flex items-center gap-1.5 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={flaggedSectorIds.includes(s.id)}
+                  onChange={() => toggleSector(s.id)}
+                  className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                />
+                {s.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-slate-700">Reviewer notes</label>
+        <textarea
+          required
+          rows={2}
+          placeholder="Required regardless of decision — leave a real reason on file."
+          value={reviewerNotes}
+          onChange={(e) => setReviewerNotes(e.target.value)}
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
+      </div>
+      <Button type="submit" disabled={submitting}>
+        {submitting ? "Recording…" : "Record decision"}
+      </Button>
     </form>
   );
 }

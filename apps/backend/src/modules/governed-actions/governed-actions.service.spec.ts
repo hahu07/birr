@@ -233,6 +233,8 @@ describe("GovernedActionsService", () => {
     await prisma.waqfCause.deleteMany({ where: { id: { in: waqfCauseIds } } });
     await prisma.asset.deleteMany({ where: { id: { in: assetIds } } });
     await prisma.beneficiary.deleteMany({ where: { id: { in: beneficiaryIds } } });
+    // RESTRICT on investmentId, must go before Investment itself.
+    await prisma.shariahScreening.deleteMany({ where: { investmentId: { in: investmentIds } } });
     await prisma.investment.deleteMany({ where: { id: { in: investmentIds } } });
     // Vault side — same FK-safe ordering reasoning as the Waqf side
     // above: VaultDistribution/VaultInvestment (RESTRICT on vaultId)
@@ -240,6 +242,8 @@ describe("GovernedActionsService", () => {
     // has no incoming RESTRICT from anything left standing once
     // VaultContribution rows created via the real flow tests are gone.
     await prisma.vaultDistribution.deleteMany({ where: { id: { in: vaultDistributionIds } } });
+    // RESTRICT on vaultInvestmentId, must go before VaultInvestment itself.
+    await prisma.vaultShariahScreening.deleteMany({ where: { vaultInvestmentId: { in: vaultInvestmentIds } } });
     await prisma.vaultInvestment.deleteMany({ where: { id: { in: vaultInvestmentIds } } });
     // RESTRICT on vaultId, same reasoning as VaultDistribution/
     // VaultInvestment above — after VaultDistribution (already gone,

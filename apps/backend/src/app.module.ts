@@ -33,6 +33,7 @@ import { FoundationDeedsModule } from "./modules/foundation-deeds/foundation-dee
 import { PlatformSettingsModule } from "./modules/platform-settings/platform-settings.module";
 import { TrusteeLicensesModule } from "./modules/trustee-licenses/trustee-licenses.module";
 import { CompliancePolicySetsModule } from "./modules/compliance-policy-sets/compliance-policy-sets.module";
+import { ShariahProhibitedSectorsModule } from "./modules/shariah-prohibited-sectors/shariah-prohibited-sectors.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { WaqfFundingModule } from "./modules/waqf-funding/waqf-funding.module";
 import { RolesModule } from "./modules/roles/roles.module";
@@ -82,6 +83,7 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     PlatformSettingsModule,
     TrusteeLicensesModule,
     CompliancePolicySetsModule,
+    ShariahProhibitedSectorsModule,
     NotificationsModule,
     WaqfFundingModule,
     RolesModule,

@@ -1,7 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsEnum, IsNumberString, IsString } from "class-validator";
-import { prisma, Prisma, InvestmentInstrumentType } from "@birr/db";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsNumberString, IsOptional, IsString, MinLength } from "class-validator";
+import { prisma, Prisma, InvestmentInstrumentType, InvestmentStatus, ShariahScreeningDecision } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
+
+// "Real" — money genuinely still committed, either awaiting Shariah
+// decision or already cleared. Excludes shariah_rejected/liquidated,
+// which have released their claim on the corpus/concentration ceiling.
+// See InvestmentStatus's own schema comment.
+const COMMITTED_INVESTMENT_STATUSES: InvestmentStatus[] = ["pending_shariah_review", "active"];
 
 export class CreateInvestmentInput {
   @IsString()
@@ -23,6 +29,39 @@ export class CreateInvestmentInput {
   // passed) before it can receive a single dollar of waqf money.
   @IsString()
   counterpartyId!: string;
+
+  // What the underlying business/asset/fund actually does — the
+  // material a shariah_board_member evaluates when deciding this
+  // investment's ShariahScreening. Same role/validation as
+  // Counterparty.businessActivities.
+  @IsString()
+  @MinLength(20)
+  businessDescription!: string;
+}
+
+export class RecordShariahScreeningInput {
+  @IsEnum(ShariahScreeningDecision)
+  decision!: ShariahScreeningDecision;
+
+  @IsOptional()
+  @IsBoolean()
+  interestBearingDebtConcern?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  nonCompliantIncomeConcern?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  flaggedSectorIds?: string[];
+
+  // Required regardless of decision — a religious/compliance judgment
+  // should always leave a real, human-written reason on file, not just
+  // a rubber-stamped click.
+  @IsString()
+  @IsNotEmpty()
+  reviewerNotes!: string;
 }
 
 @Injectable()
@@ -83,7 +122,14 @@ export class InvestmentsService {
     await this.assertWithinRaised(input.waqfId, new Prisma.Decimal(input.allocatedAmount), tx);
     await this.assertWithinConcentrationLimit(counterparty, new Prisma.Decimal(input.allocatedAmount), waqf.corpusCurrency, tx);
 
-    const investment = await tx.investment.create({ data: { ...input, currency: waqf.corpusCurrency } });
+    // businessDescription lives on ShariahScreening, not Investment
+    // itself — pulled out so it isn't spread into investment.create()'s
+    // data below.
+    const { businessDescription, ...investmentInput } = input;
+    const investment = await tx.investment.create({ data: { ...investmentInput, currency: waqf.corpusCurrency } });
+    // Starts at pending_shariah_review (Investment.status's own
+    // default) — see ShariahScreening's own schema comment.
+    await tx.shariahScreening.create({ data: { investmentId: investment.id, businessDescription } });
     await tx.auditLog.create({
       data: {
         waqfId: input.waqfId,
@@ -96,6 +142,61 @@ export class InvestmentsService {
       },
     });
     return investment;
+  }
+
+  /**
+   * shariah_board_member-only — the single reviewer decision that flips
+   * a pending_shariah_review Investment to active (approved) or
+   * shariah_rejected (rejected). One-way, same posture as
+   * CounterpartiesService.recordShariahApproval: a qualified
+   * specialist's own domain sign-off, not governed_actions/
+   * maker-checker.
+   */
+  async recordShariahScreening(investmentId: string, input: RecordShariahScreeningInput, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const investment = await tx.investment.findUnique({
+        where: { id: investmentId },
+        include: { shariahScreening: true },
+      });
+      if (!investment) throw new NotFoundException(`Investment "${investmentId}" not found.`);
+      if (!investment.shariahScreening) {
+        throw new NotFoundException(`Investment "${investmentId}" has no Shariah screening on file.`);
+      }
+      if (investment.shariahScreening.decision) {
+        throw new ConflictException("This investment's Shariah screening has already been decided.");
+      }
+
+      await tx.shariahScreening.update({
+        where: { id: investment.shariahScreening.id },
+        data: {
+          decision: input.decision,
+          interestBearingDebtConcern: input.interestBearingDebtConcern ?? false,
+          nonCompliantIncomeConcern: input.nonCompliantIncomeConcern ?? false,
+          flaggedSectorIds: input.flaggedSectorIds ?? [],
+          reviewerNotes: input.reviewerNotes,
+          decidedAt: new Date(),
+          decidedByUserId: actorUserId,
+        },
+      });
+
+      const newStatus: InvestmentStatus = input.decision === "approved" ? "active" : "shariah_rejected";
+      const updated = await tx.investment.update({ where: { id: investmentId }, data: { status: newStatus } });
+
+      await tx.auditLog.create({
+        data: {
+          waqfId: investment.waqfId,
+          actorType: "birr_staff",
+          actorUserId,
+          action: input.decision === "approved" ? "investment.shariah_approved" : "investment.shariah_rejected",
+          entityType: "Investment",
+          entityId: investmentId,
+          before: investment as any,
+          after: updated as any,
+        },
+      });
+
+      return updated;
+    });
   }
 
   /**
@@ -169,10 +270,18 @@ export class InvestmentsService {
     });
     const amountRaised = raised._sum.amount ?? new Prisma.Decimal(0);
 
+    // 2026-09-19 codebase audit finding: was status: "active" only —
+    // with Investment now starting at pending_shariah_review (not
+    // active) instead of going straight to active, several pending
+    // investments could jointly exceed this ceiling before any of them
+    // got a Shariah decision, since none counted against each other
+    // yet. Real money left the corpus the moment createOne() ran,
+    // regardless of whether it's been Shariah-cleared — see
+    // COMMITTED_INVESTMENT_STATUSES's own comment.
     const others = await tx.investment.findMany({
       where: {
         waqfId,
-        status: "active",
+        status: { in: COMMITTED_INVESTMENT_STATUSES },
         ...(excludeInvestmentId ? { id: { not: excludeInvestmentId } } : {}),
       },
       select: { allocatedAmount: true },
@@ -231,17 +340,19 @@ export class InvestmentsService {
       return;
     }
 
+    // Same 2026-09-19 fix as assertWithinRaised above, for both tables —
+    // pending_shariah_review investments still count toward exposure.
     const [others, vaultOthers] = await Promise.all([
       tx.investment.findMany({
         where: {
           counterpartyId: counterparty.id,
-          status: "active",
+          status: { in: COMMITTED_INVESTMENT_STATUSES },
           ...(excludeInvestmentId ? { id: { not: excludeInvestmentId } } : {}),
         },
         select: { allocatedAmount: true, currency: true },
       }),
       tx.vaultInvestment.findMany({
-        where: { counterpartyId: counterparty.id, status: "active" },
+        where: { counterpartyId: counterparty.id, status: { in: COMMITTED_INVESTMENT_STATUSES } },
         select: { allocatedAmount: true, currency: true },
       }),
     ]);
@@ -258,12 +369,13 @@ export class InvestmentsService {
   }
 
   findById(id: string) {
-    return prisma.investment.findUnique({ where: { id } });
+    return prisma.investment.findUnique({ where: { id }, include: { shariahScreening: true } });
   }
 
   list(waqfId?: string) {
     return prisma.investment.findMany({
       where: waqfId ? { waqfId } : undefined,
+      include: { shariahScreening: true },
       orderBy: { createdAt: "desc" },
     });
   }
@@ -279,7 +391,11 @@ export class InvestmentsService {
         select: { id: true },
       });
       if (!waqf) return null;
-      return tx.investment.findMany({ where: { waqfId, deletedAt: null }, orderBy: { createdAt: "desc" } });
+      return tx.investment.findMany({
+        where: { waqfId, deletedAt: null },
+        include: { shariahScreening: true },
+        orderBy: { createdAt: "desc" },
+      });
     });
   }
 }

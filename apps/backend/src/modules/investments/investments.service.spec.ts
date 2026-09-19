@@ -58,6 +58,8 @@ describe("InvestmentsService", () => {
   });
 
   afterAll(async () => {
+    // RESTRICT on investmentId, must go before Investment itself.
+    await prisma.shariahScreening.deleteMany({ where: { investmentId: { in: investmentIds } } });
     await prisma.investment.deleteMany({ where: { id: { in: investmentIds } } });
     await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
@@ -67,7 +69,7 @@ describe("InvestmentsService", () => {
 
   test("create() writes the investment and a matching audit_logs record, with currency derived from the waqf's own corpusCurrency", async () => {
     const investment = await service.create(
-      { waqfId, name: "Fixture Investment", instrumentType: "sukuk", allocatedAmount: "1000", counterpartyId: activeCounterpartyId },
+      { waqfId, name: "Fixture Investment", instrumentType: "sukuk", allocatedAmount: "1000", counterpartyId: activeCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
       actorUserId,
     );
     investmentIds.push(investment.id);
@@ -93,7 +95,7 @@ describe("InvestmentsService", () => {
 
     await expect(
       service.create(
-        { waqfId: noCurrencyWaqf.id, name: "Should Not Be Created", instrumentType: "sukuk", allocatedAmount: "100", counterpartyId: activeCounterpartyId },
+        { waqfId: noCurrencyWaqf.id, name: "Should Not Be Created", instrumentType: "sukuk", allocatedAmount: "100", counterpartyId: activeCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
         actorUserId,
       ),
     ).rejects.toThrow(BadRequestException);
@@ -108,7 +110,7 @@ describe("InvestmentsService", () => {
 
     await expect(
       service.create(
-        { waqfId: assetWaqf.id, name: "Should Be Rejected", instrumentType: "sukuk", allocatedAmount: "500", counterpartyId: activeCounterpartyId },
+        { waqfId: assetWaqf.id, name: "Should Be Rejected", instrumentType: "sukuk", allocatedAmount: "500", counterpartyId: activeCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
         actorUserId,
       ),
     ).rejects.toThrow(BadRequestException);
@@ -122,14 +124,14 @@ describe("InvestmentsService", () => {
     // 1500 more would push the total past what's actually been raised.
     await expect(
       service.create(
-        { waqfId, name: "Should Exceed Raised", instrumentType: "sukuk", allocatedAmount: "1500", counterpartyId: activeCounterpartyId },
+        { waqfId, name: "Should Exceed Raised", instrumentType: "sukuk", allocatedAmount: "1500", counterpartyId: activeCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
         actorUserId,
       ),
     ).rejects.toThrow(BadRequestException);
 
     // Exactly the remaining 1000 succeeds.
     const investment = await service.create(
-      { waqfId, name: "Second Fixture Investment", instrumentType: "equity_fund", allocatedAmount: "1000", counterpartyId: activeCounterpartyId },
+      { waqfId, name: "Second Fixture Investment", instrumentType: "equity_fund", allocatedAmount: "1000", counterpartyId: activeCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
       actorUserId,
     );
     investmentIds.push(investment.id);
@@ -152,7 +154,7 @@ describe("InvestmentsService", () => {
   test("create() rejects a counterparty that hasn't been onboarded yet", async () => {
     await expect(
       service.create(
-        { waqfId, name: "Should Be Rejected", instrumentType: "sukuk", allocatedAmount: "1", counterpartyId: pendingCounterpartyId },
+        { waqfId, name: "Should Be Rejected", instrumentType: "sukuk", allocatedAmount: "1", counterpartyId: pendingCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
         actorUserId,
       ),
     ).rejects.toThrow(BadRequestException);
@@ -213,7 +215,7 @@ describe("InvestmentsService", () => {
 
     test("rejects a second waqf's investment that would push combined exposure past the limit", async () => {
       const first = await service.create(
-        { waqfId: firstWaqfId, name: "First Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "1000", counterpartyId: limitedCounterpartyId },
+        { waqfId: firstWaqfId, name: "First Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "1000", counterpartyId: limitedCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
         actorUserId,
       );
       investmentIds.push(first.id);
@@ -222,14 +224,14 @@ describe("InvestmentsService", () => {
       // 600 more from THIS waqf would push combined exposure to 1600.
       await expect(
         service.create(
-          { waqfId: secondWaqfId, name: "Second Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "600", counterpartyId: limitedCounterpartyId },
+          { waqfId: secondWaqfId, name: "Second Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "600", counterpartyId: limitedCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
           actorUserId,
         ),
       ).rejects.toThrow(BadRequestException);
 
       // Exactly the remaining 500 succeeds.
       const second = await service.create(
-        { waqfId: secondWaqfId, name: "Second Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "500", counterpartyId: limitedCounterpartyId },
+        { waqfId: secondWaqfId, name: "Second Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "500", counterpartyId: limitedCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
         actorUserId,
       );
       investmentIds.push(second.id);
@@ -312,13 +314,13 @@ describe("InvestmentsService", () => {
       // against the 1500 USD limit, the USD investment below would be
       // rejected as "only 100 remaining" instead of succeeding at 1500.
       const sarInvestment = await service.create(
-        { waqfId: sarWaqfId, name: "SAR Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "1400", counterpartyId: limitedCounterpartyId },
+        { waqfId: sarWaqfId, name: "SAR Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "1400", counterpartyId: limitedCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
         actorUserId,
       );
       investmentIds.push(sarInvestment.id);
 
       const usdInvestment = await service.create(
-        { waqfId: usdWaqfId, name: "USD Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "1500", counterpartyId: limitedCounterpartyId },
+        { waqfId: usdWaqfId, name: "USD Waqf's Investment", instrumentType: "sukuk", allocatedAmount: "1500", counterpartyId: limitedCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
         actorUserId,
       );
       investmentIds.push(usdInvestment.id);
@@ -328,7 +330,182 @@ describe("InvestmentsService", () => {
       // real (this isn't a no-op that always passes).
       await expect(
         service.create(
-          { waqfId: usdWaqfId, name: "Should Be Rejected", instrumentType: "sukuk", allocatedAmount: "1", counterpartyId: limitedCounterpartyId },
+          { waqfId: usdWaqfId, name: "Should Be Rejected", instrumentType: "sukuk", allocatedAmount: "1", counterpartyId: limitedCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
+          actorUserId,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("Shariah screening", () => {
+    let screeningWaqfId: string;
+    let screeningCounterpartyId: string;
+
+    beforeAll(async () => {
+      const foundation = await prisma.foundation.create({ data: { name: "Shariah Screening Fixture Foundation" } });
+      const waqf = await prisma.waqf.create({
+        data: { name: "Shariah Screening Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "USD" },
+      });
+      screeningWaqfId = waqf.id;
+      waqfIds.push(waqf.id);
+      await prisma.contribution.create({
+        data: {
+          waqfId: screeningWaqfId,
+          amount: "5000",
+          currency: "USD",
+          provider: "paystack",
+          providerReference: `investments-shariah-spec-${randomUUID()}`,
+          status: "confirmed",
+        },
+      });
+      const counterparty = await prisma.counterparty.create({
+        data: { name: `Shariah Screening Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", status: "active" },
+      });
+      screeningCounterpartyId = counterparty.id;
+    });
+
+    afterAll(async () => {
+      await prisma.counterparty.deleteMany({ where: { id: screeningCounterpartyId } });
+    });
+
+    test("create() starts an investment at pending_shariah_review with a ShariahScreening row on file", async () => {
+      const investment = await service.create(
+        {
+          waqfId: screeningWaqfId,
+          name: "Fresh Sukuk",
+          instrumentType: "sukuk",
+          allocatedAmount: "500",
+          counterpartyId: screeningCounterpartyId,
+          businessDescription: "A sukuk backed by a portfolio of ijara leases on commercial real estate.",
+        },
+        actorUserId,
+      );
+      investmentIds.push(investment.id);
+      expect(investment.status).toBe("pending_shariah_review");
+
+      const screening = await prisma.shariahScreening.findUnique({ where: { investmentId: investment.id } });
+      expect(screening?.businessDescription).toBe("A sukuk backed by a portfolio of ijara leases on commercial real estate.");
+      expect(screening?.decision).toBeNull();
+    });
+
+    test("recordShariahScreening() approve → status becomes active, decision recorded, audit-logged", async () => {
+      const investment = await service.create(
+        {
+          waqfId: screeningWaqfId,
+          name: "Approve Fixture Sukuk",
+          instrumentType: "sukuk",
+          allocatedAmount: "300",
+          counterpartyId: screeningCounterpartyId,
+          businessDescription: "A sukuk backed by a portfolio of ijara leases on commercial real estate.",
+        },
+        actorUserId,
+      );
+      investmentIds.push(investment.id);
+
+      const updated = await service.recordShariahScreening(
+        investment.id,
+        { decision: "approved", interestBearingDebtConcern: false, nonCompliantIncomeConcern: false, reviewerNotes: "Clean sukuk structure, no concerns." },
+        actorUserId,
+      );
+      expect(updated.status).toBe("active");
+
+      const screening = await prisma.shariahScreening.findUnique({ where: { investmentId: investment.id } });
+      expect(screening).toMatchObject({ decision: "approved", reviewerNotes: "Clean sukuk structure, no concerns.", decidedByUserId: actorUserId });
+      expect(screening?.decidedAt).not.toBeNull();
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: investment.id, action: "investment.shariah_approved" } });
+      expect(logs).toHaveLength(1);
+    });
+
+    test("recordShariahScreening() reject → status becomes shariah_rejected, flagged sectors recorded, audit-logged", async () => {
+      const sector = await prisma.shariahProhibitedSector.findFirst({ where: { name: "Gambling" } });
+      const investment = await service.create(
+        {
+          waqfId: screeningWaqfId,
+          name: "Reject Fixture Sukuk",
+          instrumentType: "equity_fund",
+          allocatedAmount: "200",
+          counterpartyId: screeningCounterpartyId,
+          businessDescription: "An equity fund with meaningful exposure to online casino operators.",
+        },
+        actorUserId,
+      );
+      investmentIds.push(investment.id);
+
+      const updated = await service.recordShariahScreening(
+        investment.id,
+        {
+          decision: "rejected",
+          interestBearingDebtConcern: false,
+          nonCompliantIncomeConcern: true,
+          flaggedSectorIds: sector ? [sector.id] : [],
+          reviewerNotes: "Material gambling-sector revenue — not Shariah-compliant.",
+        },
+        actorUserId,
+      );
+      expect(updated.status).toBe("shariah_rejected");
+
+      const screening = await prisma.shariahScreening.findUnique({ where: { investmentId: investment.id } });
+      expect(screening?.decision).toBe("rejected");
+      if (sector) expect(screening?.flaggedSectorIds).toContain(sector.id);
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: investment.id, action: "investment.shariah_rejected" } });
+      expect(logs).toHaveLength(1);
+    });
+
+    test("recordShariahScreening() rejects a second decision on an already-decided screening", async () => {
+      const investment = await service.create(
+        {
+          waqfId: screeningWaqfId,
+          name: "Already Decided Fixture Sukuk",
+          instrumentType: "sukuk",
+          allocatedAmount: "100",
+          counterpartyId: screeningCounterpartyId,
+          businessDescription: "A sukuk backed by a portfolio of ijara leases on commercial real estate.",
+        },
+        actorUserId,
+      );
+      investmentIds.push(investment.id);
+      await service.recordShariahScreening(investment.id, { decision: "approved", reviewerNotes: "First decision." }, actorUserId);
+
+      await expect(
+        service.recordShariahScreening(investment.id, { decision: "rejected", reviewerNotes: "Too late." }, actorUserId),
+      ).rejects.toThrow("already been decided");
+    });
+
+    test("a pending_shariah_review investment still counts toward the raised-corpus ceiling, not just active ones", async () => {
+      // 5000 raised for screeningWaqfId. Prior tests in this block left:
+      // 500 pending (never decided), 300 active (approved), 200
+      // shariah_rejected (excluded — no longer counts), 100 active
+      // (approved). Committed = 500 + 300 + 100 = 900, so 4100 remains.
+      // This new one stays deliberately undecided (pending_shariah_review)
+      // to prove the ceiling counts a pending investment too, not just
+      // active ones — 4100 more should fit exactly, one dollar past that
+      // should not.
+      const pending = await service.create(
+        {
+          waqfId: screeningWaqfId,
+          name: "Ceiling Check Fixture Sukuk",
+          instrumentType: "sukuk",
+          allocatedAmount: "4100",
+          counterpartyId: screeningCounterpartyId,
+          businessDescription: "A sukuk backed by a portfolio of ijara leases on commercial real estate.",
+        },
+        actorUserId,
+      );
+      investmentIds.push(pending.id);
+      expect(pending.status).toBe("pending_shariah_review");
+
+      await expect(
+        service.create(
+          {
+            waqfId: screeningWaqfId,
+            name: "Should Exceed Raised",
+            instrumentType: "sukuk",
+            allocatedAmount: "1",
+            counterpartyId: screeningCounterpartyId,
+            businessDescription: "A sukuk backed by a portfolio of ijara leases on commercial real estate.",
+          },
           actorUserId,
         ),
       ).rejects.toThrow(BadRequestException);

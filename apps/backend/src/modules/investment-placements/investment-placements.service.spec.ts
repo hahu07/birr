@@ -51,6 +51,8 @@ describe("InvestmentPlacementsService", () => {
 
   afterAll(async () => {
     await prisma.waqfProceeds.deleteMany({ where: { id: { in: proceedsIds } } });
+    // RESTRICT on investmentId, must go before Investment itself.
+    await prisma.shariahScreening.deleteMany({ where: { investmentId: { in: investmentIds } } });
     await prisma.investment.deleteMany({ where: { id: { in: investmentIds } } });
     await prisma.investmentPlacement.deleteMany({ where: { id: { in: placementIds } } });
     await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
@@ -69,6 +71,7 @@ describe("InvestmentPlacementsService", () => {
         name: "3-Fund Sukuk Tranche",
         instrumentType: "sukuk",
         counterpartyId,
+        businessDescription: "Fixture business description for Shariah screening purposes.",
         allocations: [
           { waqfId: waqfA, amount: "300" },
           { waqfId: waqfB, amount: "500" },
@@ -98,6 +101,7 @@ describe("InvestmentPlacementsService", () => {
           name: "Should Roll Back",
           instrumentType: "murabaha",
           counterpartyId,
+          businessDescription: "Fixture business description for Shariah screening purposes.",
           allocations: [
             { waqfId: waqfOk, amount: "500" },
             // Only 100 was raised for this waqf — 200 exceeds it.
@@ -139,6 +143,7 @@ describe("InvestmentPlacementsService", () => {
           name: "Should Exceed Concentration",
           instrumentType: "sukuk",
           counterpartyId: limited.id,
+          businessDescription: "Fixture business description for Shariah screening purposes.",
           allocations: [
             { waqfId: waqfA, amount: "600" },
             { waqfId: waqfB, amount: "600" },
@@ -164,6 +169,7 @@ describe("InvestmentPlacementsService", () => {
           name: "Should Reject Mixed Currency",
           instrumentType: "sukuk",
           counterpartyId,
+          businessDescription: "Fixture business description for Shariah screening purposes.",
           allocations: [
             { waqfId: waqfUsd, amount: "100" },
             { waqfId: waqfNgn, amount: "100" },
@@ -181,6 +187,7 @@ describe("InvestmentPlacementsService", () => {
           name: "Should Reject Unknown Waqf",
           instrumentType: "sukuk",
           counterpartyId,
+          businessDescription: "Fixture business description for Shariah screening purposes.",
           allocations: [{ waqfId: "00000000-0000-0000-0000-000000000000", amount: "1" }],
         },
         actorUserId,
@@ -204,6 +211,7 @@ describe("InvestmentPlacementsService", () => {
           name: "Proceeds Fixture Placement",
           instrumentType: "murabaha",
           counterpartyId,
+          businessDescription: "Fixture business description for Shariah screening purposes.",
           // Uneven weights (1:1:1 of principal but the split below uses
           // an amount that doesn't divide evenly by 3) to exercise the
           // largest-remainder rounding through the real DB path too, not
@@ -219,6 +227,18 @@ describe("InvestmentPlacementsService", () => {
       placementId = placement.id;
       placementIds.push(placement.id);
       investmentIds.push(...placement.investments.map((i) => i.id));
+
+      // recordProceeds() only splits across active investments (real
+      // income shouldn't be booked against something not yet
+      // Shariah-cleared) — each leg starts at pending_shariah_review, so
+      // this fixture approves them directly, same test-only shortcut
+      // this codebase uses elsewhere for a governed/reviewed state: the
+      // real recordShariahScreening() flow itself is covered by
+      // investments.service.spec.ts.
+      await prisma.investment.updateMany({
+        where: { id: { in: placement.investments.map((i) => i.id) } },
+        data: { status: "active" },
+      });
     });
 
     test("splits one recorded return pro-rata across every contributing waqf's own WaqfProceeds", async () => {

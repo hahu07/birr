@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { ArrayMinSize, IsArray, IsEnum, IsNumberString, IsString, ValidateNested } from "class-validator";
+import { ArrayMinSize, IsArray, IsEnum, IsNumberString, IsString, MinLength, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { prisma, Prisma, InvestmentInstrumentType } from "@birr/db";
 import { InvestmentsService } from "../investments/investments.service";
@@ -24,6 +24,14 @@ export class CreateInvestmentPlacementInput {
 
   @IsString()
   counterpartyId!: string;
+
+  // One instrument, spread across every leg below — a single shared
+  // description, same as InvestmentsService's CreateInvestmentInput
+  // .businessDescription, carried onto each leg's own ShariahScreening
+  // (see createOne()'s own call sites below for why this isn't per-leg).
+  @IsString()
+  @MinLength(20)
+  businessDescription!: string;
 
   @IsArray()
   @ArrayMinSize(1)
@@ -131,6 +139,7 @@ export class InvestmentPlacementsService {
             instrumentType: input.instrumentType,
             allocatedAmount: allocation.amount,
             counterpartyId: input.counterpartyId,
+            businessDescription: input.businessDescription,
             placementId: placement.id,
           },
           actorUserId,

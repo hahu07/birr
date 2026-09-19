@@ -85,6 +85,7 @@ const NAV_GROUPS: {
     label: "Compliance",
     items: [
       { href: "/ops/jurisdictions", label: "Jurisdictions", icon: IconGlobe },
+      { href: "/ops/shariah-prohibited-sectors", label: "Shariah Prohibited Sectors", icon: IconShieldAlert },
       { href: "/ops/audit-logs", label: "Audit Log", icon: IconFileText },
       { href: "/ops/vault-compliance-review", label: "Vault Giving Review", icon: IconShieldAlert },
     ],

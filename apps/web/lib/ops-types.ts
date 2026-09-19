@@ -219,6 +219,55 @@ export interface Beneficiary {
 
 export type InvestmentInstrumentType = "sukuk" | "equity_fund" | "real_estate_fund" | "murabaha" | "other";
 
+// Staff-curated catalog referenced by ShariahScreening/VaultShariahScreening's
+// flaggedSectorIds — shared between Waqf and Vault investments, same
+// posture as CauseCategory. See ShariahProhibitedSectorsService's own
+// comment on the backend.
+export interface ShariahProhibitedSector {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ShariahScreeningDecision = "approved" | "rejected";
+
+// One row per Investment, created alongside it — see ShariahScreening's
+// own schema comment on the backend for the full reasoning (structured
+// checklist, fail-closed, single-reviewer sign-off not governed_actions).
+export interface ShariahScreening {
+  id: string;
+  investmentId: string;
+  businessDescription: string;
+  interestBearingDebtConcern: boolean | null;
+  nonCompliantIncomeConcern: boolean | null;
+  flaggedSectorIds: string[];
+  reviewerNotes: string | null;
+  decision: ShariahScreeningDecision | null;
+  decidedAt: string | null;
+  decidedByUserId: string | null;
+  decidedByUser: { id: string; fullName: string } | null;
+  createdAt: string;
+}
+
+// Parallel to ShariahScreening above, not shared — same convention as
+// every other Vault/Waqf twin.
+export interface VaultShariahScreening {
+  id: string;
+  vaultInvestmentId: string;
+  businessDescription: string;
+  interestBearingDebtConcern: boolean | null;
+  nonCompliantIncomeConcern: boolean | null;
+  flaggedSectorIds: string[];
+  reviewerNotes: string | null;
+  decision: ShariahScreeningDecision | null;
+  decidedAt: string | null;
+  decidedByUserId: string | null;
+  decidedByUser: { id: string; fullName: string } | null;
+  createdAt: string;
+}
+
 export interface Investment {
   id: string;
   waqfId: string;
@@ -228,7 +277,12 @@ export interface Investment {
   // Always the waqf's own corpusCurrency at creation time — see
   // Investment.currency's own schema comment.
   currency: string;
-  status: "active" | "liquidated";
+  // pending_shariah_review is the default on creation — an investment
+  // isn't a cleared, real active holding until a shariah_board_member
+  // decides its ShariahScreening. shariah_rejected is terminal, distinct
+  // from liquidated (found non-compliant, never activated, vs. a real
+  // holding later sold off).
+  status: "pending_shariah_review" | "active" | "shariah_rejected" | "liquidated";
   liquidatedAt: string | null;
   counterpartyId: string | null;
   // Set only when this row was created as one leg of a bulk
@@ -237,6 +291,10 @@ export interface Investment {
   // outside a placement since).
   placementId: string | null;
   createdAt: string;
+  // Always present — created in the same transaction as the Investment
+  // itself. Optional here only because list()/findById() include it and
+  // older cached shapes might not, not because it can genuinely be absent.
+  shariahScreening?: ShariahScreening | null;
 }
 
 // One real-world placement of money with a counterparty, spread across
@@ -858,10 +916,13 @@ export interface VaultInvestment {
   instrumentType: InvestmentInstrumentType;
   allocatedAmount: string;
   currency: string;
-  status: "active" | "liquidated";
+  // See Investment.status's own comment — identical Shariah-screening
+  // gating, mirrored on the Vault side.
+  status: "pending_shariah_review" | "active" | "shariah_rejected" | "liquidated";
   liquidatedAt: string | null;
   counterpartyId: string | null;
   createdAt: string;
+  vaultShariahScreening?: VaultShariahScreening | null;
 }
 
 export interface VaultProceeds {

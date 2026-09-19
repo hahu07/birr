@@ -250,7 +250,10 @@ export interface Investment {
   // Always the waqf's own corpusCurrency at creation time — see
   // Investment.currency's own schema comment.
   currency: string;
-  status: "active" | "liquidated";
+  // See ops-types.ts's own Investment.status comment — same Shariah
+  // screening gating, surfaced here too since this is real read-only
+  // status a Founder can see.
+  status: "pending_shariah_review" | "active" | "shariah_rejected" | "liquidated";
   liquidatedAt: string | null;
   createdAt: string;
 }

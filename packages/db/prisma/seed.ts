@@ -8,6 +8,7 @@ import {
   corpusMinimums,
   vaultDonorThresholds,
   causeCategories,
+  shariahProhibitedSectors,
   vaultLedgerAccounts,
   waqfLedgerAccounts,
 } from "./seed-data";
@@ -153,6 +154,14 @@ async function main() {
     });
   }
 
+  for (const sector of shariahProhibitedSectors) {
+    await prisma.shariahProhibitedSector.upsert({
+      where: { name: sector.name },
+      update: { description: sector.description },
+      create: sector,
+    });
+  }
+
   for (const account of vaultLedgerAccounts) {
     await prisma.vaultLedgerAccount.upsert({
       where: { code: account.code },
@@ -186,7 +195,7 @@ async function main() {
     create: { userId: adminUser.id, staffRole: "platform_admin" },
   });
 
-  console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums, ${corpusMinimums.length} corpus minimums, ${vaultDonorThresholds.length} vault donor thresholds, ${causeCategories.length} cause categories, ${vaultLedgerAccounts.length} vault ledger accounts, ${waqfLedgerAccounts.length} waqf ledger accounts.`);
+  console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums, ${corpusMinimums.length} corpus minimums, ${vaultDonorThresholds.length} vault donor thresholds, ${causeCategories.length} cause categories, ${shariahProhibitedSectors.length} shariah prohibited sectors, ${vaultLedgerAccounts.length} vault ledger accounts, ${waqfLedgerAccounts.length} waqf ledger accounts.`);
   console.log(`Seeded bootstrap platform_admin: ${SEED_ADMIN_EMAIL} (password: ${SEED_ADMIN_PASSWORD}) — change this before any shared/non-local use.`);
 
   for (const agentSeed of agentSeeds) {

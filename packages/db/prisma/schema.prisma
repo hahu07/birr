@@ -134,8 +134,17 @@ enum InvestmentInstrumentType {
   other
 }
 
+// 2026-09-19 — pending_shariah_review/shariah_rejected added alongside
+// the existing two: an Investment/VaultInvestment now starts at
+// pending_shariah_review (not active) until a shariah_board_member
+// decides it — see ShariahScreening's own comment. shariah_rejected is
+// a terminal state distinct from liquidated (found non-compliant,
+// never activated, vs. a real holding later sold off). Existing rows
+// are untouched — this only changes what a NEW investment defaults to.
 enum InvestmentStatus {
+  pending_shariah_review
   active
+  shariah_rejected
   liquidated
 }
 
@@ -348,6 +357,8 @@ model User {
   recordedVaultProceeds          VaultProceeds[]
   recordedVaultExpenses          VaultExpense[]
   recordedWaqfExpenses           WaqfExpense[]
+  shariahScreeningDecisions      ShariahScreening[]              @relation("ShariahScreeningReviewer")
+  vaultShariahScreeningDecisions VaultShariahScreening[]         @relation("VaultShariahScreeningReviewer")
 
   @@map("users")
 }
@@ -1197,7 +1208,10 @@ model Investment {
   // several waqfs with different corpusCurrency values; each leg gets
   // its own, from its own waqf, via InvestmentsService.createOne().
   currency        String
-  status          InvestmentStatus         @default(active)
+  // 2026-09-19: defaults to pending_shariah_review, not active — see
+  // ShariahScreening's own comment on why. createOne() creates the
+  // matching ShariahScreening row in the same transaction.
+  status          InvestmentStatus         @default(pending_shariah_review)
   liquidatedAt    DateTime?
   // Nullable — no backfill for any pre-existing rows, same convention as
   // every other nullable addition in this schema. Required going forward
@@ -1217,10 +1231,73 @@ model Investment {
   updatedAt       DateTime                 @updatedAt
   deletedAt       DateTime?
 
-  proceeds WaqfProceeds[]
+  proceeds         WaqfProceeds[]
+  shariahScreening ShariahScreening?
 
   @@index([waqfId])
   @@map("investments")
+}
+
+// Shared between Waqf-side and Vault-side screening (ShariahScreening/
+// VaultShariahScreening below) — "gambling is haram" doesn't differ by
+// which product the investment sits under, same reasoning CauseCategory
+// is a shared catalog rather than duplicated per product. Staff-curated
+// (platform_admin writes), referenced by id from flaggedSectorIds below
+// rather than a join table — a screening rarely flags more than one or
+// two, and this avoids a whole extra model for a small, rarely-queried
+// set.
+model ShariahProhibitedSector {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("shariah_prohibited_sectors")
+}
+
+enum ShariahScreeningDecision {
+  approved
+  rejected
+}
+
+// 2026-09-19 — the instrument-level counterpart to Counterparty's own
+// shariahApprovedAt/shariahApprovedByUserId (that one screens the
+// counterparty an investment flows through; this screens the specific
+// instrument itself — a sukuk, equity stake, or fund can still be
+// non-compliant even when placed with an already Shariah-approved
+// counterparty). One row per Investment, created alongside it in
+// InvestmentsService.createOne() — not a history table the way
+// SanctionsScreening was, since placing an investment is a one-time
+// decision, not something re-screened repeatedly. businessDescription
+// is captured at creation time (the material the reviewer evaluates,
+// same role as Counterparty.businessActivities); everything else is
+// filled in once, by InvestmentsService.recordShariahScreening(), at
+// decision time. A single shariah_board_member's own domain sign-off —
+// not governed_actions/maker-checker, same reasoning as
+// Counterparty.recordShariahApproval and ConflictOfInterestDeclaration:
+// a qualified specialist's religious/compliance judgment, not a
+// financial decision needing dual control. Deliberately no automated
+// financial-ratio screening (debt-to-market-cap, non-compliant-income
+// ratio) — Birr has no real data feed for that; the two boolean
+// "concern" fields below are a human-judgment stand-in, not a computed
+// ratio.
+model ShariahScreening {
+  id                         String                    @id @default(uuid())
+  investmentId               String                    @unique
+  investment                 Investment                @relation(fields: [investmentId], references: [id])
+  businessDescription        String
+  interestBearingDebtConcern Boolean?
+  nonCompliantIncomeConcern  Boolean?
+  flaggedSectorIds           String[]                  @default([])
+  reviewerNotes              String?
+  decision                   ShariahScreeningDecision?
+  decidedAt                  DateTime?
+  decidedByUserId            String?
+  decidedByUser              User?                     @relation("ShariahScreeningReviewer", fields: [decidedByUserId], references: [id])
+  createdAt                  DateTime                  @default(now())
+
+  @@map("shariah_screenings")
 }
 
 // One real-world placement of money with a counterparty, spread across
@@ -2036,16 +2113,16 @@ model Vault {
 // allocatedAmount and proceedsAllocatedAmount only ever move via a
 // governed action (vault.cause_allocate / vault.proceeds_allocate).
 model VaultCause {
-  id                      String         @id @default(uuid())
-  vaultId                 String
-  vault                   Vault          @relation(fields: [vaultId], references: [id])
-  causeCategoryId         String?
-  causeCategory           CauseCategory? @relation(fields: [causeCategoryId], references: [id])
-  name                    String
-  description             String?
-  createdAt               DateTime       @default(now())
-  updatedAt               DateTime       @updatedAt
-  deletedAt               DateTime?
+  id              String         @id @default(uuid())
+  vaultId         String
+  vault           Vault          @relation(fields: [vaultId], references: [id])
+  causeCategoryId String?
+  causeCategory   CauseCategory? @relation(fields: [causeCategoryId], references: [id])
+  name            String
+  description     String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
 
   contributions VaultContribution[]
   distributions VaultDistribution[]
@@ -2226,7 +2303,9 @@ model VaultInvestment {
   instrumentType  InvestmentInstrumentType
   allocatedAmount Decimal
   currency        String
-  status          InvestmentStatus         @default(active)
+  // 2026-09-19: see Investment.status's own comment — same default
+  // change, same reasoning.
+  status          InvestmentStatus         @default(pending_shariah_review)
   liquidatedAt    DateTime?
   counterpartyId  String?
   counterparty    Counterparty?            @relation(fields: [counterpartyId], references: [id])
@@ -2234,10 +2313,32 @@ model VaultInvestment {
   updatedAt       DateTime                 @updatedAt
   deletedAt       DateTime?
 
-  proceeds VaultProceeds[]
+  proceeds              VaultProceeds[]
+  vaultShariahScreening VaultShariahScreening?
 
   @@index([vaultId])
   @@map("vault_investments")
+}
+
+// Parallel to ShariahScreening above, not shared — same convention as
+// every other Vault/Waqf twin in this schema (WaqfProceeds/
+// VaultProceeds, WaqfCause/VaultCause).
+model VaultShariahScreening {
+  id                         String                    @id @default(uuid())
+  vaultInvestmentId          String                    @unique
+  vaultInvestment            VaultInvestment           @relation(fields: [vaultInvestmentId], references: [id])
+  businessDescription        String
+  interestBearingDebtConcern Boolean?
+  nonCompliantIncomeConcern  Boolean?
+  flaggedSectorIds           String[]                  @default([])
+  reviewerNotes              String?
+  decision                   ShariahScreeningDecision?
+  decidedAt                  DateTime?
+  decidedByUserId            String?
+  decidedByUser              User?                     @relation("VaultShariahScreeningReviewer", fields: [decidedByUserId], references: [id])
+  createdAt                  DateTime                  @default(now())
+
+  @@map("vault_shariah_screenings")
 }
 
 // Investment-style vaults only — mirrors WaqfProceeds exactly,

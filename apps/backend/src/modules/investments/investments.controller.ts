@@ -1,10 +1,11 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
-import { InvestmentsService, CreateInvestmentInput } from "./investments.service";
+import { InvestmentsService, CreateInvestmentInput, RecordShariahScreeningInput } from "./investments.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 @Controller("investments")
 export class InvestmentsController {
@@ -47,5 +48,18 @@ export class InvestmentsController {
     const investment = await this.service.findById(id);
     if (!investment) throw new NotFoundException(`Investment "${id}" not found.`);
     return investment;
+  }
+
+  // Single shariah_board_member sign-off, not governed_actions — same
+  // posture as counterparties.controller.ts's own shariah-approval
+  // route.
+  @RequiresStaffRole("shariah_board_member")
+  @Post(":id/shariah-screening/decide")
+  decideShariahScreening(
+    @Param("id") id: string,
+    @Body() body: RecordShariahScreeningInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.service.recordShariahScreening(id, body, staff.userId);
   }
 }

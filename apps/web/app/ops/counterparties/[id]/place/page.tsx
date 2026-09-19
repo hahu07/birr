@@ -39,6 +39,7 @@ export default function PlaceInvestmentPage() {
 
   const [name, setName] = useState("");
   const [instrumentType, setInstrumentType] = useState<InvestmentInstrumentType>("sukuk");
+  const [businessDescription, setBusinessDescription] = useState("");
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Waqf[] | null>(null);
@@ -109,6 +110,7 @@ export default function PlaceInvestmentPage() {
 
   const canSubmit =
     name.trim().length > 0 &&
+    businessDescription.trim().length >= 20 &&
     !currencyMismatch &&
     allocations.length > 0 &&
     allocations.every((a) => Number(a.amount) > 0) &&
@@ -122,7 +124,7 @@ export default function PlaceInvestmentPage() {
     try {
       const placement = await apiFetchJson<{ id: string }>("/investment-placements", {
         method: "POST",
-        body: JSON.stringify({ name, instrumentType, counterpartyId, allocations }),
+        body: JSON.stringify({ name, instrumentType, counterpartyId, businessDescription, allocations }),
       });
       router.push(`/ops/investment-placements/${placement.id}`);
     } catch (err) {
@@ -194,6 +196,18 @@ export default function PlaceInvestmentPage() {
                 ))}
               </select>
             </div>
+          </div>
+          <div className="mt-3 space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">Business description</label>
+            <textarea
+              required
+              minLength={20}
+              rows={2}
+              placeholder="What the underlying business/asset/fund actually does — the material a shariah_board_member evaluates for Shariah screening. One placement shares this description across every fund's leg."
+              value={businessDescription}
+              onChange={(e) => setBusinessDescription(e.target.value)}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            />
           </div>
         </Card>
 
