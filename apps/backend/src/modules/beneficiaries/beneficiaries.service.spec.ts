@@ -3,6 +3,10 @@ import { BadRequestException, ForbiddenException, NotFoundException } from "@nes
 import { BeneficiariesService, MAX_UNSCOPED_LIST_ROWS } from "./beneficiaries.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
 
+function uniquePhone(): string {
+  return `0${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(-11);
+}
+
 describe("BeneficiariesService", () => {
   const service = new BeneficiariesService(new EncryptionService());
 
@@ -361,6 +365,167 @@ describe("BeneficiariesService", () => {
       } finally {
         findManySpy.mockRestore();
       }
+    });
+  });
+
+  describe("findPossibleDuplicates()", () => {
+    const nominationIds: string[] = [];
+    let dupFounderId: string;
+    let dupFounderUserId: string;
+
+    beforeAll(async () => {
+      const founderUser = await prisma.user.create({
+        data: { email: `beneficiaries-dup-founder-${Date.now()}@example.com`, fullName: "Test Founder User" },
+      });
+      dupFounderUserId = founderUser.id;
+      const founder = await prisma.founder.create({ data: { name: "Beneficiaries Dup Fixture Founder", kind: "institution" } });
+      dupFounderId = founder.id;
+    });
+
+    afterAll(async () => {
+      await prisma.beneficiaryNomination.deleteMany({ where: { id: { in: nominationIds } } });
+    });
+
+    test("flags two beneficiaries in different waqfs sharing a normalized phone number", async () => {
+      const digits = uniquePhone();
+      const a = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "Dup Fixture A", eligibilityCriteria: "n/a", phone: digits },
+        actorUserId,
+      );
+      beneficiaryIds.push(a.id);
+      const b = await service.create(
+        {
+          waqfId: waqfBId,
+          causeId: causeOnWaqfBId,
+          name: "Dup Fixture B",
+          eligibilityCriteria: "n/a",
+          // Same digits, different punctuation — proves normalization
+          // works, not just a literal string match.
+          phone: `(${digits.slice(0, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`,
+        },
+        actorUserId,
+      );
+      beneficiaryIds.push(b.id);
+
+      const duplicates = await service.findPossibleDuplicates();
+      const aEntry = duplicates.find((d) => d.id === a.id);
+      const bEntry = duplicates.find((d) => d.id === b.id);
+      expect(aEntry?.matchedWith).toEqual([{ id: b.id, type: "beneficiary" }]);
+      expect(bEntry?.matchedWith).toEqual([{ id: a.id, type: "beneficiary" }]);
+    });
+
+    test("flags a pending nomination sharing an email with an existing beneficiary", async () => {
+      const email = `dup-fixture-${Date.now()}@example.com`;
+      const beneficiary = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "Dup Fixture Email Beneficiary", eligibilityCriteria: "n/a", email: email.toUpperCase() },
+        actorUserId,
+      );
+      beneficiaryIds.push(beneficiary.id);
+
+      const nomination = await prisma.beneficiaryNomination.create({
+        data: {
+          waqfId: waqfAId,
+          proposedByFounderId: dupFounderId,
+          proposedByUserId: dupFounderUserId,
+          causeId: causeOnWaqfAId,
+          name: "Dup Fixture Nomination",
+          eligibilityCriteria: "n/a",
+          email,
+          status: "pending",
+        },
+      });
+      nominationIds.push(nomination.id);
+
+      const duplicates = await service.findPossibleDuplicates();
+      const beneficiaryEntry = duplicates.find((d) => d.id === beneficiary.id);
+      expect(beneficiaryEntry?.matchedWith).toEqual([{ id: nomination.id, type: "nomination" }]);
+    });
+
+    test("does not flag two beneficiaries with no shared phone/email", async () => {
+      const a = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "No Dup A", eligibilityCriteria: "n/a", phone: uniquePhone() },
+        actorUserId,
+      );
+      beneficiaryIds.push(a.id);
+      const b = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "No Dup B", eligibilityCriteria: "n/a", phone: uniquePhone() },
+        actorUserId,
+      );
+      beneficiaryIds.push(b.id);
+
+      const duplicates = await service.findPossibleDuplicates();
+      expect(duplicates.some((d) => d.id === a.id || d.id === b.id)).toBe(false);
+    });
+
+    test("excludes an approved/rejected nomination from matching", async () => {
+      const digits = uniquePhone();
+      const beneficiary = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "Resolved Nomination Beneficiary", eligibilityCriteria: "n/a", phone: digits },
+        actorUserId,
+      );
+      beneficiaryIds.push(beneficiary.id);
+
+      const nomination = await prisma.beneficiaryNomination.create({
+        data: {
+          waqfId: waqfAId,
+          proposedByFounderId: dupFounderId,
+          proposedByUserId: dupFounderUserId,
+          causeId: causeOnWaqfAId,
+          name: "Resolved Nomination",
+          eligibilityCriteria: "n/a",
+          phone: digits,
+          status: "rejected",
+        },
+      });
+      nominationIds.push(nomination.id);
+
+      const duplicates = await service.findPossibleDuplicates();
+      const beneficiaryEntry = duplicates.find((d) => d.id === beneficiary.id);
+      expect(beneficiaryEntry).toBeUndefined();
+    });
+  });
+
+  describe("listEligibilityIssues()", () => {
+    test("flags an inactive beneficiary", async () => {
+      const beneficiary = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "Inactive Fixture", eligibilityCriteria: "n/a" },
+        actorUserId,
+      );
+      beneficiaryIds.push(beneficiary.id);
+      await prisma.beneficiary.update({ where: { id: beneficiary.id }, data: { status: "inactive" } });
+
+      const issues = await service.listEligibilityIssues();
+      const entry = issues.find((i) => i.beneficiaryId === beneficiary.id);
+      expect(entry?.issues).toEqual(["inactive"]);
+    });
+
+    test("flags an active beneficiary with a past eligibilityExpiresAt", async () => {
+      const beneficiary = await service.create(
+        {
+          waqfId: waqfAId,
+          causeId: causeOnWaqfAId,
+          name: "Expired Fixture",
+          eligibilityCriteria: "n/a",
+          eligibilityExpiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        },
+        actorUserId,
+      );
+      beneficiaryIds.push(beneficiary.id);
+
+      const issues = await service.listEligibilityIssues();
+      const entry = issues.find((i) => i.beneficiaryId === beneficiary.id);
+      expect(entry?.issues).toEqual(["eligibility_expired"]);
+    });
+
+    test("excludes a healthy active beneficiary with no expiry from the result", async () => {
+      const beneficiary = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "Healthy Fixture", eligibilityCriteria: "n/a" },
+        actorUserId,
+      );
+      beneficiaryIds.push(beneficiary.id);
+
+      const issues = await service.listEligibilityIssues();
+      expect(issues.find((i) => i.beneficiaryId === beneficiary.id)).toBeUndefined();
     });
   });
 });

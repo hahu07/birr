@@ -391,4 +391,114 @@ export class BeneficiariesService {
       };
     });
   }
+
+  /**
+   * Backend-computed, PII-free duplicate detection — built for
+   * AiAgentsService.beneficiaryVerificationData() (Munsif's own read
+   * tool). Loads phone/email transiently to compute matches, but never
+   * returns either value; only ids and which other ids they match.
+   * Platform-wide (a duplicate attempt is exactly as likely across two
+   * different waqfs as within one) and includes pending
+   * BeneficiaryNominations too, so a duplicate is caught before
+   * approval, not just after — an approved/rejected nomination is
+   * excluded, same as any other already-resolved case.
+   *
+   * Normalization is deliberately simple (strip non-digits from phone,
+   * lowercase+trim email) — a real first pass, not full phone-number
+   * canonicalization (e.g. a local "0800..." and its "+234800..."
+   * country-code form won't match each other). Extending to a real
+   * phone-parsing library is real, flagged follow-on work if this
+   * simple pass proves too noisy/too quiet in practice.
+   */
+  async findPossibleDuplicates(): Promise<
+    { id: string; type: "beneficiary" | "nomination"; matchedWith: { id: string; type: "beneficiary" | "nomination" }[] }[]
+  > {
+    interface MatchCandidate {
+      id: string;
+      type: "beneficiary" | "nomination";
+      phone: string | null;
+      email: string | null;
+    }
+
+    const [beneficiaries, nominations] = await Promise.all([
+      prisma.beneficiary.findMany({ where: { deletedAt: null }, select: { id: true, phone: true, email: true } }),
+      prisma.beneficiaryNomination.findMany({ where: { status: "pending" }, select: { id: true, phone: true, email: true } }),
+    ]);
+
+    const candidates: MatchCandidate[] = [
+      ...beneficiaries.map((b) => ({ id: b.id, type: "beneficiary" as const, phone: b.phone, email: b.email })),
+      ...nominations.map((n) => ({ id: n.id, type: "nomination" as const, phone: n.phone, email: n.email })),
+    ];
+
+    const key = (c: MatchCandidate) => `${c.type}:${c.id}`;
+    const normalizePhone = (phone: string | null) => (phone ? phone.replace(/\D/g, "") : null);
+    const normalizeEmail = (email: string | null) => (email ? email.trim().toLowerCase() : null);
+
+    const byPhone = new Map<string, MatchCandidate[]>();
+    const byEmail = new Map<string, MatchCandidate[]>();
+    for (const c of candidates) {
+      const phone = normalizePhone(c.phone);
+      const email = normalizeEmail(c.email);
+      if (phone) {
+        if (!byPhone.has(phone)) byPhone.set(phone, []);
+        byPhone.get(phone)!.push(c);
+      }
+      if (email) {
+        if (!byEmail.has(email)) byEmail.set(email, []);
+        byEmail.get(email)!.push(c);
+      }
+    }
+
+    const matchedKeysById = new Map<string, Set<string>>();
+    const recordGroup = (group: MatchCandidate[]) => {
+      if (group.length < 2) return;
+      for (const a of group) {
+        for (const b of group) {
+          if (a === b) continue;
+          if (!matchedKeysById.has(key(a))) matchedKeysById.set(key(a), new Set());
+          matchedKeysById.get(key(a))!.add(key(b));
+        }
+      }
+    };
+    for (const group of byPhone.values()) recordGroup(group);
+    for (const group of byEmail.values()) recordGroup(group);
+
+    const candidateByKey = new Map(candidates.map((c) => [key(c), c]));
+    return [...matchedKeysById.entries()].map(([k, matchedKeys]) => {
+      const candidate = candidateByKey.get(k)!;
+      return {
+        id: candidate.id,
+        type: candidate.type,
+        matchedWith: [...matchedKeys].map((mk) => {
+          const m = candidateByKey.get(mk)!;
+          return { id: m.id, type: m.type };
+        }),
+      };
+    });
+  }
+
+  /**
+   * Same two conditions DistributionsService.assertBeneficiaryEligible
+   * enforces at distribution create/approve time (status, expiry) —
+   * surfaced here as a standalone, proactive read so a stale/expired
+   * eligibility can be caught before anyone attempts a distribution,
+   * not just discovered as a rejection afterward. Deliberately excludes
+   * that method's third condition (causeId mismatch against a specific
+   * distribution's own causeId) — that's only meaningful relative to an
+   * actual attempted distribution, not a standalone eligibility read.
+   */
+  async listEligibilityIssues(): Promise<{ beneficiaryId: string; waqfId: string; issues: string[] }[]> {
+    const active = await prisma.beneficiary.findMany({
+      where: { deletedAt: null },
+      select: { id: true, waqfId: true, status: true, eligibilityExpiresAt: true },
+    });
+    return active
+      .map((b) => {
+        const issues: string[] = [];
+        if (b.status !== "active") issues.push("inactive");
+        if (b.eligibilityExpiresAt && b.eligibilityExpiresAt < new Date()) issues.push("eligibility_expired");
+        return { beneficiaryId: b.id, waqfId: b.waqfId, issues };
+      })
+      .filter((b) => b.issues.length > 0);
+  }
 }

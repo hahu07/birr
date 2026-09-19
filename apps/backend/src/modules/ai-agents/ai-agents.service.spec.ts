@@ -8,18 +8,22 @@ import { InvestmentsService } from "../investments/investments.service";
 import { InvestmentTargetsService } from "../investments/investment-targets.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultInvestmentTargetsService } from "../vaults/vault-investment-targets.service";
+import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
+import { EncryptionService } from "../../common/settings/encryption.service";
 
 describe("AiAgentsService", () => {
   const investmentsService = new InvestmentsService();
   const investmentTargetsService = new InvestmentTargetsService();
   const vaultInvestmentsService = new VaultInvestmentsService();
   const vaultInvestmentTargetsService = new VaultInvestmentTargetsService();
+  const beneficiariesService = new BeneficiariesService(new EncryptionService());
   const service = new AiAgentsService(
     new AuditLogsService(),
     investmentsService,
     investmentTargetsService,
     vaultInvestmentsService,
     vaultInvestmentTargetsService,
+    beneficiariesService,
   );
 
   let rasidAgentId: string;
@@ -359,6 +363,72 @@ describe("AiAgentsService", () => {
     test("excludes a project-style vault entirely", async () => {
       const data = await service.portfolioData();
       expect(data.vaultPortfolios.some((p) => p.vaultId === projectVaultId)).toBe(false);
+    });
+  });
+
+  describe("beneficiaryVerificationData()", () => {
+    const waqfIds: string[] = [];
+    const beneficiaryIds: string[] = [];
+
+    // Deliberately distinctive so the "no PII anywhere in the response"
+    // assertion below can't accidentally pass by matching some other
+    // fixture's ordinary-looking name/number.
+    const FIXTURE_PHONE = "07000009999";
+    const FIXTURE_EMAIL = "munsif-pii-canary@example.com";
+    const FIXTURE_NAME = "Munsif PII Canary Beneficiary";
+
+    let sharedPhoneWaqfId: string;
+    let causeId: string;
+    let verificationActorUserId: string;
+
+    beforeAll(async () => {
+      const actorUser = await prisma.user.create({
+        data: { email: `ai-agents-beneficiary-verification-actor-${Date.now()}@example.com`, fullName: "Test Actor" },
+      });
+      verificationActorUserId = actorUser.id;
+
+      const foundation = await prisma.foundation.create({ data: { name: "AI Agents Beneficiary Verification Fixture Foundation" } });
+      const waqf = await prisma.waqf.create({
+        data: { name: "AI Agents Beneficiary Verification Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId: foundation.id },
+      });
+      sharedPhoneWaqfId = waqf.id;
+      waqfIds.push(waqf.id);
+      const cause = await prisma.waqfCause.create({ data: { waqfId: waqf.id, name: "Fixture Cause" } });
+      causeId = cause.id;
+
+      const a = await beneficiariesService.create(
+        { waqfId: sharedPhoneWaqfId, causeId, name: FIXTURE_NAME, eligibilityCriteria: "n/a", phone: FIXTURE_PHONE, email: FIXTURE_EMAIL },
+        verificationActorUserId,
+      );
+      const b = await beneficiariesService.create(
+        { waqfId: sharedPhoneWaqfId, causeId, name: "Munsif PII Canary Beneficiary 2", eligibilityCriteria: "n/a", phone: FIXTURE_PHONE },
+        verificationActorUserId,
+      );
+      beneficiaryIds.push(a.id, b.id);
+      await prisma.beneficiary.update({ where: { id: a.id }, data: { status: "inactive" } });
+    });
+
+    afterAll(async () => {
+      await prisma.beneficiary.deleteMany({ where: { id: { in: beneficiaryIds } } });
+      await prisma.waqfCause.deleteMany({ where: { waqfId: { in: waqfIds } } });
+      await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
+    });
+
+    test("composes duplicates and eligibility issues from BeneficiariesService correctly", async () => {
+      const data = await service.beneficiaryVerificationData();
+      expect(data).toHaveProperty("duplicates");
+      expect(data).toHaveProperty("eligibilityIssues");
+      expect(data.duplicates.some((d) => beneficiaryIds.includes(d.id))).toBe(true);
+      expect(data.eligibilityIssues.some((i) => beneficiaryIds.includes(i.beneficiaryId) && i.issues.includes("inactive"))).toBe(true);
+    });
+
+    test("never returns a name, phone, email, or bank detail anywhere in the response", async () => {
+      const data = await service.beneficiaryVerificationData();
+      const serialized = JSON.stringify(data);
+      expect(serialized).not.toContain(FIXTURE_PHONE);
+      expect(serialized).not.toContain(FIXTURE_EMAIL);
+      expect(serialized).not.toContain(FIXTURE_NAME);
+      expect(serialized.toLowerCase()).not.toContain("bankdetails");
     });
   });
 

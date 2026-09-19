@@ -63,6 +63,17 @@ export class AiAgentsController {
     return this.service.portfolioData();
   }
 
+  // Munsif's own domain (Beneficiary) is genuinely PII-bearing, unlike
+  // the three GET routes above — see AiAgentsService
+  // .beneficiaryVerificationData()'s own comment for why this never
+  // returns a name/phone/email/bank detail.
+  @Get(":name/beneficiary-verification-data")
+  @Public()
+  async beneficiaryVerificationData(@Param("name") name: string, @Headers("x-agent-api-key") apiKey?: string) {
+    await verifyAiAgentApiKey(name, apiKey);
+    return this.service.beneficiaryVerificationData();
+  }
+
   // Agent-authenticated, same shape as the two GET routes above — a
   // cost-incurring external API call, so worth its own audit trail
   // entry (action: "image.generated") for the same reason every other

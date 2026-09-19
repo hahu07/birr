@@ -7,6 +7,7 @@ import { InvestmentsService } from "../investments/investments.service";
 import { InvestmentTargetsService } from "../investments/investment-targets.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultInvestmentTargetsService } from "../vaults/vault-investment-targets.service";
+import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 
 // Never select apiKeyHash onto a response body — same principle as
 // BirrStaffService's SAFE_USER_SELECT for User.passwordHash. list() had
@@ -53,6 +54,7 @@ const ALLOWED_DRAFT_ACTIONS: Record<string, string[]> = {
   nazim: ["caseload_digest.drafted"],
   bashir: ["content.drafted"],
   rashid: ["investment_memo.drafted"],
+  munsif: ["distribution_recommendation.drafted"],
 };
 
 @Injectable()
@@ -63,6 +65,7 @@ export class AiAgentsService {
     private readonly investmentTargetsService: InvestmentTargetsService,
     private readonly vaultInvestmentsService: VaultInvestmentsService,
     private readonly vaultInvestmentTargetsService: VaultInvestmentTargetsService,
+    private readonly beneficiariesService: BeneficiariesService,
   ) {}
 
   // Registry lookups only. Agents authenticate to the backend with their
@@ -184,6 +187,23 @@ export class AiAgentsService {
     ]);
 
     return { waqfPortfolios, vaultPortfolios };
+  }
+
+  /**
+   * GET /ai-agents/:name/beneficiary-verification-data — Munsif's
+   * read_beneficiary_records/check_eligibility tools. Unlike
+   * jurisdictionData/caseDigestData/portfolioData above, Munsif's own
+   * domain (Beneficiary) is genuinely PII-bearing — this deliberately
+   * returns only ids and backend-computed flags (see
+   * BeneficiariesService.findPossibleDuplicates/listEligibilityIssues'
+   * own comments), never a name, phone, email, or bank detail.
+   */
+  async beneficiaryVerificationData() {
+    const [duplicates, eligibilityIssues] = await Promise.all([
+      this.beneficiariesService.findPossibleDuplicates(),
+      this.beneficiariesService.listEligibilityIssues(),
+    ]);
+    return { duplicates, eligibilityIssues };
   }
 
   /** POST /ai-agents/:name/drafts — shared draft-persistence path. */
