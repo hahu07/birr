@@ -373,7 +373,28 @@ export class WaqfCausesService {
       // allocatedAmount.
       await tx.$queryRaw`SELECT id FROM "waqfs" WHERE id = ${waqf.id} FOR UPDATE`;
 
-      const pool = await this.proceedsService.sumForWaqf(cause.waqfId, tx);
+      // 2026-09-16 codebase audit finding: sumForWaqf() is now
+      // currency-scoped (see its own comment — it used to blend every
+      // currency together) — resolve which pool this allocation means,
+      // same poolCurrency resolution allocate() already does for the
+      // corpus side.
+      let poolCurrency = waqf.corpusCurrency;
+      if (!poolCurrency) {
+        const distinctCurrencies = await tx.waqfProceeds.findMany({
+          where: { waqfId: cause.waqfId },
+          distinct: ["currency"],
+          select: { currency: true },
+        });
+        if (distinctCurrencies.length > 1) {
+          throw new BadRequestException(
+            `This waqf has recorded proceeds in more than one currency (${distinctCurrencies.map((c) => c.currency).join(", ")}) and no declared corpus currency — set a corpus target first so proceeds allocation has an unambiguous currency to work with.`,
+          );
+        }
+        poolCurrency = distinctCurrencies[0]?.currency ?? null;
+      }
+      const pool = poolCurrency
+        ? await this.proceedsService.sumForWaqf(cause.waqfId, poolCurrency, tx)
+        : new Prisma.Decimal(0);
 
       const otherCauses = await tx.waqfCause.findMany({
         where: { waqfId: cause.waqfId, deletedAt: null, id: { not: waqfCauseId } },
@@ -468,7 +489,22 @@ export class WaqfCausesService {
         throw new BadRequestException("This waqf has no causes to allocate proceeds across.");
       }
 
-      const pool = await this.proceedsService.sumForWaqf(waqfId, tx);
+      // See allocateProceeds()'s own comment on this same resolution.
+      let poolCurrency = waqf.corpusCurrency;
+      if (!poolCurrency) {
+        const distinctCurrencies = await tx.waqfProceeds.findMany({
+          where: { waqfId },
+          distinct: ["currency"],
+          select: { currency: true },
+        });
+        if (distinctCurrencies.length > 1) {
+          throw new BadRequestException(
+            `This waqf has recorded proceeds in more than one currency (${distinctCurrencies.map((c) => c.currency).join(", ")}) and no declared corpus currency — set a corpus target first so proceeds allocation has an unambiguous currency to work with.`,
+          );
+        }
+        poolCurrency = distinctCurrencies[0]?.currency ?? null;
+      }
+      const pool = poolCurrency ? await this.proceedsService.sumForWaqf(waqfId, poolCurrency, tx) : new Prisma.Decimal(0);
       const shares = splitProRata(
         pool,
         causes.map((c) => ({ key: c.id, weight: c.allocatedAmount ?? new Prisma.Decimal(0) })),

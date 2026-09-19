@@ -145,9 +145,24 @@ export class WaqfProceedsService {
    * never reads this, and never has — see allocate()'s own comment).
    * Summed on read, same posture as WaqfsService.attachAmountRaised, so
    * it can never drift from the underlying WaqfProceeds rows.
+   *
+   * 2026-09-16 codebase audit finding: this used to aggregate every
+   * WaqfProceeds row for the waqf with no currency filter at all — for
+   * a legacy waqf with no declared corpusCurrency (see record()'s own
+   * comment on why that check "falls through unchecked" there), two
+   * different currencies' proceeds would silently sum into one
+   * meaningless Decimal, exactly the bug already found and fixed on
+   * VaultProceedsService.sumForVault. Callers now resolve which
+   * currency's pool they mean (same poolCurrency resolution
+   * WaqfCausesService.allocate() already does for the corpus side) and
+   * pass it in explicitly.
    */
-  async sumForWaqf(waqfId: string, client: Prisma.TransactionClient | typeof prisma = prisma): Promise<Prisma.Decimal> {
-    const result = await client.waqfProceeds.aggregate({ where: { waqfId }, _sum: { amount: true } });
+  async sumForWaqf(
+    waqfId: string,
+    currency: string,
+    client: Prisma.TransactionClient | typeof prisma = prisma,
+  ): Promise<Prisma.Decimal> {
+    const result = await client.waqfProceeds.aggregate({ where: { waqfId, currency }, _sum: { amount: true } });
     return result._sum.amount ?? new Prisma.Decimal(0);
   }
 

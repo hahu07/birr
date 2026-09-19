@@ -757,7 +757,10 @@ export interface FinancialReport {
   raised: { currency: string; totalAmount: string }[];
   distributed: { currency: string; totalAmount: string }[];
   distributionsByCause: DistributionCauseSummary[];
-  proceeds: { total: string } | null;
+  // Per-currency, same shape as raised/distributed above — see
+  // FinancialReportsService.generate's own comment (2026-09-16: used to
+  // be a single blended-currency total).
+  proceeds: { currency: string; totalAmount: string }[];
   causeAllocations: { id: string; name: string; allocatedAmount: string | null; proceedsAllocatedAmount: string | null }[];
   generatedAt: string;
 }

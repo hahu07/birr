@@ -73,8 +73,9 @@ function reportToCsv(report: FinancialReport): string {
   for (const d of report.distributed) lines.push(toCsvRow(["", d.currency, d.totalAmount]));
   lines.push("");
 
-  if (report.proceeds) {
-    lines.push(toCsvRow(["Investment proceeds recorded", report.proceeds.total]));
+  if (report.proceeds.length > 0) {
+    lines.push(toCsvRow(["Investment proceeds recorded", "Currency", "Amount"]));
+    for (const p of report.proceeds) lines.push(toCsvRow(["", p.currency, p.totalAmount]));
     lines.push("");
   }
 
@@ -239,10 +240,16 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
             )}
           </div>
 
-          {report.proceeds && (
+          {report.proceeds.length > 0 && (
             <div>
               <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Investment proceeds</p>
-              <p className="text-sm font-medium text-slate-900">{formatAmount(report.proceeds.total)} recorded</p>
+              <ul className="space-y-1 text-sm">
+                {report.proceeds.map((p) => (
+                  <li key={p.currency} className="font-medium text-slate-900">
+                    {p.currency} {formatAmount(p.totalAmount)} recorded
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

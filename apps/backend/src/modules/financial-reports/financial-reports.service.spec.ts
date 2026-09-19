@@ -28,7 +28,7 @@ describe("FinancialReportsService", () => {
     createFakeStablecoinPayoutAdapter() as any,
   );
   const { proceedsService } = createWiredWaqfServices();
-  const service = new FinancialReportsService(distributionsService, proceedsService);
+  const service = new FinancialReportsService(distributionsService);
 
   const waqfIds: string[] = [];
   const foundationIds: string[] = [];
@@ -141,7 +141,7 @@ describe("FinancialReportsService", () => {
     expect(report.distributed).toHaveLength(1);
     expect(report.distributed[0].currency).toBe("USD");
     expect(report.distributed[0].totalAmount.toString()).toBe("300");
-    expect(report.proceeds).toBeNull();
+    expect(report.proceeds).toEqual([]);
 
     expect(report.distributionsByCause).toHaveLength(1);
     expect(report.distributionsByCause[0]).toMatchObject({ causeId: projectCauseId, currency: "USD", distributionCount: 1, beneficiaryCount: 1 });
@@ -158,10 +158,27 @@ describe("FinancialReportsService", () => {
     expect(logs[0]).toMatchObject({ actorType: "birr_staff", actorUserId: staffUserId });
   });
 
-  test("generate() for an Investment waqf includes real proceeds", async () => {
+  test("generate() for an Investment waqf includes real proceeds, per currency", async () => {
     const report = await service.generate(investmentWaqfId, { actorType: "birr_staff", actorUserId: staffUserId });
-    expect(report.proceeds).not.toBeNull();
-    expect(report.proceeds!.total.toString()).toBe("150");
+    expect(report.proceeds).toHaveLength(1);
+    expect(report.proceeds[0]).toMatchObject({ currency: "USD" });
+    expect(report.proceeds[0].totalAmount.toString()).toBe("150");
+  });
+
+  // 2026-09-16 codebase audit finding — this report used to surface one
+  // blended-currency proceeds total (WaqfProceedsService.sumForWaqf with
+  // no currency filter). Proving a second currency shows up as its own
+  // entry, not folded into the first.
+  test("generate() reports proceeds recorded in more than one currency separately, never blended", async () => {
+    await proceedsService.record(
+      { waqfId: investmentWaqfId, amount: "50000", currency: "NGN", description: "NGN fixture return" },
+      staffUserId,
+    );
+
+    const report = await service.generate(investmentWaqfId, { actorType: "birr_staff", actorUserId: staffUserId });
+    expect(report.proceeds).toHaveLength(2);
+    expect(report.proceeds.find((p) => p.currency === "USD")?.totalAmount.toString()).toBe("150");
+    expect(report.proceeds.find((p) => p.currency === "NGN")?.totalAmount.toString()).toBe("50000");
   });
 
   test("generate() as a founder_user writes an audit log with actorFounderId set", async () => {

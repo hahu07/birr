@@ -85,9 +85,26 @@ describe("WaqfProceedsService", () => {
     ).rejects.toThrow(NotFoundException);
   });
 
-  test("sumForWaqf() totals every recorded entry for the waqf", async () => {
-    const total = await service.sumForWaqf(waqfId);
+  test("sumForWaqf() totals every recorded entry for the waqf in the given currency", async () => {
+    const total = await service.sumForWaqf(waqfId, "USD");
     expect(total.toString()).toBe("700");
+  });
+
+  // 2026-09-16 codebase audit finding — sumForWaqf() used to aggregate
+  // with no currency filter at all, silently blending different
+  // currencies together (the same bug already found and fixed on
+  // VaultProceedsService.sumForVault).
+  test("sumForWaqf() doesn't mix currencies — NGN proceeds are invisible to a USD sum and vice versa", async () => {
+    const proceeds = await service.record(
+      { waqfId, amount: "100000", currency: "NGN", description: "NGN return" },
+      actorUserId,
+    );
+    proceedsIds.push(proceeds.id);
+
+    const usdTotal = await service.sumForWaqf(waqfId, "USD");
+    const ngnTotal = await service.sumForWaqf(waqfId, "NGN");
+    expect(usdTotal.toString()).toBe("700");
+    expect(ngnTotal.toString()).toBe("100000");
   });
 
   test("record() rejects a non-Investment-type waqf", async () => {

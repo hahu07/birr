@@ -7,7 +7,6 @@ import { createFakeNotificationsService } from "../notifications/test-support/fa
 import { FinancialReportsService } from "../financial-reports/financial-reports.service";
 import { DistributionsService } from "../distributions/distributions.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
-import { WaqfProceedsService } from "../waqf-proceeds/waqf-proceeds.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
 import {
@@ -22,12 +21,6 @@ describe("WaqfsService", () => {
   }
 
   const service = new WaqfsService(new TrusteeLicensesService(createFakeNotificationsService()), createFakeNotificationsService());
-  // Only used by the "generating a financial report" test below — a
-  // Project-type waqf never calls WaqfProceedsService.sumForWaqf() (see
-  // that method's own waqf.type === "investment" gate), so a bare
-  // placeholder here is safe, same reasoning
-  // createWiredWaqfServices' own comment gives for its cycle-breaking
-  // pattern.
   const financialReportsService = new FinancialReportsService(
     new DistributionsService(
       new BeneficiariesService(new EncryptionService()),
@@ -37,7 +30,6 @@ describe("WaqfsService", () => {
       new FakePaystackPayoutAdapter() as any,
       createFakeStablecoinPayoutAdapter() as any,
     ),
-    new WaqfProceedsService(undefined as any),
   );
 
   const waqfIds: string[] = [];

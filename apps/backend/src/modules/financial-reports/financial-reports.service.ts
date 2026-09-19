@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { prisma, Prisma } from "@birr/db";
 import { DistributionsService } from "../distributions/distributions.service";
-import { WaqfProceedsService } from "../waqf-proceeds/waqf-proceeds.service";
 
 export type FinancialReportRequester =
   | { actorType: "birr_staff"; actorUserId: string }
@@ -11,14 +10,11 @@ export type FinancialReportRequester =
  * Computed fresh on every call, never persisted as a "report" row —
  * same posture as ComplianceReportsService.generate(). A thin
  * composition layer over existing summary methods, not new queries
- * reinvented from scratch — see summaryByCause/sumForWaqf below.
+ * reinvented from scratch — see summaryByCause below.
  */
 @Injectable()
 export class FinancialReportsService {
-  constructor(
-    private readonly distributionsService: DistributionsService,
-    private readonly waqfProceedsService: WaqfProceedsService,
-  ) {}
+  constructor(private readonly distributionsService: DistributionsService) {}
 
   async generate(waqfId: string, requester: FinancialReportRequester) {
     const waqf = await prisma.waqf.findUnique({ where: { id: waqfId } });
@@ -37,13 +33,21 @@ export class FinancialReportsService {
       if (!owns) throw new NotFoundException(`Waqf "${waqfId}" not found.`);
     }
 
-    const [raisedGrouped, distributionsByCause, proceedsTotal, causes] = await Promise.all([
+    const [raisedGrouped, distributionsByCause, proceedsGrouped, causes] = await Promise.all([
       prisma.contribution.groupBy({ by: ["currency"], where: { waqfId, status: "confirmed" }, _sum: { amount: true } }),
       // includeBeneficiaryNames left at its default false — this report
       // is shared verbatim between both dashboards, so it stays
       // uniformly PII-safe rather than building two divergent variants.
       this.distributionsService.summaryByCause(waqfId),
-      waqf.type === "investment" ? this.waqfProceedsService.sumForWaqf(waqfId) : Promise.resolve(null),
+      // 2026-09-16 codebase audit finding: this used to be a single
+      // WaqfProceedsService.sumForWaqf(waqfId) call with no currency —
+      // the same cross-currency-blending bug found and fixed on the
+      // Vault side. Grouped per-currency instead, same shape as `raised`
+      // above — a compliance report showing one blended-currency figure
+      // is worse than one that never blends currencies to begin with.
+      waqf.type === "investment"
+        ? prisma.waqfProceeds.groupBy({ by: ["currency"], where: { waqfId }, _sum: { amount: true } })
+        : Promise.resolve([]),
       prisma.waqfCause.findMany({
         where: { waqfId, deletedAt: null },
         select: { id: true, name: true, allocatedAmount: true, proceedsAllocatedAmount: true },
@@ -51,6 +55,7 @@ export class FinancialReportsService {
     ]);
 
     const raised = raisedGrouped.map((g) => ({ currency: g.currency, totalAmount: g._sum.amount ?? new Prisma.Decimal(0) }));
+    const proceeds = proceedsGrouped.map((g) => ({ currency: g.currency, totalAmount: g._sum.amount ?? new Prisma.Decimal(0) }));
 
     // Blended-by-currency total distributed, derived from
     // distributionsByCause rather than a second query — one currency
@@ -90,7 +95,7 @@ export class FinancialReportsService {
       raised,
       distributed,
       distributionsByCause,
-      proceeds: proceedsTotal !== null ? { total: proceedsTotal } : null,
+      proceeds,
       causeAllocations: causes,
       generatedAt: new Date(),
     };
