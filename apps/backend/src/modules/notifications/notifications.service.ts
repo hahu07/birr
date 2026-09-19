@@ -57,6 +57,10 @@ const CHANNEL_PLAN: Record<string, { email: boolean; whatsapp: boolean }> = {
   "trustee_license.status_changed": { email: true, whatsapp: false },
   "waqf.needs_case_assignment": { email: true, whatsapp: false },
   "coi.needs_review": { email: true, whatsapp: false },
+  // Medium — staff-only, same tier as the two above: action-needed
+  // (a portfolio has drifted from its stated target), not itself
+  // time-critical the way a governed-action proposal is.
+  "portfolio.drift_detected": { email: true, whatsapp: false },
   // Critical — escalated conflicts of interest are exactly the
   // time-sensitive, action-required case WhatsApp is reserved for.
   "coi.escalated": { email: true, whatsapp: true },

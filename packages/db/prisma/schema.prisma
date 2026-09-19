@@ -359,6 +359,8 @@ model User {
   recordedWaqfExpenses           WaqfExpense[]
   shariahScreeningDecisions      ShariahScreening[]              @relation("ShariahScreeningReviewer")
   vaultShariahScreeningDecisions VaultShariahScreening[]         @relation("VaultShariahScreeningReviewer")
+  investmentTargetsSet           InvestmentTarget[]
+  vaultInvestmentTargetsSet      VaultInvestmentTarget[]
 
   @@map("users")
 }
@@ -513,6 +515,7 @@ model Waqf {
   assets                 Asset[]
   beneficiaries          Beneficiary[]
   investments            Investment[]
+  investmentTargets      InvestmentTarget[]
   distributions          Distribution[]
   waqfCauses             WaqfCause[]
   contributions          Contribution[]
@@ -1236,6 +1239,33 @@ model Investment {
 
   @@index([waqfId])
   @@map("investments")
+}
+
+// One row per (waqf, instrumentType) — the target % of this waqf's
+// total committed investment (see COMMITTED_INVESTMENT_STATUSES in
+// InvestmentsService) that should sit in this instrument type. Absence
+// of a row for a given instrumentType means "no opinion set yet," NOT
+// "target is 0%" — see InvestmentTargetsService.computeDrift's own
+// comment on why drift checking skips instrument types with no row
+// (treating unset as an implicit 0% target would mean every fund with
+// real money instantly "drifts" 100% the moment this feature ships,
+// before any staff member has opinionated on it at all). Only
+// investment_committee may set/change these — see
+// InvestmentTargetsController.
+model InvestmentTarget {
+  id             String                   @id @default(uuid())
+  waqfId         String
+  waqf           Waqf                     @relation(fields: [waqfId], references: [id])
+  instrumentType InvestmentInstrumentType
+  targetPercent  Decimal
+  setByUserId    String
+  setByUser      User                     @relation(fields: [setByUserId], references: [id])
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@unique([waqfId, instrumentType])
+  @@index([waqfId])
+  @@map("investment_targets")
 }
 
 // Shared between Waqf-side and Vault-side screening (ShariahScreening/
@@ -2092,15 +2122,16 @@ model Vault {
   updatedAt              DateTime    @updatedAt
   deletedAt              DateTime?
 
-  causes          VaultCause[]
-  contributions   VaultContribution[]
-  investments     VaultInvestment[]
-  proceeds        VaultProceeds[]
-  distributions   VaultDistribution[]
-  governedActions GovernedAction[]
-  journalEntries  VaultJournalEntry[]
-  expenses        VaultExpense[]
-  milestones      VaultMilestone[]
+  causes            VaultCause[]
+  contributions     VaultContribution[]
+  investments       VaultInvestment[]
+  investmentTargets VaultInvestmentTarget[]
+  proceeds          VaultProceeds[]
+  distributions     VaultDistribution[]
+  governedActions   GovernedAction[]
+  journalEntries    VaultJournalEntry[]
+  expenses          VaultExpense[]
+  milestones        VaultMilestone[]
 
   @@map("vaults")
 }
@@ -2339,6 +2370,24 @@ model VaultShariahScreening {
   createdAt                  DateTime                  @default(now())
 
   @@map("vault_shariah_screenings")
+}
+
+// Parallel to InvestmentTarget above, not shared — same convention as
+// every other Vault/Waqf twin in this schema.
+model VaultInvestmentTarget {
+  id             String                   @id @default(uuid())
+  vaultId        String
+  vault          Vault                    @relation(fields: [vaultId], references: [id])
+  instrumentType InvestmentInstrumentType
+  targetPercent  Decimal
+  setByUserId    String
+  setByUser      User                     @relation(fields: [setByUserId], references: [id])
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@unique([vaultId, instrumentType])
+  @@index([vaultId])
+  @@map("vault_investment_targets")
 }
 
 // Investment-style vaults only — mirrors WaqfProceeds exactly,

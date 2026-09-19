@@ -15,6 +15,9 @@ import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { NotificationsService } from "./modules/notifications/notifications.service";
 import { startTrusteeLicenseExpiryScheduler } from "./modules/trustee-licenses/trustee-license-expiry-scheduler";
+import { startPortfolioDriftScheduler } from "./modules/investments/portfolio-drift-scheduler";
+import { InvestmentTargetsService } from "./modules/investments/investment-targets.service";
+import { VaultInvestmentTargetsService } from "./modules/vaults/vault-investment-targets.service";
 import { hasAnySessionCookie } from "./common/auth/session";
 import { isBirrStaffSession } from "./common/auth/current-birr-staff";
 import { resolveFounderFromSession } from "./common/auth/current-founder";
@@ -273,6 +276,11 @@ async function bootstrap() {
   // sends — see the scheduler's own comment for why this lives here
   // rather than a governed-actions-style call site.
   startTrusteeLicenseExpiryScheduler(app.get(NotificationsService));
+  startPortfolioDriftScheduler(
+    app.get(InvestmentTargetsService),
+    app.get(VaultInvestmentTargetsService),
+    app.get(NotificationsService),
+  );
 }
 bootstrap().catch((err: unknown) => {
   Sentry.captureException(err);

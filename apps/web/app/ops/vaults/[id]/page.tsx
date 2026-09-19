@@ -16,6 +16,7 @@ import type { Vault, VaultMilestone, VaultStatus } from "../../../../lib/ops-typ
 import { Alert, Badge, Button, IconArchive, Skeleton } from "@birr/ui";
 import { VaultCausesSection } from "./VaultCausesSection";
 import { VaultInvestmentsSection } from "./VaultInvestmentsSection";
+import { VaultInvestmentTargetsSection } from "./VaultInvestmentTargetsSection";
 import { VaultProceedsSection } from "./VaultProceedsSection";
 import { VaultDistributionsSection } from "./VaultDistributionsSection";
 import { VaultContributionsSection } from "./VaultContributionsSection";
@@ -147,6 +148,7 @@ export default function VaultDetailPage() {
         {vault.type === "investment" && (
           <>
             <VaultInvestmentsSection vaultId={id} currency={vault.currency} />
+            <VaultInvestmentTargetsSection vaultId={id} />
             <VaultProceedsSection vaultId={id} currency={vault.currency} />
           </>
         )}

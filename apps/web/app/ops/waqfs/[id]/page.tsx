@@ -25,6 +25,7 @@ import { CauseImpactSection } from "./CauseImpactSection";
 import { AssetsSection } from "./AssetsSection";
 import { BeneficiariesSection } from "./BeneficiariesSection";
 import { InvestmentsSection } from "./InvestmentsSection";
+import { InvestmentTargetsSection } from "./InvestmentTargetsSection";
 import { ProceedsSection } from "./ProceedsSection";
 import { DistributionsSection } from "./DistributionsSection";
 import { ComplianceReportSection } from "./ComplianceReportSection";
@@ -176,6 +177,7 @@ export default function WaqfDetailPage() {
               amountRaised={waqf.amountRaised ?? "0"}
               corpusCurrency={waqf.corpusCurrency}
             />
+            <InvestmentTargetsSection waqfId={id} />
             <ProceedsSection waqfId={id} onChanged={() => setProceedsVersion((v) => v + 1)} />
           </>
         )}

@@ -7,6 +7,8 @@ import { VaultContributionsService } from "./vault-contributions.service";
 import { VaultContributionsController } from "./vault-contributions.controller";
 import { VaultInvestmentsService } from "./vault-investments.service";
 import { VaultInvestmentsController } from "./vault-investments.controller";
+import { VaultInvestmentTargetsService } from "./vault-investment-targets.service";
+import { VaultInvestmentTargetsController } from "./vault-investment-targets.controller";
 import { VaultProceedsService } from "./vault-proceeds.service";
 import { VaultProceedsController } from "./vault-proceeds.controller";
 import { VaultDistributionsService } from "./vault-distributions.service";
@@ -36,6 +38,7 @@ import { EncryptionService } from "../../common/settings/encryption.service";
     VaultsController,
     VaultContributionsController,
     VaultInvestmentsController,
+    VaultInvestmentTargetsController,
     VaultProceedsController,
     VaultDistributionsController,
     VaultDonorThresholdsController,
@@ -51,6 +54,7 @@ import { EncryptionService } from "../../common/settings/encryption.service";
     VaultDonorThresholdsService,
     VaultContributionsService,
     VaultInvestmentsService,
+    VaultInvestmentTargetsService,
     VaultProceedsService,
     VaultDistributionsService,
     VaultLedgerService,
@@ -72,6 +76,7 @@ import { EncryptionService } from "../../common/settings/encryption.service";
     VaultsService,
     VaultContributionsService,
     VaultInvestmentsService,
+    VaultInvestmentTargetsService,
     VaultProceedsService,
     VaultDistributionsService,
     VaultMilestonesService,

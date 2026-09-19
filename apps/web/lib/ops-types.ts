@@ -297,6 +297,59 @@ export interface Investment {
   shariahScreening?: ShariahScreening | null;
 }
 
+// Staff-set target % of a waqf's total committed investment that
+// should sit in this instrument type — see InvestmentTarget's own
+// schema comment on the backend (unset instrumentType means "no
+// opinion," not "target 0%"). Only investment_committee may write.
+export interface InvestmentTarget {
+  id: string;
+  waqfId: string;
+  instrumentType: InvestmentInstrumentType;
+  targetPercent: string;
+  setByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InstrumentAllocationDrift {
+  instrumentType: InvestmentInstrumentType;
+  targetPercent: string;
+  actualPercent: string;
+  actualAmount: string;
+  // Signed — actualPercent minus targetPercent.
+  driftPercentagePoints: string;
+  drifted: boolean;
+}
+
+// GET /investment-targets/:waqfId/drift — same computation the
+// PortfolioDriftScheduler uses to decide whether to notify staff.
+export interface WaqfPortfolioDriftReport {
+  waqfId: string;
+  totalCommittedAmount: string;
+  currency: string | null;
+  breakdown: InstrumentAllocationDrift[];
+  anyDrifted: boolean;
+}
+
+// Parallel to InvestmentTarget above, not shared.
+export interface VaultInvestmentTarget {
+  id: string;
+  vaultId: string;
+  instrumentType: InvestmentInstrumentType;
+  targetPercent: string;
+  setByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VaultPortfolioDriftReport {
+  vaultId: string;
+  totalCommittedAmount: string;
+  currency: string | null;
+  breakdown: InstrumentAllocationDrift[];
+  anyDrifted: boolean;
+}
+
 // One real-world placement of money with a counterparty, spread across
 // however many Waqf Funds contributed to it — see
 // InvestmentPlacementsService's own comment on the backend for why this
