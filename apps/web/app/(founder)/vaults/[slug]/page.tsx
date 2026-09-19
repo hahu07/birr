@@ -23,8 +23,10 @@ import { GRADIENT, SiteFooter, SiteHeader } from "../../SiteChrome";
 // currency is fixed (not user-editable, unlike the Founder flow's own
 // corpus-currency picker), so this only ever filters which providers
 // are even offered for it.
+//
+// "stripe" (Card, international) deliberately removed — see
+// WaqfFundForm.tsx's own comment on this same removal.
 const PROVIDERS = [
-  { value: "stripe", label: "Card (international)", currencies: ["USD", "EUR", "GBP"] },
   { value: "paystack", label: "Card (Nigeria)", currencies: ["NGN"] },
   { value: "stablecoin", label: "Stablecoin", currencies: ["USDC", "USDT"] },
 ] as const;
@@ -253,7 +255,7 @@ function ContributionForm({
 
   const [amount, setAmount] = useState("");
   const [vaultCauseId, setVaultCauseId] = useState("");
-  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["value"]>(availableProviders[0]?.value ?? "stripe");
+  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["value"]>(availableProviders[0]?.value ?? "paystack");
   const [donorEmail, setDonorEmail] = useState("");
   const [donorFullName, setDonorFullName] = useState("");
   const [showIdentity, setShowIdentity] = useState(false);

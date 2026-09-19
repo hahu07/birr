@@ -21,8 +21,14 @@ import { WaqfTypeGuide } from "./WaqfTypeGuide";
 
 const WAQF_TYPES = ["investment", "asset", "project"] as const;
 
+// "stripe" (Card, international) deliberately removed — Stripe doesn't
+// operate as a merchant-of-record in Nigeria at all (confirmed against
+// Stripe's own documentation, 2026-09-19), so a Birr-owned Stripe
+// account can never exist. The backend adapter/webhook code is real
+// and untouched (apps/backend/.../providers/stripe.adapter.ts) in case
+// this becomes viable later (e.g. a non-Nigerian legal entity); this is
+// a product-surface decision, not evidence the code was wrong.
 const PROVIDERS = [
-  { value: "stripe", label: "Card (international)", currencies: ["USD", "EUR", "GBP"] },
   { value: "paystack", label: "Card (Nigeria)", currencies: ["NGN"] },
   { value: "stablecoin", label: "Stablecoin", currencies: ["USDC", "USDT"] },
 ] as const;
@@ -70,7 +76,7 @@ export function WaqfFundForm({
   // sum keeps this in sync with corpusAmount via the effect below.
   const [amount, setAmount] = useState("");
   const [amountTouched, setAmountTouched] = useState(false);
-  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["value"]>("stripe");
+  const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["value"]>(PROVIDERS[0].value);
   const [currency, setCurrency] = useState<string>(PROVIDERS[0].currencies[0]);
 
   const [corpusMinimums, setCorpusMinimums] = useState<CorpusMinimum[]>([]);
