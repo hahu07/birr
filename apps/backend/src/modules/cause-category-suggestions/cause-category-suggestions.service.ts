@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, WaqfType } from "@birr/db";
+import { withFounderScope } from "../../common/db/founder-scope";
 import { NotificationsService } from "../notifications/notifications.service";
 
 export interface ApproveCauseSuggestionFields {
@@ -277,12 +278,17 @@ export class CauseCategorySuggestionsService {
   }
 
   // Founder-Portal — only their own, so a Founder can track what they
-  // proposed without seeing anyone else's.
+  // proposed without seeing anyone else's. Wrapped in withFounderScope
+  // (2026-09-26 audit fix) so this read is backed by the
+  // founder_isolation RLS policy on proposedByFounderId, not just the
+  // WHERE clause below alone — matching every other founder-scoped read.
   listForFounder(founderId: string) {
-    return prisma.causeCategorySuggestion.findMany({
-      where: { proposedByFounderId: founderId },
-      orderBy: { createdAt: "desc" },
-      include: SUGGESTION_INCLUDE,
-    });
+    return withFounderScope(founderId, (tx) =>
+      tx.causeCategorySuggestion.findMany({
+        where: { proposedByFounderId: founderId },
+        orderBy: { createdAt: "desc" },
+        include: SUGGESTION_INCLUDE,
+      }),
+    );
   }
 }

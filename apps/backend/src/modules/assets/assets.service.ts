@@ -3,6 +3,15 @@ import { IsEnum, IsNumberString, IsString } from "class-validator";
 import { prisma, Prisma, AssetCategory } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 
+// 2026-09-26 audit fix, same problem class as
+// BeneficiariesService.MAX_UNSCOPED_LIST_ROWS (see that constant's own
+// comment): list() below returns every Asset platform-wide in one
+// unbounded response when waqfId is omitted. No caller in this codebase
+// today omits it, so this cap has no effect on any known usage — it
+// bounds the blast radius of that "see everything" path as the table
+// grows.
+export const MAX_UNSCOPED_LIST_ROWS = 200;
+
 export class CreateAssetInput {
   @IsString()
   waqfId!: string;
@@ -107,10 +116,10 @@ export class AssetsService {
   }
 
   list(waqfId?: string) {
-    return prisma.asset.findMany({
-      where: waqfId ? { waqfId } : undefined,
-      orderBy: { createdAt: "desc" },
-    });
+    if (waqfId) {
+      return prisma.asset.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" } });
+    }
+    return prisma.asset.findMany({ orderBy: { createdAt: "desc" }, take: MAX_UNSCOPED_LIST_ROWS });
   }
 
   // Founder-Portal read-only visibility into their own waqf's registered

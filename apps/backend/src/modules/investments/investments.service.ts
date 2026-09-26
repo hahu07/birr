@@ -9,6 +9,15 @@ import { withFounderScope } from "../../common/db/founder-scope";
 // See InvestmentStatus's own schema comment.
 const COMMITTED_INVESTMENT_STATUSES: InvestmentStatus[] = ["pending_shariah_review", "active"];
 
+// 2026-09-26 audit fix, same problem class as
+// BeneficiariesService.MAX_UNSCOPED_LIST_ROWS (see that constant's own
+// comment): list() below returns every Investment platform-wide in one
+// unbounded response when waqfId is omitted. No caller in this codebase
+// today omits it, so this cap has no effect on any known usage — it
+// bounds the blast radius of that "see everything" path as the table
+// grows.
+export const MAX_UNSCOPED_LIST_ROWS = 200;
+
 export class CreateInvestmentInput {
   @IsString()
   waqfId!: string;
@@ -373,10 +382,17 @@ export class InvestmentsService {
   }
 
   list(waqfId?: string) {
+    if (waqfId) {
+      return prisma.investment.findMany({
+        where: { waqfId },
+        include: { shariahScreening: true },
+        orderBy: { createdAt: "desc" },
+      });
+    }
     return prisma.investment.findMany({
-      where: waqfId ? { waqfId } : undefined,
       include: { shariahScreening: true },
       orderBy: { createdAt: "desc" },
+      take: MAX_UNSCOPED_LIST_ROWS,
     });
   }
 

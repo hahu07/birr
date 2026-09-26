@@ -187,8 +187,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  function handleSignOut() {
-    signOut();
+  async function handleSignOut() {
+    await signOut();
     router.push(SIGN_IN_ROUTE);
   }
 

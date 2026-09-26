@@ -9,13 +9,13 @@ export type { BirrStaff };
 interface StaffSessionValue {
   staff: BirrStaff | null;
   loading: boolean;
-  signOut: () => void;
+  signOut: () => Promise<void>;
 }
 
 const StaffSessionContext = createContext<StaffSessionValue>({
   staff: null,
   loading: true,
-  signOut: () => {},
+  signOut: async () => {},
 });
 
 // Real session — GET /birr-staff/me resolves identity from the httpOnly
@@ -42,11 +42,9 @@ export function StaffSessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  function signOut() {
-    apiFetch("/birr-staff/logout", { method: "POST" }).finally(() => {
-      setStaff(null);
-      window.location.href = "/sign-in";
-    });
+  async function signOut() {
+    await apiFetch("/birr-staff/logout", { method: "POST" }).catch(() => {});
+    setStaff(null);
   }
 
   return (

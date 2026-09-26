@@ -81,7 +81,11 @@ export function StepProgress({ steps, currentIndex, onStepClick }: StepProgressP
             </span>
           );
           return (
-            <li key={label} className="flex flex-1 flex-col items-center gap-1.5">
+            <li
+              key={label}
+              className="flex flex-1 flex-col items-center gap-1.5"
+              aria-current={isCurrent ? "step" : undefined}
+            >
               {isClickable ? (
                 <button
                   type="button"

@@ -152,7 +152,7 @@ export default function WaqfFundDetailPage() {
             {waqf.type === "investment" && <ProceedsSection waqfId={waqf.id} />}
             <DistributionsSection waqfId={waqf.id} />
             <BeneficiariesSection waqfId={waqf.id} />
-            <RequestsSection waqfId={waqf.id} waqfType={waqf.type} />
+            <RequestsSection waqfId={waqf.id} waqfType={waqf.type} currency={waqf.corpusCurrency} />
             <GovernanceActivitySection waqfId={waqf.id} />
             <FinancialReportSection waqfId={waqf.id} />
           </Card>

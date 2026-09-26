@@ -808,6 +808,12 @@ enum CauseSuggestionStatus {
 // established for WaqfCause itself. waqfId is context only (which fund
 // prompted the request), not a scope restriction — an approved
 // suggestion joins the global catalog, available to every Founder.
+// proposedByFounderId, unlike waqfId, IS a real scope restriction — it's
+// what the Founder-Portal read (listForFounder) is scoped by — and has its
+// own founder_isolation RLS policy as of
+// 20260926090000_add_cause_category_suggestions_rls (a 2026-09-26 audit
+// fix; this table was missed by the 2026-08-30 RLS sweep, which only
+// considered and rejected waqfId as a scoping column).
 model CauseCategorySuggestion {
   id                  String                @id @default(uuid())
   proposedByFounderId String
