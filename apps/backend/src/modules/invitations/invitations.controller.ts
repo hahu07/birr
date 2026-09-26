@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { IsEmail, IsEnum, IsOptional, IsString } from "class-validator";
 import type { Request, Response } from "express";
 import { InvitationsService, InviteInput, AcceptInput } from "./invitations.service";
@@ -35,10 +35,21 @@ class InviteBody {
 }
 
 // No @RequiresPermission on invite/revoke — no permission is seeded for
-// "who may invite," same bootstrap-scope call as Founders/BirrStaff/Asset
-// registration elsewhere in this codebase. resolveBirrStaffFromSession
-// still resolves who's acting, for the audit trail, without gating
-// eligibility.
+// "who may invite a founder_user/co_founder," same bootstrap-scope call
+// as Founders/Asset registration elsewhere in this codebase.
+// resolveBirrStaffFromSession still resolves who's acting, for the audit
+// trail, without gating eligibility on those two kinds.
+//
+// birr_staff invitations are the one exception (2026-09-26 fix): this
+// route can't just carry @RequiresStaffRole("platform_admin") the way
+// POST /birr-staff does, since it's also the founder_user/co_founder
+// entry point above — so the same restriction that route already
+// enforces is asserted manually, inside the staff branch below, only
+// for inviteeKind === "birr_staff". Found in a codebase review: any
+// authenticated staff member, any role, could otherwise invite a new
+// staff member with any role — including minting a new platform_admin
+// themselves, a real privilege-escalation gap this route's own
+// "no @RequiresPermission" posture was never meant to extend to.
 //
 // invite()/revoke()/list() are @Public() so a Founder session can also
 // reach them (same "authenticated a different way" reasoning as every
@@ -105,6 +116,13 @@ export class InvitationsController {
       throw new BadRequestException("A Founder session can only invite a founder_user or co_founder.");
     }
     const staff = await resolveBirrStaffFromSession(request);
+    // Same restriction POST /birr-staff already enforces via
+    // @RequiresStaffRole("platform_admin") — see this class's own
+    // top comment for why it has to be asserted manually here instead
+    // of on the route itself.
+    if (body.inviteeKind === "birr_staff" && staff.staffRole !== "platform_admin") {
+      throw new ForbiddenException("Only a platform_admin can invite a new Birr staff member.");
+    }
     const input: InviteInput = { ...body, roleKey: body.roleKey ?? "", invitedByUserId: staff.userId, invitedByActorType: "birr_staff" };
     return this.service.invite(input);
   }

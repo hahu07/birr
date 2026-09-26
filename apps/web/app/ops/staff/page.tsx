@@ -5,6 +5,10 @@
 // auth is real (see common/auth/current-birr-staff.ts on the backend):
 // POST /birr-staff is platform_admin-only and meant for bootstrap/scripted
 // use, so every other staff member is meant to arrive via an Invitation.
+// The invite button itself is isAdmin-gated below (2026-09-26 fix) —
+// InvitationsController now actually enforces platform_admin-only for a
+// birr_staff-kind invite on the backend too (it didn't before), so a
+// non-admin seeing this button would just hit a 403.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { humanize, formatDate } from "../../../lib/format";
@@ -111,9 +115,11 @@ export default function StaffPage() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setShowInviteForm((v) => !v)}>
-          {showInviteForm ? "Cancel" : "Invite staff member"}
-        </Button>
+        {isAdmin && (
+          <Button onClick={() => setShowInviteForm((v) => !v)}>
+            {showInviteForm ? "Cancel" : "Invite staff member"}
+          </Button>
+        )}
       </header>
 
       {error && (
