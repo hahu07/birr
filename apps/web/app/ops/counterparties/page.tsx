@@ -122,8 +122,19 @@ export default function CounterpartiesPage() {
                   <TableCell>{humanize(c.institutionType)}</TableCell>
                   <TableCell className="text-slate-500">{c.jurisdiction}</TableCell>
                   <TableCell className="text-slate-500">
-                    {formatAmount(c.totalInvested ?? "0")}
-                    {c.concentrationLimit && <> of {formatAmount(c.concentrationLimit)} limit</>}
+                    {c.concentrationLimit && c.concentrationLimitCurrency && c.totalInvested != null ? (
+                      <>
+                        {c.concentrationLimitCurrency} {formatAmount(c.totalInvested)} of {formatAmount(c.concentrationLimit)}{" "}
+                        {c.concentrationLimitCurrency} limit
+                      </>
+                    ) : c.totalInvestedByCurrency && c.totalInvestedByCurrency.length > 0 ? (
+                      // No concentration limit configured — never blend
+                      // currencies into one figure (2026-09-26 audit
+                      // fix), show each currency's own total instead.
+                      c.totalInvestedByCurrency.map((t) => `${t.currency} ${formatAmount(t.amount)}`).join(" · ")
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge tone={STATUS_TONE[c.status]}>{humanize(c.status)}</Badge>

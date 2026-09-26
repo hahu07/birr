@@ -11,6 +11,8 @@ describe("WaqfMilestonesService", () => {
   let foundationId: string;
   let projectWaqfId: string;
   let investmentWaqfId: string;
+  let founderId: string;
+  let otherFounderId: string;
 
   beforeAll(async () => {
     const actorUser = await prisma.user.create({
@@ -33,9 +35,22 @@ describe("WaqfMilestonesService", () => {
     });
     investmentWaqfId = investmentWaqf.id;
     waqfIds.push(investmentWaqf.id);
+
+    // A second, unrelated Founder for listForFounder()'s own isolation
+    // test below — same convention as AssetsService.listForFounder's spec.
+    const founder = await prisma.founder.create({ data: { name: "Waqf Milestones Fixture Founder", kind: "institution" } });
+    founderId = founder.id;
+    await prisma.foundationFounder.create({ data: { foundationId, founderId } });
+    const otherFounder = await prisma.founder.create({
+      data: { name: "Waqf Milestones Fixture Other Founder", kind: "institution" },
+    });
+    otherFounderId = otherFounder.id;
   });
 
   afterAll(async () => {
+    // FoundationFounder is ON DELETE RESTRICT against Foundation — must go
+    // before the foundation.delete() below.
+    await prisma.foundationFounder.deleteMany({ where: { foundationId } });
     await prisma.waqfExpense.deleteMany({ where: { waqfId: { in: waqfIds } } });
     await prisma.waqfLedgerAccount.deleteMany({ where: { id: { in: ledgerAccountIds } } });
     await prisma.waqfMilestone.deleteMany({ where: { waqfId: { in: waqfIds } } });
@@ -187,6 +202,23 @@ describe("WaqfMilestonesService", () => {
       await expect(service.setEvidence("00000000-0000-0000-0000-000000000000", { evidenceNotes: "x" }, actorUserId)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  // listForFounder() had no isolation test at all — a regression dropping
+  // the foundationFounders ownership clause or the withFounderScope RLS
+  // binding here would have gone undetected. Same convention as
+  // AssetsService.listForFounder's own regression-coverage test.
+  describe("listForFounder()", () => {
+    test("returns the waqf's own milestones for the founder that owns it", async () => {
+      const result = await service.listForFounder(projectWaqfId, founderId);
+      expect(result).not.toBeNull();
+      expect(result!.length).toBeGreaterThan(0);
+    });
+
+    test("returns null for a founder who doesn't own the waqf (isolation)", async () => {
+      const result = await service.listForFounder(projectWaqfId, otherFounderId);
+      expect(result).toBeNull();
     });
   });
 });

@@ -404,13 +404,21 @@ export interface Counterparty {
   // Only present from the list endpoint (GET /counterparties) — one
   // groupBy query across every returned row, not per-row exposure()
   // calls. Sum of every `active` Investment's allocatedAmount referencing
-  // this counterparty, across every waqf combined.
-  totalInvested?: string;
+  // this counterparty, across every waqf combined, scoped to
+  // concentrationLimitCurrency. null (2026-09-26 audit fix) when no
+  // concentration limit is configured yet — there's no one currency to
+  // blend every investment into. Real exposure is always visible via
+  // totalInvestedByCurrency below, never blended across currencies.
+  totalInvested?: string | null;
+  totalInvestedByCurrency?: { currency: string; amount: string }[];
 }
 
 export interface CounterpartyExposure {
   counterpartyId: string;
-  totalInvested: string;
+  // null (2026-09-26 audit fix) when no concentration limit is
+  // configured yet — see Counterparty.totalInvested's own comment above.
+  totalInvested: string | null;
+  totalInvestedByCurrency: { currency: string; amount: string }[];
   concentrationLimit: string | null;
   concentrationLimitCurrency: string | null;
   remaining: string | null;

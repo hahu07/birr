@@ -315,12 +315,68 @@ describe("CounterpartiesService", () => {
         data: { name: "Counterparties Exposure Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
       });
       await prisma.investment.create({
-        data: { waqfId: waqf.id, name: "Exposure Fixture Investment", instrumentType: "sukuk", allocatedAmount: "4000", currency: "USD", counterpartyId: counterparty.id },
+        data: {
+          waqfId: waqf.id,
+          name: "Exposure Fixture Investment",
+          instrumentType: "sukuk",
+          allocatedAmount: "4000",
+          currency: "USD",
+          counterpartyId: counterparty.id,
+          // exposure()/list() only count active investments (a still-
+          // pending one hasn't cleared to commit real exposure yet) —
+          // status defaults to pending_shariah_review, not active, as
+          // of 20260919090000_investment_status_shariah_values.
+          status: "active",
+        },
       });
 
       const exposure = await service.exposure(counterparty.id);
-      expect(exposure.totalInvested.toString()).toBe("4000");
+      expect(exposure.totalInvested?.toString()).toBe("4000");
       expect(exposure.remaining?.toString()).toBe("6000");
+    });
+
+    // Regression coverage for the 2026-09-26 audit finding: with no
+    // concentrationLimitCurrency configured, the "excludes only a KNOWN
+    // mismatch" filter had nothing to mismatch against and summed every
+    // currency together into one meaningless totalInvested figure.
+    // totalInvested is now null in this case — real exposure is only
+    // ever visible per-currency until a limit currency exists to scope
+    // a single figure to.
+    test("does not blend currencies into totalInvested when no concentration limit is configured yet", async () => {
+      const counterparty = await service.register(
+        { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", businessActivities: "Fixture bank for automated test coverage." },
+        actorUserId,
+      );
+      counterpartyIds.push(counterparty.id);
+      // Deliberately no setConcentrationLimit() call.
+
+      const foundation = await prisma.foundation.create({ data: { name: "Counterparties No-Limit Exposure Fixture Foundation" } });
+      const [usdWaqf, ngnWaqf] = await Promise.all([
+        prisma.waqf.create({
+          data: { name: "Counterparties No-Limit USD Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "USD" },
+        }),
+        prisma.waqf.create({
+          data: { name: "Counterparties No-Limit NGN Waqf", type: "investment", jurisdiction: "NG", foundationId: foundation.id, corpusCurrency: "NGN" },
+        }),
+      ]);
+      await Promise.all([
+        prisma.investment.create({
+          data: { waqfId: usdWaqf.id, name: "USD No-Limit Investment", instrumentType: "sukuk", allocatedAmount: "3000", currency: "USD", counterpartyId: counterparty.id, status: "active" },
+        }),
+        prisma.investment.create({
+          data: { waqfId: ngnWaqf.id, name: "NGN No-Limit Investment", instrumentType: "sukuk", allocatedAmount: "500000", currency: "NGN", counterpartyId: counterparty.id, status: "active" },
+        }),
+      ]);
+
+      const exposure = await service.exposure(counterparty.id);
+      expect(exposure.totalInvested).toBeNull();
+      expect(exposure.remaining).toBeNull();
+      expect(exposure.totalInvestedByCurrency).toEqual(
+        expect.arrayContaining([
+          { currency: "USD", amount: "3000" },
+          { currency: "NGN", amount: "500000" },
+        ]),
+      );
     });
 
     // Regression coverage for the 2026-08-31 codebase audit finding:
@@ -347,15 +403,15 @@ describe("CounterpartiesService", () => {
       ]);
       await Promise.all([
         prisma.investment.create({
-          data: { waqfId: usdWaqf.id, name: "USD Exposure Investment", instrumentType: "sukuk", allocatedAmount: "3000", currency: "USD", counterpartyId: counterparty.id },
+          data: { waqfId: usdWaqf.id, name: "USD Exposure Investment", instrumentType: "sukuk", allocatedAmount: "3000", currency: "USD", counterpartyId: counterparty.id, status: "active" },
         }),
         prisma.investment.create({
-          data: { waqfId: sarWaqf.id, name: "SAR Exposure Investment", instrumentType: "sukuk", allocatedAmount: "9000", currency: "SAR", counterpartyId: counterparty.id },
+          data: { waqfId: sarWaqf.id, name: "SAR Exposure Investment", instrumentType: "sukuk", allocatedAmount: "9000", currency: "SAR", counterpartyId: counterparty.id, status: "active" },
         }),
       ]);
 
       const exposure = await service.exposure(counterparty.id);
-      expect(exposure.totalInvested.toString()).toBe("3000");
+      expect(exposure.totalInvested?.toString()).toBe("3000");
       expect(exposure.remaining?.toString()).toBe("7000");
     });
   });
@@ -378,14 +434,20 @@ describe("CounterpartiesService", () => {
         data: { name: "Counterparties List Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id },
       });
       await prisma.investment.create({
-        data: { waqfId: waqf.id, name: "List Fixture Investment", instrumentType: "sukuk", allocatedAmount: "2500", currency: "USD", counterpartyId: withInvestment.id },
+        data: { waqfId: waqf.id, name: "List Fixture Investment", instrumentType: "sukuk", allocatedAmount: "2500", currency: "USD", counterpartyId: withInvestment.id, status: "active" },
       });
 
       const results = await service.list();
       const found = results.find((c) => c.id === withInvestment.id);
       const foundEmpty = results.find((c) => c.id === withoutInvestment.id);
-      expect(found?.totalInvested.toString()).toBe("2500");
-      expect(foundEmpty?.totalInvested.toString()).toBe("0");
+      // Neither counterparty has a concentration limit configured here —
+      // totalInvested (2026-09-26 audit fix) is only ever populated once
+      // one exists to scope a single figure to; real exposure is still
+      // visible per-currency via totalInvestedByCurrency.
+      expect(found?.totalInvested).toBeNull();
+      expect(found?.totalInvestedByCurrency).toEqual([{ currency: "USD", amount: "2500" }]);
+      expect(foundEmpty?.totalInvested).toBeNull();
+      expect(foundEmpty?.totalInvestedByCurrency).toEqual([]);
     });
   });
 });

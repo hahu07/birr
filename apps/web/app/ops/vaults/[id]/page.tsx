@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { humanize } from "../../../../lib/format";
+import { useMarkNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Vault, VaultMilestone, VaultStatus } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, IconArchive, Skeleton } from "@birr/ui";
 import { VaultCausesSection } from "./VaultCausesSection";
@@ -69,6 +70,13 @@ export default function VaultDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // 2026-09-26 audit fix, same notification read-state gap as
+  // lib/notifications.ts's own comment describes — portfolio.drift_detected
+  // (relatedEntityType: "Vault", see portfolio-drift-scheduler.ts) links
+  // here, but nothing on this page ever marked it read, unlike its Waqf-side
+  // twin in app/ops/waqfs/[id]/page.tsx.
+  useMarkNotificationsReadForEntity("Vault", id);
 
   // Project vaults only (VaultMilestonesService itself rejects creation
   // against anything else) — the single shared fetch every section that

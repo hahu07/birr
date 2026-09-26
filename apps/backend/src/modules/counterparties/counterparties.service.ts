@@ -475,21 +475,46 @@ export class CounterpartiesService {
     // unscoped sum would blend currencies into one meaningless number.
     const investments = await prisma.investment.findMany({
       where: { counterpartyId: { in: counterparties.map((c) => c.id) }, status: "active" },
-      select: { counterpartyId: true, allocatedAmount: true, waqf: { select: { corpusCurrency: true } } },
+      select: { counterpartyId: true, allocatedAmount: true, currency: true, waqf: { select: { corpusCurrency: true } } },
     });
     const concentrationLimitCurrencyById = new Map(counterparties.map((c) => [c.id, c.concentrationLimitCurrency]));
+    // 2026-09-26 audit fix — totalInvestedById used to sum every
+    // investment regardless of currency whenever a counterparty had no
+    // concentrationLimitCurrency configured yet (the "excludes only a
+    // KNOWN mismatch" filter below is a no-op with no limit currency to
+    // mismatch against), reintroducing the exact currency-blending bug
+    // this method's own comment says was fixed. totalInvested (a single,
+    // ceiling-comparable figure) is now only ever populated once a limit
+    // currency exists to scope it to; totalInvestedByCurrency is
+    // computed unconditionally alongside it, grouped by currency, so the
+    // registry table can still show real exposure — never blended — for
+    // a counterparty with no limit configured yet.
     const totalInvestedById = new Map<string, Prisma.Decimal>();
+    const totalInvestedByCurrencyById = new Map<string, Map<string, Prisma.Decimal>>();
     for (const i of investments) {
       if (!i.counterpartyId) continue;
+
+      const displayCurrency = i.currency ?? i.waqf.corpusCurrency ?? "unknown";
+      const byCurrency = totalInvestedByCurrencyById.get(i.counterpartyId) ?? new Map<string, Prisma.Decimal>();
+      byCurrency.set(displayCurrency, (byCurrency.get(displayCurrency) ?? new Prisma.Decimal(0)).plus(i.allocatedAmount));
+      totalInvestedByCurrencyById.set(i.counterpartyId, byCurrency);
+
       const limitCurrency = concentrationLimitCurrencyById.get(i.counterpartyId);
-      // Excludes only a KNOWN mismatch — see exposure()'s own comment.
-      if (limitCurrency && i.waqf.corpusCurrency && i.waqf.corpusCurrency !== limitCurrency) continue;
+      if (!limitCurrency) continue;
+      // Excludes only a KNOWN mismatch — see exposure()'s own comment on
+      // why a missing currency counts toward the total rather than
+      // being excluded.
+      if (i.waqf.corpusCurrency && i.waqf.corpusCurrency !== limitCurrency) continue;
       totalInvestedById.set(i.counterpartyId, (totalInvestedById.get(i.counterpartyId) ?? new Prisma.Decimal(0)).plus(i.allocatedAmount));
     }
 
     return counterparties.map((c) => ({
       ...c,
-      totalInvested: totalInvestedById.get(c.id) ?? new Prisma.Decimal(0),
+      totalInvested: c.concentrationLimitCurrency ? (totalInvestedById.get(c.id) ?? new Prisma.Decimal(0)) : null,
+      totalInvestedByCurrency: Array.from((totalInvestedByCurrencyById.get(c.id) ?? new Map()).entries()).map(([currency, amount]) => ({
+        currency,
+        amount: amount.toString(),
+      })),
     }));
   }
 
@@ -511,25 +536,44 @@ export class CounterpartiesService {
       where: { counterpartyId: id, status: "active" },
       select: { allocatedAmount: true, currency: true },
     });
-    // Excludes only a KNOWN currency mismatch (both currencies present
-    // and different) — see InvestmentsService.assertWithinConcentrationLimit's
-    // own comment on why an investment with no currency recorded counts
-    // toward this total rather than being excluded from it.
-    const totalInvested = investments
-      .filter(
-        (i) =>
-          !counterparty.concentrationLimitCurrency ||
-          !i.currency ||
-          i.currency === counterparty.concentrationLimitCurrency,
-      )
-      .reduce((sum, i) => sum.plus(i.allocatedAmount), new Prisma.Decimal(0));
+
+    // 2026-09-26 audit fix — totalInvestedByCurrency computed always,
+    // grouped by currency, so a counterparty with no concentrationLimit
+    // configured yet still shows real (never-blended) exposure rather
+    // than nothing — same posture as list()'s own equivalent field.
+    const byCurrency = new Map<string, Prisma.Decimal>();
+    for (const i of investments) {
+      const currency = i.currency ?? "unknown";
+      byCurrency.set(currency, (byCurrency.get(currency) ?? new Prisma.Decimal(0)).plus(i.allocatedAmount));
+    }
+    const totalInvestedByCurrency = Array.from(byCurrency.entries()).map(([currency, amount]) => ({
+      currency,
+      amount: amount.toString(),
+    }));
+
+    // totalInvested — a single, ceiling-comparable figure — is only
+    // meaningful once concentrationLimitCurrency exists to scope it to;
+    // with no limit configured, there's no one currency to blend every
+    // investment into (this used to do exactly that whenever
+    // concentrationLimitCurrency was null — the filter below was a
+    // no-op with nothing to mismatch against). Excludes only a KNOWN
+    // currency mismatch (both currencies present and different) — see
+    // InvestmentsService.assertWithinConcentrationLimit's own comment on
+    // why an investment with no currency recorded counts toward this
+    // total rather than being excluded from it.
+    const totalInvested = counterparty.concentrationLimitCurrency
+      ? investments
+          .filter((i) => !i.currency || i.currency === counterparty.concentrationLimitCurrency)
+          .reduce((sum, i) => sum.plus(i.allocatedAmount), new Prisma.Decimal(0))
+      : null;
 
     return {
       counterpartyId: id,
       totalInvested,
+      totalInvestedByCurrency,
       concentrationLimit: counterparty.concentrationLimit,
       concentrationLimitCurrency: counterparty.concentrationLimitCurrency,
-      remaining: counterparty.concentrationLimit ? counterparty.concentrationLimit.minus(totalInvested) : null,
+      remaining: counterparty.concentrationLimit && totalInvested !== null ? counterparty.concentrationLimit.minus(totalInvested) : null,
     };
   }
 }
