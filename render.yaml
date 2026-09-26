@@ -294,6 +294,18 @@ services:
   - type: web
     runtime: static
     name: birr-docs
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @birr/docs build
+    # NOT `corepack enable && pnpm ...` — Render's static-site build
+    # environment mounts most of the filesystem read-only, and
+    # corepack enable's own shim-writing step tries to unlink/replace
+    # /usr/bin/pnpm, which fails outright with `EROFS: read-only file
+    # system` there (a known Corepack/Render-static-site incompatibility,
+    # confirmed on this repo's own first deploy — Docker-based services
+    # like birr-backend/birr-web don't hit this, only this static-site
+    # builder does). Invoking pnpm directly via `npx` sidesteps Corepack's
+    # shim step entirely — npx just downloads/caches the package manager
+    # itself under the user-writable npm cache, matching the exact
+    # version this repo's own package.json pins (packageManager:
+    # pnpm@9.0.0), same version corepack enable would have activated.
+    buildCommand: npx -y pnpm@9.0.0 install --frozen-lockfile && npx -y pnpm@9.0.0 --filter @birr/docs build
     staticPublishPath: apps/docs/dist
     autoDeploy: false
