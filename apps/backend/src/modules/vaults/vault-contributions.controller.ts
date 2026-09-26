@@ -1,5 +1,6 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
+import type { Request } from "express";
 import { VaultContributionsService, HoldVaultContributionInput, InitiateVaultContributionInput } from "./vault-contributions.service";
 import { Public } from "../../common/guards/public.decorator";
 import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
@@ -26,8 +27,8 @@ export class VaultContributionsController {
   @Throttle({ default: { limit: 10, ttl: 600_000 } })
   @Public()
   @Post()
-  initiate(@Body() body: InitiateVaultContributionInput) {
-    return this.service.initiate(body);
+  initiate(@Body() body: InitiateVaultContributionInput, @Req() request: Request) {
+    return this.service.initiate(body, request.ip);
   }
 
   // Ops Console listing for one vault — hold()/release() below need

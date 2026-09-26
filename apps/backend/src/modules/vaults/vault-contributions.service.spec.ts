@@ -221,6 +221,25 @@ describe("VaultContributionsService", () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  test("initiate() stores the server-captured ipAddress on the contribution, and leaves it null when none is passed", async () => {
+    const withIp = await service.initiate(
+      { vaultId: openVaultId, amount: "200.00", currency: "USD", provider: "stripe", donorEmail: uniqueEmail("with-ip") },
+      "203.0.113.7",
+    );
+    vaultContributionIds.push(withIp.contribution.id);
+    expect(withIp.contribution.ipAddress).toBe("203.0.113.7");
+
+    const withoutIp = await service.initiate({
+      vaultId: openVaultId,
+      amount: "200.00",
+      currency: "USD",
+      provider: "stripe",
+      donorEmail: uniqueEmail("without-ip"),
+    });
+    vaultContributionIds.push(withoutIp.contribution.id);
+    expect(withoutIp.contribution.ipAddress).toBeNull();
+  });
+
   test("initiate() writes a pending VaultContribution, a matching VaultDonor, and an audit_logs record attributed to public_donor", async () => {
     const email = uniqueEmail("first-time");
     const result = await service.initiate({
@@ -816,6 +835,82 @@ describe("VaultContributionsService", () => {
     test("a currency with no VaultDonorThreshold row is skipped entirely", async () => {
       const { groups } = await service.getStructuringReview();
       expect(groups.every((g) => g.currency !== "NO-THRESHOLD-CURRENCY")).toBe(true);
+    });
+  });
+
+  // Regression coverage for the 2026-09-26 advanced enhancement — the
+  // second, complementary signal alongside the near-threshold grouping
+  // above. Deliberately amount-independent and not vault/currency-scoped
+  // (see getIpClusters()'s own comment), so these fixtures use small,
+  // ordinary amounts on the shared openVaultId fixture rather than a
+  // dedicated threshold/vault setup.
+  describe("getStructuringReview() ipClusters", () => {
+    // No extra tracking/cleanup needed here — every donor below is
+    // created via uniqueEmail() (already collected into the outer
+    // vaultDonorEmails array) and every contribution's id is pushed onto
+    // the outer vaultContributionIds, both already cleaned up by this
+    // describe block's own outer afterAll, in the correct FK order.
+    async function confirmedContribution(opts: { email?: string; donorId?: string; ipAddress: string | null; amount?: string }) {
+      // donorId takes precedence when both are given — lets a test reuse
+      // one already-created VaultDonor across two contributions (email is
+      // @unique, so a fresh donor can't be created twice for the same
+      // address the way findOrCreateDonor's real find-or-create would).
+      const donorId = opts.donorId ?? (opts.email ? (await prisma.vaultDonor.create({ data: { email: opts.email } })).id : undefined);
+      const contribution = await prisma.vaultContribution.create({
+        data: {
+          vaultId: openVaultId,
+          donorId,
+          amount: opts.amount ?? "50",
+          currency: "USD",
+          provider: "stripe",
+          providerReference: `ip-cluster-spec-${donorId ?? "anon"}-${Date.now()}-${Math.random()}`,
+          status: "confirmed",
+          ipAddress: opts.ipAddress,
+        },
+      });
+      vaultContributionIds.push(contribution.id);
+      return contribution;
+    }
+
+    test("clusters two different declared donors who gave from the same IP", async () => {
+      const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+      await confirmedContribution({ email: uniqueEmail("ip-cluster-a"), ipAddress: ip });
+      await confirmedContribution({ email: uniqueEmail("ip-cluster-b"), ipAddress: ip });
+
+      const { ipClusters } = await service.getStructuringReview();
+      const cluster = ipClusters.find((c) => c.ipAddress === ip);
+      expect(cluster).toBeDefined();
+      expect(cluster!.distinctDonorCount).toBe(2);
+      expect(cluster!.contributions).toHaveLength(2);
+    });
+
+    test("does not cluster the same donor giving twice from the same IP", async () => {
+      const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+      const donor = await prisma.vaultDonor.create({ data: { email: uniqueEmail("ip-cluster-solo") } });
+      await confirmedContribution({ donorId: donor.id, ipAddress: ip });
+      await confirmedContribution({ donorId: donor.id, ipAddress: ip });
+
+      const { ipClusters } = await service.getStructuringReview();
+      expect(ipClusters.find((c) => c.ipAddress === ip)).toBeUndefined();
+    });
+
+    test("excludes anonymous (no-email) contributions — they have no declared identity to compare", async () => {
+      const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+      await confirmedContribution({ email: uniqueEmail("ip-cluster-named"), ipAddress: ip });
+      await confirmedContribution({ ipAddress: ip }); // anonymous — no email, no donorId
+
+      const { ipClusters } = await service.getStructuringReview();
+      // Only one real declared donor used this IP — the anonymous gift
+      // must not be counted as a second one.
+      expect(ipClusters.find((c) => c.ipAddress === ip)).toBeUndefined();
+    });
+
+    test("ignores contributions with no ipAddress at all", async () => {
+      await confirmedContribution({ email: uniqueEmail("no-ip-a"), ipAddress: null });
+      await confirmedContribution({ email: uniqueEmail("no-ip-b"), ipAddress: null });
+
+      const { ipClusters } = await service.getStructuringReview();
+      expect(ipClusters.every((c) => c.ipAddress !== null)).toBe(true);
     });
   });
 });

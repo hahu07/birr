@@ -14,7 +14,7 @@ import { useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatAmount, formatDate } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
-import type { StructuringReviewGroup } from "../../../lib/ops-types";
+import type { IpCluster, StructuringReviewGroup } from "../../../lib/ops-types";
 import { Alert, Badge, EmptyState, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../_components/SectionChrome";
 
@@ -31,8 +31,10 @@ export default function VaultComplianceReviewPage() {
   } = useLoadedResource(
     () =>
       canView
-        ? apiFetchJson<{ groups: StructuringReviewGroup[] }>(`/vault-contributions/structuring-review?minFraction=${minFraction}`)
-        : Promise.resolve({ groups: [] }),
+        ? apiFetchJson<{ groups: StructuringReviewGroup[]; ipClusters: IpCluster[] }>(
+            `/vault-contributions/structuring-review?minFraction=${minFraction}`,
+          )
+        : Promise.resolve({ groups: [], ipClusters: [] }),
     [canView, minFraction],
   );
 
@@ -41,9 +43,10 @@ export default function VaultComplianceReviewPage() {
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Vault Giving — Compliance Review</h1>
         <p className="mt-0.5 max-w-2xl text-sm text-slate-500">
-          Confirmed contributions near a currency's identity threshold, grouped by vault and currency, from more
-          than one donor. The in-app AML check only recognizes a donor by email — this list is the manual review
-          that covers what it can't catch on its own: someone splitting one gift across several emails.
+          Two independent, purely observational signals for a compliance review to judge for themselves — neither
+          ever blocks a donor's own gift. The in-app AML check only recognizes a donor by email, so this page
+          surfaces what it can't catch on its own: gifts clustering near a currency's threshold from more than one
+          donor, and separately, different declared donors giving from the same network.
         </p>
       </header>
 
@@ -85,15 +88,15 @@ export default function VaultComplianceReviewPage() {
             </div>
           )}
 
-          {!error && review !== null && review.groups.length === 0 && (
+          {!error && review !== null && review.groups.length === 0 && review.ipClusters.length === 0 && (
             <EmptyState
               title="Nothing to review"
-              description="No vault/currency has near-threshold gifts from more than one donor at this level."
+              description="No near-threshold clustering at this level, and no shared network across different declared donors."
             />
           )}
 
           {!error && review !== null && review.groups.length > 0 && (
-            <div className="space-y-8">
+            <div className="mb-10 space-y-8">
               {review.groups.map((group) => (
                 <section key={`${group.vaultId}:${group.currency}`}>
                   <SectionHeader
@@ -121,6 +124,49 @@ export default function VaultComplianceReviewPage() {
                             {group.currency} {formatAmount(c.amount)}
                           </TableCell>
                           <TableCell className="tabular-nums text-slate-500">{Math.round(c.fractionOfThreshold * 100)}%</TableCell>
+                          <TableCell>
+                            <Badge tone={c.donorIdCaptured ? "success" : "neutral"}>{c.donorIdCaptured ? "Yes" : "No"}</Badge>
+                          </TableCell>
+                          <TableCell className="text-slate-500">{formatDate(c.createdAt)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </section>
+              ))}
+            </div>
+          )}
+
+          {!error && review !== null && review.ipClusters.length > 0 && (
+            <div className="space-y-8">
+              <h2 className="text-base font-semibold text-slate-900">Shared network across different donors</h2>
+              {review.ipClusters.map((cluster) => (
+                <section key={cluster.ipAddress}>
+                  <SectionHeader
+                    title={cluster.ipAddress}
+                    description={`${cluster.distinctDonorCount} distinct declared donors gave from this network — a signal to look at, not proof on its own (a household, office, or shared network can share one legitimately)`}
+                  />
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableHeaderCell>Donor</TableHeaderCell>
+                        <TableHeaderCell>Vault</TableHeaderCell>
+                        <TableHeaderCell>Amount</TableHeaderCell>
+                        <TableHeaderCell>ID on file</TableHeaderCell>
+                        <TableHeaderCell>Given</TableHeaderCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {cluster.contributions.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="font-medium text-slate-900">
+                            {c.donorEmail}
+                            {c.donorFullName && <span className="ml-1.5 font-normal text-slate-500">({c.donorFullName})</span>}
+                          </TableCell>
+                          <TableCell className="text-slate-500">{c.vaultName}</TableCell>
+                          <TableCell className="tabular-nums text-slate-500">
+                            {c.currency} {formatAmount(c.amount)}
+                          </TableCell>
                           <TableCell>
                             <Badge tone={c.donorIdCaptured ? "success" : "neutral"}>{c.donorIdCaptured ? "Yes" : "No"}</Badge>
                           </TableCell>

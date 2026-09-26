@@ -91,8 +91,15 @@ export class VaultContributionsService {
    * on why Vault has no Founder at all). Structurally mirrors
    * ContributionsService.initiate(), minus the founder-session/ownership
    * checks that method has and this one categorically can't.
+   *
+   * ipAddress is never part of InitiateVaultContributionInput — like
+   * FoundationDeed's own ipAddress, it's captured server-side by the
+   * controller from the request itself, never client-supplied. Stored
+   * purely for getStructuringReview's own ipClusters signal below; never
+   * read here, never gates this call (see VaultContribution.ipAddress's
+   * own schema comment on why).
    */
-  async initiate(input: InitiateVaultContributionInput) {
+  async initiate(input: InitiateVaultContributionInput, ipAddress?: string) {
     const vault = await findVaultOrThrow(prisma, input.vaultId);
     if (vault.status !== "open") {
       throw new BadRequestException(`"${vault.name}" isn't currently open for contributions.`);
@@ -153,6 +160,7 @@ export class VaultContributionsService {
           provider: input.provider,
           providerReference: paymentResult.providerReference,
           status: "pending",
+          ipAddress,
         },
       });
       await tx.auditLog.create({
@@ -436,9 +444,11 @@ export class VaultContributionsService {
    * here cost a staff member a glance, not a blocked donor.
    */
   async getStructuringReview(minFraction = 0.5) {
+    const ipClusters = await this.getIpClusters();
+
     const thresholds = await prisma.vaultDonorThreshold.findMany();
     const thresholdByCurrency = new Map(thresholds.map((t) => [t.currency, t.thresholdAmount]));
-    if (thresholdByCurrency.size === 0) return { groups: [] };
+    if (thresholdByCurrency.size === 0) return { groups: [], ipClusters };
 
     const contributions = await prisma.vaultContribution.findMany({
       where: { status: "confirmed", currency: { in: [...thresholdByCurrency.keys()] } },
@@ -496,7 +506,69 @@ export class VaultContributionsService {
       .filter((group) => group.distinctDonorCount >= 2)
       .sort((a, b) => b.distinctDonorCount - a.distinctDonorCount);
 
-    return { groups };
+    return { groups, ipClusters };
+  }
+
+  /**
+   * The second, complementary signal getStructuringReview() surfaces
+   * alongside near-threshold grouping — see VaultContribution.ipAddress's
+   * own schema comment for the full reasoning. Deliberately a *different*
+   * shape from the threshold groups above: it ignores amount entirely
+   * (the "$9,999 five times under five different emails" scenario
+   * CLAUDE.md's own note describes never gets near any one currency's
+   * threshold at all) and instead looks for the one thing a rotating-email
+   * donor can't easily rotate — the network they're giving from.
+   *
+   * donorId: { not: null } deliberately excludes fully anonymous gifts
+   * (no email at all) — that's a separate, already-accepted tradeoff
+   * (see findOrCreateDonor's own comment); this signal is specifically
+   * about *different declared identities* sharing a network, which
+   * anonymous giving has no identity to compare in the first place.
+   *
+   * Purely observational, same as the caller: never blocks anything,
+   * only surfaced for a compliance officer's own judgment call, since an
+   * IP alone is a signal (a household, office, or shared network/VPN can
+   * legitimately produce this) and never proof by itself.
+   */
+  private async getIpClusters() {
+    const contributions = await prisma.vaultContribution.findMany({
+      where: { status: "confirmed", ipAddress: { not: null }, donorId: { not: null } },
+      include: { vault: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, fullName: true, idType: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const byIp = new Map<string, typeof contributions>();
+    for (const c of contributions) {
+      const list = byIp.get(c.ipAddress!) ?? [];
+      list.push(c);
+      byIp.set(c.ipAddress!, list);
+    }
+
+    return [...byIp.entries()]
+      .map(([ipAddress, rows]) => {
+        const distinctDonorIds = new Set(rows.map((r) => r.donorId));
+        return {
+          ipAddress,
+          distinctDonorCount: distinctDonorIds.size,
+          contributions: rows.map((r) => ({
+            id: r.id,
+            vaultId: r.vault.id,
+            vaultName: r.vault.name,
+            donorId: r.donorId,
+            donorEmail: r.donor?.email ?? null,
+            donorFullName: r.donor?.fullName ?? null,
+            donorIdCaptured: r.donor?.idType != null,
+            amount: r.amount.toString(),
+            currency: r.currency,
+            createdAt: r.createdAt,
+          })),
+        };
+      })
+      // Only a network shared across more than one distinct declared
+      // identity is a review candidate — one donor giving several times
+      // from their own device isn't itself a signal of anything.
+      .filter((cluster) => cluster.distinctDonorCount >= 2)
+      .sort((a, b) => b.distinctDonorCount - a.distinctDonorCount);
   }
 
   /**

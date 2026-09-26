@@ -1178,6 +1178,31 @@ export interface StructuringReviewGroup {
   contributions: StructuringReviewContribution[];
 }
 
+// The second, complementary signal on the same Compliance Review page —
+// see VaultContribution.ipAddress's own schema comment. Deliberately a
+// different shape from StructuringReviewGroup above: not scoped to one
+// vault/currency, and not amount-dependent — it's about the same network
+// being shared by more than one declared identity, at any amount, across
+// any of this donor's giving.
+export interface IpClusterContribution {
+  id: string;
+  vaultId: string;
+  vaultName: string;
+  donorId: string | null;
+  donorEmail: string | null;
+  donorFullName: string | null;
+  donorIdCaptured: boolean;
+  amount: string;
+  currency: string;
+  createdAt: string;
+}
+
+export interface IpCluster {
+  ipAddress: string;
+  distinctDonorCount: number;
+  contributions: IpClusterContribution[];
+}
+
 // A Founder's typed ask for a governance action staff alone can carry
 // out — see the backend's FounderRequest model comment. Staff triage
 // these on the queue at /ops/founder-requests, scoped to their own
