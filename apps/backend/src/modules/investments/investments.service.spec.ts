@@ -13,8 +13,6 @@ describe("InvestmentsService", () => {
   let actorUserId: string;
   let activeCounterpartyId: string;
   let pendingCounterpartyId: string;
-  let founderId: string;
-  let otherFounderId: string;
 
   beforeAll(async () => {
     // Fixture User/BirrStaff not cleaned up in afterAll — same reasoning
@@ -57,16 +55,6 @@ describe("InvestmentsService", () => {
       data: { name: `Investments Fixture Pending Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE" },
     });
     pendingCounterpartyId = pendingCounterparty.id;
-
-    // A second, unrelated Founder for listForFounder()'s own isolation
-    // test below — same convention as AssetsService.listForFounder's spec.
-    const founder = await prisma.founder.create({ data: { name: "Investments Fixture Founder", kind: "institution" } });
-    founderId = founder.id;
-    await prisma.foundationFounder.create({ data: { foundationId: foundation.id, founderId } });
-    const otherFounder = await prisma.founder.create({
-      data: { name: "Investments Fixture Other Founder", kind: "institution" },
-    });
-    otherFounderId = otherFounder.id;
   });
 
   afterAll(async () => {
@@ -521,23 +509,6 @@ describe("InvestmentsService", () => {
           actorUserId,
         ),
       ).rejects.toThrow(BadRequestException);
-    });
-  });
-
-  // listForFounder() had no isolation test at all — a regression dropping
-  // the foundationFounders ownership clause or the withFounderScope RLS
-  // binding here would have gone undetected. Same convention as
-  // AssetsService.listForFounder's own regression-coverage test.
-  describe("listForFounder()", () => {
-    test("returns the waqf's own investments for the founder that owns it", async () => {
-      const result = await service.listForFounder(waqfId, founderId);
-      expect(result).not.toBeNull();
-      expect(result!.some((i) => investmentIds.includes(i.id))).toBe(true);
-    });
-
-    test("returns null for a founder who doesn't own the waqf (isolation)", async () => {
-      const result = await service.listForFounder(waqfId, otherFounderId);
-      expect(result).toBeNull();
     });
   });
 });

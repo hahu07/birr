@@ -14,10 +14,11 @@ export interface SessionUser {
 export interface Founder {
   id: string;
   name: string;
-  kind: "institution" | "individual";
+  kind: string;
   institutionType: string | null;
   homeJurisdiction: string | null;
   status: string;
+  logoUrl?: string | null;
 }
 
 interface FounderSessionValue {

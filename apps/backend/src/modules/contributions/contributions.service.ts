@@ -19,15 +19,6 @@ import { StripeAdapter } from "./providers/stripe.adapter";
 import { PaystackAdapter } from "./providers/paystack.adapter";
 import { StablecoinAdapter } from "./providers/stablecoin.adapter";
 
-// 2026-09-26 audit fix, same problem class as
-// BeneficiariesService.MAX_UNSCOPED_LIST_ROWS (see that constant's own
-// comment): list() below returns every Contribution platform-wide in one
-// unbounded response when waqfId is omitted. No caller in this codebase
-// today omits it, so this cap has no effect on any known usage — it
-// bounds the blast radius of that "see everything" path as the table
-// grows.
-export const MAX_UNSCOPED_LIST_ROWS = 200;
-
 export interface InitiateContributionInput {
   waqfId: string;
   amount: string;
@@ -489,10 +480,10 @@ export class ContributionsService {
   // may view any waqf's contributions, matching AssetsService.list()'s
   // own unscoped posture for its staff-facing counterpart.
   list(waqfId?: string) {
-    if (waqfId) {
-      return prisma.contribution.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" } });
-    }
-    return prisma.contribution.findMany({ orderBy: { createdAt: "desc" }, take: MAX_UNSCOPED_LIST_ROWS });
+    return prisma.contribution.findMany({
+      where: waqfId ? { waqfId } : undefined,
+      orderBy: { createdAt: "desc" },
+    });
   }
 
   // Platform-wide total raised, for the Ops Console's own landing-page

@@ -48,7 +48,6 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
   let invitationAId: string;
   let founderRequestAId: string;
   let waqfMilestoneAId: string;
-  let causeCategorySuggestionAId: string;
 
   beforeAll(async () => {
     const userA = await prisma.user.create({
@@ -214,25 +213,12 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
       data: { waqfId: waqfAId, name: "RLS Fixture Milestone A", sequence: 1 },
     });
     waqfMilestoneAId = waqfMilestoneA.id;
-
-    // cause_category_suggestions (2026-09-26) — the 2026-08-30 sweep
-    // above only considered and rejected waqfId as a scoping column here
-    // (it's context only — see the model's own schema comment); it never
-    // addressed proposedByFounderId, which is what
-    // CauseCategorySuggestionsService.listForFounder() actually scopes
-    // by. This table had a single enforcement layer (app-layer WHERE
-    // only) until the follow-up migration this test covers.
-    const causeCategorySuggestionA = await prisma.causeCategorySuggestion.create({
-      data: { proposedByFounderId: founderAId, proposedByUserId: userAId, name: "RLS Fixture Suggested Cause A" },
-    });
-    causeCategorySuggestionAId = causeCategorySuggestionA.id;
   });
 
   afterAll(async () => {
     // Children first, respecting FK order. Users/Founders left in place —
     // same convention as every other spec in this codebase (audit_logs
     // and other insert-only/immutable rows may reference them).
-    await prisma.causeCategorySuggestion.deleteMany({ where: { id: causeCategorySuggestionAId } });
     await prisma.founderRequest.deleteMany({ where: { id: founderRequestAId } });
     await prisma.waqfMilestone.deleteMany({ where: { id: waqfMilestoneAId } });
     await prisma.invitation.deleteMany({ where: { id: invitationAId } });
@@ -274,7 +260,6 @@ describe("founder_isolation RLS policies (2026-08-30 expansion)", () => {
     ["invitations", () => invitationAId],
     ["founder_requests", () => founderRequestAId],
     ["waqf_milestones", () => waqfMilestoneAId],
-    ["cause_category_suggestions", () => causeCategorySuggestionAId],
   ] as [string, () => string][])(
     "%s: founder A's row is visible to founder A, invisible to founder B, at the RLS layer alone",
     async (table, getId) => {

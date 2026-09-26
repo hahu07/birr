@@ -221,20 +221,19 @@ export default function CounterpartyDetailPage() {
 
         <div className="mt-5 border-t border-slate-100 pt-5">
           <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Exposure</p>
-          {exposure && exposure.concentrationLimit && exposure.concentrationLimitCurrency && exposure.totalInvested != null ? (
+          {exposure && (
             <p className="text-sm text-slate-700">
-              {exposure.concentrationLimitCurrency} {formatAmount(exposure.totalInvested)} invested across every waqf combined —{" "}
-              {formatAmount(exposure.remaining ?? "0")} of a {formatAmount(exposure.concentrationLimit)} {exposure.concentrationLimitCurrency}{" "}
-              concentration limit remains
+              {formatAmount(exposure.totalInvested)} invested across every waqf combined
+              {exposure.concentrationLimit ? (
+                <>
+                  {" "}
+                  — {formatAmount(exposure.remaining ?? "0")} of a {formatAmount(exposure.concentrationLimit)}{" "}
+                  {exposure.concentrationLimitCurrency} concentration limit remains
+                </>
+              ) : (
+                " — no concentration limit set yet"
+              )}
             </p>
-          ) : exposure && exposure.totalInvestedByCurrency.length > 0 ? (
-            <p className="text-sm text-slate-700">
-              {/* No concentration limit configured — never blend currencies into one figure (2026-09-26 audit fix). */}
-              {exposure.totalInvestedByCurrency.map((t) => `${t.currency} ${formatAmount(t.amount)}`).join(" · ")} invested across every
-              waqf combined — no concentration limit set yet
-            </p>
-          ) : (
-            exposure && <p className="text-sm text-slate-700">No active investments yet — no concentration limit set yet</p>
           )}
         </div>
 

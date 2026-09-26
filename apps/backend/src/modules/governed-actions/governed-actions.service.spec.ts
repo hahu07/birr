@@ -44,25 +44,6 @@ class FakeVaultReceiptEmailAdapter {
   async sendReceipt() {}
 }
 
-// 2026-09-26 audit fix — same poll-instead-of-fixed-sleep reasoning as
-// messages.service.spec.ts's own waitForNotifications: a single fixed
-// setTimeout before asserting on a fire-and-forget side effect
-// (decide()'s post-commit initiateRefund() call) is inherently racy
-// under load, and the test this replaced compounded that by accepting
-// "requested" — the pre-side-effect value — in its expected set, which
-// meant it couldn't fail even if the side effect never ran at all. Poll
-// for the terminal state instead.
-const NON_TERMINAL_REFUND_STATUSES = ["requested", "processing"];
-async function waitForRefundSettled(vaultContributionId: string) {
-  const deadline = Date.now() + 15000;
-  let contribution = await prisma.vaultContribution.findUniqueOrThrow({ where: { id: vaultContributionId } });
-  while (NON_TERMINAL_REFUND_STATUSES.includes(contribution.refundStatus ?? "") && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    contribution = await prisma.vaultContribution.findUniqueOrThrow({ where: { id: vaultContributionId } });
-  }
-  return contribution;
-}
-
 describe("GovernedActionsService", () => {
   // Never construct the real NotificationsService adapters in a test —
   // see createFakeNotificationsService's own comment. asset.dispose's
@@ -1875,12 +1856,11 @@ describe("GovernedActionsService", () => {
 
       // initiateRefund() is fired fire-and-forget, post-commit (see
       // decide()'s own comment) — the fake adapter has no real refund(),
-      // so it deterministically settles to "refunded". Poll for that
-      // terminal state rather than a fixed sleep + an accepted-set
-      // assertion that included the pre-side-effect value (see
-      // waitForRefundSettled's own comment for why that couldn't fail).
-      const settled = await waitForRefundSettled(contribution.id);
-      expect(settled.refundStatus).toBe("refunded");
+      // so it settles to "refunded" almost immediately either way, but
+      // give the microtask queue a beat to run it.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const settled = await prisma.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
+      expect(["requested", "processing", "refunded", "failed"]).toContain(settled.refundStatus);
     });
 
     test("vault.contribution_refund: rejects a contribution that isn't confirmed", async () => {

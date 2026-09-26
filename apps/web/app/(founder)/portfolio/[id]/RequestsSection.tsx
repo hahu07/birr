@@ -40,15 +40,7 @@ const STATUS_LABEL: Record<FounderRequest["status"], string> = {
   declined: "Declined",
 };
 
-export function RequestsSection({
-  waqfId,
-  waqfType,
-  currency,
-}: {
-  waqfId: string;
-  waqfType: "investment" | "asset" | "project";
-  currency: string | null;
-}) {
+export function RequestsSection({ waqfId, waqfType }: { waqfId: string; waqfType: "investment" | "asset" | "project" }) {
   const [requests, setRequests] = useState<FounderRequest[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -83,7 +75,6 @@ export function RequestsSection({
         <RequestFormPanel
           waqfId={waqfId}
           waqfType={waqfType}
-          currency={currency}
           onSubmitted={() => {
             setShowForm(false);
             load();
@@ -137,13 +128,11 @@ export function RequestsSection({
 function RequestFormPanel({
   waqfId,
   waqfType,
-  currency,
   onSubmitted,
   onCancel,
 }: {
   waqfId: string;
   waqfType: "investment" | "asset" | "project";
-  currency: string | null;
   onSubmitted: () => void;
   onCancel: () => void;
 }) {
@@ -270,7 +259,7 @@ function RequestFormPanel({
       {type === "distribution_approval" && (
         <div className="space-y-1.5">
           <label htmlFor="founder-request-amount" className="text-sm font-medium text-slate-700">
-            Amount{currency ? ` (${currency})` : ""}
+            Amount
           </label>
           <Input id="founder-request-amount" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
@@ -286,7 +275,7 @@ function RequestFormPanel({
           </div>
           <div className="space-y-1.5">
             <label htmlFor="founder-request-proposed-allocation" className="text-sm font-medium text-slate-700">
-              Proposed allocation{currency ? ` (${currency})` : ""}
+              Proposed allocation
             </label>
             <Input
               id="founder-request-proposed-allocation"
