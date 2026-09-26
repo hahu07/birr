@@ -36,6 +36,32 @@ export default tseslint.config(
       // rewrite ~12 call sites' effect structure to satisfy a rule this
       // team hasn't decided to adopt yet.
       "react-hooks/set-state-in-effect": "warn",
+      // 2026-09-26 audit fix — a plain `<input>`/`<select>` with
+      // @birr/ui's own Input/Select styling copy-pasted onto it (rather
+      // than importing the component) was found in ~47 files, first
+      // flagged by Select.tsx's own comment and never fully closed out.
+      // Not retroactively fixed here (47 files is too large a blast
+      // radius to migrate without a visual check on every page) — this
+      // rule just stops new instances of the exact same copy-paste from
+      // growing that number further. Warn, not error, to match:
+      // existing occurrences still show up in `eslint .`'s output
+      // (visible in a diff/review, same posture as no-explicit-any
+      // above) without failing CI on code this pass didn't touch.
+      "no-restricted-syntax": [
+        "warn",
+        {
+          selector:
+            "JSXOpeningElement[name.name='input'] JSXAttribute[name.name='className'] > Literal[value=/rounded-md border border-slate-300/]",
+          message:
+            "This copies @birr/ui's <Input> component's own styling onto a raw <input> — import Input from \"@birr/ui\" instead, so future style changes don't have to be hand-propagated across every copy.",
+        },
+        {
+          selector:
+            "JSXOpeningElement[name.name='select'] JSXAttribute[name.name='className'] > Literal[value=/rounded-md border border-slate-300/]",
+          message:
+            "This copies @birr/ui's <Select> component's own styling onto a raw <select> — import Select from \"@birr/ui\" instead, so future style changes don't have to be hand-propagated across every copy.",
+        },
+      ],
     },
   },
 );

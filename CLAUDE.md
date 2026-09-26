@@ -399,6 +399,19 @@ NGN/stablecoin and treat USD/EUR/GBP giving as unsupported for now. No
 decision has been made yet on which path to take — this is flagged
 follow-on work, not resolved by this update.
 
+**Update, 2026-09-26 — closes out the "not done here" copy pass flagged
+above (2026-09-04).** A 2026-09-26 comprehensive codebase audit went
+looking for that flagged gap to verify it was still real, and found it
+had already been closed: `apps/web/app/(founder)/portfolio/[id]
+/CausesSection.tsx` carries a dated 2026-09-14 comment and now shows
+Investment-type funds their own correct copy ("...the corpus itself
+stays invested; investment proceeds are what actually reaches each
+cause's beneficiaries"), distinct from the Asset/Project wording. The
+fix landed ten days before this file was updated to say so — a real gap
+in keeping this ledger current, not a functional gap. Noted here so a
+future session doesn't re-do already-finished work on the strength of
+the stale note above.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
@@ -471,6 +484,20 @@ confirmed zero `waqfs` rows and zero `cause_categories
 (`packages/db/prisma/migrations/20260903102618_remove_hybrid_waqf_type`).
 `WaqfType` is now Investment / Asset / Project everywhere — schema,
 Founder Portal's fund-type picker, Ops Console.
+
+**Update, 2026-09-26 — corrects item 3 above: there is no `waqf_founders`
+join table.** A comprehensive codebase audit checked this build-order
+list against the actual schema and found it names a table that doesn't
+exist — the real, more mature model (already assumed by this file's own
+"What this is" section, just never reconciled back to this list) is
+`Foundation` → `FoundationFounder` (join) → `Founder`, with `Waqf
+.foundationId` pointing at `Foundation` directly. A Waqf's founder
+relationship is established transitively through its Foundation, not a
+direct per-waqf join — which is also how a Project Waqf can still end up
+with more than one Founder (via `FoundationFounder`), the exact
+behavior item 3's own parenthetical was trying to describe. This is a
+documentation-lag fix, not a schema change — nothing about the actual
+data model changed here.
 
 ## Waqf lifecycle stages (for reference when scoping a milestone)
 Establishment → legal documentation → asset registration → governance
