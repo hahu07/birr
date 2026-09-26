@@ -11,5 +11,17 @@ GRANT USAGE, SELECT ON SEQUENCE "audit_logs_sequence_seq" TO birr_app;
 
 -- Same gap would hit any future @default(autoincrement()) field on a
 -- table birr_app writes to — close it prospectively too.
-ALTER DEFAULT PRIVILEGES FOR ROLE birr IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO birr_app;
+--
+-- 2026-09-26: same "FOR ROLE birr" portability fix as
+-- 20260831180000_add_birr_app_runtime_role's own — see that migration's
+-- comment for the full reasoning. current_user is whichever role is
+-- actually running this migration, which is always the correct target
+-- here, on any environment.
+DO $$
+BEGIN
+  EXECUTE format(
+    'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO birr_app',
+    current_user
+  );
+END
+$$;

@@ -20,7 +20,20 @@
 -- hard-deleted in real product code per CLAUDE.md's soft-delete rule,
 -- but nothing stops a *different* table's hard-delete from needing to
 -- check this FK).
-GRANT UPDATE, DELETE ON "waqf_deeds" TO "birr";
+--
+-- 2026-09-26: guarded the same way as the REVOKE this restores — see
+-- 20260731201431_governed_actions_constraints's own comment. On an
+-- environment with no role literally named "birr" (found deploying to
+-- Render), the prior migration's REVOKE never ran either (same guard),
+-- so there's nothing to restore here — GRANT ... TO a nonexistent role
+-- would itself error the same way REVOKE ... FROM one does.
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'birr') THEN
+    GRANT UPDATE, DELETE ON "waqf_deeds" TO "birr";
+  END IF;
+END
+$$;
 
 CREATE OR REPLACE FUNCTION waqf_deeds_reject_mutation() RETURNS trigger AS $$
 BEGIN

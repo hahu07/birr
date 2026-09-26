@@ -31,7 +31,27 @@ ALTER TABLE "governed_actions"
 -- against the owner role for DML privileges, so this has real effect even
 -- though "birr" also owns the table. If a separate migration/admin role
 -- is introduced later, re-point this REVOKE at the runtime role instead.
-REVOKE UPDATE, DELETE ON "audit_logs" FROM "birr";
+--
+-- 2026-09-26: guarded with an existence check — a fresh managed Postgres
+-- (found deploying to Render) has no role literally named "birr" at all
+-- (its own admin user has a provider-generated name instead), and a bare
+-- REVOKE ... FROM "birr" throws `role "birr" does not exist`, failing
+-- this entire migration outright on any such environment. This REVOKE
+-- was already a no-op in practice everywhere it did run, since "birr" is
+-- a superuser (docker-compose's own bootstrap role) and superusers
+-- bypass every privilege check regardless — 20260831180000_add_birr_app
+-- _runtime_role's own comment documents finding this out empirically.
+-- The real, effective REVOKE (against birr_app, a genuine non-superuser)
+-- is unaffected and still runs in that later migration. Guarding this
+-- one to skip cleanly when "birr" doesn't exist preserves the exact same
+-- (non-)effect everywhere, rather than fixing a functional gap.
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'birr') THEN
+    REVOKE UPDATE, DELETE ON "audit_logs" FROM "birr";
+  END IF;
+END
+$$;
 
 -- Row-Level Security as a second enforcement layer beneath app-level
 -- waqf/founder scoping (defense in depth, per the earlier tenancy

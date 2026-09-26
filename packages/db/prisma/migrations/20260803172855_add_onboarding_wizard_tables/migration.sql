@@ -66,4 +66,17 @@ ALTER TABLE "waqf_deeds" ADD CONSTRAINT "waqf_deeds_signedByFounderId_fkey" FORE
 -- (see 20260731201431_governed_actions_constraints/migration.sql): once a
 -- waqf deed is signed it must never be editable or erasable, enforced at
 -- the database role level rather than just in application code.
-REVOKE UPDATE, DELETE ON "waqf_deeds" FROM "birr";
+--
+-- 2026-09-26: guarded the same way and for the same reason as that same
+-- migration's own REVOKE — see its comment. This one's real effect gets
+-- reversed two migrations later anyway (see
+-- 20260803180000_waqf_deeds_immutable_via_trigger's own comment on why
+-- REVOKE broke the incoming FK from waqfs), so the guard changes nothing
+-- either way once the whole 3-migration sequence has run.
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'birr') THEN
+    REVOKE UPDATE, DELETE ON "waqf_deeds" FROM "birr";
+  END IF;
+END
+$$;
