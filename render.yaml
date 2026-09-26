@@ -213,56 +213,78 @@ services:
   # draft-help endpoint. Private service: no public endpoint at all,
   # matching services/agents/src/server.ts's own "never reachable from a
   # browser, only the backend's own outbound call" design. ----
-  - type: pserv
-    name: birr-agents
-    runtime: docker
-    dockerfilePath: ./services/agents/Dockerfile
-    dockerContext: .
-    # See birr-postgres's own comment above — set to `free` for this
-    # test deploy. A free web/private service spins down after
-    # inactivity and cold-starts slowly on the next request — fine for
-    # testing, not for production. 0.5c-512mb (same specs as this
-    # file's old `starter`) is the real-tier successor to switch to
-    # later.
-    plan: free
-    region: frankfurt
-    autoDeploy: false
-    envVars:
-      - key: PORT
-        value: 4100
-      - key: AGENT_SERVICE_PORT
-        value: 4100
-      - key: NODE_ENV
-        value: production
-      # Must match birr-backend's own AGENT_SERVICE_INTERNAL_KEY exactly
-      # — referenced from there, not independently generated, so the two
-      # services can never drift out of sync.
-      - key: AGENT_SERVICE_INTERNAL_KEY
-        fromService:
-          name: birr-backend
-          type: web
-          envVarKey: AGENT_SERVICE_INTERNAL_KEY
-      - key: BACKEND_URL
-        value: https://birr-backend.onrender.com
-      # Each agent authenticates *to* birr-backend as its own ai_agents
-      # registry row (bcrypt-compared against apiKeyHash — the backend
-      # itself never reads these as env vars, only this service does,
-      # via each agent file's own apiKey() function). Corrected
-      # 2026-09-09: these were previously (wrongly) listed on
-      # birr-backend instead, which never actually used them, and
-      # BASHIR_API_KEY was missing entirely since Bashir didn't exist
-      # yet when this file was first written.
-      - key: RASID_API_KEY
-        sync: false
-      - key: NAZIM_API_KEY
-        sync: false
-      - key: BASHIR_API_KEY
-        sync: false
-      # Same no-op-when-unset posture as birr-backend's own SENTRY_DSN
-      # above — see index.ts's own comment on why runOne()'s catch is
-      # the failure path this is actually for.
-      - key: SENTRY_DSN
-        sync: false
+  #
+  # 2026-09-26: commented out of this first test-deploy sync, not deleted
+  # — Render has NO free instance type for `type: pserv` at all (a hard
+  # platform constraint, not a bug: confirmed against Render's own docs.
+  # Background workers and private services simply don't have a `free`
+  # plan option), so this block as written can never sync successfully
+  # without paying for it. Deliberately deferred rather than decided here
+  # — nothing on the Founder/Ops critical path depends on this service:
+  # draftPurposeSuggestion() (Rafiq's on-demand onboarding-help endpoint)
+  # already fails soft with a caught BadRequestException if it's
+  # unreachable, and Rasid/Nazim/Bashir's own scheduled runs are
+  # draft-only background work with no user-facing dependency. Reinstate
+  # this block once a decision is made between:
+  #   (a) pay for it — set `plan: starter` (or higher), keeping it
+  #       genuinely unreachable from the internet exactly as designed, or
+  #   (b) change `type: pserv` to `type: web` to run it free, accepting
+  #       that birr-agents then gets a real public URL (still gated by
+  #       the shared AGENT_SERVICE_INTERNAL_KEY header, but a real
+  #       reversal of the "no public endpoint at all" posture this
+  #       comment block and services/agents/src/server.ts both describe
+  #       as deliberate — an explicit call, not a default to fall into).
+  #
+  # - type: pserv
+  #   name: birr-agents
+  #   runtime: docker
+  #   dockerfilePath: ./services/agents/Dockerfile
+  #   dockerContext: .
+  #   # See birr-postgres's own comment above — set to `free` for this
+  #   # test deploy. A free web/private service spins down after
+  #   # inactivity and cold-starts slowly on the next request — fine for
+  #   # testing, not for production. 0.5c-512mb (same specs as this
+  #   # file's old `starter`) is the real-tier successor to switch to
+  #   # later.
+  #   plan: free
+  #   region: frankfurt
+  #   autoDeploy: false
+  #   envVars:
+  #     - key: PORT
+  #       value: 4100
+  #     - key: AGENT_SERVICE_PORT
+  #       value: 4100
+  #     - key: NODE_ENV
+  #       value: production
+  #     # Must match birr-backend's own AGENT_SERVICE_INTERNAL_KEY exactly
+  #     # — referenced from there, not independently generated, so the two
+  #     # services can never drift out of sync.
+  #     - key: AGENT_SERVICE_INTERNAL_KEY
+  #       fromService:
+  #         name: birr-backend
+  #         type: web
+  #         envVarKey: AGENT_SERVICE_INTERNAL_KEY
+  #     - key: BACKEND_URL
+  #       value: https://birr-backend.onrender.com
+  #     # Each agent authenticates *to* birr-backend as its own ai_agents
+  #     # registry row (bcrypt-compared against apiKeyHash — the backend
+  #     # itself never reads these as env vars, only this service does,
+  #     # via each agent file's own apiKey() function). Corrected
+  #     # 2026-09-09: these were previously (wrongly) listed on
+  #     # birr-backend instead, which never actually used them, and
+  #     # BASHIR_API_KEY was missing entirely since Bashir didn't exist
+  #     # yet when this file was first written.
+  #     - key: RASID_API_KEY
+  #       sync: false
+  #     - key: NAZIM_API_KEY
+  #       sync: false
+  #     - key: BASHIR_API_KEY
+  #       sync: false
+  #     # Same no-op-when-unset posture as birr-backend's own SENTRY_DSN
+  #     # above — see index.ts's own comment on why runOne()'s catch is
+  #     # the failure path this is actually for.
+  #     - key: SENTRY_DSN
+  #       sync: false
 
   # ---- Docusaurus docs site — public, third-party-readable product
   # documentation (apps/docs). See this file's own top comment for why
