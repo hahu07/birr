@@ -185,6 +185,64 @@ describe("AiAgentsService", () => {
     expect((rasidRow as any).apiKeyHash).toBeUndefined();
   });
 
+  test("list() returns dispositions: null for an agent with no disposition-tracking consumption point", async () => {
+    // rasid has no DISPOSITION_ACTION entry — this must stay null, not
+    // {accepted: 0, changed: 0}, which would misleadingly imply the
+    // feature exists for rasid and just has no data yet.
+    const agents = await service.list();
+    const rasidRow = agents.find((a) => a.id === rasidAgentId);
+    expect(rasidRow).toBeDefined();
+    expect(rasidRow!.dispositions).toBeNull();
+  });
+
+  // Regression coverage for the 2026-09-26 agent draft-disposition
+  // enhancement. Writes onboarding_assist.disposition_recorded rows
+  // directly (the same shape FoundersService.establishFounderAndFoundation
+  // writes — see its own spec for that write path's own coverage) so
+  // this test stays focused on list()'s own aggregation logic. Uses
+  // toBeGreaterThanOrEqual, not exact counts — this is a shared dev
+  // database other specs (and other runs) also write real rows into.
+  test("list() aggregates rafiq's real disposition counts from onboarding_assist.disposition_recorded rows", async () => {
+    const rafiq = await prisma.aiAgent.upsert({
+      where: { name: "rafiq" },
+      update: {},
+      create: { name: "rafiq", taskType: "founder_onboarding", status: "active" },
+    });
+    const [acceptedUser, changedUser] = await Promise.all([
+      prisma.user.create({ data: { email: `ai-agents-disposition-fixture-${randomUUID()}@example.com`, fullName: "Test Actor" } }),
+      prisma.user.create({ data: { email: `ai-agents-disposition-fixture-${randomUUID()}@example.com`, fullName: "Test Actor" } }),
+    ]);
+    await Promise.all([
+      prisma.auditLog.create({
+        data: {
+          actorType: "founder_user",
+          actorUserId: acceptedUser.id,
+          action: "onboarding_assist.disposition_recorded",
+          entityType: "User",
+          entityId: acceptedUser.id,
+          after: { rafiqDraftId: randomUUID(), disposition: "accepted" } as any,
+        },
+      }),
+      prisma.auditLog.create({
+        data: {
+          actorType: "founder_user",
+          actorUserId: changedUser.id,
+          action: "onboarding_assist.disposition_recorded",
+          entityType: "User",
+          entityId: changedUser.id,
+          after: { rafiqDraftId: randomUUID(), disposition: "changed" } as any,
+        },
+      }),
+    ]);
+
+    const agents = await service.list();
+    const rafiqRow = agents.find((a) => a.id === rafiq.id);
+    expect(rafiqRow).toBeDefined();
+    expect(rafiqRow!.dispositions).not.toBeNull();
+    expect(rafiqRow!.dispositions!.accepted).toBeGreaterThanOrEqual(1);
+    expect(rafiqRow!.dispositions!.changed).toBeGreaterThanOrEqual(1);
+  });
+
   test("jurisdictionData() returns waqfs without any founder-scoping (staff-only tool data)", async () => {
     const data = await service.jurisdictionData();
     expect(Array.isArray(data)).toBe(true);

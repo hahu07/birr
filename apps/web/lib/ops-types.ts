@@ -523,6 +523,11 @@ export interface AiAgent {
   draftCount: number;
   governedActionCount: number;
   lastActiveAt: string | null;
+  // null when this agent has no disposition-tracking consumption point
+  // at all (most agents today) — not the same as {accepted: 0, changed:
+  // 0}, which means the feature exists but hasn't recorded anything
+  // yet. See AiAgentsService.list()'s own DISPOSITION_ACTION comment.
+  dispositions: { accepted: number; changed: number } | null;
 }
 
 // GET /ai-agents/:id/drafts — the actual audit_logs rows an agent's own

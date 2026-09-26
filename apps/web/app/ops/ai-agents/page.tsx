@@ -131,6 +131,7 @@ export default function AiAgentsPage() {
               <TableHeaderCell tone="violet">Tier</TableHeaderCell>
               <TableHeaderCell tone="violet">Drafts</TableHeaderCell>
               <TableHeaderCell tone="violet">Governed actions</TableHeaderCell>
+              <TableHeaderCell tone="violet">Disposition</TableHeaderCell>
               <TableHeaderCell tone="violet">Last active</TableHeaderCell>
               <TableHeaderCell tone="violet" className="text-right">
                 Status
@@ -171,6 +172,22 @@ export default function AiAgentsPage() {
                     </TableCell>
                     <TableCell className="text-slate-500">{agent.draftCount}</TableCell>
                     <TableCell className="text-slate-500">{agent.governedActionCount}</TableCell>
+                    <TableCell className="whitespace-nowrap text-slate-500">
+                      {agent.dispositions === null ? (
+                        "—"
+                      ) : agent.dispositions.accepted + agent.dispositions.changed === 0 ? (
+                        "No data yet"
+                      ) : (
+                        <span
+                          title={`${agent.dispositions.accepted} used as offered, ${agent.dispositions.changed} changed before submitting`}
+                        >
+                          {Math.round(
+                            (agent.dispositions.accepted / (agent.dispositions.accepted + agent.dispositions.changed)) * 100,
+                          )}
+                          % accepted as-is
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-slate-500">
                       {agent.lastActiveAt ? formatDate(agent.lastActiveAt) : "Never"}
                     </TableCell>
@@ -230,7 +247,7 @@ function AgentDraftsRow({ agentId, agentName }: { agentId: string; agentName: st
 
   return (
     <TableRow tone="violet" className="hover:bg-transparent">
-      <TableCell colSpan={7} className="bg-violet-50/60 py-3">
+      <TableCell colSpan={8} className="bg-violet-50/60 py-3">
         {error && <p className="text-xs text-red-700">Couldn&apos;t load drafts: {error}</p>}
         {publishError && <p className="mb-2 text-xs text-red-700">Couldn&apos;t publish: {publishError}</p>}
         {!error && drafts === null && <Skeleton className="h-16 w-full" />}

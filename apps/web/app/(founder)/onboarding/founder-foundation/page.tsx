@@ -18,6 +18,7 @@ import { FounderFoundationGuide } from "./FounderFoundationGuide";
 
 interface PurposeSuggestion {
   suggestedPurpose: string;
+  draftId: string;
 }
 
 interface EstablishResult {
@@ -49,6 +50,13 @@ export default function OnboardingFounderFoundationPage() {
   const [foundationName, setFoundationName] = useState("");
   const [purpose, setPurpose] = useState("");
   const [jurisdiction, setJurisdiction] = useState("");
+  // Set whenever Rafiq actually returns a suggestion — echoed back on
+  // submit so the backend can record an honest disposition (used as
+  // offered, or changed) against this specific suggestion, not a
+  // guessed "most recent draft for this user" (see
+  // EstablishFounderAndFoundationInput.rafiqDraftId's own comment).
+  // Re-drafting overwrites this with the newest suggestion shown.
+  const [rafiqDraftId, setRafiqDraftId] = useState<string | null>(null);
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
@@ -141,6 +149,7 @@ export default function OnboardingFounderFoundationPage() {
       // own review and editing, same posture as every other agent in
       // this codebase (CLAUDE.md: "AI is advisory only").
       setPurpose(result.suggestedPurpose);
+      setRafiqDraftId(result.draftId);
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -183,6 +192,7 @@ export default function OnboardingFounderFoundationPage() {
       formData.set("purpose", purpose);
       if (jurisdiction) formData.set("jurisdiction", jurisdiction);
       if (logoFile) formData.set("logo", logoFile);
+      if (rafiqDraftId) formData.set("rafiqDraftId", rafiqDraftId);
 
       const result = await apiFetchJson<EstablishResult>("/founders/establish", { method: "POST", body: formData });
 

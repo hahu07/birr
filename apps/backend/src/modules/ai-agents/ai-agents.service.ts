@@ -57,6 +57,20 @@ const ALLOWED_DRAFT_ACTIONS: Record<string, string[]> = {
   munsif: ["distribution_recommendation.drafted"],
 };
 
+// Per-agent name -> the audit_logs `action` that records a human's real
+// disposition on that agent's own draft (used it as-is, or changed it)
+// — deliberately not every agent. Only Rafiq has one clear, already-
+// built downstream consumption point today (a Founder's onboarding
+// purpose field, either submitted unchanged or edited — see
+// FoundersService.establishFounderAndFoundation's own
+// onboarding_assist.disposition_recorded write site). Extend this map
+// only when another agent's own consumption point is similarly
+// well-defined; don't invent one just to fill in a row on the Ops
+// Console table below.
+const DISPOSITION_ACTION: Record<string, string> = {
+  rafiq: "onboarding_assist.disposition_recorded",
+};
+
 @Injectable()
 export class AiAgentsService {
   constructor(
@@ -81,14 +95,18 @@ export class AiAgentsService {
   // — nothing here decides it automatically. What this *can* surface
   // honestly: how many drafts an agent has actually produced, how many
   // governed_actions it's actually proposed (0 for every agent today —
-  // none has graduated), and when it last did anything at all. Real
-  // signal an officer can look at, not a fabricated readiness score.
+  // none has graduated), when it last did anything at all, and — for
+  // the one agent with a real disposition signal wired up (see
+  // DISPOSITION_ACTION above) — how often its draft was actually used
+  // as offered versus changed. Real signal an officer can look at, not
+  // a fabricated readiness score.
   async list() {
     const agents = await prisma.aiAgent.findMany({ where: { status: "active" }, select: SAFE_AGENT_SELECT });
     const agentIds = agents.map((a) => a.id);
-    if (agentIds.length === 0) return agents.map((a) => ({ ...a, draftCount: 0, governedActionCount: 0, lastActiveAt: null }));
+    if (agentIds.length === 0) return agents.map((a) => ({ ...a, draftCount: 0, governedActionCount: 0, lastActiveAt: null, dispositions: null }));
 
-    const [draftStats, governedActionCounts] = await Promise.all([
+    const dispositionActions = Object.values(DISPOSITION_ACTION);
+    const [draftStats, governedActionCounts, dispositionRows] = await Promise.all([
       prisma.auditLog.groupBy({
         by: ["actorAgentId"],
         where: { actorType: "ai_agent", actorAgentId: { in: agentIds } },
@@ -100,16 +118,46 @@ export class AiAgentsService {
         where: { makerType: "ai_agent", makerAgentId: { in: agentIds } },
         _count: { _all: true },
       }),
+      // The disposition itself lives inside `after` (a human's action,
+      // recorded as JSON, same as every other audit_logs snapshot) —
+      // Postgres/Prisma can't groupBy into a JSON field, and the volume
+      // here (Founder onboarding events) is small enough that fetching
+      // the rows and reducing in JS is the honest tradeoff, not an N+1
+      // risk.
+      dispositionActions.length > 0
+        ? prisma.auditLog.findMany({
+            where: { action: { in: dispositionActions } },
+            select: { action: true, after: true },
+          })
+        : Promise.resolve([]),
     ]);
     const draftStatsById = new Map(draftStats.map((d) => [d.actorAgentId, d]));
     const governedActionCountById = new Map(governedActionCounts.map((g) => [g.makerAgentId, g._count._all]));
 
-    return agents.map((agent) => ({
-      ...agent,
-      draftCount: draftStatsById.get(agent.id)?._count._all ?? 0,
-      governedActionCount: governedActionCountById.get(agent.id) ?? 0,
-      lastActiveAt: draftStatsById.get(agent.id)?._max.createdAt ?? null,
-    }));
+    const dispositionCountsByAction = new Map<string, { accepted: number; changed: number }>();
+    for (const row of dispositionRows) {
+      const disposition = (row.after as { disposition?: string } | null)?.disposition;
+      const counts = dispositionCountsByAction.get(row.action) ?? { accepted: 0, changed: 0 };
+      if (disposition === "accepted") counts.accepted += 1;
+      else if (disposition === "changed") counts.changed += 1;
+      dispositionCountsByAction.set(row.action, counts);
+    }
+
+    return agents.map((agent) => {
+      const dispositionAction = DISPOSITION_ACTION[agent.name];
+      return {
+        ...agent,
+        draftCount: draftStatsById.get(agent.id)?._count._all ?? 0,
+        governedActionCount: governedActionCountById.get(agent.id) ?? 0,
+        lastActiveAt: draftStatsById.get(agent.id)?._max.createdAt ?? null,
+        // null (not {accepted: 0, changed: 0}) when this agent has no
+        // disposition-tracking consumption point at all — distinguishes
+        // "genuinely zero data" (a real agent with the feature that just
+        // hasn't been used yet) from "not applicable" (no such feature
+        // exists for this agent).
+        dispositions: dispositionAction ? (dispositionCountsByAction.get(dispositionAction) ?? { accepted: 0, changed: 0 }) : null,
+      };
+    });
   }
 
   // Staff-facing detail behind the registry list above — the actual

@@ -522,6 +522,120 @@ describe("FoundersService.establishFounderAndFoundation", () => {
       }),
     ).rejects.toThrow(BadRequestException);
   });
+
+  // Regression coverage for the 2026-09-26 agent draft-disposition
+  // enhancement — see DISPOSITION_ACTION's own comment in
+  // ai-agents.service.ts for why Rafiq is the one agent with this
+  // wired up. Simulates what draftPurposeSuggestion() itself writes
+  // (a real HTTP round trip to the agent service isn't needed to test
+  // establishFounderAndFoundation's own disposition-recording logic).
+  describe("onboarding_assist.disposition_recorded", () => {
+    async function createRafiqDraft(userId: string, suggestedPurpose: string) {
+      const rafiq = await prisma.aiAgent.upsert({
+        where: { name: "rafiq" },
+        update: {},
+        create: { name: "rafiq", taskType: "founder_onboarding", status: "active" },
+      });
+      const draft = await prisma.auditLog.create({
+        data: {
+          actorType: "ai_agent",
+          actorAgentId: rafiq.id,
+          action: "onboarding_assist.drafted",
+          entityType: "User",
+          entityId: userId,
+          after: { suggestedPurpose } as any,
+        },
+      });
+      return draft.id;
+    }
+
+    test("records \"accepted\" when the submitted purpose matches Rafiq's suggestion verbatim", async () => {
+      const { userId } = await createVerifiedUser("disp-accepted");
+      const rafiqDraftId = await createRafiqDraft(userId, "Fund scholarships for underprivileged students.");
+
+      const { founder } = await service.establishFounderAndFoundation(userId, {
+        founderName: "Disposition Accepted Founder",
+        kind: "institution",
+        foundationName: "Disposition Accepted Foundation",
+        purpose: "Fund scholarships for underprivileged students.",
+        rafiqDraftId,
+      });
+
+      const logs = await prisma.auditLog.findMany({
+        where: { action: "onboarding_assist.disposition_recorded", entityId: userId },
+      });
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ actorType: "founder_user", actorUserId: userId, actorFounderId: founder.id });
+      expect(logs[0]!.after).toMatchObject({ rafiqDraftId, disposition: "accepted" });
+    });
+
+    test("records \"changed\" when the submitted purpose differs from Rafiq's suggestion", async () => {
+      const { userId } = await createVerifiedUser("disp-changed");
+      const rafiqDraftId = await createRafiqDraft(userId, "Fund scholarships for underprivileged students.");
+
+      await service.establishFounderAndFoundation(userId, {
+        founderName: "Disposition Changed Founder",
+        kind: "institution",
+        foundationName: "Disposition Changed Foundation",
+        purpose: "Provide microfinance loans to small rural businesses.",
+        rafiqDraftId,
+      });
+
+      const logs = await prisma.auditLog.findMany({
+        where: { action: "onboarding_assist.disposition_recorded", entityId: userId },
+      });
+      expect(logs).toHaveLength(1);
+      expect(logs[0]!.after).toMatchObject({ disposition: "changed" });
+    });
+
+    test("records nothing when no rafiqDraftId is submitted — a Founder who never asked for help", async () => {
+      const { userId } = await createVerifiedUser("disp-no-draft");
+      await service.establishFounderAndFoundation(userId, {
+        founderName: "No Draft Founder",
+        kind: "institution",
+        foundationName: "No Draft Foundation",
+        purpose: "Written entirely on my own.",
+      });
+
+      const logs = await prisma.auditLog.findMany({
+        where: { action: "onboarding_assist.disposition_recorded", entityId: userId },
+      });
+      expect(logs).toHaveLength(0);
+    });
+
+    test("fails soft (no disposition, establishment still succeeds) for a draftId belonging to a different user", async () => {
+      const { userId: otherUserId } = await createVerifiedUser("disp-other-owner");
+      const rafiqDraftId = await createRafiqDraft(otherUserId, "Someone else's suggested purpose.");
+
+      const { userId } = await createVerifiedUser("disp-wrong-owner");
+      const result = await service.establishFounderAndFoundation(userId, {
+        founderName: "Wrong Owner Founder",
+        kind: "institution",
+        foundationName: "Wrong Owner Foundation",
+        purpose: "My own purpose, unrelated to that draft.",
+        rafiqDraftId,
+      });
+
+      expect(result.founder.name).toBe("Wrong Owner Founder");
+      const logs = await prisma.auditLog.findMany({
+        where: { action: "onboarding_assist.disposition_recorded", entityId: userId },
+      });
+      expect(logs).toHaveLength(0);
+    });
+
+    test("fails soft for an unknown/garbage draftId — establishment still succeeds", async () => {
+      const { userId } = await createVerifiedUser("disp-garbage-id");
+      const result = await service.establishFounderAndFoundation(userId, {
+        founderName: "Garbage Id Founder",
+        kind: "institution",
+        foundationName: "Garbage Id Foundation",
+        purpose: "My own purpose.",
+        rafiqDraftId: "00000000-0000-0000-0000-000000000000",
+      });
+
+      expect(result.founder.name).toBe("Garbage Id Founder");
+    });
+  });
 });
 
 describe("FoundersService.getOnboardingStatus", () => {

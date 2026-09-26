@@ -96,6 +96,18 @@ export class EstablishFounderAndFoundationInput {
   @IsOptional()
   @IsString()
   jurisdiction?: string;
+
+  // The audit_logs row id POST /founders/onboarding/purpose-suggestion
+  // returned, if the Founder asked Rafiq for help before submitting —
+  // omitted entirely when they never did. Lets establishFounderAndFoundation
+  // record an honest disposition signal (did the final purpose match
+  // what Rafiq suggested, or did the Founder change it) without
+  // guessing which of possibly several suggestions this submission
+  // responds to. See onboarding_assist.disposition_recorded's own
+  // write site below for what this becomes.
+  @IsOptional()
+  @IsString()
+  rafiqDraftId?: string;
 }
 
 // Step 2's own fields, minus the ones Rafiq has no use for (logo) —
@@ -602,6 +614,41 @@ export class FoundersService {
         },
       });
 
+      // Records how the Founder actually used Rafiq's suggestion, if
+      // they asked for one — the real signal CLAUDE.md's graduation
+      // gate needs ("officers/founders act on drafts without correcting
+      // them") but this codebase had no way to observe. Deliberately
+      // fails soft: a missing, stale, or someone-else's draftId just
+      // means no disposition gets recorded, never a blocked
+      // establishment — self-service is never gated on an AI-adjacent
+      // signal (see CLAUDE.md's own standing principle on this, argued
+      // for Founder screening but equally true of an observability
+      // nice-to-have like this one).
+      if (input.rafiqDraftId) {
+        const draft = await tx.auditLog.findUnique({ where: { id: input.rafiqDraftId } });
+        const suggestedPurpose =
+          draft?.actorType === "ai_agent" &&
+          draft.action === "onboarding_assist.drafted" &&
+          draft.entityType === "User" &&
+          draft.entityId === userId
+            ? (draft.after as { suggestedPurpose?: string } | null)?.suggestedPurpose
+            : undefined;
+        if (suggestedPurpose !== undefined) {
+          const disposition = suggestedPurpose.trim() === input.purpose.trim() ? "accepted" : "changed";
+          await tx.auditLog.create({
+            data: {
+              actorType: "founder_user",
+              actorUserId: userId,
+              actorFounderId: founder.id,
+              action: "onboarding_assist.disposition_recorded",
+              entityType: "User",
+              entityId: userId,
+              after: { rafiqDraftId: input.rafiqDraftId, disposition, finalPurpose: input.purpose } as any,
+            },
+          });
+        }
+      }
+
       return { founder, foundation };
     });
   }
@@ -636,7 +683,7 @@ export class FoundersService {
     }
 
     const rafiqAgent = await prisma.aiAgent.findUnique({ where: { name: "rafiq" } });
-    await prisma.auditLog.create({
+    const draft = await prisma.auditLog.create({
       data: {
         actorType: "ai_agent",
         actorAgentId: rafiqAgent?.id,
@@ -647,7 +694,12 @@ export class FoundersService {
       },
     });
 
-    return { suggestedPurpose: body.suggestedPurpose as string };
+    // draftId lets establishFounderAndFoundation record an honest
+    // disposition later (see EstablishFounderAndFoundationInput
+    // .rafiqDraftId's own comment) — the frontend echoes this back
+    // rather than the backend guessing which suggestion a later submit
+    // responds to.
+    return { suggestedPurpose: body.suggestedPurpose as string, draftId: draft.id };
   }
 
   /**
