@@ -32,17 +32,6 @@ import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 // summary here and the fuller page can never drift apart.
 const WAQF_TYPES = WAQF_TYPE_SLUGS.map((slug) => WAQF_TYPE_CONTENT[slug]);
 
-// Hero subheadline's rotating close — four real, distinct facts about
-// governed_actions (never a claim this codebase doesn't actually back:
-// see CLAUDE.md's own non-negotiables), cycled so the sentence keeps
-// making its case rather than saying the same four words forever.
-const GOVERNANCE_PROOF_PHRASES = [
-  "checked twice, logged forever.",
-  "reviewed by someone else.",
-  "recorded, never erased.",
-  "provable, not promised.",
-];
-
 // Two parallel four-step paths through the same platform — a Founder
 // establishes and governs their own fund; anyone else can support one of
 // Birr's own Vaults without ever establishing anything. Deliberately the
@@ -276,12 +265,13 @@ export default function MarketingHome() {
             </h1>
           </Reveal>
           <Reveal delayMs={180}>
-            {/* A div, not a <p> — Reveal renders a <div>, and the nested
-                Reveal below (the punchline) would be invalid HTML nested
-                inside a real <p> (browsers silently close the paragraph
-                early on a block child, splitting the sentence). */}
             <div className="mx-auto mt-6 max-w-xl text-balance text-lg text-white/80">
-              One governance engine. Every decision — <RotatingPhrase phrases={GOVERNANCE_PROOF_PHRASES} />
+              <p className="font-medium text-white">Give once.</p>
+              <ol className="mx-auto mt-3 max-w-xs list-decimal space-y-1.5 text-left marker:text-accent-300 sm:max-w-sm">
+                <li>Fund a cause forever.</li>
+                <li>Build everlasting rewards.</li>
+                <li>Leave a legacy that lasts generations.</li>
+              </ol>
             </div>
           </Reveal>
           <Reveal delayMs={270}>
@@ -607,33 +597,6 @@ export default function MarketingHome() {
 
       <SiteFooter />
     </div>
-  );
-}
-
-// Cycles through a short list of phrases in place — each one fades/
-// slides in via a CSS keyframe (globals.css's own rotate-word-in) that
-// re-plays because `key={index}` forces React to re-mount the <span>
-// on every change, not because any class gets toggled by hand. The
-// interval itself is skipped under prefers-reduced-motion (same check
-// SiteChrome's own useInView makes for Reveal) — auto-changing text is
-// exactly the kind of motion that preference exists to turn off, not
-// just the transition between changes.
-function RotatingPhrase({ phrases, intervalMs = 2600 }: { phrases: string[]; intervalMs?: number }) {
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = window.setInterval(() => setIndex((i) => (i + 1) % phrases.length), intervalMs);
-    return () => window.clearInterval(id);
-  }, [phrases, intervalMs]);
-
-  return (
-    <span
-      key={index}
-      className="inline-block motion-safe:animate-[rotate-word-in_500ms_ease-out] font-semibold bg-gradient-to-r from-accent-300 to-accent-500 bg-clip-text text-transparent"
-    >
-      {phrases[index]}
-    </span>
   );
 }
 
