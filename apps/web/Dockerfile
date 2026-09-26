@@ -55,4 +55,14 @@ USER nextjs
 ENV NODE_ENV=production
 EXPOSE 3000
 ENV PORT=3000
+# Next's standalone server.js defaults HOSTNAME to "localhost" (loopback
+# only) when unset — invisible to any reverse proxy connecting from
+# outside the container's own network namespace. Found deploying to
+# Render: every boot log looked perfectly healthy (Next's own "Ready",
+# Render's port-scan detecting something on 3000), yet every external
+# request still 502'd, because Render's edge proxy genuinely couldn't
+# reach a socket bound to 127.0.0.1. Binding to 0.0.0.0 is what makes
+# the app reachable on the container's actual network interface, not
+# just from inside itself.
+ENV HOSTNAME="0.0.0.0"
 CMD ["node", "apps/web/server.js"]
