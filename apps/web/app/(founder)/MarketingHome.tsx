@@ -13,6 +13,7 @@ import {
   Card,
   IconArchive,
   IconCheckCircle,
+  IconChevronDown,
   IconLandmark,
   IconClipboardCheck,
   IconRepeat,
@@ -31,6 +32,12 @@ import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 // the /waqf-types/[slug] detail pages each card below links to, so the
 // summary here and the fuller page can never drift apart.
 const WAQF_TYPES = WAQF_TYPE_SLUGS.map((slug) => WAQF_TYPE_CONTENT[slug]);
+
+// Hero subheadline's rotating close — three distinct angles on the same
+// single gift (practical: the corpus itself; spiritual: ongoing reward;
+// legacy: what it leaves behind), cycled so "Give once." keeps making a
+// different case for itself rather than picking just one.
+const GIVING_IMPACT_PHRASES = ["Fund a cause forever.", "Build everlasting rewards.", "Leave a legacy that lasts generations."];
 
 // Two parallel four-step paths through the same platform — a Founder
 // establishes and governs their own fund; anyone else can support one of
@@ -179,6 +186,44 @@ const GOVERNANCE_PILLARS = [
   },
 ];
 
+// Answers to the objections a first-time visitor actually has, each one
+// grounded in a fact this page (or the platform itself) already makes
+// elsewhere — never a claim invented just for this section. Placed
+// right before the closing CTA, the standard spot for a last round of
+// reassurance before asking someone to act.
+const FAQ_ITEMS = [
+  {
+    question: 'What is Sadaqah Jariyah, and how does Birr "prove" it?',
+    answer:
+      "Sadaqah Jariyah is ongoing charity — a gift that keeps benefiting others, and keeps earning reward, long after you give it. Birr proves that continuity the same way it proves every other governed decision: every asset, distribution, and investment change is written to an immutable, append-only audit trail from the moment your Waqf Fund is established.",
+  },
+  {
+    question: "Do I need approval to establish a Waqf Fund?",
+    answer:
+      "No. Establishing your Foundation and Waqf Fund is entirely self-service — there's no application, no waiting period, no Birr staff involved. Creating the fund is itself how you agree Birr becomes Mutawalli (trustee) over it.",
+  },
+  {
+    question: "Who manages my Waqf Fund once it's established?",
+    answer:
+      "Ongoing governance — asset disposal, distribution approval, investment changes — moves to Birr's own staff, through a maker-checker process where every action must be proposed by one person and approved by a different one, enforced by the database itself, not just policy.",
+  },
+  {
+    question: "What's the difference between establishing a Waqf Fund and giving to a Vault?",
+    answer:
+      "A Waqf Fund is yours — you establish it, name its causes, and Birr becomes its trustee. A Vault is a Birr-curated public campaign anyone can give to directly, with no account or Foundation required. Both route through the exact same governed approval process once money moves.",
+  },
+  {
+    question: "How is Shariah compliance ensured?",
+    answer:
+      "A dedicated Shariah Supervisory Board sits alongside Birr's other governance roles, and every investment goes through its own Shariah screening before it's placed — not a one-time certification, but an ongoing check tied to the actual assets involved.",
+  },
+  {
+    question: "Is my gift's use ever a black box?",
+    answer:
+      "No — every governed action on your Waqf Fund or a Vault you've given to is recorded permanently: who acted, when, and what changed. That trail can't be edited or deleted after the fact, by design, and it's there for your own reporting whenever you want to see it.",
+  },
+];
+
 const PILLAR_ICON_CLASSES: Record<(typeof GOVERNANCE_PILLARS)[number]["tone"], string> = {
   primary: "bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-primary-900/25",
   // Deep-on-gold, not white-on-gold: a lighter gold field with a
@@ -265,13 +310,12 @@ export default function MarketingHome() {
             </h1>
           </Reveal>
           <Reveal delayMs={180}>
+            {/* A div, not a <p> — Reveal renders a <div>, and the nested
+                Reveal below (the punchline) would be invalid HTML nested
+                inside a real <p> (browsers silently close the paragraph
+                early on a block child, splitting the sentence). */}
             <div className="mx-auto mt-6 max-w-xl text-balance text-lg text-white/80">
-              <p className="font-medium text-white">Give once.</p>
-              <ol className="mx-auto mt-3 max-w-xs list-decimal space-y-1.5 text-left marker:text-accent-300 sm:max-w-sm">
-                <li>Fund a cause forever.</li>
-                <li>Build everlasting rewards.</li>
-                <li>Leave a legacy that lasts generations.</li>
-              </ol>
+              Give once —  <RotatingPhrase phrases={GIVING_IMPACT_PHRASES} />
             </div>
           </Reveal>
           <Reveal delayMs={270}>
@@ -567,6 +611,30 @@ export default function MarketingHome() {
         </div>
       </section>
 
+      <section id="faq" className="px-6 py-20 sm:px-8">
+        <div className="mx-auto max-w-3xl">
+          <Reveal>
+            <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">Questions</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+              Frequently asked questions
+            </h2>
+          </Reveal>
+          <div className="mt-8 divide-y divide-slate-200 rounded-2xl border border-slate-200">
+            {FAQ_ITEMS.map((item, index) => (
+              <Reveal key={item.question} delayMs={index * 40}>
+                <details className="group px-6 py-1 open:pb-4 sm:px-8">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-base font-medium text-slate-900 marker:content-none">
+                    {item.question}
+                    <IconChevronDown className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <p className="text-sm leading-relaxed text-slate-600">{item.answer}</p>
+                </details>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="px-6 pb-24 pt-4 sm:px-8">
         <Reveal className="mx-auto max-w-4xl">
           <div className="relative overflow-hidden rounded-2xl px-8 py-14 text-center sm:px-16" style={{ backgroundImage: GRADIENT }}>
@@ -597,6 +665,33 @@ export default function MarketingHome() {
 
       <SiteFooter />
     </div>
+  );
+}
+
+// Cycles through a short list of phrases in place — each one fades/
+// slides in via a CSS keyframe (globals.css's own rotate-word-in) that
+// re-plays because `key={index}` forces React to re-mount the <span>
+// on every change, not because any class gets toggled by hand. The
+// interval itself is skipped under prefers-reduced-motion (same check
+// SiteChrome's own useInView makes for Reveal) — auto-changing text is
+// exactly the kind of motion that preference exists to turn off, not
+// just the transition between changes.
+function RotatingPhrase({ phrases, intervalMs = 2600 }: { phrases: string[]; intervalMs?: number }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setIndex((i) => (i + 1) % phrases.length), intervalMs);
+    return () => window.clearInterval(id);
+  }, [phrases, intervalMs]);
+
+  return (
+    <span
+      key={index}
+      className="inline-block motion-safe:animate-[rotate-word-in_500ms_ease-out] font-semibold bg-gradient-to-r from-accent-300 to-accent-500 bg-clip-text text-transparent"
+    >
+      {phrases[index]}
+    </span>
   );
 }
 
