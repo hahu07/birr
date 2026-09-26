@@ -11,7 +11,6 @@ import Link from "next/link";
 import { Button, IconArchive, IconMark } from "@birr/ui";
 import { humanize } from "../../lib/format";
 import type { Vault } from "../../lib/types";
-import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 
 // Four stops, not two-color interpolation across the full distance: a
 // straight primary-900 → violet-700 sRGB ramp passes through a
@@ -180,26 +179,24 @@ export function SiteFooter() {
           ))}
         </FooterColumn>
 
-        <FooterColumn title="Waqf Fund types">
-          {WAQF_TYPE_SLUGS.map((slug) => (
-            <li key={slug}>
-              <Link href={`/waqf-types/${slug}`} className="text-sm text-slate-600 hover:text-slate-900">
-                {WAQF_TYPE_CONTENT[slug].label}
-              </Link>
-            </li>
-          ))}
-        </FooterColumn>
-
-        <FooterColumn title="Account">
+        <FooterColumn title="Legal">
           <li>
-            <Link href="/sign-up" className="text-sm text-slate-600 hover:text-slate-900">
-              Sign up
+            <Link href="/privacy-policy" className="text-sm text-slate-600 hover:text-slate-900">
+              Privacy Policy
             </Link>
           </li>
           <li>
-            <Link href="/sign-in" className="text-sm text-slate-600 hover:text-slate-900">
-              Sign in
+            <Link href="/terms-of-service" className="text-sm text-slate-600 hover:text-slate-900">
+              Terms of Service
             </Link>
+          </li>
+        </FooterColumn>
+
+        <FooterColumn title="Contact us">
+          <li>
+            <a href="mailto:info@birrwaqf.org" className="text-sm text-slate-600 hover:text-slate-900">
+              info@birrwaqf.org
+            </a>
           </li>
         </FooterColumn>
       </div>

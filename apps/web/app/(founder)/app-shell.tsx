@@ -59,8 +59,19 @@ const NAV_ITEMS = [
 // app/vaults/[slug]/page.tsx) — no Founder session involved in either,
 // same reasoning as /waqf-types/. /forgot-password and /reset-password
 // (2026-09-14) are reachable by a locked-out founder with no session by
-// definition — same posture as sign-up/verified above.
-const PUBLIC_ROUTES = ["/sign-in", "/sign-up", "/verified", "/vaults", "/forgot-password", "/reset-password"];
+// definition — same posture as sign-up/verified above. /privacy-policy
+// and /terms-of-service (2026-09-26) are footer links reachable from
+// anywhere on the public site, same posture as /waqf-types/.
+const PUBLIC_ROUTES = [
+  "/sign-in",
+  "/sign-up",
+  "/verified",
+  "/vaults",
+  "/forgot-password",
+  "/reset-password",
+  "/privacy-policy",
+  "/terms-of-service",
+];
 const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/"];
 function isPublicRoutePath(pathname: string) {
   return PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
