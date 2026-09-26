@@ -15,7 +15,7 @@ import { apiFetchJson } from "../../../lib/api";
 import { formatAmount, formatDate } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { IpCluster, StructuringReviewGroup } from "../../../lib/ops-types";
-import { Alert, Badge, EmptyState, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { Alert, Badge, EmptyState, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../_components/SectionChrome";
 
 const REVIEW_ROLES = new Set(["platform_admin", "compliance_officer", "audit_committee", "board_of_trustees"]);
@@ -62,17 +62,12 @@ export default function VaultComplianceReviewPage() {
             <label htmlFor="min-fraction" className="font-medium text-slate-700">
               Show gifts at or above
             </label>
-            <select
-              id="min-fraction"
-              value={minFraction}
-              onChange={(e) => setMinFraction(Number(e.target.value))}
-              className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            >
+            <Select id="min-fraction" value={minFraction} onChange={(e) => setMinFraction(Number(e.target.value))}>
               <option value={0.3}>30%</option>
               <option value={0.5}>50%</option>
               <option value={0.7}>70%</option>
               <option value={0.9}>90%</option>
-            </select>
+            </Select>
             <span>of that currency's identity threshold.</span>
           </div>
 
