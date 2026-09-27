@@ -68,7 +68,30 @@ const agentSeeds = [
   },
 ] as const;
 
+// Render's free-tier Postgres has repeatedly shown transient P1001
+// ("can't reach database server") failures on the very first query of a
+// fresh connection — found running this exact script against it: back-
+// to-back attempts flip between succeeding and failing with no other
+// change, including cases where an unrelated command against the same
+// database succeeded seconds earlier. Not specific to any one role or
+// query; a plain retry-with-backoff on the initial connection is enough
+// to ride it out, since the failure is at connect time, not mid-script.
+async function connectWithRetry(attempts = 5, delayMs = 3000) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await prisma.$connect();
+      return;
+    } catch (err) {
+      if (attempt === attempts) throw err;
+      console.log(`Connect attempt ${attempt}/${attempts} failed, retrying in ${delayMs / 1000}s...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
 async function main() {
+  await connectWithRetry();
+
   const roleIdByKey = new Map<string, string>();
   for (const role of roles) {
     const row = await prisma.role.upsert({
