@@ -41,18 +41,34 @@ export function verifySessionToken(token: string): SessionTokenPayload | null {
 }
 
 /**
- * httpOnly so client-side JS can never read the token (XSS mitigation);
- * sameSite "lax" is sufficient without needing "none"/HTTPS in local dev
- * — the SameSite attribute treats localhost:3000 and localhost:4001 as
- * same-site (it ignores port), even though they're different origins
- * for CORS purposes. secure is only forced once we're actually served
- * over HTTPS in production.
+ * httpOnly so client-side JS can never read the token (XSS mitigation).
+ *
+ * sameSite/secure both key off NODE_ENV, not independently — a real
+ * cross-site deployment (2026-09-28 fix, found live on Render's
+ * *.onrender.com test deploy): SameSite is computed off the registrable
+ * domain, and onrender.com is itself on the public suffix list, so
+ * birr-web.onrender.com and birr-backend-kya6.onrender.com are
+ * genuinely cross-site to each other — not just cross-port the way
+ * localhost:3000/localhost:4001 are in local dev, where SameSite=Lax
+ * correctly treats them as same-site. Lax still lets the Set-Cookie on
+ * login succeed (SameSite governs whether a cookie is *sent*, not
+ * whether it's *accepted*), but the browser then withholds it from the
+ * very next cross-site fetch — the session check the app shell makes on
+ * load — which reads as "no session" and bounces straight back to
+ * sign-in. SameSite=None requires Secure regardless (browsers reject
+ * None without it), so both attributes have to move together: None+
+ * Secure whenever this is actually served over HTTPS, Lax+non-Secure
+ * for plain-HTTP local dev, where None would be rejected outright.
  */
+function crossSiteCookieAttrs() {
+  const secure = process.env.NODE_ENV === "production";
+  return { secure, sameSite: (secure ? "none" : "lax") as "none" | "lax" };
+}
+
 function cookieOptions() {
   return {
     httpOnly: true,
-    sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    ...crossSiteCookieAttrs(),
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
   };
@@ -118,8 +134,7 @@ export function verifyMfaPendingToken(token: string): { userId: string } | null 
 function mfaPendingCookieOptions() {
   return {
     httpOnly: true,
-    sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    ...crossSiteCookieAttrs(),
     maxAge: 10 * 60 * 1000,
     path: "/",
   };
