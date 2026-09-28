@@ -107,8 +107,23 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # NOT generateValue: true (2026-09-28 fix, found live) —
+      # EncryptionService.getKey() requires exactly 32 bytes expressed as
+      # 64 lowercase hex chars (Buffer.from(raw, "hex"), length-checked),
+      # the same format docker-compose.yml's own comment tells a real
+      # deployment to generate via `openssl rand -hex 32`. Render's
+      # generateValue produces a generic random string with no such
+      # guarantee, which silently broke MFA enrollment for the very
+      # first admin login: startMfaEnrollment() calls encryption.encrypt(),
+      # which throws "SETTINGS_ENCRYPTION_KEY must be 32 bytes" the
+      # moment the generated value isn't valid hex of the right length —
+      # surfaced to the browser as a bare 500, no other symptom. Set this
+      # by hand in the dashboard with a real `openssl rand -hex 32` value
+      # instead; unlike JWT_SECRET/AGENT_SERVICE_INTERNAL_KEY below (both
+      # genuinely format-free — see their own call sites' plain
+      # truthiness checks), this one can't tolerate an arbitrary string.
       - key: SETTINGS_ENCRYPTION_KEY
-        generateValue: true
+        sync: false
       # Both build verify-email/redirect links a human clicks from their
       # own browser. The comment here used to claim Render's public
       # hostname is deterministic from each service's own `name` below —
