@@ -110,11 +110,21 @@ services:
       - key: SETTINGS_ENCRYPTION_KEY
         generateValue: true
       # Both build verify-email/redirect links a human clicks from their
-      # own browser — Render's public hostname is deterministic from
-      # each service's own `name` below, so these are knowable up front
-      # as long as the service names in this file don't change.
+      # own browser. The comment here used to claim Render's public
+      # hostname is deterministic from each service's own `name` below —
+      # true for birr-web, false for birr-backend: Render silently
+      # suffixed it to birr-backend-kya6.onrender.com at creation time
+      # (a global-uniqueness collision, not something this file's `name`
+      # controls), and every hardcoded https://birr-backend.onrender.com
+      # value below — baked straight into birr-web's client bundle at
+      # build time — pointed at a hostname that plain doesn't exist.
+      # Found live: every fetch from the deployed birr-web failed with
+      # "Failed to fetch," including sign-in, despite birr-backend itself
+      # being fully healthy the whole time. Don't assume this URL from
+      # the service `name` again — always confirm the actual assigned
+      # hostname in Render's dashboard first.
       - key: BACKEND_URL
-        value: https://birr-backend.onrender.com
+        value: https://birr-backend-kya6.onrender.com
       - key: FOUNDER_PORTAL_URL
         value: https://birr-web.onrender.com
       # main.ts's own CORS setup fails closed without this on any
@@ -191,9 +201,13 @@ services:
       # --build-arg too, so this satisfies the Dockerfile's existing
       # `ARG NEXT_PUBLIC_BACKEND_URL` (baked into the client bundle at
       # build time — see that Dockerfile's own comment) with no extra
-      # wiring beyond just setting it here.
+      # wiring beyond just setting it here. See birr-backend's own
+      # BACKEND_URL comment above — this is the actual assigned hostname
+      # (birr-backend-kya6, not the plain birr-backend this file assumed
+      # before), confirmed in Render's dashboard, not guessed from the
+      # service `name` below.
       - key: NEXT_PUBLIC_BACKEND_URL
-        value: https://birr-backend.onrender.com
+        value: https://birr-backend-kya6.onrender.com
       # Server/edge-side Sentry — see apps/web/sentry.server.config.ts's
       # own comment. Unset means a no-op, same as birr-backend's own
       # SENTRY_DSN above.
@@ -265,7 +279,7 @@ services:
   #         type: web
   #         envVarKey: AGENT_SERVICE_INTERNAL_KEY
   #     - key: BACKEND_URL
-  #       value: https://birr-backend.onrender.com
+  #       value: https://birr-backend-kya6.onrender.com
   #     # Each agent authenticates *to* birr-backend as its own ai_agents
   #     # registry row (bcrypt-compared against apiKeyHash — the backend
   #     # itself never reads these as env vars, only this service does,
