@@ -54,6 +54,31 @@ describe("BanksService", () => {
     await expect(service.listNigerianBanks()).rejects.toThrow("Paystack list banks failed");
   });
 
+  // Regression coverage for a real duplicate-key React error found live
+  // (2026-09-29): Paystack's own bank list carries a handful of entries
+  // sharing one code under two names, and the Founder Portal's bank
+  // Combobox keys its options by code — two entries with the same code
+  // broke it. First-seen wins; which name survives is arbitrary since
+  // both codes route to the same account either way.
+  test("dedupes by code, keeping the first name seen for a shared code", async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: true,
+        data: [
+          { name: "BANKIT MFB", code: "50572", active: true, country: "Nigeria", currency: "NGN" },
+          { name: "BANKIT MICROFINANCE BANK LTD", code: "50572", active: true, country: "Nigeria", currency: "NGN" },
+          { name: "Zenith Bank", code: "057", active: true, country: "Nigeria", currency: "NGN" },
+        ],
+      }),
+    })) as any;
+
+    const service = new BanksService(fakeSettings("sk_test_fixture"));
+    const banks = await service.listNigerianBanks();
+
+    expect(banks).toEqual([{ name: "BANKIT MFB", code: "50572" }, { name: "Zenith Bank", code: "057" }]);
+  });
+
   // Regression coverage for a gap flagged in the 2026-09-26 audit: this
   // service had no spec at all. Its entire reason to cache (see
   // CACHE_TTL_MS's own comment) is avoiding a live Paystack call on every

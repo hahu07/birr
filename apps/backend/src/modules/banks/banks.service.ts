@@ -60,10 +60,25 @@ export class BanksService {
       throw new Error(`Paystack list banks failed: ${body.message ?? res.statusText}`);
     }
 
-    const banks = body.data
-      .filter((bank) => bank.active && bank.currency === "NGN")
-      .map((bank) => ({ name: bank.name, code: bank.code }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    // Dedupe by code — Paystack's own list carries a handful of entries
+    // that share one code under two names (mostly the same institution
+    // listed under an old and a current legal name, e.g. "BANKIT MFB" /
+    // "BANKIT MICROFINANCE BANK LTD"; confirmed live, 5 duplicate codes
+    // out of 287 entries as of 2026-09-29). `code` is the actual routing
+    // identifier sent to Paystack's recipient/transfer API, so two
+    // entries sharing one are functionally the same destination — never
+    // two real choices — and keeping both broke the Founder Portal's
+    // bank Combobox (React duplicate-key error, since it keys options by
+    // value/code). First-seen wins; which of the two names survives is
+    // arbitrary and immaterial since they resolve to the same account.
+    const byCode = new Map<string, Bank>();
+    for (const bank of body.data) {
+      if (!bank.active || bank.currency !== "NGN") continue;
+      if (!byCode.has(bank.code)) {
+        byCode.set(bank.code, { name: bank.name, code: bank.code });
+      }
+    }
+    const banks = [...byCode.values()].sort((a, b) => a.name.localeCompare(b.name));
 
     this.cache = { banks, fetchedAt: Date.now() };
     return banks;

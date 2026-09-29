@@ -8,8 +8,8 @@
 // BeneficiariesService.summaryForFounder's own comment.
 import { useEffect, useRef, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
-import type { Bank, BeneficiarySummary, WaqfCause } from "../../../../lib/types";
-import { Alert, Button, Combobox, Input, Skeleton, StatCard } from "@birr/ui";
+import type { BeneficiarySummary, WaqfCause } from "../../../../lib/types";
+import { Alert, Button, Input, Skeleton, StatCard } from "@birr/ui";
 
 interface BulkNominationResult {
   createdCount: number;
@@ -177,31 +177,14 @@ function NominateBeneficiaryFormPanel({
   const [bankName, setBankName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
-  const [bankCode, setBankCode] = useState("");
-  const [payoutProvider, setPayoutProvider] = useState<"paystack" | "stripe" | "stablecoin">("paystack");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [banks, setBanks] = useState<Bank[]>([]);
-  const [banksLoading, setBanksLoading] = useState(false);
-  const [banksError, setBanksError] = useState(false);
 
   useEffect(() => {
     apiFetchJson<WaqfCause[]>(`/waqf-causes?waqfId=${waqfId}`)
       .then(setCauses)
       .catch(() => setCauses([]));
   }, [waqfId]);
-
-  // Loaded on demand, once, the first time the bank picker actually
-  // becomes visible — not on every mount, since most nominations never
-  // touch this section at all.
-  useEffect(() => {
-    if (!showBankDetails || banks.length > 0 || banksLoading) return;
-    setBanksLoading(true);
-    apiFetchJson<Bank[]>("/banks")
-      .then(setBanks)
-      .catch(() => setBanksError(true))
-      .finally(() => setBanksLoading(false));
-  }, [showBankDetails, banks.length, banksLoading]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -222,10 +205,19 @@ function NominateBeneficiaryFormPanel({
           causeId,
           phone: phone || undefined,
           email: email || undefined,
-          payoutProvider: showBankDetails ? payoutProvider : undefined,
+          // No payoutProvider/bankCode from this self-service form —
+          // Paystack is the only real rail (see PROVIDERS in
+          // WaqfFundForm.tsx for the same "Stripe can't operate in
+          // Nigeria" reasoning) and the exact routing code is a Birr-
+          // staff verification step, not something worth a live Paystack
+          // bank-list lookup on a lightweight founder-facing surface
+          // (2026-09-29: that lookup's own duplicate-code data quality
+          // issue broke this form outright). Ops staff completes the
+          // real payout setup when reviewing the nomination — see
+          // ops/waqfs/[id]/BeneficiariesSection.tsx's own bank fields.
           bankDetails:
             showBankDetails && bankName && accountNumber && accountName
-              ? { bankName, accountNumber, accountName, bankCode: bankCode || undefined }
+              ? { bankName, accountNumber, accountName }
               : undefined,
         }),
       });
@@ -319,41 +311,9 @@ function NominateBeneficiaryFormPanel({
             Shared securely with Birr for verification — you won't see this again after submitting.
           </p>
           <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Payout provider</label>
-              <select
-                value={payoutProvider}
-                onChange={(e) => setPayoutProvider(e.target.value as "paystack" | "stripe" | "stablecoin")}
-                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-              >
-                <option value="paystack">Paystack</option>
-                <option value="stripe" disabled>
-                  Stripe (coming soon)
-                </option>
-                <option value="stablecoin" disabled>
-                  Stablecoin (coming soon)
-                </option>
-              </select>
-            </div>
-            <div className="min-w-[14rem] space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Bank</label>
-              {payoutProvider === "paystack" ? (
-                <>
-                  <Combobox
-                    options={banks.map((bank) => ({ value: bank.code, label: bank.name }))}
-                    value={bankCode}
-                    onChange={(code) => {
-                      setBankCode(code);
-                      setBankName(banks.find((bank) => bank.code === code)?.name ?? "");
-                    }}
-                    loading={banksLoading}
-                    placeholder="Search for a bank…"
-                  />
-                  {banksError && <p className="mt-1 text-xs text-red-600">Couldn&apos;t load the bank list — try again shortly.</p>}
-                </>
-              ) : (
-                <Input value={bankName} onChange={(e) => setBankName(e.target.value)} />
-              )}
+            <div className="min-w-[10rem] space-y-1.5">
+              <label className="text-sm font-medium text-slate-700">Bank name</label>
+              <Input value={bankName} onChange={(e) => setBankName(e.target.value)} />
             </div>
             <div className="min-w-[10rem] space-y-1.5">
               <label className="text-sm font-medium text-slate-700">Account number</label>
@@ -371,7 +331,6 @@ function NominateBeneficiaryFormPanel({
                 setBankName("");
                 setAccountNumber("");
                 setAccountName("");
-                setBankCode("");
               }}
             >
               Remove
