@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 title: Vaults
 description: Birr-curated public giving campaigns anyone can donate to, with no Founder, account, or establishment involved.
 ---

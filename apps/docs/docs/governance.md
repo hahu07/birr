@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 5
 title: Governance
 description: The maker-checker engine, staff roles, immutable audit trail, and AI assistance shared by both Waqf Funds and Vaults.
 ---

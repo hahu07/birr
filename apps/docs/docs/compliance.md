@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 6
 title: Compliance & Regulatory Posture
 description: The governance and regulatory standards Birr aligns with, and a summary of the whole platform.
 ---

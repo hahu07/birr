@@ -5,7 +5,7 @@ import type { SidebarsConfig } from "@docusaurus/plugin-content-docs";
 // through 7. Summary, folded into 5 pages), so a reader moving through
 // the sidebar top to bottom gets the same narrative arc that file has.
 const sidebars: SidebarsConfig = {
-  docsSidebar: ["intro", "waqf-funds", "vaults", "governance", "compliance"],
+  docsSidebar: ["intro", "waqf-funds", "founder-dashboard", "vaults", "governance", "compliance"],
 };
 
 export default sidebars;
