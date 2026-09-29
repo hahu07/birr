@@ -72,6 +72,54 @@ describe("CauseCategoriesService", () => {
     expect(unchanged.projectPlan).toBe("A revised default draft.");
   });
 
+  describe("setProjectPlanFile()", () => {
+    test("sets the url and writes a matching audit_logs record", async () => {
+      const category = await service.create(
+        { name: fixtureName("ProjectPlanFile"), description: "A fixture description." },
+        actorUserId,
+      );
+      causeCategoryIds.push(category.id);
+      expect(category.projectPlanFileUrl).toBeNull();
+
+      const updated = await service.setProjectPlanFile(
+        category.id,
+        "http://localhost:4000/uploads/cause-category-documents/fixture.pdf",
+        actorUserId,
+      );
+      expect(updated.projectPlanFileUrl).toBe("http://localhost:4000/uploads/cause-category-documents/fixture.pdf");
+
+      const logs = await prisma.auditLog.findMany({
+        where: { entityId: category.id, action: "cause_category.project_plan_file_updated" },
+      });
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ entityType: "CauseCategory", actorType: "birr_staff", actorUserId });
+    });
+
+    test("replacing an existing url writes a second audit_logs record with the old url in `before`", async () => {
+      const category = await service.create(
+        { name: fixtureName("ProjectPlanFileReplace"), description: "A fixture description." },
+        actorUserId,
+      );
+      causeCategoryIds.push(category.id);
+      await service.setProjectPlanFile(category.id, "http://localhost:4000/uploads/cause-category-documents/first.pdf", actorUserId);
+      await service.setProjectPlanFile(category.id, "http://localhost:4000/uploads/cause-category-documents/second.pdf", actorUserId);
+
+      const logs = await prisma.auditLog.findMany({
+        where: { entityId: category.id, action: "cause_category.project_plan_file_updated" },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(logs).toHaveLength(2);
+      expect((logs[1].before as any).projectPlanFileUrl).toBe("http://localhost:4000/uploads/cause-category-documents/first.pdf");
+      expect((logs[1].after as any).projectPlanFileUrl).toBe("http://localhost:4000/uploads/cause-category-documents/second.pdf");
+    });
+
+    test("throws NotFoundException for an unknown id", async () => {
+      await expect(service.setProjectPlanFile(randomUUID(), "http://localhost:4000/x.pdf", actorUserId)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
   test("create() rejects a whitespace-only description", async () => {
     await expect(
       service.create({ name: fixtureName("BlankDesc"), description: "   " }, actorUserId),

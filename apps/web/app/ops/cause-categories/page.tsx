@@ -10,7 +10,7 @@
 // displaying regardless of what happens here afterward; usageCount (see
 // CauseCategoriesService.list) is shown so a retire decision is made
 // with the blast radius visible, not blind.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate, humanize } from "../../../lib/format";
 import { markNotificationsReadForEntity } from "../../../lib/notifications";
@@ -310,6 +310,38 @@ function CauseCategoryForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Template file attached to the default project plan above — see
+  // CauseCategory.projectPlanFileUrl's own schema comment. Uploads
+  // immediately on file pick, same convention as
+  // VaultFeasibilityReportSection's own File control; kept as its own
+  // local state (not routed through the form's onSaved) so uploading
+  // doesn't close this panel the way saving the rest of the form does.
+  const [projectPlanFileUrl, setProjectPlanFileUrl] = useState(existing?.projectPlanFileUrl ?? null);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !existing) return;
+    setFileError(null);
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const updated = await apiFetchJson<CauseCategory>(`/cause-categories/${existing.id}/project-plan-file`, {
+        method: "POST",
+        body: formData,
+      });
+      setProjectPlanFileUrl(updated.projectPlanFileUrl);
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setUploadingFile(false);
+    }
+  }
+
   // Eligible parents: any active category except this one itself and any
   // of its own descendants (picking a descendant as parent would close a
   // loop — see CauseCategoriesService.validateParent for the
@@ -466,6 +498,43 @@ function CauseCategoryForm({
           onChange={(e) => setProjectPlan(e.target.value)}
           className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium text-slate-700">Template file (optional)</p>
+        <p className="text-xs text-slate-500">
+          A standard implementation checklist/template for this category — staff-only, never shown to a Founder or
+          donor. See CauseCategory.projectPlanFileUrl.
+        </p>
+        {existing ? (
+          <div className="flex flex-wrap items-center gap-3">
+            {projectPlanFileUrl && (
+              <a href={projectPlanFileUrl} target="_blank" rel="noreferrer" className="text-sm text-primary-700 hover:underline">
+                View current file →
+              </a>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,application/pdf"
+              className="hidden"
+              onChange={handleFileSelected}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              className="px-3 py-1.5 text-xs"
+              disabled={uploadingFile}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploadingFile ? "Uploading…" : projectPlanFileUrl ? "Replace file" : "Upload file"}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">Save this category first, then reopen it to edit to attach a file.</p>
+        )}
+        {fileError && <p className="text-xs text-red-600">{fileError}</p>}
+        <p className="text-xs text-slate-400">PNG, JPEG, WebP, or PDF — 10MB max.</p>
       </div>
 
       {parentId === NEW_PARENT_VALUE && (

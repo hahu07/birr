@@ -172,6 +172,32 @@ async function bootstrap() {
     express.static(path.join(__dirname, "..", "uploads", "waqf-milestone-evidence")),
   );
 
+  // CauseCategory.projectPlanFileUrl — a template document attached to a
+  // shared catalog entry, not owned by any one Founder/Foundation the
+  // way message-attachments/waqf-milestone-evidence are, so the gate is
+  // simply "any signed-in Birr staff," with no ownership check. Staff-
+  // only, not public, per that field's own schema comment (staff
+  // reference material, never shown to a donor) — the opposite posture
+  // from vault-documents above. See
+  // cause-category-document-storage.service.ts.
+  app.use(
+    "/uploads/cause-category-documents",
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        if (!(await isBirrStaffSession(req))) {
+          res.status(401).json({ message: "Not signed in as Birr staff." });
+          return;
+        }
+        next();
+      } catch (err) {
+        const status = err instanceof HttpException ? err.getStatus() : 500;
+        const message = err instanceof HttpException ? err.message : "Internal server error";
+        res.status(status).json({ message });
+      }
+    },
+    express.static(path.join(__dirname, "..", "uploads", "cause-category-documents")),
+  );
+
   // Correlation id: reuses an inbound x-request-id (e.g. from a load
   // balancer/proxy that already assigns one) or mints a fresh one,
   // attaches it to the request for AllExceptionsFilter to log against,

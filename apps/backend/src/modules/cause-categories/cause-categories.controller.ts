@@ -1,10 +1,12 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Req, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { Request } from "express";
 import {
   CauseCategoriesService,
   CreateCauseCategoryInput,
   UpdateCauseCategoryInput,
 } from "./cause-categories.service";
+import { CauseCategoryDocumentStorageService, MAX_SIZE_BYTES } from "./cause-category-document-storage.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 import { Public } from "../../common/guards/public.decorator";
@@ -17,7 +19,10 @@ import { Public } from "../../common/guards/public.decorator";
 @Public()
 @Controller("cause-categories")
 export class CauseCategoriesController {
-  constructor(private readonly service: CauseCategoriesService) {}
+  constructor(
+    private readonly service: CauseCategoriesService,
+    private readonly documentStorage: CauseCategoryDocumentStorageService,
+  ) {}
 
   @Post()
   @RequiresStaffRole("platform_admin")
@@ -33,6 +38,24 @@ export class CauseCategoriesController {
     @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
   ) {
     return this.service.update(id, body, staff.userId);
+  }
+
+  // multipart/form-data — same FileInterceptor shape as
+  // VaultsController's own feasibility-report route. Staff-gated (not
+  // @Public(), unlike list() above) since this attaches a document, not
+  // just reads the catalog — same platform_admin-only posture as
+  // create()/update().
+  @Post(":id/project-plan-file")
+  @RequiresStaffRole("platform_admin")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_SIZE_BYTES } }))
+  async setProjectPlanFile(
+    @Param("id") id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    if (!file) throw new BadRequestException("No file was uploaded.");
+    const { url } = await this.documentStorage.saveDocument(file);
+    return this.service.setProjectPlanFile(id, url, staff.userId);
   }
 
   @Post(":id/retire")

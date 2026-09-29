@@ -154,6 +154,10 @@ export interface CauseCategory {
   // selection time — see CauseCategory.projectPlan's own schema
   // comment. Never shown to a donor itself.
   projectPlan: string | null;
+  // Optional attached template document — see
+  // CauseCategory.projectPlanFileUrl's own schema comment. Staff-only
+  // to fetch (see main.ts's /uploads/cause-category-documents mount).
+  projectPlanFileUrl: string | null;
   icon: string | null;
   sortOrder: number;
   typicalWaqfTypes: ("investment" | "asset" | "project")[];

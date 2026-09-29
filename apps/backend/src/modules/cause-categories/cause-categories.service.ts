@@ -240,6 +240,33 @@ export class CauseCategoriesService {
     });
   }
 
+  // Sets/replaces the optional template document attached to this
+  // category's `projectPlan` — see CauseCategory.projectPlanFileUrl's
+  // own schema comment. Plain CRUD, same posture as create()/update()
+  // above (a catalog edit, not a fiduciary decision about a specific
+  // waqf/vault), audited the same way.
+  async setProjectPlanFile(id: string, url: string, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.causeCategory.findUnique({ where: { id } });
+      if (!existing || existing.deletedAt) {
+        throw new NotFoundException(`CauseCategory "${id}" not found.`);
+      }
+      const category = await tx.causeCategory.update({ where: { id }, data: { projectPlanFileUrl: url } });
+      await tx.auditLog.create({
+        data: {
+          actorType: "birr_staff",
+          actorUserId,
+          action: "cause_category.project_plan_file_updated",
+          entityType: "CauseCategory",
+          entityId: category.id,
+          before: { projectPlanFileUrl: existing.projectPlanFileUrl } as any,
+          after: { projectPlanFileUrl: category.projectPlanFileUrl } as any,
+        },
+      });
+      return category;
+    });
+  }
+
   // includeRetired is staff-admin-screen-only (see controller) — a
   // Founder picking a cause for their waqf, or an anonymous caller,
   // should only ever see options currently on offer. usageCount (active

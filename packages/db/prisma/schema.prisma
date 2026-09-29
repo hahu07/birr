@@ -668,9 +668,9 @@ model FoundationFounder {
 // here never rewrites or breaks history already on a waqf — it only
 // removes the option from what a Founder can newly pick.
 model CauseCategory {
-  id               String          @id @default(uuid())
-  name             String          @unique
-  description      String?
+  id                 String          @id @default(uuid())
+  name               String          @unique
+  description        String?
   // A default project-plan TEMPLATE, copied into a new VaultCause at
   // selection time (same copy-at-selection pattern as `description`
   // above — see VaultsService.createCause) — never shown to a donor
@@ -682,14 +682,23 @@ model CauseCategory {
   // honestly describe implementation for all of them — same reasoning
   // that put the real field at cause-level, not vault-level, in the
   // first place. See VaultCause.projectPlan's own schema comment.
-  projectPlan      String?
+  projectPlan        String?
+  // Optional document attached to `projectPlan` above — e.g. a standard
+  // implementation checklist/template PDF staff can attach once per
+  // category. Same upload/storage shape as Vault.feasibilityReportUrl
+  // (a new CauseCategoryDocumentStorageService, mirroring
+  // VaultDocumentStorageService), but not that field's audience: this is
+  // staff reference material tied to the whole category, same
+  // never-shown-to-a-donor posture as `projectPlan` text above, not a
+  // per-campaign public document.
+  projectPlanFileUrl String?
   // Single emoji glyph, e.g. "🎓" — visual identity in the Founder's
   // picker; no new asset pipeline needed for a handful of catalog rows.
-  icon             String?
+  icon               String?
   // Product team's own curated display order (ascending, ties broken by
   // name) — not creation order or alphabetical, since neither reflects
   // which causes Birr wants shown first.
-  sortOrder        Int             @default(0)
+  sortOrder          Int             @default(0)
   // Staff-curated, not derived from live selection stats — with so few
   // real waqfs established, usage-based "commonly picked for this type"
   // would be noise for a long while. A UX nudge only (the Founder's
@@ -699,7 +708,7 @@ model CauseCategory {
   // for their waqf's type — see the founder-facing CausesSection's own
   // comment. Empty array = "no particular type association," shown
   // alongside every type's suggestions equally, not hidden from any.
-  typicalWaqfTypes WaqfType[]
+  typicalWaqfTypes   WaqfType[]
   // Arbitrary depth — a category may itself have a parent that has a
   // parent, and so on. The only rule enforced (in CauseCategoriesService,
   // since Prisma/Postgres can't express acyclicity as a schema
@@ -707,12 +716,12 @@ model CauseCategory {
   // category with children is just a non-selectable grouping label in
   // the Founder's picker; one with none behaves exactly as every
   // category did before this existed.
-  parentId         String?
-  parent           CauseCategory?  @relation("CauseCategoryChildren", fields: [parentId], references: [id])
-  children         CauseCategory[] @relation("CauseCategoryChildren")
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  deletedAt        DateTime?
+  parentId           String?
+  parent             CauseCategory?  @relation("CauseCategoryChildren", fields: [parentId], references: [id])
+  children           CauseCategory[] @relation("CauseCategoryChildren")
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  deletedAt          DateTime?
 
   waqfCauses               WaqfCause[]
   resultingFromSuggestions CauseCategorySuggestion[]
