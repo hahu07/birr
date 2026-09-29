@@ -14,7 +14,6 @@ describe("FounderRequestsService", () => {
   let waqfBId: string;
   let staffUserId: string;
   let staffId: string;
-  let platformAdminUserId: string;
   let platformAdminId: string;
 
   beforeAll(async () => {
@@ -47,7 +46,6 @@ describe("FounderRequestsService", () => {
     const adminUser = await prisma.user.create({
       data: { email: `founder-requests-admin-${Date.now()}@example.com`, fullName: "Fixture Platform Admin" },
     });
-    platformAdminUserId = adminUser.id;
     const admin = await prisma.birrStaff.create({ data: { userId: adminUser.id, staffRole: "platform_admin" } });
     platformAdminId = admin.id;
   });

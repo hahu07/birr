@@ -71,22 +71,29 @@ export function useLoadedResource<T>(fetcher: () => Promise<T>, deps: unknown[])
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
+  // Latest fetcher kept in a ref so `reload` can stay stable — React's
+  // compiler rejects a non-literal dependency list on useCallback.
+  const fetcherRef = useRef(fetcher);
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  });
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- deps is the caller's own dependency list, not statically visible here
   const reload = useCallback(() => {
     const thisRequest = ++requestId.current;
-    fetcher()
+    fetcherRef
+      .current()
       .then((result) => {
         if (requestId.current === thisRequest) setData(result);
       })
       .catch((err: unknown) => {
         if (requestId.current === thisRequest) setError(err instanceof Error ? err.message : "Something went wrong.");
       });
-  }, deps);
+  }, []);
 
   useEffect(() => {
     reload();
-  }, [reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps is the caller's own dependency list, not statically visible here
+  }, deps);
 
   return { data, error, reload };
 }

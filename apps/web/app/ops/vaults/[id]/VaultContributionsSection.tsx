@@ -16,7 +16,7 @@ import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, T
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 
-export function VaultContributionsSection({ vaultId, currency }: { vaultId: string; currency: string }) {
+export function VaultContributionsSection({ vaultId }: { vaultId: string }) {
   const {
     data: contributions,
     error,
@@ -56,7 +56,7 @@ export function VaultContributionsSection({ vaultId, currency }: { vaultId: stri
           </TableHead>
           <TableBody>
             {contributions.map((c) => (
-              <ContributionRow key={c.id} contribution={c} currency={currency} onChanged={load} />
+              <ContributionRow key={c.id} contribution={c} onChanged={load} />
             ))}
           </TableBody>
         </Table>
@@ -73,11 +73,9 @@ const STATUS_TONE: Record<VaultContribution["status"], "success" | "warning" | "
 
 function ContributionRow({
   contribution: c,
-  currency,
   onChanged,
 }: {
   contribution: VaultContribution;
-  currency: string;
   onChanged: () => void;
 }) {
   const [showHoldForm, setShowHoldForm] = useState(false);

@@ -55,7 +55,6 @@ export default function VaultDetailPage() {
   // Bumped by VaultCausesSection whenever a cause is added or an
   // allocation proposal is decided-in-place refreshed — Distributions
   // needs the fresh cause list to pick from.
-  const [causesVersion, setCausesVersion] = useState(0);
   // Bumped by VaultExpensesSection whenever it records an expense — the
   // journal entry it auto-posts is exactly what VaultLedgerSection's
   // own reports read, so those need to refetch too, not just Milestones.
@@ -148,10 +147,7 @@ export default function VaultDetailPage() {
           vaultType={vault.type}
           currency={vault.currency}
           additionalCurrencies={vault.additionalCurrencies}
-          onChanged={() => {
-            load();
-            setCausesVersion((v) => v + 1);
-          }}
+          onChanged={load}
         />
         {vault.type === "investment" && (
           <>
@@ -188,7 +184,7 @@ export default function VaultDetailPage() {
           causes={causes}
           milestones={milestones ?? []}
         />
-        <VaultContributionsSection vaultId={id} currency={vault.currency} />
+        <VaultContributionsSection vaultId={id} />
         <VaultLedgerSection vaultId={id} currency={vault.currency} additionalCurrencies={vault.additionalCurrencies} refreshKey={ledgerVersion} />
       </div>
     </div>

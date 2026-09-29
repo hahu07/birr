@@ -431,6 +431,12 @@ function CustomCauseForm({ vaultId, onCreated }: { vaultId: string; onCreated: (
       <Button type="submit" disabled={submitting}>
         {submitting ? "Adding…" : "Add"}
       </Button>
+      {/* Was set but never rendered — e.g. a duplicate cause name failed silently. */}
+      {error && (
+        <Alert tone="danger" title="Couldn't add cause" className="w-full">
+          {error}
+        </Alert>
+      )}
     </form>
   );
 }
