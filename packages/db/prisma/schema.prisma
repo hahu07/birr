@@ -671,6 +671,18 @@ model CauseCategory {
   id               String          @id @default(uuid())
   name             String          @unique
   description      String?
+  // A default project-plan TEMPLATE, copied into a new VaultCause at
+  // selection time (same copy-at-selection pattern as `description`
+  // above — see VaultsService.createCause) — never shown to a donor
+  // itself. Exists purely so staff picking the same category across many
+  // vaults aren't retyping similar boilerplate every time. Deliberately
+  // NOT a replacement for VaultCause.projectPlan (the real, specific,
+  // publicly-shown write-up): a category is reused across many
+  // genuinely different campaigns, so one plan at this level can't
+  // honestly describe implementation for all of them — same reasoning
+  // that put the real field at cause-level, not vault-level, in the
+  // first place. See VaultCause.projectPlan's own schema comment.
+  projectPlan      String?
   // Single emoji glyph, e.g. "🎓" — visual identity in the Founder's
   // picker; no new asset pipeline needed for a handful of catalog rows.
   icon             String?

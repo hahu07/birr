@@ -146,6 +146,10 @@ export interface CauseCategory {
   id: string;
   name: string;
   description: string | null;
+  // Default project-plan template, copied into a new VaultCause at
+  // selection time — see CauseCategory.projectPlan's own schema
+  // comment. Never shown to a donor itself.
+  projectPlan: string | null;
   icon: string | null;
   sortOrder: number;
   typicalWaqfTypes: ("investment" | "asset" | "project")[];

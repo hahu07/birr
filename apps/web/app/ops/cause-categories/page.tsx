@@ -298,6 +298,7 @@ function CauseCategoryForm({
 }) {
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
+  const [projectPlan, setProjectPlan] = useState(existing?.projectPlan ?? "");
   const [icon, setIcon] = useState(existing?.icon ?? "");
   const [sortOrder, setSortOrder] = useState(existing ? String(existing.sortOrder) : "0");
   const [typicalWaqfTypes, setTypicalWaqfTypes] = useState<CauseCategory["typicalWaqfTypes"]>(
@@ -378,6 +379,7 @@ function CauseCategoryForm({
         icon: icon.trim() || undefined,
         sortOrder: Number(sortOrder) || 0,
         typicalWaqfTypes,
+        projectPlan: projectPlan.trim() || undefined,
         // null (not undefined) when cleared, so an edit can actually
         // remove an existing parent — omitting the field would leave it
         // untouched instead. See UpdateCauseCategoryInput.parentId.
@@ -449,6 +451,21 @@ function CauseCategoryForm({
             Cancel
           </Button>
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-slate-700">Default project plan (optional)</label>
+        {/* A starting draft only — copied into a new VaultCause when
+            staff pick this category, never shown to a donor itself. See
+            CauseCategory.projectPlan's own schema comment. */}
+        <textarea
+          rows={2}
+          maxLength={500}
+          placeholder="A generic starting draft for how a cause under this category is typically implemented — staff can adjust it per vault after picking this category."
+          value={projectPlan}
+          onChange={(e) => setProjectPlan(e.target.value)}
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
       </div>
 
       {parentId === NEW_PARENT_VALUE && (

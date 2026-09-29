@@ -38,6 +38,16 @@ export class CreateCauseCategoryInput {
   @IsOptional()
   @IsString()
   parentId?: string | null;
+
+  // See CauseCategory.projectPlan's own schema comment — a default
+  // template copied into a new VaultCause at selection time, not itself
+  // shown to a donor. Same DESCRIPTION_MAX_LENGTH cap as `description`
+  // above (deliberately shorter than VaultCause.projectPlan's own
+  // 2000-char cap — a generic starting draft, not the full write-up).
+  @IsOptional()
+  @IsString()
+  @MaxLength(DESCRIPTION_MAX_LENGTH)
+  projectPlan?: string;
 }
 
 export class UpdateCauseCategoryInput {
@@ -70,14 +80,20 @@ export class UpdateCauseCategoryInput {
   @IsOptional()
   @IsString()
   parentId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(DESCRIPTION_MAX_LENGTH)
+  projectPlan?: string;
 }
 
-function normalize<T extends { name?: string; description?: string; icon?: string }>(input: T): T {
+function normalize<T extends { name?: string; description?: string; icon?: string; projectPlan?: string }>(input: T): T {
   return {
     ...input,
     ...(input.name !== undefined && { name: input.name.trim() }),
     ...(input.description !== undefined && { description: input.description.trim() || undefined }),
     ...(input.icon !== undefined && { icon: input.icon.trim() || undefined }),
+    ...(input.projectPlan !== undefined && { projectPlan: input.projectPlan.trim() || undefined }),
   };
 }
 

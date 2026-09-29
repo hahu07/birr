@@ -431,6 +431,7 @@ export class VaultsService {
 
       let name = input.name;
       let description = input.description;
+      let projectPlan = input.projectPlan;
       if (input.causeCategoryId) {
         const category = await tx.causeCategory.findFirst({ where: { id: input.causeCategoryId, deletedAt: null } });
         if (!category) throw new NotFoundException(`CauseCategory "${input.causeCategoryId}" not found.`);
@@ -439,6 +440,12 @@ export class VaultsService {
         // retroactively rewrite what this vault already shows.
         name = name ?? category.name;
         description = description ?? category.description ?? undefined;
+        // The category's own projectPlan is only ever a default
+        // TEMPLATE (see its own schema comment) — an explicit
+        // input.projectPlan always wins; this just fills the gap when
+        // staff didn't type one, so they're not retyping the same
+        // boilerplate every time they pick a commonly-used category.
+        projectPlan = projectPlan ?? category.projectPlan ?? undefined;
       }
       if (!name) {
         throw new BadRequestException("A vault cause needs a name, either supplied directly or via causeCategoryId.");
@@ -447,7 +454,7 @@ export class VaultsService {
       let cause;
       try {
         cause = await tx.vaultCause.create({
-          data: { vaultId: input.vaultId, causeCategoryId: input.causeCategoryId, name, description, projectPlan: input.projectPlan },
+          data: { vaultId: input.vaultId, causeCategoryId: input.causeCategoryId, name, description, projectPlan },
         });
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === UNIQUE_CONSTRAINT_VIOLATION) {

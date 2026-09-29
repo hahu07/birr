@@ -55,6 +55,23 @@ describe("CauseCategoriesService", () => {
     expect(category.icon).toBe("🌙");
   });
 
+  test("projectPlan: create() stores it, update() changes it, and omitting it on update leaves it unchanged", async () => {
+    const category = await service.create(
+      { name: fixtureName("ProjectPlan"), description: "A fixture description.", projectPlan: "  A default starting draft.  " },
+      actorUserId,
+    );
+    causeCategoryIds.push(category.id);
+    expect(category.projectPlan).toBe("A default starting draft."); // trimmed, same as description
+
+    const updated = await service.update(category.id, { projectPlan: "A revised default draft." }, actorUserId);
+    expect(updated.projectPlan).toBe("A revised default draft.");
+
+    // Omitted (not blanked) — same "only overwrite whichever field is
+    // sent" contract description/icon already have.
+    const unchanged = await service.update(category.id, { description: "Still here." }, actorUserId);
+    expect(unchanged.projectPlan).toBe("A revised default draft.");
+  });
+
   test("create() rejects a whitespace-only description", async () => {
     await expect(
       service.create({ name: fixtureName("BlankDesc"), description: "   " }, actorUserId),

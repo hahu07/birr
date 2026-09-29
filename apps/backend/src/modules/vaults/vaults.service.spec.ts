@@ -193,6 +193,39 @@ describe("VaultsService", () => {
     expect(cause.causeCategoryId).toBe(category.id);
   });
 
+  test("createCause(): picking from the catalog copies the category's projectPlan as a default, but an explicit projectPlan on the cause wins", async () => {
+    const category = await prisma.causeCategory.create({
+      data: {
+        name: `Vault Fixture Category With Plan ${Date.now()}`,
+        description: "Category description.",
+        projectPlan: "Generic category-level default plan.",
+      },
+    });
+    causeCategoryIds.push(category.id);
+
+    const vault = await service.create(
+      { name: "Catalog Default Plan Vault", slug: uniqueSlug("catalog-default-plan"), type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+
+    const withDefault = await service.createCause({ vaultId: vault.id, causeCategoryId: category.id }, actorUserId);
+    vaultCauseIds.push(withDefault.id);
+    expect(withDefault.projectPlan).toBe("Generic category-level default plan.");
+
+    const secondVault = await service.create(
+      { name: "Catalog Override Plan Vault", slug: uniqueSlug("catalog-override-plan"), type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(secondVault.id);
+    const withOverride = await service.createCause(
+      { vaultId: secondVault.id, causeCategoryId: category.id, projectPlan: "This specific vault's own plan." },
+      actorUserId,
+    );
+    vaultCauseIds.push(withOverride.id);
+    expect(withOverride.projectPlan).toBe("This specific vault's own plan.");
+  });
+
   test("createCause() throws NotFoundException for an unknown vaultId", async () => {
     await expect(
       service.createCause({ vaultId: "00000000-0000-0000-0000-000000000000", name: "Anything" }, actorUserId),
