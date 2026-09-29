@@ -167,9 +167,10 @@ export default function CauseCategoriesPage() {
             key={editing?.id ?? "new"}
             existing={editing}
             categories={categories ?? []}
-            onSaved={() => {
+            onSaved={(warning) => {
               setShowForm(false);
               setEditing(null);
+              setActionError(warning ?? null);
               load();
             }}
             onCancel={() => {
@@ -293,7 +294,10 @@ function CauseCategoryForm({
 }: {
   existing: CauseCategory | null;
   categories: CauseCategory[];
-  onSaved: () => void;
+  // A truthy argument is a warning to surface after this form closes —
+  // see handleSubmit's own comment on the "category saved, file didn't"
+  // partial-failure case this exists for.
+  onSaved: (warning?: string) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(existing?.name ?? "");
@@ -311,21 +315,29 @@ function CauseCategoryForm({
   const [error, setError] = useState<string | null>(null);
 
   // Template file attached to the default project plan above — see
-  // CauseCategory.projectPlanFileUrl's own schema comment. Uploads
-  // immediately on file pick, same convention as
-  // VaultFeasibilityReportSection's own File control; kept as its own
-  // local state (not routed through the form's onSaved) so uploading
-  // doesn't close this panel the way saving the rest of the form does.
+  // CauseCategory.projectPlanFileUrl's own schema comment. Editing an
+  // existing category: uploads immediately on file pick, same
+  // convention as VaultFeasibilityReportSection's own File control.
+  // Creating a brand-new one: there's no category id yet to attach to,
+  // so the file is only staged (pendingFile) here and actually uploaded
+  // right after handleSubmit's create call succeeds, using the id that
+  // returns — one "Add" click covers both, instead of forcing a
+  // save-then-reopen-to-edit round trip.
   const [projectPlanFileUrl, setProjectPlanFileUrl] = useState(existing?.projectPlanFileUrl ?? null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !existing) return;
+    if (!file) return;
     setFileError(null);
+    if (!existing) {
+      setPendingFile(file);
+      return;
+    }
     setUploadingFile(true);
     try {
       const formData = new FormData();
@@ -417,10 +429,29 @@ function CauseCategoryForm({
         // untouched instead. See UpdateCauseCategoryInput.parentId.
         parentId: resolvedParentId,
       });
+      let category: CauseCategory;
       if (existing) {
-        await apiFetchJson(`/cause-categories/${existing.id}`, { method: "PUT", body });
+        category = await apiFetchJson<CauseCategory>(`/cause-categories/${existing.id}`, { method: "PUT", body });
       } else {
-        await apiFetchJson("/cause-categories", { method: "POST", body });
+        category = await apiFetchJson<CauseCategory>("/cause-categories", { method: "POST", body });
+      }
+      if (pendingFile) {
+        try {
+          const formData = new FormData();
+          formData.append("file", pendingFile);
+          await apiFetchJson(`/cause-categories/${category.id}/project-plan-file`, { method: "POST", body: formData });
+        } catch (fileErr) {
+          // The category itself saved fine — surface the file failure as a
+          // warning that survives this form closing, rather than losing it
+          // (or blocking the save the user actually asked for) over a
+          // separate upload request failing.
+          onSaved(
+            `"${category.name}" was saved, but its template file couldn't be attached: ${
+              fileErr instanceof Error ? fileErr.message : "Something went wrong."
+            } Use Edit to try uploading it again.`,
+          );
+          return;
+        }
       }
       onSaved();
     } catch (err) {
@@ -506,32 +537,40 @@ function CauseCategoryForm({
           A standard implementation checklist/template for this category — staff-only, never shown to a Founder or
           donor. See CauseCategory.projectPlanFileUrl.
         </p>
-        {existing ? (
-          <div className="flex flex-wrap items-center gap-3">
-            {projectPlanFileUrl && (
-              <a href={projectPlanFileUrl} target="_blank" rel="noreferrer" className="text-sm text-primary-700 hover:underline">
-                View current file →
-              </a>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,application/pdf"
-              className="hidden"
-              onChange={handleFileSelected}
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              className="px-3 py-1.5 text-xs"
-              disabled={uploadingFile}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploadingFile ? "Uploading…" : projectPlanFileUrl ? "Replace file" : "Upload file"}
-            </Button>
-          </div>
-        ) : (
-          <p className="text-xs text-slate-400">Save this category first, then reopen it to edit to attach a file.</p>
+        <div className="flex flex-wrap items-center gap-3">
+          {existing && projectPlanFileUrl && (
+            <a href={projectPlanFileUrl} target="_blank" rel="noreferrer" className="text-sm text-primary-700 hover:underline">
+              View current file →
+            </a>
+          )}
+          {!existing && pendingFile && <span className="text-sm text-slate-600">{pendingFile.name}</span>}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,application/pdf"
+            className="hidden"
+            onChange={handleFileSelected}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            className="px-3 py-1.5 text-xs"
+            disabled={uploadingFile}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploadingFile
+              ? "Uploading…"
+              : existing
+                ? projectPlanFileUrl
+                  ? "Replace file"
+                  : "Upload file"
+                : pendingFile
+                  ? "Choose a different file"
+                  : "Choose file"}
+          </Button>
+        </div>
+        {!existing && pendingFile && (
+          <p className="text-xs text-slate-400">Uploaded once you click "Add" above.</p>
         )}
         {fileError && <p className="text-xs text-red-600">{fileError}</p>}
         <p className="text-xs text-slate-400">PNG, JPEG, WebP, or PDF — 10MB max.</p>
