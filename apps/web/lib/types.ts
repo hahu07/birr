@@ -71,6 +71,10 @@ export interface WaqfCause {
   causeCategoryId: string | null;
   name: string;
   description: string | null;
+  // Birr-staff-authored, read-only here — see WaqfCause.projectPlan's
+  // own schema comment for why this isn't Founder self-service the way
+  // allocatedAmount below is.
+  projectPlan: string | null;
   // How much of the waqf's live amountRaised (confirmed Contributions)
   // is earmarked to this cause — null means not yet allocated. Set via
   // POST /waqf-causes/:id/allocate, founder self-service, for every
@@ -93,8 +97,10 @@ export interface WaqfCause {
   createdAt: string;
   // Only present from the founder-facing listing (GET /waqf-causes as a
   // founder session) — counts, never names, so no beneficiary PII crosses
-  // into the Founder Portal.
-  _count?: { beneficiaries: number; distributions: number };
+  // into the Founder Portal. pendingNominations added 2026-09-29 — see
+  // WaqfCausesService.listForFounder's own comment on why an unselect
+  // needs to warn about these too, not just approved beneficiaries.
+  _count?: { beneficiaries: number; distributions: number; pendingNominations: number };
 }
 
 export interface WaqfProceeds {

@@ -1,7 +1,13 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { IsString } from "class-validator";
 import { Request } from "express";
-import { WaqfCausesService, CreateWaqfCauseInput, SelectCauseCategoryInput, AllocateCauseInput } from "./waqf-causes.service";
+import {
+  WaqfCausesService,
+  CreateWaqfCauseInput,
+  SelectCauseCategoryInput,
+  AllocateCauseInput,
+  UpdateWaqfCauseProjectPlanInput,
+} from "./waqf-causes.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
@@ -78,6 +84,19 @@ export class WaqfCausesController {
     @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
   ) {
     return this.service.allocateProceedsProportionally(body.waqfId, staff.userId);
+  }
+
+  // Birr-staff path — see WaqfCause.projectPlan's own schema comment for
+  // why this stays staff-authored, unlike allocate() above. No
+  // @Public() — staff session required by default, same posture as
+  // create()/allocateProceeds() above.
+  @Post(":id/project-plan")
+  updateProjectPlan(
+    @Param("id") id: string,
+    @Body() body: UpdateWaqfCauseProjectPlanInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.service.updateProjectPlan(id, staff.userId, body.projectPlan);
   }
 
   // @Public() — also reachable by a signed-in Founder viewing their own

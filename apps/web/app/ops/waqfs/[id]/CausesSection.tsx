@@ -113,7 +113,7 @@ export function CausesSection({
         />
       )}
 
-      {!error && causes === null && <RowsSkeleton columns={showProceeds ? 5 : 4} />}
+      {!error && causes === null && <RowsSkeleton columns={showProceeds ? 6 : 5} />}
 
       {!error && causes !== null && causes.length === 0 && !showForm && (
         <EmptyState title="No causes yet" description="Add one above to start tracking beneficiaries against it." />
@@ -125,6 +125,7 @@ export function CausesSection({
             <TableRow>
               <TableHeaderCell>Name</TableHeaderCell>
               <TableHeaderCell>Description</TableHeaderCell>
+              <TableHeaderCell>Project plan</TableHeaderCell>
               <TableHeaderCell>Allocated</TableHeaderCell>
               {showProceeds && <TableHeaderCell>Proceeds allocated</TableHeaderCell>}
               <TableHeaderCell className="text-right">Added</TableHeaderCell>
@@ -135,6 +136,9 @@ export function CausesSection({
               <TableRow key={c.id}>
                 <TableCell className="font-medium text-slate-900">{c.name}</TableCell>
                 <TableCell className="text-slate-500">{c.description ?? "—"}</TableCell>
+                <TableCell className="text-slate-500">
+                  <ProjectPlanCell causeId={c.id} value={c.projectPlan} onSaved={load} />
+                </TableCell>
                 {/* Founder self-service (see WaqfCausesService.allocate's
                     own comment) — read-only here, no staff write path. */}
                 <TableCell className="text-slate-500">
@@ -358,6 +362,7 @@ function ProceedsAllocationCell({
 function CauseForm({ waqfId, onCreated }: { waqfId: string; onCreated: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [projectPlan, setProjectPlan] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -368,7 +373,7 @@ function CauseForm({ waqfId, onCreated }: { waqfId: string; onCreated: () => voi
     try {
       await apiFetchJson("/waqf-causes", {
         method: "POST",
-        body: JSON.stringify({ waqfId, name, description: description || undefined }),
+        body: JSON.stringify({ waqfId, name, description: description || undefined, projectPlan: projectPlan || undefined }),
       });
       onCreated();
     } catch (err) {
@@ -393,10 +398,90 @@ function CauseForm({ waqfId, onCreated }: { waqfId: string; onCreated: () => voi
           <label className="text-sm font-medium text-slate-700">Description (optional)</label>
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? "Adding…" : "Add"}
-        </Button>
       </div>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-slate-700">Project plan (optional)</label>
+        {/* See WaqfCause.projectPlan's own schema comment — Birr-staff
+            authored, shown read-only to the Founder. */}
+        <textarea
+          rows={2}
+          maxLength={2000}
+          placeholder="A brief write-up of how this specific cause's money is actually used — e.g. which partner delivers it, and how."
+          value={projectPlan}
+          onChange={(e) => setProjectPlan(e.target.value)}
+          className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
+      </div>
+      <Button type="submit" disabled={submitting}>
+        {submitting ? "Adding…" : "Add"}
+      </Button>
     </form>
+  );
+}
+
+// Plain staff CRUD (POST /waqf-causes/:id/project-plan), not a governed
+// propose — mirrors VaultCausesSection.tsx's own ProjectPlanCell exactly.
+function ProjectPlanCell({ causeId, value, onSaved }: { causeId: string; value: string | null; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!editing) {
+    return (
+      <div className="flex items-start gap-2">
+        <span className="max-w-xs truncate">{value || "—"}</span>
+        <button
+          type="button"
+          className="shrink-0 text-xs font-medium text-primary-700 hover:underline"
+          onClick={() => {
+            setDraft(value ?? "");
+            setError(null);
+            setEditing(true);
+          }}
+        >
+          {value ? "Edit" : "Add"}
+        </button>
+      </div>
+    );
+  }
+
+  async function handleSave() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await apiFetchJson(`/waqf-causes/${causeId}/project-plan`, {
+        method: "POST",
+        body: JSON.stringify({ projectPlan: draft }),
+      });
+      setEditing(false);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="min-w-[16rem] space-y-1.5">
+      <textarea
+        autoFocus
+        rows={2}
+        maxLength={2000}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+      />
+      <div className="flex items-center gap-2">
+        <Button type="button" disabled={submitting} onClick={handleSave} className="px-2.5 py-1 text-xs">
+          {submitting ? "Saving…" : "Save"}
+        </Button>
+        <button type="button" className="text-xs text-slate-500 hover:underline" onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-red-600">{error}</p>}
+    </div>
   );
 }

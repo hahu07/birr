@@ -744,6 +744,17 @@ model WaqfCause {
   causeCategory           CauseCategory? @relation(fields: [causeCategoryId], references: [id])
   name                    String
   description             String?
+  // A brief, cause-specific write-up of how this cause's money is
+  // actually used — Birr-staff-authored, not Founder self-service
+  // (same split as proceedsAllocatedAmount below vs. allocatedAmount: a
+  // Founder never authors the operational detail of how Birr runs the
+  // program, only picks/funds the cause itself — see
+  // WaqfCausesService.allocateProceeds's own comment for the identical
+  // reasoning). Mirrors VaultCause.projectPlan exactly; copied from
+  // CauseCategory.projectPlan as a default at selection time, same as
+  // name/description above, then independently editable by staff
+  // afterward. Visible to the Founder read-only.
+  projectPlan             String?
   // How much of the waqf's live amountRaised (confirmed Contributions —
   // see WaqfCausesService.allocate's own comment) the Founder has
   // earmarked to this cause. Always drawn from amountRaised, for every

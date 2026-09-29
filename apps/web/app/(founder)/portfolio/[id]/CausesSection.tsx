@@ -45,12 +45,14 @@ export function CausesSection({
   const [search, setSearch] = useState("");
   const [suggestState, setSuggestState] = useState<"idle" | "form" | "submitted">("idle");
   const [allocatingCauseId, setAllocatingCauseId] = useState<string | null>(null);
-  // Set only when unchecking a cause that already has beneficiaries or
-  // distributions against it — asks for a second click instead of
-  // unselecting immediately, since that history stops being offered for
-  // new beneficiaries/distributions the moment this cause is off (see
-  // toggle() below; the history itself is never lost, just no longer
-  // an option going forward).
+  // Set only when unchecking a cause that already has beneficiaries,
+  // distributions, a pending nomination, or a nonzero allocation against
+  // it — asks for a second click instead of unselecting immediately,
+  // since that history stops being offered for new beneficiaries/
+  // distributions the moment this cause is off, and any allocated amount
+  // is freed back into the unallocated pool (see toggle() below; the
+  // history itself is never lost, just no longer an option going
+  // forward).
   const [confirmUnselect, setConfirmUnselect] = useState<{ category: CauseCategory; cause: WaqfCause } | null>(null);
 
   const load = useCallback(() => {
@@ -91,8 +93,21 @@ export function CausesSection({
   async function toggle(category: CauseCategory) {
     const selected = causes?.find((c) => c.causeCategoryId === category.id);
     if (selected) {
-      const inUse = (selected._count?.beneficiaries ?? 0) > 0 || (selected._count?.distributions ?? 0) > 0;
-      if (inUse && confirmUnselect?.cause.id !== selected.id) {
+      // 2026-09-29 codebase walkthrough finding, two gaps closed here:
+      // (1) unselecting a cause with money already allocated to it
+      // silently frees that amount back into the unallocated pool — the
+      // ceiling check (WaqfCausesService.allocate) only ever sums
+      // *active* causes, so a hidden cause's old allocatedAmount simply
+      // stops counting, with no warning that this is what "removing"
+      // it actually does. (2) a pending beneficiary nomination on this
+      // cause was never covered by the warning at all, since it isn't a
+      // real Beneficiary row yet.
+      const hasBeneficiaries = (selected._count?.beneficiaries ?? 0) > 0;
+      const hasDistributions = (selected._count?.distributions ?? 0) > 0;
+      const hasPendingNomination = (selected._count?.pendingNominations ?? 0) > 0;
+      const hasAllocation = Number(selected.allocatedAmount ?? 0) > 0;
+      const needsConfirm = hasBeneficiaries || hasDistributions || hasPendingNomination || hasAllocation;
+      if (needsConfirm && confirmUnselect?.cause.id !== selected.id) {
         setConfirmUnselect({ category, cause: selected });
         return;
       }
@@ -185,9 +200,24 @@ export function CausesSection({
                 it.{" "}
               </>
             ) : null}
+            {confirmUnselect.cause._count?.pendingNominations ? (
+              <>
+                {confirmUnselect.cause._count.pendingNominations} beneficiary nomination
+                {confirmUnselect.cause._count.pendingNominations === 1 ? " is" : "s are"} still waiting on Birr's
+                review for this cause.{" "}
+              </>
+            ) : null}
             That history is kept and stays visible to Birr — nothing is deleted. But once removed, this cause won't
             be offered for any new beneficiaries or distributions on this fund until you select it again.
           </p>
+          {Number(confirmUnselect.cause.allocatedAmount ?? 0) > 0 ? (
+            <p className="mt-2">
+              The {corpusCurrency} {formatAmount(confirmUnselect.cause.allocatedAmount ?? "0")} currently allocated
+              to this
+              cause will be freed back into this fund&apos;s unallocated pool, available to allocate to another
+              cause.
+            </p>
+          ) : null}
           <div className="mt-3 flex gap-2">
             <Button
               type="button"
@@ -297,6 +327,9 @@ export function CausesSection({
                             ? `${corpusCurrency} ${formatAmount(cause.allocatedAmount)} allocated`
                             : "Not allocated yet"}
                         </p>
+                        {/* Birr-staff-authored, read-only here — see
+                            WaqfCause.projectPlan's own schema comment. */}
+                        {cause.projectPlan && <p className="mt-1 text-xs text-slate-500">{cause.projectPlan}</p>}
                       </div>
                       <Button
                         type="button"
@@ -334,6 +367,7 @@ export function CausesSection({
               <div key={cause.id} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
                 <span className="font-medium text-slate-900">{cause.name}</span>
                 {cause.description && <span className="block text-slate-500">{cause.description}</span>}
+                {cause.projectPlan && <span className="mt-1 block text-xs text-slate-500">{cause.projectPlan}</span>}
               </div>
             ))}
           </div>

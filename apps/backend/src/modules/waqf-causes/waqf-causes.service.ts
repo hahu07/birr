@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { assertFounderVerified } from "../../common/auth/current-founder";
@@ -18,6 +18,14 @@ export class CreateWaqfCauseInput {
   @IsOptional()
   @IsString()
   description?: string;
+
+  // See WaqfCause.projectPlan's own schema comment — Birr-staff path
+  // only (this DTO backs the custom-cause registration route, never a
+  // Founder-facing one).
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  projectPlan?: string;
 }
 
 export class SelectCauseCategoryInput {
@@ -31,6 +39,13 @@ export class SelectCauseCategoryInput {
 export class AllocateCauseInput {
   @IsNumberString()
   amount!: Prisma.Decimal | number | string;
+}
+
+export class UpdateWaqfCauseProjectPlanInput {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  projectPlan?: string;
 }
 
 @Injectable()
@@ -123,13 +138,31 @@ export class WaqfCausesService {
       const previouslySelected = await tx.waqfCause.findFirst({
         where: { waqfId, causeCategoryId, deletedAt: { not: null } },
       });
+      // projectPlan is NOT refreshed unconditionally the way name/
+      // description are — unlike those, it's independently staff-
+      // editable after selection (see updateProjectPlan below), so a
+      // staff-authored specific plan must survive an unselect/reselect
+      // cycle rather than being silently overwritten back to the
+      // category's generic default. Only a row with no plan of its own
+      // yet falls back to the category's current default.
       const cause = previouslySelected
         ? await tx.waqfCause.update({
             where: { id: previouslySelected.id },
-            data: { deletedAt: null, name: category.name, description: category.description },
+            data: {
+              deletedAt: null,
+              name: category.name,
+              description: category.description,
+              projectPlan: previouslySelected.projectPlan ?? category.projectPlan ?? undefined,
+            },
           })
         : await tx.waqfCause.create({
-            data: { waqfId, causeCategoryId, name: category.name, description: category.description },
+            data: {
+              waqfId,
+              causeCategoryId,
+              name: category.name,
+              description: category.description,
+              projectPlan: category.projectPlan ?? undefined,
+            },
           });
       await tx.auditLog.create({
         data: {
@@ -535,6 +568,43 @@ export class WaqfCausesService {
     });
   }
 
+  /**
+   * Birr-staff path — sets or revises this cause's project plan.
+   * Plain CRUD, not governed_actions (descriptive content, not a
+   * money-moving decision), same trust tier as allocateProceeds()
+   * above and mirroring VaultsService.updateCauseProjectPlan exactly.
+   * No Founder-scope check — see WaqfCause.projectPlan's own schema
+   * comment for why this stays staff-authored, unlike allocate().
+   * "Only overwrite whichever field is sent" — undefined leaves the
+   * existing value alone.
+   */
+  async updateProjectPlan(waqfCauseId: string, staffUserId: string, projectPlan: string | undefined) {
+    return prisma.$transaction(async (tx) => {
+      const cause = await tx.waqfCause.findFirst({ where: { id: waqfCauseId, deletedAt: null } });
+      if (!cause) throw new NotFoundException(`WaqfCause "${waqfCauseId}" not found.`);
+
+      const updated = await tx.waqfCause.update({
+        where: { id: waqfCauseId },
+        data: { projectPlan: projectPlan ?? cause.projectPlan },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          waqfId: cause.waqfId,
+          actorType: "birr_staff",
+          actorUserId: staffUserId,
+          action: "waqf_cause.project_plan_updated",
+          entityType: "WaqfCause",
+          entityId: updated.id,
+          before: { projectPlan: cause.projectPlan } as any,
+          after: { projectPlan: updated.projectPlan } as any,
+        },
+      });
+
+      return updated;
+    });
+  }
+
   findById(id: string) {
     return prisma.waqfCause.findUnique({ where: { id } });
   }
@@ -577,11 +647,27 @@ export class WaqfCausesService {
       // Portal, same posture as DistributionsService.summaryByCauseForFounder)
       // let the Portal warn before unselecting a cause that already has
       // real beneficiaries/distributions against it, instead of the
-      // founder discovering the consequence after the fact.
+      // founder discovering the consequence after the fact. Also
+      // pendingNominations — 2026-09-29 codebase walkthrough finding: a
+      // founder could unselect a cause with a nomination still sitting
+      // in Birr's own review queue for it, with no warning at all, since
+      // that queue only ever attaches to a cause, not a Beneficiary row
+      // (which wouldn't exist yet). approved/rejected nominations are
+      // already covered by resultingBeneficiaryId's own Beneficiary row
+      // (approved) or are simply moot (rejected), so this only counts
+      // pending ones.
       return tx.waqfCause.findMany({
         where: { waqfId, deletedAt: null },
         orderBy: { createdAt: "desc" },
-        include: { _count: { select: { beneficiaries: true, distributions: true } } },
+        include: {
+          _count: {
+            select: {
+              beneficiaries: true,
+              distributions: true,
+              beneficiaryNominations: { where: { status: "pending" } },
+            },
+          },
+        },
       });
     });
   }

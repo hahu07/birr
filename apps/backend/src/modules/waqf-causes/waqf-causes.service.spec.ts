@@ -708,4 +708,100 @@ describe("WaqfCausesService", () => {
       expect(logs[0]).toMatchObject({ actorType: "founder_user", actorFounderId: founderId });
     });
   });
+
+  describe("projectPlan", () => {
+    let founderId: string;
+    let planWaqfId: string;
+
+    beforeAll(async () => {
+      const founder = await prisma.founder.create({ data: { name: "Project Plan Fixture Founder", kind: "institution" } });
+      founderId = founder.id;
+      const foundation = await prisma.foundation.create({ data: { name: "Project Plan Fixture Foundation" } });
+      await prisma.foundationFounder.create({ data: { foundationId: foundation.id, founderId } });
+      const waqf = await prisma.waqf.create({
+        data: { name: "Project Plan Fixture Waqf", type: "asset", jurisdiction: "AE", foundationId: foundation.id },
+      });
+      planWaqfId = waqf.id;
+      waqfIds.push(waqf.id);
+    });
+
+    test("create() accepts an explicit projectPlan, null when omitted", async () => {
+      const withPlan = await service.create(
+        { waqfId, name: `Staff Cause With Plan ${randomUUID()}`, projectPlan: "Delivered via Partner X." },
+        actorUserId,
+      );
+      waqfCauseIds.push(withPlan.id);
+      expect(withPlan.projectPlan).toBe("Delivered via Partner X.");
+
+      const withoutPlan = await service.create({ waqfId, name: `Staff Cause No Plan ${randomUUID()}` }, actorUserId);
+      waqfCauseIds.push(withoutPlan.id);
+      expect(withoutPlan.projectPlan).toBeNull();
+    });
+
+    test("selectForFounder() copies the category's projectPlan as a default", async () => {
+      const category = await prisma.causeCategory.create({
+        data: { name: `Project Plan Category ${randomUUID()}`, typicalWaqfTypes: [], projectPlan: "Generic category default." },
+      });
+      causeCategoryIds.push(category.id);
+
+      const cause = await service.selectForFounder(planWaqfId, category.id, founderId);
+      waqfCauseIds.push(cause.id);
+      expect(cause.projectPlan).toBe("Generic category default.");
+    });
+
+    test("updateProjectPlan() sets it, audit-logged with a real before/after, and leaves it alone when called with undefined", async () => {
+      const category = await prisma.causeCategory.create({
+        data: { name: `Update Plan Category ${randomUUID()}`, typicalWaqfTypes: [] },
+      });
+      causeCategoryIds.push(category.id);
+      const cause = await service.selectForFounder(planWaqfId, category.id, founderId);
+      waqfCauseIds.push(cause.id);
+      expect(cause.projectPlan).toBeNull();
+
+      const withPlan = await service.updateProjectPlan(cause.id, actorUserId, "Wells drilled by Partner X.");
+      expect(withPlan.projectPlan).toBe("Wells drilled by Partner X.");
+
+      const unchanged = await service.updateProjectPlan(cause.id, actorUserId, undefined);
+      expect(unchanged.projectPlan).toBe("Wells drilled by Partner X.");
+
+      const logs = await prisma.auditLog.findMany({
+        where: { entityId: cause.id, action: "waqf_cause.project_plan_updated" },
+        orderBy: { createdAt: "asc" },
+      });
+      // Two calls, two audit rows — even the undefined-payload second
+      // call writes one, same as every other update()-shaped method in
+      // this codebase (e.g. VaultsService.setFeasibilityReport's own
+      // test asserts the identical toHaveLength(2)); "only overwrite
+      // whichever field is sent" governs the DATA, not whether an audit
+      // row gets written.
+      expect(logs).toHaveLength(2);
+      expect(logs[0]).toMatchObject({ actorType: "birr_staff", actorUserId, waqfId: planWaqfId });
+      expect(logs[0].before).toMatchObject({ projectPlan: null });
+      expect(logs[0].after).toMatchObject({ projectPlan: "Wells drilled by Partner X." });
+    });
+
+    test("updateProjectPlan() throws NotFoundException for an unknown cause id", async () => {
+      await expect(
+        service.updateProjectPlan("00000000-0000-0000-0000-000000000000", actorUserId, "x"),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    test("a staff-set projectPlan survives an unselect/reselect cycle, rather than reverting to the category default", async () => {
+      const category = await prisma.causeCategory.create({
+        data: { name: `Reselect Plan Category ${randomUUID()}`, typicalWaqfTypes: [], projectPlan: "Category default plan." },
+      });
+      causeCategoryIds.push(category.id);
+
+      const first = await service.selectForFounder(planWaqfId, category.id, founderId);
+      waqfCauseIds.push(first.id);
+      expect(first.projectPlan).toBe("Category default plan.");
+
+      await service.updateProjectPlan(first.id, actorUserId, "Staff's own specific plan for this waqf.");
+      await service.unselectForFounder(first.id, founderId);
+
+      const reselected = await service.selectForFounder(planWaqfId, category.id, founderId);
+      expect(reselected.id).toBe(first.id); // the soft-deleted row is restored, not a new one created
+      expect(reselected.projectPlan).toBe("Staff's own specific plan for this waqf.");
+    });
+  });
 });

@@ -117,6 +117,10 @@ export interface WaqfCause {
   causeCategoryId: string | null;
   name: string;
   description: string | null;
+  // Birr-staff-authored, editable here via CausesSection.tsx — see
+  // WaqfCause.projectPlan's own schema comment. Read-only on the
+  // Founder Portal, unlike allocatedAmount below.
+  projectPlan: string | null;
   // Founder-set, self-service, from the waqf's raised corpus — see
   // WaqfCausesService.allocate's own comment. Read-only on the Ops
   // side; one of two additive pools (see proceedsAllocatedAmount).
