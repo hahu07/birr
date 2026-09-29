@@ -7,6 +7,7 @@
 // Approval Queue page (never here).
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
+import { useStaffSession } from "../../../../lib/staff-session";
 import { formatAmount, humanize } from "../../../../lib/format";
 import type { Counterparty, VaultCause, VaultDistribution, VaultMilestone } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
@@ -45,6 +46,12 @@ export function VaultDistributionsSection({
   } = useLoadedResource(() => apiFetchJson<VaultDistribution[]>(`/vault-distributions?vaultId=${vaultId}`), [vaultId]);
   const [activeCounterparties, setActiveCounterparties] = useState<Counterparty[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // mutawalli_officer only — matches VaultDistributionsController.create's
+  // own backend gate (the sole role seed-data.ts grants canMaker on
+  // vault.distribution_approve). Hides the control for a role that would
+  // just get a 403; the backend guard, not this, is the real boundary.
+  const canCreate = staff?.staffRole === "mutawalli_officer";
 
   useEffect(() => {
     apiFetchJson<Counterparty[]>("/counterparties?status=active")
@@ -61,8 +68,8 @@ export function VaultDistributionsSection({
       <SectionHeader
         title="Distributions"
         description="Draft payouts to a relief/delivery partner — approving one is a maker-checker decision on the Approval Queue."
-        actionLabel={showForm ? "Cancel" : "Add distribution"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canCreate ? (showForm ? "Cancel" : "Add distribution") : undefined}
+        onAction={canCreate ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (

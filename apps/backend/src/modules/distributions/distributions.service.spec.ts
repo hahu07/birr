@@ -824,6 +824,23 @@ describe("DistributionsService", () => {
       expect(journalEntry?.lines.find((l) => l.ledgerAccount.code === "1000")?.credit.toString()).toBe("1");
     });
 
+    test("two concurrent deliveries of the same 'paid' webhook post the ledger exactly once", async () => {
+      const pending = await service.create(
+        { waqfId: waqfAId, beneficiaryId, causeId: payoutCauseId, amount: "1", currency: "NGN" },
+        actorUserId,
+      );
+      distributionIds.push(pending.id);
+      await prisma.$transaction((tx) => service.approve(pending.id, tx));
+      await service.initiateDisbursement(pending.id);
+
+      const rawBody = Buffer.from(JSON.stringify({ event: "transfer.success", data: { reference: pending.id } }));
+      const outcomes = await Promise.all([service.handlePayoutWebhook(rawBody, {}), service.handlePayoutWebhook(rawBody, {})]);
+      expect(outcomes.every((o) => o?.status === "paid")).toBe(true);
+
+      expect(await prisma.waqfJournalEntry.count({ where: { source: "distribution", sourceId: pending.id } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: pending.id, action: "distribution.paid" } })).toBe(1);
+    });
+
     test("handlePayoutWebhook() flips disbursing -> payout_failed on transfer.failed", async () => {
       const pending = await service.create(
         { waqfId: waqfAId, beneficiaryId, causeId: payoutCauseId, amount: "1", currency: "NGN" },

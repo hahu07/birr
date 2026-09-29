@@ -1600,6 +1600,10 @@ model WaqfJournalEntry {
   description String
   currency    String
   source      VaultJournalEntrySource
+  // Unique with source below, same reasoning as VaultJournalEntry's own
+  // sourceId comment: a payment/payout provider retrying the same
+  // webhook concurrently must not post the same money twice. NULL
+  // sourceIds (manual adjustments) never collide.
   sourceId    String?
   actorType   ActorType
   actorUserId String?
@@ -1609,8 +1613,8 @@ model WaqfJournalEntry {
   // mistake is corrected with a new reversing entry, never edited,
   // same posture as VaultJournalEntry.
 
+  @@unique([source, sourceId])
   @@index([waqfId])
-  @@index([source, sourceId])
   @@map("waqf_journal_entries")
 }
 

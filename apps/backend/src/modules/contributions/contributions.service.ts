@@ -250,6 +250,17 @@ export class ContributionsService {
       return contribution;
     }
 
+    // Every status flip below is a conditional claim (still "pending"),
+    // not a blind update — the read above only checked status once,
+    // outside any transaction, so two concurrent deliveries of the same
+    // webhook (providers do retry) could both pass it and both go on to
+    // create an Asset, flip the Waqf to active, and double-post the
+    // ledger (2026-09-29 codebase walkthrough, same bug already fixed on
+    // the Vault side — see VaultContributionsService.handleWebhook's own
+    // comment). The loser of the claim changes nothing and just returns
+    // the row as it now stands.
+    const current = () => prisma.contribution.findUniqueOrThrow({ where: { id: contribution.id } });
+
     if (result.status === "failed") {
       // Transactional + audited, same as the confirmed path below — a
       // prior version of this left a declined/reversed payment with zero
@@ -257,7 +268,12 @@ export class ContributionsService {
       // have a bank receipt showing this cleared") had nothing to
       // reconcile against but the current row state.
       const failed = await prisma.$transaction(async (tx) => {
-        const failed = await tx.contribution.update({ where: { id: contribution.id }, data: { status: "failed" } });
+        const claim = await tx.contribution.updateMany({
+          where: { id: contribution.id, status: "pending" },
+          data: { status: "failed" },
+        });
+        if (claim.count !== 1) return null;
+        const failed = await tx.contribution.findUniqueOrThrow({ where: { id: contribution.id } });
         await tx.auditLog.create({
           data: {
             waqfId: contribution.waqfId,
@@ -271,6 +287,7 @@ export class ContributionsService {
         });
         return failed;
       });
+      if (!failed) return current();
       this.notifyContributionOutcome(contribution.waqfId, "failed", failed).catch((err) => {
         this.logger.error(
           `Failed to notify on failed contribution "${failed.id}":`,
@@ -280,14 +297,23 @@ export class ContributionsService {
       return failed;
     }
 
-    const { confirmed, waqfActivated } = await prisma.$transaction(async (tx) => {
+    const outcome = await prisma.$transaction(async (tx) => {
+      const claim = await tx.contribution.updateMany({
+        where: { id: contribution.id, status: "pending" },
+        data: { status: "confirmed", confirmedAt: new Date() },
+      });
+      if (claim.count !== 1) return null;
+
       // Every previously-confirmed contribution before this one — 0 means
       // this is genuinely the first money in, anything else means it's a
       // later installment payment or a voluntary top-up. Was hardcoded to
       // always say "Initial contribution" regardless of which one this
       // was; fixed so the Asset trail actually reflects what happened.
+      // Excludes this row itself — the claim above already flipped it to
+      // "confirmed", so without the exclusion it would count itself and
+      // this could never read as the first contribution.
       const priorConfirmedCount = await tx.contribution.count({
-        where: { waqfId: contribution.waqfId, status: "confirmed" },
+        where: { waqfId: contribution.waqfId, status: "confirmed", id: { not: contribution.id } },
       });
       const asset = await this.assetsService.create(
         {
@@ -302,7 +328,7 @@ export class ContributionsService {
 
       const confirmed = await tx.contribution.update({
         where: { id: contribution.id },
-        data: { status: "confirmed", confirmedAt: new Date(), assetId: asset.id },
+        data: { assetId: asset.id },
       });
 
       // The first confirmed contribution is what actually activates a
@@ -370,6 +396,8 @@ export class ContributionsService {
 
       return { confirmed, waqfActivated };
     });
+    if (!outcome) return current();
+    const { confirmed, waqfActivated } = outcome;
 
     this.notifyContributionOutcome(contribution.waqfId, "confirmed", confirmed).catch((err) => {
       this.logger.error(

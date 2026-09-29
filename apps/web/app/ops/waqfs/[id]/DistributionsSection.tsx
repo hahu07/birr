@@ -8,6 +8,7 @@
 // below says so rather than rendering empty selects.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
+import { useStaffSession } from "../../../../lib/staff-session";
 import { formatAmount, humanize } from "../../../../lib/format";
 import type { Beneficiary, Distribution, DistributionCauseSummary, WaqfCause, WaqfMilestone } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, StatCard, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
@@ -64,6 +65,12 @@ export function DistributionsSection({
   const [causes, setCauses] = useState<WaqfCause[]>([]);
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // mutawalli_officer only — matches DistributionsController.create's
+  // own backend gate (the sole role seed-data.ts grants canMaker on
+  // distribution.approve). Hides the control for a role that would just
+  // get a 403; the backend guard, not this, is the real boundary.
+  const canCreate = staff?.staffRole === "mutawalli_officer";
 
   useEffect(() => {
     // includeInactive=true — a past distribution can reference a cause the
@@ -92,8 +99,8 @@ export function DistributionsSection({
       <SectionHeader
         title="Distributions"
         description="Draft payouts to a beneficiary — approving one is a maker-checker decision on the Approval Queue."
-        actionLabel={showForm ? "Cancel" : "Add distribution"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canCreate ? (showForm ? "Cancel" : "Add distribution") : undefined}
+        onAction={canCreate ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -121,7 +128,12 @@ export function DistributionsSection({
         ))}
 
       {!error && summary !== null && summary.length > 0 && (
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        // auto-fit/minmax, not a fixed column count — one tile per
+        // cause+currency, a genuinely variable count that a fixed
+        // grid-cols-2/3 squeezed too narrow whenever there were only 1-2
+        // (same bug class fixed across the app, 2026-09-29 codebase
+        // walkthrough — see DashboardOverview.tsx's own comment).
+        <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
           {summary.map((s) => (
             <div key={`${s.causeId}-${s.currency}`}>
               <StatCard label={`${s.causeName} (${s.currency})`} value={s.totalAmount} tone="primary" />

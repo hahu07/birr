@@ -530,6 +530,39 @@ describe("ContributionsService", () => {
     expect(assetsForContribution.filter((a) => a.id === first?.assetId)).toHaveLength(1);
   });
 
+  test("two concurrent deliveries of the same webhook confirm once: one Asset, one ledger entry, one waqf.activated audit row", async () => {
+    // A fresh waqf so "exactly one waqf.activated row" isn't muddied by
+    // an earlier test's contribution having already activated it.
+    const freshWaqf = await prisma.waqf.create({
+      data: { name: "Contributions Spec Webhook-Race Waqf", type: "asset", jurisdiction: "AE", foundationId, corpusCurrency: "USD" },
+    });
+    waqfIds.push(freshWaqf.id);
+
+    const initiated = await service.initiate({
+      waqfId: freshWaqf.id,
+      amount: "400.00",
+      currency: "USD",
+      provider: "stripe",
+      founderId,
+    });
+    contributionIds.push(initiated.contribution.id);
+
+    stripeFake.nextWebhookResult = { providerReference: initiated.contribution.id, status: "confirmed" };
+    const outcomes = await Promise.all([
+      service.handleWebhook("stripe", Buffer.from("{}"), {}),
+      service.handleWebhook("stripe", Buffer.from("{}"), {}),
+    ]);
+    expect(outcomes.every((o) => o?.status === "confirmed")).toBe(true);
+    if (outcomes[0]?.assetId) assetIds.push(outcomes[0].assetId);
+
+    expect(await prisma.asset.count({ where: { waqfId: freshWaqf.id } })).toBe(1);
+    expect(
+      await prisma.waqfJournalEntry.count({ where: { source: "contribution", sourceId: initiated.contribution.id } }),
+    ).toBe(1);
+    expect(await prisma.auditLog.count({ where: { entityId: freshWaqf.id, entityType: "Waqf", action: "waqf.activated" } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { entityId: initiated.contribution.id, action: "contribution.confirmed" } })).toBe(1);
+  });
+
   test("platformSummary() sums confirmed contributions by currency, across every waqf, excluding pending/failed", async () => {
     // A distinctive per-run currency code, not a real one (USD/NGN/etc)
     // — this is a shared dev DB with plenty of pre-existing confirmed

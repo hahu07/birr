@@ -428,8 +428,18 @@ export class DistributionsService {
         ? { status: "paid" as const, paidAt: new Date() }
         : { status: "payout_failed" as const, payoutError: "Paystack reported transfer failure/reversal." };
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const updated = await tx.distribution.update({ where: { id: distribution.id }, data });
+    // Conditional claim (still "disbursing"), not a blind update — the
+    // check above only reads status once, outside any transaction, so two
+    // concurrent deliveries of the same transfer webhook could both flip
+    // the row and both post Program Expenses (2026-09-29 codebase
+    // walkthrough, same bug already fixed on the Vault side — see
+    // VaultDistributionsService.handlePayoutWebhook's own comment). The
+    // loser of the claim changes nothing and just returns the row as it
+    // now stands.
+    const outcome = await prisma.$transaction(async (tx) => {
+      const claim = await tx.distribution.updateMany({ where: { id: distribution.id, status: "disbursing" }, data });
+      if (claim.count !== 1) return null;
+      const updated = await tx.distribution.findUniqueOrThrow({ where: { id: distribution.id } });
       await tx.auditLog.create({
         data: {
           waqfId: distribution.waqfId,
@@ -466,6 +476,8 @@ export class DistributionsService {
 
       return updated;
     });
+    const updated = outcome ?? (await prisma.distribution.findUniqueOrThrow({ where: { id: distribution.id } }));
+    if (!outcome) return updated;
 
     // Fire-and-forget, mirroring notifyDecision's / ContributionsService
     // .notifyContributionOutcome's own posture — a webhook's response

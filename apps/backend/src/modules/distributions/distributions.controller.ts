@@ -5,6 +5,7 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "..
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 @Controller("distributions")
 export class DistributionsController {
@@ -15,7 +16,16 @@ export class DistributionsController {
   // comment). It's only ever invoked internally, from
   // GovernedActionsService.decide().
 
+  // mutawalli_officer only — the sole role seed-data.ts grants canMaker
+  // on distribution.approve, the governed action this row exists to be
+  // proposed into. Not itself governed (a pending row moves no money),
+  // but before this any authenticated staff role — including a purely
+  // read-only one like external_auditor or legal_adviser — could create
+  // one, and a pending distribution counts toward assertWithinAllocation's
+  // committed sum, so an ineligible role could exhaust a cause's headroom
+  // (2026-09-29 codebase walkthrough finding).
   @Post()
+  @RequiresStaffRole("mutawalli_officer")
   create(@Body() body: CreateDistributionInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
