@@ -122,7 +122,20 @@ export default function DashboardOverview() {
 
       {!error && waqfs !== null && waqfs.length > 0 && (
         <>
-          <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* auto-fit/minmax, not a fixed column count — this grid's tile
+              count varies (one per waqf type/currency combination, could
+              be 1 or several), and a fixed grid-cols-2/4 split forced
+              each tile into a column far narrower than its content (a
+              13-character amount like "1,500,000.00" in 20px bold text)
+              whenever there were fewer tiles than columns. Found on an
+              800px-wide viewport with just 2 tiles, 2026-09-29 codebase
+              walkthrough — each tile was squeezed into 1 of 4 equal
+              columns and its value clipped/wrapped character-by-character.
+              220px floor (vs. the status-count grid below's 140px) —
+              these values are formatted currency amounts, a single
+              unbroken token roughly twice as wide as a plain integer
+              count, so they need more room before wrapping at all. */}
+          <div className="mb-8 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
             {[...corpusByTypeAndCurrency.entries()].map(([key, amount]) => {
               const [type, currency] = key.split(":") as [Waqf["type"], string];
               return (
@@ -212,9 +225,15 @@ export default function DashboardOverview() {
               // each foundation section's header on /portfolio.
               <li
                 key={foundation.id}
-                className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-accent-100/60"
+                // flex-col below sm — the fixed-width "+ Add Waqf Fund"
+                // link + icon on the same row as the name left almost no
+                // width for the name's own truncation on a narrow phone
+                // screen (e.g. "Test Institution NGO" clipped down to
+                // "Te…"; found on a 375px viewport, 2026-09-29 codebase
+                // walkthrough). Stacking gives the name the full row.
+                className="flex flex-col gap-2 px-5 py-4 transition-colors hover:bg-accent-100/60 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
               >
-                <Link href="/portfolio" className="flex min-w-0 flex-1 items-center gap-3">
+                <Link href="/portfolio" className="flex min-w-0 items-center gap-3 sm:flex-1">
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-slate-900">{foundation.name}</span>
                     <span className="block text-xs text-slate-500">
@@ -313,7 +332,10 @@ function Hero({
       </p>
 
       {statuses.length > 1 && (
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        // Same auto-fit reasoning as the corpus/raised grid above — the
+        // number of statuses present varies (2 to 4), so a fixed column
+        // count squeezes tiles too narrow whenever fewer are present.
+        <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
           {statuses.map((status) => {
             const Icon = STATUS_ICON[status];
             return (

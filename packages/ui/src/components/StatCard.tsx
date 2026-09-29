@@ -52,7 +52,11 @@ export function StatCard({ label, value, icon, tone = "neutral", className = "",
         </span>
       )}
       <div className="min-w-0">
-        <p className="text-xl font-semibold leading-tight tracking-tight text-slate-900">{value}</p>
+        {/* break-words — a long unbroken value (e.g. "1,500,000.00", no
+            spaces to wrap at) otherwise overflows this tile's width
+            instead of wrapping, clipped by the parent grid cell (found
+            on a 375px mobile viewport, 2026-09-29 codebase walkthrough). */}
+        <p className="break-words text-xl font-semibold leading-tight tracking-tight text-slate-900">{value}</p>
         <p className="text-xs font-medium leading-snug text-slate-500">{label}</p>
       </div>
     </div>

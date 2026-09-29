@@ -178,7 +178,7 @@ export default function OpsConsoleHome() {
       )}
 
       {!error && (!foundations || !waqfs || !stats || !raised || !distributed) && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-[74px] w-full rounded-lg" />
           ))}
@@ -187,7 +187,13 @@ export default function OpsConsoleHome() {
 
       {!error && foundations && waqfs && stats && raised && distributed && (
         <>
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* auto-fit/minmax, not a fixed column count — this grid mixes
+              2 always-present tiles with a variable number of per-status
+              tiles, and a fixed grid-cols-2/4 split squeezed every tile
+              too narrow whenever the total was below 4 (same bug fixed
+              in the Founder Portal's DashboardOverview.tsx, 2026-09-29
+              codebase walkthrough — see that file's own comment). */}
+          <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
             <StatCard
               label="Foundations"
               value={foundations.length}
@@ -217,7 +223,11 @@ export default function OpsConsoleHome() {
           </div>
 
           {(stats.corpusByTypeAndCurrency.size > 0 || raised.length > 0 || distributed.length > 0) && (
-            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            // Wider minmax floor than the counts grid above — these
+            // values are formatted currency amounts ("1,500,000.00"), a
+            // single unbroken token roughly twice as wide as a plain
+            // integer count, so it needs more room before wrapping.
+            <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
               {[...stats.corpusByTypeAndCurrency.entries()].map(([key, amount]) => {
                 const [type, currency] = key.split(":") as [Waqf["type"], string];
                 return (
