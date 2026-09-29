@@ -338,3 +338,49 @@ services:
     buildCommand: npx -y pnpm@9.0.0 install --frozen-lockfile && npx -y pnpm@9.0.0 --filter @birr/docs build
     staticPublishPath: apps/docs/dist
     autoDeploy: false
+
+  # ---- Docusaurus docs site — INTERNAL staff-only documentation
+  # (apps/docs-internal), e.g. the Ops Console guide. Unlike birr-docs
+  # above, this one must never be reachable by an unauthenticated
+  # visitor — none of Render's own static-site settings enforce that by
+  # themselves. The actual gate is meant to be Cloudflare Access sitting
+  # in front of a custom domain pointed at this service (per-person
+  # login, individually revocable), decided over birr-docs' own simpler
+  # public posture specifically because this content (staff roles, the
+  # approval queue, internal admin settings) was never meant to be
+  # public. None of the following are things this file can do, and none
+  # of them are done yet — they're manual, external, one-time steps,
+  # same posture as this file's own top-of-file "one-time manual steps"
+  # list:
+  #   1. Sync this Blueprint in Render's dashboard so this service is
+  #      actually created, then confirm its real assigned hostname (see
+  #      docusaurus.config.ts's own url comment — don't assume it's
+  #      exactly birr-docs-internal.onrender.com without checking, same
+  #      lesson birr-backend's own BACKEND_URL comment already recorded
+  #      once).
+  #   2. Add a custom domain to this service in Render's dashboard (e.g.
+  #      staff-docs.birr.<tld>).
+  #   3. Point that domain's DNS at Cloudflare with the record proxied
+  #      (orange-clouded) — Cloudflare Access only sits in front of
+  #      traffic Cloudflare itself is proxying, not Render's own
+  #      *.onrender.com domain.
+  #   4. In Cloudflare Zero Trust, create an Access application for that
+  #      domain and a policy naming exactly who's allowed in (by email,
+  #      or an email-domain rule) — this is where "selected people"
+  #      actually gets enforced, not in this repo.
+  #   5. Copy this service's own Deploy Hook (service → Settings → Deploy
+  #      Hook) into a new GitHub Actions secret,
+  #      RENDER_DEPLOY_HOOK_DOCS_INTERNAL, then add a matching
+  #      `curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_DOCS_INTERNAL }}"`
+  #      step to .github/workflows/ci.yml's deploy job (mirroring the
+  #      existing DOCS line). Deliberately NOT added to that workflow yet
+  #      — every existing line there runs unconditionally on every push
+  #      to main, so adding one against a secret that doesn't exist yet
+  #      would fail that shared job for everyone until steps 1-5 above
+  #      are actually done. ----
+  - type: web
+    runtime: static
+    name: birr-docs-internal
+    buildCommand: npx -y pnpm@9.0.0 install --frozen-lockfile && npx -y pnpm@9.0.0 --filter @birr/docs-internal build
+    staticPublishPath: apps/docs-internal/dist
+    autoDeploy: false
