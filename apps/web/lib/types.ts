@@ -176,6 +176,10 @@ export interface VaultCause {
   causeCategoryId: string | null;
   name: string;
   description: string | null;
+  // Brief, cause-specific write-up of how this cause's money is used —
+  // see VaultCause.projectPlan's own schema comment. Distinct from
+  // Vault.feasibilityReportUrl, which is campaign-wide.
+  projectPlan: string | null;
 }
 
 export interface VaultMilestone {
@@ -278,6 +282,22 @@ export interface BeneficiarySummary {
   total: number;
   byStatus: { active: number; inactive: number };
   byCause: { causeId: string; causeName: string; count: number }[];
+  // Individual rows, owner's explicit decision on 2026-09-29 reversing
+  // this endpoint's original aggregate-only posture — see
+  // BeneficiariesService.summaryForFounder's own comment. Excludes
+  // bank/payout details regardless (bankDetailsEncrypted, payoutProvider
+  // stay staff-only).
+  beneficiaries: {
+    id: string;
+    name: string;
+    kind: "individual" | "organization";
+    eligibilityCriteria: string;
+    status: "active" | "inactive";
+    phone: string | null;
+    email: string | null;
+    causeName: string | null;
+    createdAt: string;
+  }[];
 }
 
 // GET /founders/me/members — everyone with access to this Founder's own

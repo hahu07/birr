@@ -2161,6 +2161,20 @@ model VaultCause {
   causeCategory   CauseCategory? @relation(fields: [causeCategoryId], references: [id])
   name            String
   description     String?
+  // A brief write-up of how THIS cause's money actually gets used —
+  // deliberately cause-specific, unlike Vault.feasibilityReportUrl
+  // (a campaign-wide business case/needs assessment covering the whole
+  // vault). A vault often bundles several genuinely different
+  // initiatives under one campaign (e.g. a water-wells cause and a
+  // food-parcels cause in the same "Ramadan Relief" vault), so a single
+  // vault-wide plan can't say anything specific about either. Plain
+  // text, not a document upload — "brief" by design, same shape as
+  // `description` above, not the heavier upload machinery
+  // Vault/VaultMilestone use for their own attachments. Public by
+  // design, same posture as `description` (see PUBLIC_VAULT_SELECT in
+  // VaultsService) — shown to a donor once they pick this specific
+  // cause on the donation form.
+  projectPlan     String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   deletedAt       DateTime?

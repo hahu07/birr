@@ -199,6 +199,86 @@ describe("VaultsService", () => {
     ).rejects.toThrow(NotFoundException);
   });
 
+  test("createCause() accepts an optional projectPlan, null when omitted", async () => {
+    const vault = await service.create(
+      { name: "Project Plan At Creation Vault", slug: uniqueSlug("project-plan-create"), type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+
+    const withPlan = await service.createCause(
+      { vaultId: vault.id, name: "Clean Water", projectPlan: "Drilled by Partner X, one well per 500 people." },
+      actorUserId,
+    );
+    vaultCauseIds.push(withPlan.id);
+    expect(withPlan.projectPlan).toBe("Drilled by Partner X, one well per 500 people.");
+
+    const withoutPlan = await service.createCause({ vaultId: vault.id, name: "Food Relief" }, actorUserId);
+    vaultCauseIds.push(withoutPlan.id);
+    expect(withoutPlan.projectPlan).toBeNull();
+  });
+
+  describe("updateCauseProjectPlan()", () => {
+    test("sets projectPlan, audit-logged with a real before/after, and leaves it alone when called with undefined", async () => {
+      const vault = await service.create(
+        { name: "Update Project Plan Vault", slug: uniqueSlug("update-project-plan"), type: "project", currency: "USD", jurisdiction: "NG" },
+        actorUserId,
+      );
+      vaultIds.push(vault.id);
+      const cause = await service.createCause({ vaultId: vault.id, name: "Education Stipends" }, actorUserId);
+      vaultCauseIds.push(cause.id);
+      expect(cause.projectPlan).toBeNull();
+
+      const withPlan = await service.updateCauseProjectPlan(
+        cause.id,
+        { projectPlan: "Monthly stipends paid directly to enrolled students via Partner Y." },
+        actorUserId,
+      );
+      expect(withPlan.projectPlan).toBe("Monthly stipends paid directly to enrolled students via Partner Y.");
+
+      // Calling again with undefined leaves the previously-set value alone
+      // — same "only overwrite whichever field is sent" contract as
+      // setFeasibilityReport.
+      const unchanged = await service.updateCauseProjectPlan(cause.id, {}, actorUserId);
+      expect(unchanged.projectPlan).toBe("Monthly stipends paid directly to enrolled students via Partner Y.");
+
+      const logs = await prisma.auditLog.findMany({
+        where: { entityId: cause.id, action: "vault_cause.project_plan_updated" },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(logs).toHaveLength(2);
+      expect(logs[0]).toMatchObject({ actorType: "birr_staff", actorUserId, vaultId: vault.id });
+      expect(logs[0].before).toMatchObject({ projectPlan: null });
+      expect(logs[0].after).toMatchObject({ projectPlan: "Monthly stipends paid directly to enrolled students via Partner Y." });
+    });
+
+    test("throws NotFoundException for an unknown cause id", async () => {
+      await expect(
+        service.updateCauseProjectPlan("00000000-0000-0000-0000-000000000000", { projectPlan: "x" }, actorUserId),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  test("findBySlug() exposes a cause's projectPlan publicly, alongside its description", async () => {
+    const slug = uniqueSlug("project-plan-public");
+    const vault = await service.create(
+      { name: "Public Project Plan Vault", slug, type: "project", currency: "USD", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+    const cause = await service.createCause(
+      { vaultId: vault.id, name: "Clean Water", description: "Water access in rural Kaduna.", projectPlan: "One well per 500 people, via Partner X." },
+      actorUserId,
+    );
+    vaultCauseIds.push(cause.id);
+
+    const bySlug = await service.findBySlug(slug);
+    const publicCause = bySlug?.causes.find((c) => c.id === cause.id);
+    expect(publicCause?.description).toBe("Water access in rural Kaduna.");
+    expect(publicCause?.projectPlan).toBe("One well per 500 people, via Partner X.");
+  });
+
   test("findById()/findBySlug() return the vault with its causes, and null-equivalent NotFound-worthy results for unknown ids", async () => {
     const slug = uniqueSlug("find-me");
     const vault = await service.create(

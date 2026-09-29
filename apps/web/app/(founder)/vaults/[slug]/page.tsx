@@ -372,6 +372,20 @@ function ContributionForm({
                 </option>
               ))}
             </Select>
+            {/* Progressive disclosure — only the cause a donor is actually
+                considering, not a wall of text for every cause up front.
+                description was already fetched here but never rendered
+                anywhere on this page before this (found 2026-09-29). */}
+            {(() => {
+              const selected = causes.find((c) => c.id === vaultCauseId);
+              if (!selected || (!selected.description && !selected.projectPlan)) return null;
+              return (
+                <div className="mt-2 space-y-1.5 rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+                  {selected.description && <p>{selected.description}</p>}
+                  {selected.projectPlan && <p>{selected.projectPlan}</p>}
+                </div>
+              );
+            })()}
           </div>
         )}
 

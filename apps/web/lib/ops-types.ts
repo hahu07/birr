@@ -967,6 +967,12 @@ export interface VaultCause {
   causeCategoryId: string | null;
   name: string;
   description: string | null;
+  // Brief, cause-specific write-up of how this cause's money is used —
+  // see VaultCause.projectPlan's own schema comment. The only field on
+  // this row Ops can currently edit after creation (PATCH
+  // /vaults/causes/:id/project-plan) — name/description stay
+  // create-only, a separate pre-existing gap not addressed here.
+  projectPlan: string | null;
   // Update, 2026-09-15 — one row per currency the vault accepts
   // (VaultCauseAllocation), replacing what used to be a bare
   // allocatedAmount/proceedsAllocatedAmount scalar with no currency of

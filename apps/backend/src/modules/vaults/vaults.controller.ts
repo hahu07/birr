@@ -5,6 +5,7 @@ import {
   CreateVaultInput,
   UpdateVaultStatusInput,
   CreateVaultCauseInput,
+  UpdateVaultCauseProjectPlanInput,
   UpdateVaultFeasibilityReportInput,
 } from "./vaults.service";
 import { VaultCoverStorageService, MAX_SIZE_BYTES as MAX_COVER_SIZE_BYTES } from "./vault-cover-storage.service";
@@ -83,6 +84,18 @@ export class VaultsController {
   @Get(":id/causes")
   listCauses(@Param("id") id: string) {
     return this.service.listCauses(id);
+  }
+
+  // Staff-only, no dedicated role gate — same trust tier as createCause
+  // above (plain CRUD on descriptive content, not a money-moving
+  // governed action).
+  @Patch("causes/:id/project-plan")
+  updateCauseProjectPlan(
+    @Param("id") id: string,
+    @Body() body: UpdateVaultCauseProjectPlanInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.service.updateCauseProjectPlan(id, body, staff.userId);
   }
 
   // multipart/form-data, same FileInterceptor shape as

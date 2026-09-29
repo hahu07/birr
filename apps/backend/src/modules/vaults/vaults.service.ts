@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsArray, IsEnum, IsOptional, IsString, Matches } from "class-validator";
+import { IsArray, IsEnum, IsOptional, IsString, Matches, MaxLength } from "class-validator";
 import { prisma, Prisma, VaultType, VaultStatus } from "@birr/db";
 import { VaultProceedsService } from "./vault-proceeds.service";
 import { VaultLedgerService } from "./vault-ledger.service";
@@ -75,6 +75,22 @@ export class CreateVaultCauseInput {
   @IsOptional()
   @IsString()
   description?: string;
+
+  // See VaultCause.projectPlan's own schema comment — cause-specific,
+  // unlike Vault.feasibilityReportUrl. A real bound (unlike `description`
+  // above, which has none — a separate pre-existing gap, not fixed here),
+  // matching CauseCategoriesService's own MaxLength convention.
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  projectPlan?: string;
+}
+
+export class UpdateVaultCauseProjectPlanInput {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  projectPlan?: string;
 }
 
 // Every VaultStatus transition a staff member may trigger directly via
@@ -309,7 +325,7 @@ export class VaultsService {
     feasibilityReportTitle: true,
     causes: {
       where: { deletedAt: null },
-      select: { id: true, vaultId: true, causeCategoryId: true, name: true, description: true },
+      select: { id: true, vaultId: true, causeCategoryId: true, name: true, description: true, projectPlan: true },
     },
     // Update, 2026-09-14 — evidenceNotes/evidenceFileUrl are public too:
     // the whole point of photographing/documenting completed work is
@@ -431,7 +447,7 @@ export class VaultsService {
       let cause;
       try {
         cause = await tx.vaultCause.create({
-          data: { vaultId: input.vaultId, causeCategoryId: input.causeCategoryId, name, description },
+          data: { vaultId: input.vaultId, causeCategoryId: input.causeCategoryId, name, description, projectPlan: input.projectPlan },
         });
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === UNIQUE_CONSTRAINT_VIOLATION) {
@@ -460,6 +476,42 @@ export class VaultsService {
       where: { vaultId, deletedAt: null },
       include: { allocations: true },
       orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /**
+   * Plain staff CRUD, same trust tier as setFeasibilityReport above —
+   * descriptive content, not a money-moving governed action. The only
+   * update path a VaultCause has at all today; deliberately scoped to
+   * just this one field rather than a general rename/re-describe
+   * endpoint, since that's not what was asked for and isn't needed yet.
+   * "Only overwrite whichever field is actually sent" — undefined leaves
+   * the existing value alone, same as setFeasibilityReport.
+   */
+  async updateCauseProjectPlan(id: string, input: { projectPlan?: string }, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const cause = await tx.vaultCause.findFirst({ where: { id, deletedAt: null } });
+      if (!cause) throw new NotFoundException(`VaultCause "${id}" not found.`);
+
+      const updated = await tx.vaultCause.update({
+        where: { id },
+        data: { projectPlan: input.projectPlan ?? cause.projectPlan },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          vaultId: cause.vaultId,
+          actorType: "birr_staff",
+          actorUserId,
+          action: "vault_cause.project_plan_updated",
+          entityType: "VaultCause",
+          entityId: updated.id,
+          before: { projectPlan: cause.projectPlan } as any,
+          after: { projectPlan: updated.projectPlan } as any,
+        },
+      });
+
+      return updated;
     });
   }
 
