@@ -278,5 +278,11 @@ jobs:
       # instead of looking green.
       - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}"
       - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WEB }}"
-      - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_AGENTS }}"
+      # No RENDER_DEPLOY_HOOK_AGENTS step here — birr-agents is commented
+      # out of render.yaml (see that file's own comment: Render has no
+      # free instance type for `type: pserv`), so it doesn't exist in
+      # Render and there's no Deploy Hook URL for it to ever have. Add
+      # this step back — right here, alongside RENDER_DEPLOY_HOOK_WEB and
+      # RENDER_DEPLOY_HOOK_DOCS above/below — at the same time that
+      # render.yaml block is reinstated, not before.
       - run: curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_DOCS }}"
