@@ -206,4 +206,41 @@ describe("NotificationsService — notification preferences", () => {
     const notification = await prisma.notification.findFirst({ where: { recipientUserId: user.id } });
     notificationIds.push(notification!.id);
   });
+
+  // 2026-09-29 codebase walkthrough finding: every notification's
+  // linkUrl is built as a bare relative path (e.g. "/portfolio/abc") —
+  // correct for the in-app bell's own router, but not a valid, clickable
+  // link on an external channel with no router of its own. Both the
+  // WhatsApp message and the email's CTA had been sending that same
+  // relative path straight through, unresolved, since the day either
+  // channel shipped.
+  test("notify() sends an absolute link to both email and WhatsApp, but keeps the in-app row's own linkUrl relative", async () => {
+    const originalPortalUrl = process.env.FOUNDER_PORTAL_URL;
+    process.env.FOUNDER_PORTAL_URL = "https://birr-web.onrender.com";
+    try {
+      const { service, emailAdapter, whatsAppAdapter } = createFakeNotificationsServiceWithSpies();
+      const user = await createUser({ whatsappNumber: "+15550003333", whatsappVerifiedAt: new Date() });
+
+      await service.notify({
+        recipientType: "founder_user",
+        recipientUserId: user.id,
+        type: "waqf.activated", // CHANNEL_PLAN: {email: true, whatsapp: true}
+        title: "Test Waqf Fund is now active",
+        body: "Test body",
+        linkUrl: "/portfolio/b9f34530-d134-414f-8de1-98347758ce6a",
+      });
+
+      expect(emailAdapter.sent[0].linkUrl).toBe("https://birr-web.onrender.com/portfolio/b9f34530-d134-414f-8de1-98347758ce6a");
+      expect(whatsAppAdapter.sent[0].body).toContain("https://birr-web.onrender.com/portfolio/b9f34530-d134-414f-8de1-98347758ce6a");
+      expect(whatsAppAdapter.sent[0].body).not.toContain("\n/portfolio/"); // never the unresolved relative path
+
+      const notification = await prisma.notification.findFirst({ where: { recipientUserId: user.id } });
+      notificationIds.push(notification!.id);
+      // The in-app bell's own router needs the relative path, not the
+      // absolute one — see AppShell's handleSelectNotification.
+      expect(notification!.linkUrl).toBe("/portfolio/b9f34530-d134-414f-8de1-98347758ce6a");
+    } finally {
+      process.env.FOUNDER_PORTAL_URL = originalPortalUrl;
+    }
+  });
 });

@@ -3,6 +3,7 @@ import { prisma, ActorType } from "@birr/db";
 import { ResendNotificationEmailAdapter } from "./email/resend-notification.adapter";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
 import { renderWhatsAppMessage } from "../../common/whatsapp/notification-message";
+import { resolvePortalLink } from "../../common/urls/resolve-portal-link";
 
 export interface NotifyInput {
   recipientType: ActorType;
@@ -154,7 +155,10 @@ export class NotificationsService {
         await this.emailAdapter.sendNotificationEmail(user.email, {
           title: input.title,
           body: input.body,
-          linkUrl: input.linkUrl,
+          // Absolute — see resolvePortalLink's own comment. input.linkUrl
+          // itself stays relative in the in-app row created above; this
+          // is a separately-resolved value for the external channel only.
+          linkUrl: resolvePortalLink(input.linkUrl),
         });
       } catch (err) {
         this.logger.error(
@@ -185,7 +189,8 @@ export class NotificationsService {
       type: input.type,
       title: input.title,
       body: input.body,
-      linkUrl: input.linkUrl,
+      // Absolute — see resolvePortalLink's own comment.
+      linkUrl: resolvePortalLink(input.linkUrl),
     });
     await this.whatsAppAdapter.sendMessage(to, message);
   }

@@ -16,9 +16,9 @@ import { TwilioWhatsAppAdapter } from "../../../common/whatsapp/twilio-whatsapp.
  * needed in many spec files rather than one.
  */
 class FakeNotificationEmailAdapter {
-  sent: { to: string; title: string }[] = [];
+  sent: { to: string; title: string; linkUrl?: string }[] = [];
   async sendNotificationEmail(to: string, input: { title: string; body: string; linkUrl?: string }): Promise<void> {
-    this.sent.push({ to, title: input.title });
+    this.sent.push({ to, title: input.title, linkUrl: input.linkUrl });
   }
 }
 
