@@ -345,13 +345,20 @@ export class BeneficiariesService {
   }
 
   // Founder-Portal read-only visibility into their own waqf's
-  // beneficiaries — deliberately an aggregate, never the individual
-  // rows: Beneficiary.name/eligibilityCriteria/phone/email/bank details
-  // are real personal information about who receives a payout, and
-  // standard endowment practice keeps that confidential from the donor,
-  // not just from the general public. Counts by status and by cause
-  // give a Founder real visibility ("340 active beneficiaries, 200
-  // under Scholarships") without exposing anyone's identity. Same
+  // beneficiaries. Originally an aggregate only — no individual rows —
+  // on the reasoning that Beneficiary.name/eligibilityCriteria/phone/
+  // email are real personal information about who receives a payout,
+  // and standard endowment practice keeps that confidential from the
+  // donor, not just the general public. Reversed at the owner's
+  // explicit, informed decision on 2026-09-29, after that privacy
+  // tradeoff was raised directly: `beneficiaries` below now also
+  // returns each one's name/kind/eligibilityCriteria/status/phone/
+  // email/cause — everything except bank/payout details
+  // (bankDetailsEncrypted, payoutProvider), which stay staff-only
+  // regardless, same as every other Founder Portal surface that ever
+  // touches money-routing information. byStatus/byCause are kept
+  // alongside the full list, not replaced by it — still what the
+  // summary StatCards above the list read from. Same
   // null-means-not-found-or-not-theirs convention as
   // AssetsService.listForFounder.
   async summaryForFounder(waqfId: string, founderId: string) {
@@ -364,7 +371,19 @@ export class BeneficiariesService {
 
       const beneficiaries = await tx.beneficiary.findMany({
         where: { waqfId, deletedAt: null },
-        select: { status: true, causeId: true },
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          eligibilityCriteria: true,
+          status: true,
+          phone: true,
+          email: true,
+          causeId: true,
+          cause: { select: { name: true } },
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
       });
 
       const byStatus: Record<BeneficiaryStatus, number> = { active: 0, inactive: 0 };
@@ -387,6 +406,17 @@ export class BeneficiariesService {
           causeId,
           causeName: causeById.get(causeId)?.name ?? "Unknown cause",
           count,
+        })),
+        beneficiaries: beneficiaries.map((b) => ({
+          id: b.id,
+          name: b.name,
+          kind: b.kind,
+          eligibilityCriteria: b.eligibilityCriteria,
+          status: b.status,
+          phone: b.phone,
+          email: b.email,
+          causeName: b.cause?.name ?? null,
+          createdAt: b.createdAt,
         })),
       };
     });

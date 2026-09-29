@@ -1,15 +1,17 @@
 "use client";
 
-// Founder-facing, read-only, and deliberately an aggregate — never
-// individual beneficiary rows. A beneficiary's name and eligibility
-// criteria are real personal information about who receives a payout,
-// and standard endowment practice keeps that confidential from the
-// donor, not just from the general public. See
-// BeneficiariesService.summaryForFounder's own comment.
+// Founder-facing, read-only. Originally aggregate-only — no individual
+// rows, since a beneficiary's name and eligibility criteria are real
+// personal information about who receives a payout, and standard
+// endowment practice keeps that confidential from the donor. Reversed
+// at the owner's explicit, informed decision on 2026-09-29, after that
+// tradeoff was raised directly — see BeneficiariesService
+// .summaryForFounder's own comment. Bank/payout details still never
+// cross into the Founder Portal, reversal or not.
 import { useEffect, useRef, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import type { BeneficiarySummary, WaqfCause } from "../../../../lib/types";
-import { Alert, Button, Input, Skeleton, StatCard } from "@birr/ui";
+import { Alert, Badge, Button, Input, Skeleton, StatCard } from "@birr/ui";
 
 interface BulkNominationResult {
   createdCount: number;
@@ -51,10 +53,7 @@ export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
           </div>
         )}
       </div>
-      <p className="mb-3 text-sm text-slate-500">
-        Who this fund serves, in aggregate — individual identities stay confidential, same as standard endowment
-        practice.
-      </p>
+      <p className="mb-3 text-sm text-slate-500">Who this fund serves.</p>
 
       {nominateState === "submitted" && (
         <Alert tone="success" title="Nomination submitted" className="mb-4">
@@ -139,6 +138,30 @@ export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
               ))}
             </div>
           )}
+          <div className="space-y-2">
+            {summary.beneficiaries.map((b) => (
+              <div key={b.id} className="rounded-md border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{b.name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {b.kind === "individual" ? "Individual" : "Organization"}
+                      {b.causeName && ` · ${b.causeName}`}
+                    </p>
+                  </div>
+                  <Badge tone={b.status === "active" ? "success" : "neutral"}>
+                    {b.status === "active" ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-sm text-slate-600">{b.eligibilityCriteria}</p>
+                {(b.phone || b.email) && (
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    {[b.phone, b.email].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

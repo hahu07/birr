@@ -50,10 +50,9 @@ export class BeneficiariesController {
   // Declared before ":id" for the same routing reason as
   // DistributionsController.summary(). Founder-only (no staff fallback,
   // unlike AssetsController.list()) — staff already get full detail via
-  // list() above; this exists specifically to give a Founder the
-  // aggregate-only, PII-safe cut (see summaryForFounder's own comment on
-  // why beneficiary identity itself never crosses into the Founder
-  // Portal).
+  // list() above. Despite the name, no longer aggregate-only as of
+  // 2026-09-29 — see summaryForFounder's own comment on that reversal;
+  // this route still excludes bank/payout details regardless.
   @Public()
   @Get("summary")
   async summary(@Query("waqfId") waqfId: string | undefined, @Req() request: Request) {
