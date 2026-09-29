@@ -13,7 +13,7 @@ with an example so it's easier to picture.
 **Our example:** Amina runs a small charity called **Hope for Kids
 Foundation**. She's set up two things through Birr:
 
-1. **Scholarship Waqf** — she invested $50,000. The money itself stays
+1. **Scholarship Waqf** — she invested ₦75,000,000. The money itself stays
    invested and untouched forever; only the *profit* it earns each year
    pays for scholarships.
 2. **Clean Water Project** — a one-time project to drill wells in three
@@ -43,16 +43,16 @@ summary, not a full list.
   she has two funds in total.
 - A few boxes below it showing money, kept **separate by fund type and
   currency** rather than added together. For example:
-  - "Declared corpus — Investment (USD): $50,000" (the Scholarship Waqf)
-  - "Raised (USD): $12,000" (donations toward the Clean Water Project)
-  - "Distributed via Investment funds (USD): $3,200" (scholarships
+  - "Declared corpus — Investment (NGN): ₦75,000,000" (the Scholarship Waqf)
+  - "Raised (NGN): ₦18,000,000" (donations toward the Clean Water Project)
+  - "Distributed via Investment funds (NGN): ₦4,800,000" (scholarships
     already paid out)
 
   Why keep these separate instead of one big total? Because they're not
-  really the same kind of money. The $50,000 invested capital is meant
-  to stay untouched forever — only its profit gets spent. Adding it to
-  the $12,000 in one-time donations would make it look like there's
-  more "spendable" money than there really is.
+  really the same kind of money. The ₦75,000,000 invested capital is
+  meant to stay untouched forever — only its profit gets spent. Adding
+  it to the ₦18,000,000 in one-time donations would make it look like
+  there's more "spendable" money than there really is.
 - A simple chart showing how many of her funds are in each status (e.g.
   "1 active, 1 pending review").
 - A short list of her foundations, with a link to see the full
@@ -76,13 +76,13 @@ funds as examples:
 | Section | In plain English | Can Amina do anything here? |
 |---|---|---|
 | **Lifecycle** *(Clean Water Project only)* | A checklist of every stage a project waqf goes through, from "just started" to "long-term wrap-up." Shows Amina exactly where her project currently stands. | No, just for viewing |
-| **Project Progress** *(Clean Water Project only)* | The actual milestones — e.g. "Well #1: Drilled ✅ — cost $2,100 of the $2,000 budgeted," with photos/evidence attached. | No, just for viewing |
-| **Contributions** | How much has been donated so far, and the history of who gave what and when. | **Yes** — she can add more money here (card, local bank transfer, or stablecoin) |
+| **Project Progress** *(Clean Water Project only)* | The actual milestones — e.g. "Well #1: Drilled ✅ — cost ₦3,150,000 of the ₦3,000,000 budgeted," with photos/evidence attached. | No, just for viewing |
+| **Contributions** | How much has been donated so far, and the history of who gave what and when. | **Yes** — she can add more money here, in Naira via Paystack (bank transfer or local card) or in stablecoin |
 | **Causes** | The specific purposes her fund supports — e.g. "Scholarships" or "Clean Water Access" — picked from Birr's standard list, and how much money is earmarked for each. | **Yes** — she can pick, unpick, and set the amount for each cause herself, no approval needed |
 | **Assets** | Any physical property backing the fund (e.g. a building). | No — only Birr staff register or sell an asset |
-| **Investments** *(Scholarship Waqf only)* | What the $50,000 is actually invested in, and whether it's been checked for Shariah compliance. | No, just for viewing |
+| **Investments** *(Scholarship Waqf only)* | What the ₦75,000,000 is actually invested in, and whether it's been checked for Shariah compliance. | No, just for viewing |
 | **Proceeds** *(Scholarship Waqf only)* | The profit the investment has earned so far, as logged by Birr's staff. | No, just for viewing |
-| **Distributions** | A summary of payouts already made, grouped by cause (e.g. "$3,200 paid out for Scholarships so far") — not a list of who received what. | No, just for viewing |
+| **Distributions** | A summary of payouts already made, grouped by cause (e.g. "₦4,800,000 paid out for Scholarships so far") — not a list of who received what. | No, just for viewing |
 | **Beneficiaries** | How many people are benefiting, and what the eligibility rules are — again, just a count, never names. | **Yes** — she can nominate someone she thinks should be considered, one at a time or in bulk, for Birr staff to review |
 | **Requests** | A form to formally ask Birr for something — see below. | **Yes** — this is the main "ask" button on the whole dashboard |
 | **Governance Activity** | A log of decisions Birr staff have already finished making about this fund (approved or rejected) — nothing still "in progress" shows up here. | No, just for viewing |
