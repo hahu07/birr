@@ -38,6 +38,8 @@ export { AuthSplitLayout } from "./components/AuthSplitLayout";
 export type { AuthSplitLayoutProps } from "./components/AuthSplitLayout";
 export { NotificationBell } from "./components/NotificationBell";
 export type { NotificationBellProps, NotificationItem } from "./components/NotificationBell";
+export { Tabs } from "./components/Tabs";
+export type { TabsProps, TabItem } from "./components/Tabs";
 export {
   IconMark,
   IconInbox,

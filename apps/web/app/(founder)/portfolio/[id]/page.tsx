@@ -8,6 +8,18 @@
 // Beneficiaries/Distributions are aggregates rather than individual rows
 // (see those components' own comments on why beneficiary identity never
 // crosses into this portal).
+//
+// 2026-09-29 redesign — up to twelve of these sections used to be
+// stacked in one continuous scroll inside a single Card, every one of
+// them fetching on mount regardless of whether anyone was looking at
+// it: opening this page fired 8-10 parallel API calls up front, and
+// finding e.g. "has my request been actioned" meant scrolling past
+// funding progress, causes, assets, investments and distributions
+// first. Grouped into five tabs by what a founder actually comes here
+// to do — check status, follow the money, see what's held/who's
+// helped, track a request, or pull a report — rather than by entity.
+// Each of the twelve section components below is completely unchanged;
+// the fix is purely which ones get mounted, and when.
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -16,7 +28,19 @@ import { formatDate, humanize } from "../../../../lib/format";
 import { STATUS_BADGE_BG, STATUS_ICON, STATUS_TONE } from "../../../../lib/portfolio";
 import { useMarkNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Waqf } from "../../../../lib/types";
-import { Alert, Badge, Card, DetailGrid, Skeleton } from "@birr/ui";
+import {
+  Alert,
+  Badge,
+  Card,
+  DetailGrid,
+  Skeleton,
+  Tabs,
+  IconHome,
+  IconClipboardCheck,
+  IconArchive,
+  IconInbox,
+  IconFileText,
+} from "@birr/ui";
 import { ContributionsSection } from "./ContributionsSection";
 import { CausesSection } from "./CausesSection";
 import { AssetsSection } from "./AssetsSection";
@@ -30,10 +54,56 @@ import { FinancialReportSection } from "./FinancialReportSection";
 import { LifecycleSection } from "./LifecycleSection";
 import { ProjectProgressSection } from "./ProjectProgressSection";
 
+// "Overview" and "Requests" are the two tab labels most likely to be
+// mistaken for the *global* sidebar pages of similar names (Impact,
+// Activity) — deliberately not reused here even where the content is
+// related (Requests groups in Governance Activity, the staff decisions
+// that answer those requests), since this page's own scope is one fund,
+// not the founder's whole portfolio the way those sidebar pages are.
+const TAB_ITEMS = [
+  { key: "overview", label: "Overview", icon: IconHome },
+  { key: "money", label: "Money", icon: IconClipboardCheck },
+  { key: "assets", label: "Assets", icon: IconArchive },
+  { key: "requests", label: "Requests", icon: IconInbox },
+  { key: "reports", label: "Reports", icon: IconFileText },
+] as const;
+type TabKey = (typeof TAB_ITEMS)[number]["key"];
+
+// Every group is guaranteed non-empty for every waqf type — Lifecycle/
+// ProjectProgress and Investments/Proceeds are the only type-conditional
+// sections (Project-only and Investment-only respectively), and
+// Contributions/Causes/Distributions/Assets/Beneficiaries/Requests/
+// GovernanceActivity/FinancialReport all render for every type. An empty
+// first tab was the reason "Overview" carries Contributions (present for
+// every type) rather than standing alone as Lifecycle/ProjectProgress,
+// which would have left it blank for Asset and Investment funds.
+//
+// [&>*:first-child]:mt-0/border-t-0/pt-0 below strips the top divider
+// every section renders for itself (designed for "stacked in sequence,"
+// see e.g. AssetsSection's own wrapper) off of whichever section actually
+// lands first inside a given tab panel — which one that is shifts with
+// the type-conditional sections above, so this targets it structurally
+// rather than hardcoding which component it'll be.
+const PANEL_RESET_FIRST_CHILD = "[&>*:first-child]:mt-0 [&>*:first-child]:border-t-0 [&>*:first-child]:pt-0";
+
 export default function WaqfFundDetailPage() {
   const params = useParams<{ id: string }>();
   const [waqf, setWaqf] = useState<Waqf | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  // A tab's sections only ever mount once it's been opened at least once
+  // — the actual fix for the parallel-fetch-on-load problem this
+  // redesign exists for — but stay mounted (just CSS-hidden) after that,
+  // so flipping back to an already-visited tab doesn't lose state or
+  // re-fetch. openedTabs starts with "overview" since that's what's
+  // shown immediately, not lazily.
+  const [openedTabs, setOpenedTabs] = useState<ReadonlySet<TabKey>>(new Set(["overview"]));
+
+  const selectTab = useCallback((key: string) => {
+    const tabKey = key as TabKey;
+    setActiveTab(tabKey);
+    setOpenedTabs((prev) => (prev.has(tabKey) ? prev : new Set(prev).add(tabKey)));
+  }, []);
 
   const load = useCallback(() => {
     apiFetchJson<Waqf>(`/waqfs/${params.id}`)
@@ -94,7 +164,10 @@ export default function WaqfFundDetailPage() {
             </div>
           </header>
 
-          <Card>
+          {/* Identity info stays outside the tabs — always relevant
+              regardless of which tab is open, same reasoning the header
+              above already follows. */}
+          <Card className="mb-6">
             <DetailGrid
               columns={2}
               items={[
@@ -131,30 +204,59 @@ export default function WaqfFundDetailPage() {
                 <p className="text-sm text-slate-700">{waqf.purpose}</p>
               </div>
             )}
+          </Card>
 
-            {waqf.type === "project" && <LifecycleSection waqfId={waqf.id} />}
-            {waqf.type === "project" && (
-              <ProjectProgressSection waqfId={waqf.id} currency={waqf.corpusCurrency ?? "USD"} />
+          <Tabs items={[...TAB_ITEMS]} active={activeTab} onChange={selectTab} className="mb-0" />
+
+          <Card className="rounded-t-none border-t-0">
+            {openedTabs.has("overview") && (
+              <div hidden={activeTab !== "overview"} className={PANEL_RESET_FIRST_CHILD}>
+                {waqf.type === "project" && <LifecycleSection waqfId={waqf.id} />}
+                {waqf.type === "project" && (
+                  <ProjectProgressSection waqfId={waqf.id} currency={waqf.corpusCurrency ?? "USD"} />
+                )}
+                <ContributionsSection waqf={waqf} onCorpusIncreased={load} />
+              </div>
             )}
-            <ContributionsSection waqf={waqf} onCorpusIncreased={load} />
-            <CausesSection
-              waqfId={waqf.id}
-              waqfType={waqf.type}
-              amountRaised={waqf.amountRaised ?? "0"}
-              corpusCurrency={waqf.corpusCurrency}
-            />
-            <AssetsSection waqfId={waqf.id} />
-            {/* Only an Investment-type waqf routes its corpus into an
-                investment venue — every other type goes directly toward
-                its stated purpose (see InvestmentsService.create's own
-                comment, which enforces this server-side too). */}
-            {waqf.type === "investment" && <InvestmentsSection waqfId={waqf.id} />}
-            {waqf.type === "investment" && <ProceedsSection waqfId={waqf.id} />}
-            <DistributionsSection waqfId={waqf.id} />
-            <BeneficiariesSection waqfId={waqf.id} />
-            <RequestsSection waqfId={waqf.id} waqfType={waqf.type} currency={waqf.corpusCurrency} />
-            <GovernanceActivitySection waqfId={waqf.id} />
-            <FinancialReportSection waqfId={waqf.id} />
+
+            {openedTabs.has("money") && (
+              <div hidden={activeTab !== "money"} className={PANEL_RESET_FIRST_CHILD}>
+                <CausesSection
+                  waqfId={waqf.id}
+                  waqfType={waqf.type}
+                  amountRaised={waqf.amountRaised ?? "0"}
+                  corpusCurrency={waqf.corpusCurrency}
+                />
+                {/* Only an Investment-type waqf routes its corpus into an
+                    investment venue — every other type goes directly
+                    toward its stated purpose (see InvestmentsService
+                    .create's own comment, which enforces this
+                    server-side too). */}
+                {waqf.type === "investment" && <InvestmentsSection waqfId={waqf.id} />}
+                {waqf.type === "investment" && <ProceedsSection waqfId={waqf.id} />}
+                <DistributionsSection waqfId={waqf.id} />
+              </div>
+            )}
+
+            {openedTabs.has("assets") && (
+              <div hidden={activeTab !== "assets"} className={PANEL_RESET_FIRST_CHILD}>
+                <AssetsSection waqfId={waqf.id} />
+                <BeneficiariesSection waqfId={waqf.id} />
+              </div>
+            )}
+
+            {openedTabs.has("requests") && (
+              <div hidden={activeTab !== "requests"} className={PANEL_RESET_FIRST_CHILD}>
+                <RequestsSection waqfId={waqf.id} waqfType={waqf.type} currency={waqf.corpusCurrency} />
+                <GovernanceActivitySection waqfId={waqf.id} />
+              </div>
+            )}
+
+            {openedTabs.has("reports") && (
+              <div hidden={activeTab !== "reports"} className={PANEL_RESET_FIRST_CHILD}>
+                <FinancialReportSection waqfId={waqf.id} />
+              </div>
+            )}
           </Card>
         </>
       )}
