@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma } from "@birr/db";
 import { CASH_AND_BANK_ACCOUNT_CODE, WaqfLedgerService } from "./waqf-ledger.service";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class CreateWaqfExpenseInput {
   @IsString()
@@ -15,6 +16,7 @@ export class CreateWaqfExpenseInput {
   ledgerAccountId!: string;
 
   @IsNumberString()
+  @IsPositiveDecimal()
   amount!: string;
 
   @IsString()

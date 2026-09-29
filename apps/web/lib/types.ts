@@ -416,6 +416,18 @@ export interface Contribution {
   createdAt: string;
 }
 
+export interface VaultContribution {
+  id: string;
+  vaultId: string;
+  amount: string;
+  currency: string;
+  provider: "stripe" | "paystack" | "stablecoin";
+  status: "pending" | "confirmed" | "failed";
+  createdAt: string;
+  confirmedAt: string | null;
+  vault: { name: string; slug: string };
+}
+
 export interface MessageAttachment {
   id: string;
   fileName: string;

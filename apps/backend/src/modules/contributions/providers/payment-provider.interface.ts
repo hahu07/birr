@@ -14,6 +14,19 @@ export interface CreatePaymentInput {
    * fall back to a synthetic placeholder; revisit once real identity
    * exists. */
   payerEmail?: string;
+  /** Which frontend route the donor is redirected back to after
+   * checkout (Paystack's callback_url / Stripe's success_url+cancel_url)
+   * — "contributions" (default) for the Founder Portal's Waqf Fund flow,
+   * "vault-contributions" for Vault's public giving flow. These land on
+   * two different pages (apps/web/app/(founder)/contributions/[id] vs.
+   * .../vault-contributions/[id]) because they poll two different,
+   * differently-shaped backend resources (Contribution vs.
+   * VaultContribution) and the Vault one has no Founder session to show
+   * a "your waqf fund is now active" link for (2026-09-29 codebase
+   * walkthrough finding: every Vault Paystack donor was being redirected
+   * to the Founder-only page, which itself redirects an unauthenticated
+   * visitor straight to /sign-in). */
+  returnPath?: "contributions" | "vault-contributions";
 }
 
 export interface CreatePaymentResult {

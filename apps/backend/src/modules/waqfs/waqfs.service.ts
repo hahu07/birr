@@ -5,6 +5,7 @@ import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { TrusteeLicensesService } from "../trustee-licenses/trustee-licenses.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class CreateWaqfInput {
   @IsString()
@@ -28,6 +29,7 @@ export class CreateWaqfInput {
   // waqf created before this feature existed just has these columns
   // null, not backfilled.
   @IsNumberString()
+  @IsPositiveDecimal()
   corpusAmount!: string;
 
   @IsString()
@@ -46,6 +48,7 @@ export class CreateWaqfInput {
 // attachAmountRaised).
 export class IncreaseCorpusTargetInput {
   @IsNumberString()
+  @IsPositiveDecimal()
   corpusAmount!: string;
 }
 

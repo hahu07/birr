@@ -4,6 +4,7 @@ import { prisma, Prisma, VaultType, VaultStatus } from "@birr/db";
 import { VaultProceedsService } from "./vault-proceeds.service";
 import { VaultLedgerService } from "./vault-ledger.service";
 import { findVaultOrThrow } from "./find-vault-or-throw";
+import { SPENDABLE_CONTRIBUTION_WHERE } from "./spendable-contributions";
 
 const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
@@ -359,7 +360,7 @@ export class VaultsService {
     if (vaults.length === 0) return [];
     const sums = await prisma.vaultContribution.groupBy({
       by: ["vaultId", "currency"],
-      where: { vaultId: { in: vaults.map((v) => v.id) }, status: "confirmed" },
+      where: { vaultId: { in: vaults.map((v) => v.id) }, ...SPENDABLE_CONTRIBUTION_WHERE },
       _sum: { amount: true },
     });
     const raisedByVaultId = new Map<string, { currency: string; amount: string }[]>();
@@ -500,7 +501,7 @@ export class VaultsService {
     }
 
     const raised = await tx.vaultContribution.aggregate({
-      where: { vaultId: cause.vaultId, currency, status: "confirmed" },
+      where: { vaultId: cause.vaultId, currency, ...SPENDABLE_CONTRIBUTION_WHERE },
       _sum: { amount: true },
     });
     const pool = raised._sum.amount ?? new Prisma.Decimal(0);

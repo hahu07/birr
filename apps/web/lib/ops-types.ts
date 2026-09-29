@@ -151,6 +151,8 @@ export interface CauseCategory {
   typicalWaqfTypes: ("investment" | "asset" | "project")[];
   parentId: string | null;
   usageCount: number;
+  waqfUsageCount: number;
+  vaultUsageCount: number;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;

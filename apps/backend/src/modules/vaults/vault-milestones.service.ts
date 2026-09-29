@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { IsInt, IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { findVaultOrThrow } from "./find-vault-or-throw";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
@@ -27,6 +28,7 @@ export class CreateVaultMilestoneInput {
 
   @IsOptional()
   @IsNumberString()
+  @IsPositiveDecimal()
   targetAmount?: string;
 
   @IsOptional()

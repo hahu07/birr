@@ -76,6 +76,11 @@ export async function assertWithinAllocation(
   currency: string,
   config: AllocationCeilingConfig,
 ): Promise<void> {
+  // A non-positive commitment would lower the committed total and so
+  // raise everyone else's headroom — reject it here too, not only in DTOs.
+  if (!additionalAmount.gt(0)) {
+    throw new BadRequestException("A distribution amount must be greater than zero.");
+  }
   await config.lockCause(causeId);
   const { cause, parentType } = await config.loadCauseAndParentType(causeId, currency);
   const allocated =

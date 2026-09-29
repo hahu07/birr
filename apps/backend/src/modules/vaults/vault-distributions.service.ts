@@ -6,6 +6,8 @@ import { assertWithinAllocation as assertWithinAllocationShared } from "../../co
 import { PayoutBankDetails, PayoutProviderAdapter } from "../distributions/providers/payout-provider.interface";
 import { PaystackPayoutAdapter } from "../distributions/providers/paystack-payout.adapter";
 import { CASH_AND_BANK_ACCOUNT_CODE, PROGRAM_EXPENSES_ACCOUNT_CODE, VaultLedgerService } from "./vault-ledger.service";
+import { SPENDABLE_CONTRIBUTION_WHERE } from "./spendable-contributions";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class CreateVaultDistributionInput {
   @IsString()
@@ -26,6 +28,7 @@ export class CreateVaultDistributionInput {
   vaultMilestoneId?: string;
 
   @IsNumberString()
+  @IsPositiveDecimal()
   amount!: Prisma.Decimal | number | string;
 
   @IsString()
@@ -326,8 +329,13 @@ export class VaultDistributionsService {
         ? { status: "paid" as const, paidAt: new Date() }
         : { status: "payout_failed" as const, payoutError: "Paystack reported transfer failure/reversal." };
 
-    return prisma.$transaction(async (tx) => {
-      const updated = await tx.vaultDistribution.update({ where: { id: distribution.id }, data });
+    // Conditional claim (still "disbursing"), not a blind update — two
+    // concurrent retries of the same transfer webhook used to both flip the
+    // row and both post Program Expenses. The loser changes nothing.
+    const outcome = await prisma.$transaction(async (tx) => {
+      const claim = await tx.vaultDistribution.updateMany({ where: { id: distribution.id, status: "disbursing" }, data });
+      if (claim.count !== 1) return null;
+      const updated = await tx.vaultDistribution.findUniqueOrThrow({ where: { id: distribution.id } });
       await tx.auditLog.create({
         data: {
           vaultId: distribution.vaultId,
@@ -363,6 +371,7 @@ export class VaultDistributionsService {
 
       return updated;
     });
+    return outcome ?? prisma.vaultDistribution.findUniqueOrThrow({ where: { id: distribution.id } });
   }
 
   /**
@@ -385,6 +394,7 @@ export class VaultDistributionsService {
       status: { in: ["pending", "approved", "disbursing", "paid"] },
       ...(excludeDistributionId ? { id: { not: excludeDistributionId } } : {}),
     };
+    await this.assertWithinSpendableCash(vaultCauseId, additionalAmount, currency, tx, excludeDistributionId);
     await assertWithinAllocationShared(vaultCauseId, additionalAmount, currency, {
       lockCause: async (id) => {
         await tx.$queryRaw`SELECT id FROM "vault_causes" WHERE id = ${id} FOR UPDATE`;
@@ -407,6 +417,59 @@ export class VaultDistributionsService {
       sumCommittedInCurrency: async (curr) =>
         (await tx.vaultDistribution.aggregate({ where: { ...committedWhere, currency: curr }, _sum: { amount: true } }))._sum.amount,
     });
+  }
+
+  /**
+   * Vault-wide backstop under the per-cause allocation ceiling: everything
+   * committed across all of this vault's causes in this currency can never
+   * exceed the contribution money Birr actually holds for it. Allocations
+   * are set against the pool at one moment; a later refund or compliance
+   * hold shrinks the pool but leaves those allocations standing, so without
+   * this a held or refunded gift could still be paid out. Investment-style
+   * vaults are exempt — they distribute proceeds, which holds and refunds
+   * don't touch.
+   *
+   * Locks the vault row before the shared helper locks the cause row —
+   * the same vault-then-cause order VaultsService.setCauseAllocation
+   * takes, so the two paths can't deadlock.
+   */
+  private async assertWithinSpendableCash(
+    vaultCauseId: string,
+    additionalAmount: Prisma.Decimal,
+    currency: string,
+    tx: Prisma.TransactionClient,
+    excludeDistributionId?: string,
+  ): Promise<void> {
+    const cause = await tx.vaultCause.findUnique({ where: { id: vaultCauseId }, select: { vaultId: true } });
+    if (!cause) return;
+    await tx.$queryRaw`SELECT id FROM "vaults" WHERE id = ${cause.vaultId} FOR UPDATE`;
+    const vault = await tx.vault.findUniqueOrThrow({ where: { id: cause.vaultId }, select: { type: true } });
+    if (vault.type === "investment") return;
+
+    const [spendable, committed] = await Promise.all([
+      tx.vaultContribution.aggregate({
+        where: { vaultId: cause.vaultId, currency, ...SPENDABLE_CONTRIBUTION_WHERE },
+        _sum: { amount: true },
+      }),
+      tx.vaultDistribution.aggregate({
+        where: {
+          vaultId: cause.vaultId,
+          currency,
+          deletedAt: null,
+          status: { in: ["pending", "approved", "disbursing", "paid"] },
+          ...(excludeDistributionId ? { id: { not: excludeDistributionId } } : {}),
+        },
+        _sum: { amount: true },
+      }),
+    ]);
+    const held = spendable._sum.amount ?? new Prisma.Decimal(0);
+    const alreadyCommitted = committed._sum.amount ?? new Prisma.Decimal(0);
+    if (alreadyCommitted.plus(additionalAmount).gt(held)) {
+      const remaining = held.minus(alreadyCommitted);
+      throw new BadRequestException(
+        `This vault only has ${remaining.isNegative() ? 0 : remaining} ${currency} left to pay out — ${held} ${currency} is available (held or refunded gifts excluded) and ${alreadyCommitted} ${currency} is already committed.`,
+      );
+    }
   }
 
   findById(id: string) {

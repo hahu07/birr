@@ -136,13 +136,24 @@ export function WaqfFundForm({
   const effectiveCorpusCurrency = waqfAlreadyExists ? existingWaqf?.corpusCurrency : currency;
   // A top-up on an already-funded waqf (progress.raised > 0) has none of
   // these constraints — that's genuinely free-form additional funding,
-  // per the "no cap on overfunding" decision.
+  // per the "no cap on overfunding" decision. This is about the AMOUNT
+  // only (no floor, no cap) — it says nothing about currency.
   const isFirstPayment = !waqfAlreadyExists || !progress || progress.raised === 0;
   // Both the currency and payment-method selects are locked together
   // once a corpus currency is fixed — changing payment method alone
   // (handleProviderChange) would otherwise silently overwrite currency
   // back to that provider's own default, undoing the lock below.
-  const currencyLocked = waqfAlreadyExists && isFirstPayment && Boolean(existingWaqf?.corpusCurrency);
+  //
+  // Deliberately NOT gated on isFirstPayment (2026-09-29 codebase
+  // walkthrough finding): a waqf's corpus currency never changes after
+  // establishment, so a top-up is just as currency-constrained as the
+  // first payment — only the AMOUNT is free-form for a top-up, not the
+  // currency. Before this fix, a top-up on an already-funded NGN waqf
+  // left both selects fully open, so picking "Stablecoin" silently
+  // switched currency to USDC via handleProviderChange, and the founder
+  // only found out it was wrong when POST /contributions rejected it
+  // server-side ("this waqf's corpus was declared in NGN...").
+  const currencyLocked = waqfAlreadyExists && Boolean(existingWaqf?.corpusCurrency);
 
   // The percentage-of-corpus floor for a waqf's first payment — 100%
   // for lump sum ("pay it all now"), the admin-configured percent for
@@ -173,17 +184,19 @@ export function WaqfFundForm({
     }
   }, [isFirstPayment, effectiveFundingPlan, effectiveCorpusAmount, firstPaymentFloor, amountTouched]);
 
-  // The corpus's floors are only meaningful in the currency it was
-  // declared in — for an existing unfunded waqf, default (and lock, see
-  // the currency <select> below) the payment currency to match, so the
-  // amount this effect just locked/floored above can't silently be
-  // submitted against a different, mismatched currency.
+  // Default (and lock, see the currency <select> below) the payment
+  // currency to the waqf's own declared corpus currency, for every
+  // payment against an existing waqf — first payment or top-up alike
+  // (see currencyLocked's own comment on why this isn't isFirstPayment-
+  // gated). For a first payment this also keeps the amount floor above
+  // from being paired with a mismatched currency; for a top-up it's the
+  // only thing preventing exactly that mismatch in the first place.
   useEffect(() => {
-    if (!waqfAlreadyExists || !isFirstPayment || !effectiveCorpusCurrency) return;
+    if (!waqfAlreadyExists || !effectiveCorpusCurrency) return;
     setCurrency(effectiveCorpusCurrency);
     const matchingProvider = PROVIDERS.find((p) => (p.currencies as readonly string[]).includes(effectiveCorpusCurrency));
     if (matchingProvider) setProvider(matchingProvider.value);
-  }, [waqfAlreadyExists, isFirstPayment, effectiveCorpusCurrency]);
+  }, [waqfAlreadyExists, effectiveCorpusCurrency]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -53,7 +53,7 @@ export class PaystackAdapter implements PaymentProviderAdapter {
     // Paystack amounts are in the smallest currency unit (kobo for NGN),
     // same 2-decimal-currency assumption as the Stripe adapter's minor-unit math.
     const amountMinorUnits = Math.round(Number(input.amount) * 100);
-    const callbackUrl = `${process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000"}/contributions/${input.reference}`;
+    const callbackUrl = `${process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000"}/${input.returnPath ?? "contributions"}/${input.reference}`;
 
     const res = await fetch(`${this.baseUrl}/transaction/initialize`, {
       method: "POST",

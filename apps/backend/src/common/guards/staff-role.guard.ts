@@ -3,6 +3,7 @@ import { Reflector } from "@nestjs/core";
 import { Request } from "express";
 import { BirrStaffRole } from "@birr/db";
 import { AuthenticatedBirrStaff, resolveBirrStaffFromSession } from "../auth/current-birr-staff";
+import { assertStaffMfa } from "./mfa-exempt.decorator";
 
 /**
  * A plain "does this staff member hold this role" check — deliberately
@@ -34,6 +35,7 @@ export class StaffRoleGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<Request>();
     const staff = await resolveBirrStaffFromSession(request);
+    assertStaffMfa(this.reflector, context, staff);
     if (!requiredRoles.includes(staff.staffRole as BirrStaffRole)) {
       throw new ForbiddenException(`Requires one of the following roles: ${requiredRoles.join(", ")}.`);
     }

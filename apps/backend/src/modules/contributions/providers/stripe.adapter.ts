@@ -72,8 +72,8 @@ export class StripeAdapter implements PaymentProviderAdapter {
         },
       ],
       client_reference_id: input.reference,
-      success_url: `${process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000"}/contributions/${input.reference}`,
-      cancel_url: `${process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000"}/contributions/${input.reference}`,
+      success_url: `${process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000"}/${input.returnPath ?? "contributions"}/${input.reference}`,
+      cancel_url: `${process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000"}/${input.returnPath ?? "contributions"}/${input.reference}`,
     });
 
     // providerReference is the Contribution's own id, not Stripe's

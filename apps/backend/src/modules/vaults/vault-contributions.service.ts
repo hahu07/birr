@@ -11,6 +11,7 @@ import { StablecoinAdapter } from "../contributions/providers/stablecoin.adapter
 import { ResendVaultReceiptEmailAdapter } from "./email/resend-vault-receipt.adapter";
 import { CASH_AND_BANK_ACCOUNT_CODE, DONATIONS_REVENUE_ACCOUNT_CODE, VaultLedgerService } from "./vault-ledger.service";
 import { findVaultOrThrow } from "./find-vault-or-throw";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class HoldVaultContributionInput {
   @IsString()
@@ -31,6 +32,7 @@ export class InitiateVaultContributionInput {
   // all). See MaxDecimal's own comment.
   @IsNumberString()
   @MaxDecimal(MAX_PUBLIC_CONTRIBUTION_AMOUNT)
+  @IsPositiveDecimal()
   amount!: string;
 
   @IsString()
@@ -63,6 +65,28 @@ export class InitiateVaultContributionInput {
   @IsOptional()
   @IsString()
   idNumber?: string;
+}
+
+// A pending gift still counts toward a donor's ID threshold for this long —
+// comfortably past any provider's checkout expiry, so an abandoned checkout
+// stops counting eventually instead of forever.
+const PENDING_COUNTS_TOWARD_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+
+// Emails are the donor's only identity thread, so "Donor@X.com" and
+// "donor@x.com" must not become two donors with separate thresholds.
+function normalizeEmail(email: string | undefined): string | undefined {
+  const trimmed = email?.trim().toLowerCase();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeIdNumber(idNumber: string): string {
+  return idNumber.replace(/[\s-]/g, "").toUpperCase();
+}
+
+// Never write the (encrypted) ID number into the audit trail — only that one exists.
+function donorAuditSnapshot<T extends { idNumberEncrypted: string | null }>(donor: T) {
+  const { idNumberEncrypted, ...rest } = donor;
+  return { ...rest, idNumberOnFile: idNumberEncrypted != null };
 }
 
 @Injectable()
@@ -138,17 +162,21 @@ export class VaultContributionsService {
       );
     }
 
-    const donor = await this.findOrCreateDonor(input, amount);
-
+    const donorEmail = normalizeEmail(input.donorEmail);
     const id = randomUUID();
-    const paymentResult = await adapter.createPayment({
-      amount: input.amount,
-      currency: input.currency,
-      reference: id,
-      payerEmail: input.donorEmail,
-    });
 
-    const contribution = await prisma.$transaction(async (tx) => {
+    // Reserve the row BEFORE calling the payment provider, under a
+    // per-email lock: the threshold check below counts this donor's
+    // recent pending gifts, so two gifts started in parallel under the
+    // same email now see each other instead of each passing alone. The
+    // provider's own reference isn't known yet — our id stands in until
+    // createPayment() returns (no webhook can arrive before the donor has
+    // even reached checkout).
+    const { contribution, donor } = await prisma.$transaction(async (tx) => {
+      if (donorEmail) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${donorEmail}))`;
+      }
+      const donor = donorEmail ? await this.findOrCreateDonor(tx, donorEmail, input, amount) : null;
       const contribution = await tx.vaultContribution.create({
         data: {
           id,
@@ -158,7 +186,7 @@ export class VaultContributionsService {
           amount: input.amount,
           currency: input.currency,
           provider: input.provider,
-          providerReference: paymentResult.providerReference,
+          providerReference: id,
           status: "pending",
           ipAddress,
         },
@@ -174,10 +202,62 @@ export class VaultContributionsService {
           after: contribution as any,
         },
       });
-      return contribution;
+      return { contribution, donor };
     });
 
-    return { contribution, clientPayload: paymentResult.clientPayload };
+    let paymentResult;
+    try {
+      paymentResult = await adapter.createPayment({
+        amount: input.amount,
+        currency: input.currency,
+        reference: id,
+        payerEmail: donorEmail,
+        returnPath: "vault-contributions",
+      });
+    } catch (err) {
+      // The reservation must not linger as "pending" and keep counting
+      // toward this donor's threshold for a payment that never started.
+      await prisma.$transaction(async (tx) => {
+        const failed = await tx.vaultContribution.update({ where: { id }, data: { status: "failed" } });
+        await tx.auditLog.create({
+          data: {
+            vaultId: input.vaultId,
+            actorType: "public_donor",
+            actorDonorId: donor?.id,
+            action: "vault_contribution.failed",
+            entityType: "VaultContribution",
+            entityId: id,
+            before: contribution as any,
+            after: failed as any,
+          },
+        });
+      });
+      throw err;
+    }
+
+    if (paymentResult.providerReference === id) {
+      return { contribution, clientPayload: paymentResult.clientPayload };
+    }
+    const withReference = await prisma.$transaction(async (tx) => {
+      const updated = await tx.vaultContribution.update({
+        where: { id },
+        data: { providerReference: paymentResult.providerReference },
+      });
+      await tx.auditLog.create({
+        data: {
+          vaultId: input.vaultId,
+          actorType: "public_donor",
+          actorDonorId: donor?.id,
+          action: "vault_contribution.payment_created",
+          entityType: "VaultContribution",
+          entityId: id,
+          before: contribution as any,
+          after: updated as any,
+        },
+      });
+      return updated;
+    });
+    return { contribution: withReference, clientPayload: paymentResult.clientPayload };
   }
 
   /**
@@ -225,64 +305,120 @@ export class VaultContributionsService {
    * triggering identity capture. That's the cost of allowing anonymous
    * giving, not an oversight.
    */
-  private async findOrCreateDonor(input: InitiateVaultContributionInput, amount: Prisma.Decimal) {
-    if (!input.donorEmail) return null;
+  //
+  // 2026-09-29 hardening, three changes:
+  // - Recent *pending* gifts count toward the fraction, not just confirmed
+  //   ones — otherwise several just-under-threshold gifts started before
+  //   any confirms all pass (initiate() serializes same-email calls so
+  //   they see each other's reservations).
+  // - An email is typed, never verified, so existing identity is never
+  //   overwritten from this unauthenticated input — only blank fields are
+  //   filled in. Otherwise anyone could rewrite a real donor's KYC record.
+  // - An already-identified donor no longer skips the check: past the
+  //   threshold they must re-enter the ID on file, and it must match.
+  //   Otherwise reusing a verified donor's email skipped ID capture
+  //   entirely, leaving someone else's ID on file for the money.
+  private async findOrCreateDonor(
+    tx: Prisma.TransactionClient,
+    donorEmail: string,
+    input: InitiateVaultContributionInput,
+    amount: Prisma.Decimal,
+  ) {
+    const existing = await tx.vaultDonor.findFirst({ where: { email: { equals: donorEmail, mode: "insensitive" } } });
 
-    const existing = await prisma.vaultDonor.findUnique({ where: { email: input.donorEmail } });
-    const alreadyIdentified = existing?.idType != null;
-
-    if (!alreadyIdentified) {
-      const confirmed = existing
-        ? await prisma.vaultContribution.findMany({
-            where: { donorId: existing.id, status: "confirmed" },
-            select: { amount: true, currency: true },
-          })
-        : [];
-      const currencies = [...new Set([input.currency, ...confirmed.map((c) => c.currency)])];
-      const thresholds = await prisma.vaultDonorThreshold.findMany({ where: { currency: { in: currencies } } });
-      const thresholdByCurrency = new Map(thresholds.map((t) => [t.currency, t.thresholdAmount]));
-
-      const fractionOf = (amt: Prisma.Decimal, currency: string): Prisma.Decimal => {
-        const limit = thresholdByCurrency.get(currency);
-        return limit && limit.gt(0) ? amt.div(limit) : new Prisma.Decimal(0);
-      };
-
-      const fractionUsed = confirmed.reduce(
-        (sum, c) => sum.plus(fractionOf(c.amount, c.currency)),
-        fractionOf(amount, input.currency),
-      );
-
-      if (fractionUsed.gte(1) && (!input.donorFullName || !input.idType || !input.idNumber)) {
-        throw new BadRequestException(
-          `Your giving to Birr — across this and any other currency — has reached a point where compliance requires your full name and an ID; please provide donorFullName, idType, and idNumber.`,
-        );
-      }
-    }
-
-    const idNumberEncrypted = input.idNumber ? this.encryption.encrypt(input.idNumber) : undefined;
-
-    if (existing) {
-      if (input.donorFullName || input.idType || idNumberEncrypted) {
-        return prisma.vaultDonor.update({
-          where: { id: existing.id },
-          data: {
-            fullName: input.donorFullName ?? existing.fullName,
-            idType: input.idType ?? existing.idType,
-            idNumberEncrypted: idNumberEncrypted ?? existing.idNumberEncrypted,
+    const recentSince = new Date(Date.now() - PENDING_COUNTS_TOWARD_THRESHOLD_MS);
+    const prior = existing
+      ? await tx.vaultContribution.findMany({
+          where: {
+            donorId: existing.id,
+            OR: [{ status: "confirmed" }, { status: "pending", createdAt: { gte: recentSince } }],
           },
+          select: { amount: true, currency: true },
+        })
+      : [];
+    const currencies = [...new Set([input.currency, ...prior.map((c) => c.currency)])];
+    const thresholds = await tx.vaultDonorThreshold.findMany({ where: { currency: { in: currencies } } });
+    const thresholdByCurrency = new Map(thresholds.map((t) => [t.currency, t.thresholdAmount]));
+
+    const fractionOf = (amt: Prisma.Decimal, currency: string): Prisma.Decimal => {
+      const limit = thresholdByCurrency.get(currency);
+      return limit && limit.gt(0) ? amt.div(limit) : new Prisma.Decimal(0);
+    };
+    const fractionUsed = prior.reduce(
+      (sum, c) => sum.plus(fractionOf(c.amount, c.currency)),
+      fractionOf(amount, input.currency),
+    );
+
+    const identifiedOnFile = existing?.idType != null && existing.idNumberEncrypted != null;
+    if (fractionUsed.gte(1)) {
+      if (identifiedOnFile) {
+        if (!input.idType || !input.idNumber) {
+          throw new BadRequestException({
+            statusCode: 400,
+            code: "IDENTITY_CONFIRMATION_REQUIRED",
+            message: "For a gift of this size we need to confirm your identity. Please re-enter the ID you gave us before.",
+          });
+        }
+        const onFile = normalizeIdNumber(this.encryption.decrypt(existing!.idNumberEncrypted!));
+        if (existing!.idType !== input.idType || onFile !== normalizeIdNumber(input.idNumber)) {
+          throw new BadRequestException({
+            statusCode: 400,
+            code: "IDENTITY_MISMATCH",
+            message: "Those ID details don't match what we have on file for this email. Please check them, or contact Birr if your details have changed.",
+          });
+        }
+      } else if (!input.donorFullName || !input.idType || !input.idNumber) {
+        throw new BadRequestException({
+          statusCode: 400,
+          code: "IDENTITY_REQUIRED",
+          message: "Because of the total you've given to Birr, we're required to confirm your identity for this gift. Please add your full name and an ID.",
         });
       }
-      return existing;
     }
 
-    return prisma.vaultDonor.create({
+    const fill: Prisma.VaultDonorUpdateInput = {};
+    if (!existing?.fullName && input.donorFullName) fill.fullName = input.donorFullName;
+    if (!identifiedOnFile && input.idType && input.idNumber) {
+      fill.idType = input.idType;
+      fill.idNumberEncrypted = this.encryption.encrypt(input.idNumber);
+    }
+
+    if (existing) {
+      if (Object.keys(fill).length === 0) return existing;
+      const updated = await tx.vaultDonor.update({ where: { id: existing.id }, data: fill });
+      await tx.auditLog.create({
+        data: {
+          actorType: "public_donor",
+          actorDonorId: existing.id,
+          action: "vault_donor.identity_captured",
+          entityType: "VaultDonor",
+          entityId: existing.id,
+          before: donorAuditSnapshot(existing) as any,
+          after: donorAuditSnapshot(updated) as any,
+        },
+      });
+      return updated;
+    }
+
+    const created = await tx.vaultDonor.create({
       data: {
-        email: input.donorEmail,
-        fullName: input.donorFullName,
-        idType: input.idType,
-        idNumberEncrypted,
+        email: donorEmail,
+        fullName: fill.fullName as string | undefined,
+        idType: fill.idType as IdType | undefined,
+        idNumberEncrypted: fill.idNumberEncrypted as string | undefined,
       },
     });
+    await tx.auditLog.create({
+      data: {
+        actorType: "public_donor",
+        actorDonorId: created.id,
+        action: "vault_donor.created",
+        entityType: "VaultDonor",
+        entityId: created.id,
+        after: donorAuditSnapshot(created) as any,
+      },
+    });
+    return created;
   }
 
   /**
@@ -316,9 +452,21 @@ export class VaultContributionsService {
       return contribution;
     }
 
+    // Every status flip below is a conditional claim (still "pending"), not
+    // a blind update: providers retry webhooks, and two concurrent
+    // deliveries both passing the read above used to both flip the row and
+    // both post the ledger — double-counting the money. The loser of the
+    // claim changes nothing and just returns the row as it now stands.
+    const current = () => prisma.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
+
     if (result.status === "failed") {
       const failed = await prisma.$transaction(async (tx) => {
-        const failed = await tx.vaultContribution.update({ where: { id: contribution.id }, data: { status: "failed" } });
+        const claim = await tx.vaultContribution.updateMany({
+          where: { id: contribution.id, status: "pending" },
+          data: { status: "failed" },
+        });
+        if (claim.count !== 1) return null;
+        const failed = await tx.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
         await tx.auditLog.create({
           data: {
             vaultId: contribution.vaultId,
@@ -333,18 +481,20 @@ export class VaultContributionsService {
         });
         return failed;
       });
-      return failed;
+      return failed ?? current();
     }
 
     const confirmed = await prisma.$transaction(async (tx) => {
-      const confirmed = await tx.vaultContribution.update({
-        where: { id: contribution.id },
+      const claim = await tx.vaultContribution.updateMany({
+        where: { id: contribution.id, status: "pending" },
         data: {
           status: "confirmed",
           confirmedAt: new Date(),
           providerPaymentId: result.providerPaymentId ?? contribution.providerPaymentId,
         },
       });
+      if (claim.count !== 1) return null;
+      const confirmed = await tx.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
       await tx.auditLog.create({
         data: {
           vaultId: contribution.vaultId,
@@ -379,6 +529,7 @@ export class VaultContributionsService {
 
       return confirmed;
     });
+    if (!confirmed) return current();
 
     // No donor row at all means an anonymous contribution (donorEmail
     // was optional) — nowhere to send a receipt, an accepted tradeoff of
@@ -407,8 +558,26 @@ export class VaultContributionsService {
     return confirmed;
   }
 
-  findById(id: string) {
-    return prisma.vaultContribution.findUnique({ where: { id } });
+  // Backs a @Public() polling route whose id travels in the donor's return
+  // URL (browser history, referrers, shared screenshots) — so an explicit
+  // allow-list, never the full row. The full row carries ipAddress
+  // (personal data) and heldReason (a compliance officer's AML note;
+  // showing it to its subject would be tipping off).
+  findPublicStatus(id: string) {
+    return prisma.vaultContribution.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        vaultId: true,
+        amount: true,
+        currency: true,
+        provider: true,
+        status: true,
+        createdAt: true,
+        confirmedAt: true,
+        vault: { select: { name: true, slug: true } },
+      },
+    });
   }
 
   // Ops Console's contributions table (VaultContributionsSection) only
@@ -686,8 +855,8 @@ export class VaultContributionsService {
     if (claim.count !== 1) return;
 
     const adapter = this.adapters.get(contribution.provider);
+    let refundReference: string | null = null;
     try {
-      let refundReference: string | null = null;
       if (adapter?.refund) {
         const result = await adapter.refund({
           providerReference: contribution.providerReference,
@@ -697,22 +866,6 @@ export class VaultContributionsService {
         });
         refundReference = result.refundReference;
       }
-
-      const refunded = await prisma.vaultContribution.update({
-        where: { id },
-        data: { refundStatus: "refunded", refundedAt: new Date(), refundReference },
-      });
-      await prisma.auditLog.create({
-        data: {
-          vaultId: contribution.vaultId,
-          actorType: "system",
-          action: "vault_contribution.refunded",
-          entityType: "VaultContribution",
-          entityId: id,
-          before: contribution as any,
-          after: refunded as any,
-        },
-      });
     } catch (err) {
       const failed = await prisma.vaultContribution.update({
         where: { id },
@@ -729,6 +882,54 @@ export class VaultContributionsService {
           after: failed as any,
         },
       });
+      return;
+    }
+
+    // The money has left by this point. If recording it fails, the row
+    // deliberately stays "processing" — truthful and visibly stuck for a
+    // human — rather than "failed", which would invite a second refund of
+    // money already returned.
+    try {
+      await prisma.$transaction(async (tx) => {
+        const refunded = await tx.vaultContribution.update({
+          where: { id },
+          data: { refundStatus: "refunded", refundedAt: new Date(), refundReference },
+        });
+        await tx.auditLog.create({
+          data: {
+            vaultId: contribution.vaultId,
+            actorType: "system",
+            action: "vault_contribution.refunded",
+            entityType: "VaultContribution",
+            entityId: id,
+            before: contribution as any,
+            after: refunded as any,
+          },
+        });
+        // Reverses the confirmation's own posting (Debit Cash & Bank,
+        // Credit Donations Revenue) — without this the books kept showing
+        // money that had already gone back to the donor. Same transaction
+        // as the status flip, same reasoning as handleWebhook's posting.
+        const cashAndBank = await this.ledger.getAccountByCode(tx, CASH_AND_BANK_ACCOUNT_CODE);
+        const donationsRevenue = await this.ledger.getAccountByCode(tx, DONATIONS_REVENUE_ACCOUNT_CODE);
+        await this.ledger.post(tx, {
+          vaultId: contribution.vaultId,
+          description: `Contribution refunded (${contribution.provider})`,
+          currency: contribution.currency,
+          source: "contribution_refund",
+          sourceId: id,
+          actorType: "system",
+          lines: [
+            { ledgerAccountId: donationsRevenue.id, debit: contribution.amount },
+            { ledgerAccountId: cashAndBank.id, credit: contribution.amount },
+          ],
+        });
+      });
+    } catch (err) {
+      this.logger.error(
+        `Refund for vault contribution "${id}" succeeded at the provider (reference ${refundReference ?? "none"}) but recording it failed — left in "processing" for manual reconciliation:`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 }

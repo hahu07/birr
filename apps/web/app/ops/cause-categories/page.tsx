@@ -234,7 +234,8 @@ export default function CauseCategoriesPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-slate-500">
-                    {c.usageCount} {c.usageCount === 1 ? "waqf" : "waqfs"}
+                    {c.waqfUsageCount} {c.waqfUsageCount === 1 ? "waqf" : "waqfs"} · {c.vaultUsageCount}{" "}
+                    {c.vaultUsageCount === 1 ? "vault" : "vaults"}
                   </TableCell>
                   <TableCell>
                     <Badge tone={c.deletedAt ? "neutral" : "success"}>{c.deletedAt ? "Retired" : "Active"}</Badge>

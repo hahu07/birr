@@ -35,13 +35,25 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   return fetch(`${BASE_URL}${path}`, { ...init, credentials: "include", headers });
 }
 
-/** Throws with the backend's own error message on a non-2xx response. */
+/** A non-2xx response. `code` is the backend's machine-readable reason, when it sent one — branch on that, never on message text. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** Throws an ApiError with the backend's own error message on a non-2xx response. */
 export async function apiFetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(path, init);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     const message = body?.message ?? `Request to ${path} failed with status ${res.status}.`;
-    throw new Error(Array.isArray(message) ? message.join(", ") : message);
+    throw new ApiError(Array.isArray(message) ? message.join(", ") : message, res.status, typeof body?.code === "string" ? body.code : undefined);
   }
   return body as T;
 }

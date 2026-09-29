@@ -55,7 +55,7 @@ export class VaultContributionsController {
   @Public()
   @Get(":id")
   async findById(@Param("id") id: string) {
-    const contribution = await this.service.findById(id);
+    const contribution = await this.service.findPublicStatus(id);
     if (!contribution) throw new NotFoundException(`VaultContribution "${id}" not found.`);
     return contribution;
   }

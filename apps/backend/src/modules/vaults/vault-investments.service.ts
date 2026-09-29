@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsNumberString, IsOptional, IsString, MinLength } from "class-validator";
 import { prisma, Prisma, InvestmentInstrumentType, InvestmentStatus, ShariahScreeningDecision } from "@birr/db";
 import { findVaultOrThrow } from "./find-vault-or-throw";
+import { SPENDABLE_CONTRIBUTION_WHERE } from "./spendable-contributions";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 // See InvestmentsService's own identical constant/comment.
 const COMMITTED_INVESTMENT_STATUSES: InvestmentStatus[] = ["pending_shariah_review", "active"];
@@ -17,6 +19,7 @@ export class CreateVaultInvestmentInput {
   instrumentType!: InvestmentInstrumentType;
 
   @IsNumberString()
+  @IsPositiveDecimal()
   allocatedAmount!: Prisma.Decimal | number | string;
 
   @IsString()
@@ -193,7 +196,7 @@ export class VaultInvestmentsService {
     await tx.$queryRaw`SELECT id FROM "vaults" WHERE id = ${vaultId} FOR UPDATE`;
     const vault = await tx.vault.findUnique({ where: { id: vaultId }, select: { currency: true } });
     const raised = await tx.vaultContribution.aggregate({
-      where: { vaultId, status: "confirmed", ...(vault?.currency ? { currency: vault.currency } : {}) },
+      where: { vaultId, ...SPENDABLE_CONTRIBUTION_WHERE, ...(vault?.currency ? { currency: vault.currency } : {}) },
       _sum: { amount: true },
     });
     const amountRaised = raised._sum.amount ?? new Prisma.Decimal(0);

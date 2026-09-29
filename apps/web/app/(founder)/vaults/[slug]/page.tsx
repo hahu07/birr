@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { apiFetchJson } from "../../../../lib/api";
+import { ApiError, apiFetchJson } from "../../../../lib/api";
 import { humanize } from "../../../../lib/format";
 import type { Vault, VaultCause } from "../../../../lib/types";
 import { Alert, Button, Card, IconArchive, IconFileText, Input, Select, Skeleton } from "@birr/ui";
@@ -32,6 +32,8 @@ const PROVIDERS = [
 ] as const;
 
 const ID_TYPES = ["passport", "national_id", "drivers_license", "other"] as const;
+
+const IDENTITY_ERROR_CODES = new Set(["IDENTITY_REQUIRED", "IDENTITY_CONFIRMATION_REQUIRED", "IDENTITY_MISMATCH"]);
 
 interface ContributionMinimum {
   currency: string;
@@ -285,15 +287,15 @@ function ContributionForm({
       });
       window.location.href = clientPayload.checkoutUrl;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Something went wrong.";
-      // The backend only asks for identity once a compliance threshold
-      // is actually crossed (see VaultContributionsService
-      // .findOrCreateDonor's own comment) — most donors never see this,
-      // so the fields stay hidden until the server says they're needed.
-      if (message.includes("ID for compliance")) {
+      // The backend only asks for identity once a compliance threshold is
+      // actually crossed (see VaultContributionsService.findOrCreateDonor)
+      // — most donors never see this, so the fields stay hidden until the
+      // server's error code says they're needed. Branch on the code, never
+      // on message text, which previously never matched.
+      if (err instanceof ApiError && err.code && IDENTITY_ERROR_CODES.has(err.code)) {
         setShowIdentity(true);
       }
-      setError(message);
+      setError(err instanceof Error ? err.message : "Something went wrong.");
       setSubmitting(false);
     }
   }
@@ -393,10 +395,7 @@ function ContributionForm({
               value={donorEmail}
               onChange={(e) => setDonorEmail(e.target.value)}
             />
-            <p className="mt-1 text-xs text-slate-500">
-              For your receipt — leave blank to give anonymously (no receipt, and larger anonymous gifts skip our
-              usual identity check).
-            </p>
+            <p className="mt-1 text-xs text-slate-500">For your receipt. Leave blank to give anonymously, without a receipt.</p>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700">Full name (optional)</label>

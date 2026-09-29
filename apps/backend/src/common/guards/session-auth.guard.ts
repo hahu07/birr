@@ -1,9 +1,9 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@nestjs/common";
+import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { Request } from "express";
 import { AuthenticatedBirrStaff, resolveBirrStaffFromSession } from "../auth/current-birr-staff";
 import { IS_PUBLIC_KEY } from "./public.decorator";
-import { IS_MFA_EXEMPT_KEY } from "./mfa-exempt.decorator";
+import { assertStaffMfa } from "./mfa-exempt.decorator";
 
 /**
  * Default-deny floor for every route in the app: requires a valid
@@ -40,13 +40,7 @@ export class SessionAuthGuard implements CanActivate {
     const staff = await resolveBirrStaffFromSession(request);
     (request as Request & { birrStaff: AuthenticatedBirrStaff }).birrStaff = staff;
 
-    const isMfaExempt = this.reflector.getAllAndOverride<boolean>(IS_MFA_EXEMPT_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (!staff.mfaEnabled && !isMfaExempt) {
-      throw new ForbiddenException("Two-factor authentication setup is required before continuing.");
-    }
+    assertStaffMfa(this.reflector, context, staff);
     return true;
   }
 }

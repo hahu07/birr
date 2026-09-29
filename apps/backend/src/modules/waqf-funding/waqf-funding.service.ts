@@ -1,9 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import { IsNumberString } from "class-validator";
 import { prisma } from "@birr/db";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class UpsertCorpusMinimumInput {
   @IsNumberString()
+  @IsPositiveDecimal()
   minAmount!: string;
 }
 

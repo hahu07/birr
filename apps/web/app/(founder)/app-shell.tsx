@@ -57,7 +57,13 @@ const NAV_ITEMS = [
 // /vaults is the public "browse all open vaults" index and /vaults/
 // is the per-vault donation page (app/vaults/page.tsx and
 // app/vaults/[slug]/page.tsx) — no Founder session involved in either,
-// same reasoning as /waqf-types/. /forgot-password and /reset-password
+// same reasoning as /waqf-types/. /vault-contributions/ (2026-09-29) is
+// where a Vault donor's payment provider redirects back to after
+// checkout — same "no Founder session, ever" reasoning as /vaults/
+// itself; before this was added here, a Vault donor with no session hit
+// this effect's redirect below and was bounced to /sign-in immediately
+// after paying, with no confirmation of any kind (see that page's own
+// comment). /forgot-password and /reset-password
 // (2026-09-14) are reachable by a locked-out founder with no session by
 // definition — same posture as sign-up/verified above. /privacy-policy
 // and /terms-of-service (2026-09-26) are footer links reachable from
@@ -72,7 +78,7 @@ const PUBLIC_ROUTES = [
   "/privacy-policy",
   "/terms-of-service",
 ];
-const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/"];
+const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/"];
 function isPublicRoutePath(pathname: string) {
   return PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }

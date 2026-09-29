@@ -273,6 +273,10 @@ describe("GovernedActionsService", () => {
     // RESTRICT on vaultCauseId, must go before VaultCause itself.
     await prisma.vaultCauseAllocation.deleteMany({ where: { vaultCauseId: { in: vaultCauseIds } } });
     await prisma.vaultCause.deleteMany({ where: { id: { in: vaultCauseIds } } });
+    // A refund now posts a reversing journal entry, so fixture vaults can
+    // have ledger rows even when no contribution was ever confirmed here.
+    await prisma.vaultJournalEntryLine.deleteMany({ where: { journalEntry: { vaultId: { in: vaultIds } } } });
+    await prisma.vaultJournalEntry.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.vaultDonor.deleteMany({ where: { id: { in: vaultDonorIds } } });
     await prisma.counterparty.deleteMany({ where: { id: { in: counterpartyIds } } });

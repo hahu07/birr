@@ -2515,6 +2515,7 @@ enum VaultJournalEntrySource {
   distribution
   expense
   manual_adjustment
+  contribution_refund
 }
 
 // Append-only, like AuditLog — no updatedAt/deletedAt, no update path
@@ -2534,8 +2535,10 @@ model VaultJournalEntry {
   currency    String
   source      VaultJournalEntrySource
   // The VaultContribution/VaultDistribution/VaultExpense id that
-  // triggered this entry — traceability, and lets a future duplicate-
-  // posting guard check "has this source already been posted."
+  // triggered this entry. Unique per source below: a payment provider
+  // retrying the same webhook concurrently must not post the same money
+  // twice. Null (manual adjustments) never collides — Postgres treats
+  // NULLs as distinct in a unique index.
   sourceId    String?
   actorType   ActorType
   actorUserId String?
@@ -2543,8 +2546,8 @@ model VaultJournalEntry {
 
   lines VaultJournalEntryLine[]
 
+  @@unique([source, sourceId])
   @@index([vaultId])
-  @@index([source, sourceId])
   @@map("vault_journal_entries")
 }
 

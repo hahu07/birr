@@ -3,6 +3,7 @@ import { IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { CASH_AND_BANK_ACCOUNT_CODE, VaultLedgerService } from "./vault-ledger.service";
 import { findVaultOrThrow } from "./find-vault-or-throw";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class CreateVaultExpenseInput {
   @IsString()
@@ -16,6 +17,7 @@ export class CreateVaultExpenseInput {
   ledgerAccountId!: string;
 
   @IsNumberString()
+  @IsPositiveDecimal()
   amount!: string;
 
   @IsString()

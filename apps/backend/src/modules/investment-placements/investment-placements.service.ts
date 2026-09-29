@@ -4,6 +4,7 @@ import { Type } from "class-transformer";
 import { prisma, Prisma, InvestmentInstrumentType } from "@birr/db";
 import { InvestmentsService } from "../investments/investments.service";
 import { splitProRata } from "../../common/money/pro-rata";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class PlacementAllocationInput {
   @IsString()
@@ -12,6 +13,7 @@ export class PlacementAllocationInput {
   // See InvestmentsService's CreateInvestmentInput.allocatedAmount for
   // why this is @IsNumberString rather than @IsNumber.
   @IsNumberString()
+  @IsPositiveDecimal()
   amount!: Prisma.Decimal | number | string;
 }
 
@@ -42,6 +44,7 @@ export class CreateInvestmentPlacementInput {
 
 export class RecordPlacementProceedsInput {
   @IsNumberString()
+  @IsPositiveDecimal()
   amount!: Prisma.Decimal | number | string;
 
   @IsString()

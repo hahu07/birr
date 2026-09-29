@@ -12,6 +12,7 @@ import {
   AuthenticatedBirrStaff,
   resolveBirrStaffFromSession,
 } from "../auth/current-birr-staff";
+import { assertStaffMfa } from "./mfa-exempt.decorator";
 
 /**
  * Usage:
@@ -61,6 +62,7 @@ export class PermissionGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<Request>();
     const birrStaff = await resolveBirrStaffFromSession(request);
+    assertStaffMfa(this.reflector, context, birrStaff);
 
     const permissionId = await this.resolveTargetPermissionId(request, fixedPermissionKey);
 

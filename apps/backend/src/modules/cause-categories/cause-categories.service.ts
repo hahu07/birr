@@ -235,8 +235,19 @@ export class CauseCategoriesService {
     const categories = await prisma.causeCategory.findMany({
       where: includeRetired ? undefined : { deletedAt: null },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      include: { _count: { select: { waqfCauses: { where: { deletedAt: null } } } } },
+      include: {
+        _count: {
+          select: { waqfCauses: { where: { deletedAt: null } }, vaultCauses: { where: { deletedAt: null } } },
+        },
+      },
     });
-    return categories.map(({ _count, ...category }) => ({ ...category, usageCount: _count.waqfCauses }));
+    // Vault causes count too — both products pick from this one catalog,
+    // and counting only waqfs understated the blast radius of a retire.
+    return categories.map(({ _count, ...category }) => ({
+      ...category,
+      usageCount: _count.waqfCauses + _count.vaultCauses,
+      waqfUsageCount: _count.waqfCauses,
+      vaultUsageCount: _count.vaultCauses,
+    }));
   }
 }

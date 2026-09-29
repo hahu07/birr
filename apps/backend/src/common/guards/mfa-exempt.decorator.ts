@@ -1,4 +1,5 @@
-import { SetMetadata } from "@nestjs/common";
+import { ExecutionContext, ForbiddenException, SetMetadata } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 
 /**
  * Opts a route out of SessionAuthGuard's MFA-required check (see that
@@ -11,3 +12,17 @@ import { SetMetadata } from "@nestjs/common";
  */
 export const IS_MFA_EXEMPT_KEY = "isMfaExempt";
 export const MfaExempt = () => SetMetadata(IS_MFA_EXEMPT_KEY, true);
+
+/**
+ * The one definition of "this staff session has satisfied mandatory MFA".
+ * Called by every guard that resolves a staff session — not only
+ * SessionAuthGuard, which returns early on a @Public() controller. Without
+ * this, a staff-role- or permission-gated route on a @Public() controller
+ * (e.g. cause-categories, waqf-funding) accepted a password-only session.
+ */
+export function assertStaffMfa(reflector: Reflector, context: ExecutionContext, staff: { mfaEnabled: boolean }): void {
+  const isMfaExempt = reflector.getAllAndOverride<boolean>(IS_MFA_EXEMPT_KEY, [context.getHandler(), context.getClass()]);
+  if (!staff.mfaEnabled && !isMfaExempt) {
+    throw new ForbiddenException("Two-factor authentication setup is required before continuing.");
+  }
+}

@@ -1,4 +1,4 @@
-import { prisma } from "@birr/db";
+import { prisma, Prisma } from "@birr/db";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { VaultDistributionsService } from "./vault-distributions.service";
@@ -41,7 +41,27 @@ describe("VaultDistributionsService", () => {
   // (vault.cause_allocate/vault.proceeds_allocate) and covered by
   // governed-actions.service.spec.ts — these fixtures just need a real
   // per-currency ceiling in place already.
-  function setAllocation(vaultCauseId: string, currency: string, allocatedAmount: string, proceedsAllocatedAmount = "0") {
+  //
+  // Also records a confirmed contribution backing the allocation — a real
+  // allocation can only ever be set against money actually raised, and
+  // the vault-wide spendable-cash check now enforces that at payout time.
+  // Backing each allocation 1:1 keeps the allocation (not the cash) the
+  // binding limit these tests are exercising.
+  async function setAllocation(vaultCauseId: string, currency: string, allocatedAmount: string, proceedsAllocatedAmount = "0") {
+    const cause = await prisma.vaultCause.findUniqueOrThrow({ where: { id: vaultCauseId } });
+    const backing = randomUUID();
+    await prisma.vaultContribution.create({
+      data: {
+        id: backing,
+        vaultId: cause.vaultId,
+        amount: new Prisma.Decimal(allocatedAmount).plus(proceedsAllocatedAmount).plus(1),
+        currency,
+        provider: "paystack",
+        providerReference: backing,
+        status: "confirmed",
+        confirmedAt: new Date(),
+      },
+    });
     return prisma.vaultCauseAllocation.upsert({
       where: { vaultCauseId_currency: { vaultCauseId, currency } },
       create: { vaultCauseId, currency, allocatedAmount, proceedsAllocatedAmount },
@@ -128,6 +148,7 @@ describe("VaultDistributionsService", () => {
     // (already deleted above) — see the "milestone-gated tranche
     // disbursement" describe block (2026-09-13).
     await prisma.vaultMilestone.deleteMany({ where: { vaultId: { in: vaultIds } } });
+    await prisma.vaultContribution.deleteMany({ where: { vaultId: { in: vaultIds } } });
     // RESTRICT on vaultCauseId, must go before VaultCause itself.
     await prisma.vaultCauseAllocation.deleteMany({ where: { vaultCause: { vaultId: { in: vaultIds } } } });
     await prisma.vaultCause.deleteMany({ where: { vaultId: { in: vaultIds } } });
@@ -644,6 +665,78 @@ describe("VaultDistributionsService", () => {
           actorUserId,
         ),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("money integrity (2026-09-29 review)", () => {
+    async function freshCause(label: string) {
+      const vault = await vaultsService.create(
+        { name: `Integrity ${label}`, slug: `integrity-${label}-${Date.now()}`, type: "project", currency: "NGN", jurisdiction: "NG" },
+        actorUserId,
+      );
+      vaultIds.push(vault.id);
+      const cause = await vaultsService.createCause({ vaultId: vault.id, name: `Integrity cause ${label}` }, actorUserId);
+      return { vaultId: vault.id, causeId: cause.id };
+    }
+
+    test("a negative distribution is rejected, so it can't inflate a cause's headroom", async () => {
+      const { vaultId: v, causeId: c } = await freshCause("negative");
+      await setAllocation(c, "NGN", "1000");
+      await expect(
+        service.create({ vaultId: v, vaultCauseId: c, counterpartyId: payoutReadyCounterpartyId, amount: "-5000", currency: "NGN" }, actorUserId),
+      ).rejects.toThrow(BadRequestException);
+
+      // And the database refuses one even if application code were bypassed.
+      await expect(
+        prisma.vaultDistribution.create({
+          data: { vaultId: v, vaultCauseId: c, counterpartyId: payoutReadyCounterpartyId, amount: "-5000", currency: "NGN" },
+        }),
+      ).rejects.toThrow();
+
+      // Headroom is exactly the allocation — nothing above it gets through.
+      await expect(
+        service.create({ vaultId: v, vaultCauseId: c, counterpartyId: payoutReadyCounterpartyId, amount: "1001", currency: "NGN" }, actorUserId),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    test("a held contribution can't be paid out, even though an allocation still stands against it", async () => {
+      const { vaultId: v, causeId: c } = await freshCause("held");
+      await setAllocation(c, "NGN", "1000");
+      await prisma.vaultContribution.updateMany({ where: { vaultId: v }, data: { heldAt: new Date(), heldReason: "review" } });
+
+      await expect(
+        service.create({ vaultId: v, vaultCauseId: c, counterpartyId: payoutReadyCounterpartyId, amount: "500", currency: "NGN" }, actorUserId),
+      ).rejects.toThrow(/left to pay out/);
+    });
+
+    test("a refunded contribution can't be paid out", async () => {
+      const { vaultId: v, causeId: c } = await freshCause("refunded");
+      await setAllocation(c, "NGN", "1000");
+      await prisma.vaultContribution.updateMany({ where: { vaultId: v }, data: { refundStatus: "refunded", refundedAt: new Date() } });
+
+      await expect(
+        service.create({ vaultId: v, vaultCauseId: c, counterpartyId: payoutReadyCounterpartyId, amount: "500", currency: "NGN" }, actorUserId),
+      ).rejects.toThrow(/left to pay out/);
+    });
+
+    test("two concurrent deliveries of the same 'paid' webhook post the ledger exactly once", async () => {
+      const { vaultId: v, causeId: c } = await freshCause("webhook-race");
+      await setAllocation(c, "NGN", "1000");
+      const distribution = await service.create(
+        { vaultId: v, vaultCauseId: c, counterpartyId: payoutReadyCounterpartyId, amount: "300", currency: "NGN" },
+        actorUserId,
+      );
+      vaultDistributionIds.push(distribution.id);
+      const payoutReference = `race-${randomUUID()}`;
+      await prisma.vaultDistribution.update({ where: { id: distribution.id }, data: { status: "disbursing", payoutReference } });
+
+      const body = Buffer.from(JSON.stringify({ event: "transfer.success", data: { reference: payoutReference } }));
+      await Promise.allSettled([service.handlePayoutWebhook(body, {}), service.handlePayoutWebhook(body, {})]);
+
+      const entries = await prisma.vaultJournalEntry.count({ where: { source: "distribution", sourceId: distribution.id } });
+      expect(entries).toBe(1);
+      const paidLogs = await prisma.auditLog.count({ where: { entityId: distribution.id, action: "vault_distribution.paid" } });
+      expect(paidLogs).toBe(1);
     });
   });
 });

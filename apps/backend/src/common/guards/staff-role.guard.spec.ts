@@ -17,6 +17,7 @@ class TestController {
 function makeContext(handler: () => void, token?: string): ExecutionContext {
   return {
     getHandler: () => handler,
+    getClass: () => TestController,
     switchToHttp: () => ({
       getRequest: () => ({ cookies: token ? { [STAFF_SESSION_COOKIE_NAME]: token } : {} }),
     }),
@@ -30,13 +31,14 @@ describe("StaffRoleGuard", () => {
   let adminUserId: string;
   let otherUserId: string;
   let mutawalliOfficerUserId: string;
+  let noMfaAdminUserId: string;
 
   beforeAll(async () => {
     // Fixture Users/BirrStaff not cleaned up in afterAll — same reasoning
     // as every other spec in this codebase (audit_logs references, and
     // that table is insert-only at the DB role level).
     const adminUser = await prisma.user.create({
-      data: { email: `staff-role-guard-admin-${Date.now()}@example.test`, fullName: "Guard Spec Admin" },
+      data: { email: `staff-role-guard-admin-${Date.now()}@example.test`, fullName: "Guard Spec Admin", mfaEnabled: true },
     });
     await prisma.birrStaff.create({
       data: { userId: adminUser.id, staffRole: "platform_admin" },
@@ -44,7 +46,7 @@ describe("StaffRoleGuard", () => {
     adminUserId = adminUser.id;
 
     const otherUser = await prisma.user.create({
-      data: { email: `staff-role-guard-other-${Date.now()}@example.test`, fullName: "Guard Spec Other" },
+      data: { email: `staff-role-guard-other-${Date.now()}@example.test`, fullName: "Guard Spec Other", mfaEnabled: true },
     });
     await prisma.birrStaff.create({
       data: { userId: otherUser.id, staffRole: "compliance_officer" },
@@ -52,12 +54,26 @@ describe("StaffRoleGuard", () => {
     otherUserId = otherUser.id;
 
     const mutawalliOfficerUser = await prisma.user.create({
-      data: { email: `staff-role-guard-mutawalli-${Date.now()}@example.test`, fullName: "Guard Spec Mutawalli Officer" },
+      data: { email: `staff-role-guard-mutawalli-${Date.now()}@example.test`, fullName: "Guard Spec Mutawalli Officer", mfaEnabled: true },
     });
     await prisma.birrStaff.create({
       data: { userId: mutawalliOfficerUser.id, staffRole: "mutawalli_officer" },
     });
     mutawalliOfficerUserId = mutawalliOfficerUser.id;
+
+    const noMfaAdminUser = await prisma.user.create({
+      data: { email: `staff-role-guard-no-mfa-${Date.now()}@example.test`, fullName: "Guard Spec Admin Without MFA" },
+    });
+    await prisma.birrStaff.create({ data: { userId: noMfaAdminUser.id, staffRole: "platform_admin" } });
+    noMfaAdminUserId = noMfaAdminUser.id;
+  });
+
+  // SessionAuthGuard returns early on a @Public() controller, so this guard
+  // must enforce mandatory MFA itself — otherwise a password-only session
+  // reached platform_admin writes on e.g. cause-categories/waqf-funding.
+  test("rejects the right role when that staff member hasn't completed MFA", async () => {
+    const ctx = makeContext(controller.restricted, signSessionToken(noMfaAdminUserId));
+    await expect(guard.canActivate(ctx)).rejects.toThrow(/Two-factor/);
   });
 
   afterAll(async () => {

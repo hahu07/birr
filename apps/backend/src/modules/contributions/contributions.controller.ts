@@ -12,6 +12,7 @@ import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validation/max-decimal";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 class InitiateContributionBody {
   @IsString()
@@ -21,6 +22,7 @@ class InitiateContributionBody {
   // amount field — see MaxDecimal's own comment.
   @IsNumberString()
   @MaxDecimal(MAX_PUBLIC_CONTRIBUTION_AMOUNT)
+  @IsPositiveDecimal()
   amount!: string;
 
   // Not a fixed enum — validated against the live ContributionMinimum

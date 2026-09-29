@@ -469,7 +469,10 @@ describe("VaultContributionsService", () => {
       vaultContributionIds.push(identified.contribution.id);
     });
 
-    test("once identified, a later contribution from the same donor doesn't require re-identification", async () => {
+    // 2026-09-29: reversed from "once identified, never asked again" —
+    // reusing an identified donor's (unverified) email used to skip ID
+    // capture entirely, leaving someone else's ID on file for the money.
+    test("an identified donor over the threshold must re-enter the matching ID on file", async () => {
       const email = uniqueEmail("already-identified");
       const first = await service.initiate({
         vaultId: openVaultId,
@@ -479,19 +482,87 @@ describe("VaultContributionsService", () => {
         donorEmail: email,
         donorFullName: "Identified Donor",
         idType: "other",
-        idNumber: "X1",
+        idNumber: "X1-234",
       });
       vaultContributionIds.push(first.contribution.id);
 
+      await expect(
+        service.initiate({ vaultId: openVaultId, amount: "1000", currency, provider: "stripe", donorEmail: email }),
+      ).rejects.toMatchObject({ response: { code: "IDENTITY_CONFIRMATION_REQUIRED" } });
+
+      await expect(
+        service.initiate({ vaultId: openVaultId, amount: "1000", currency, provider: "stripe", donorEmail: email, idType: "other", idNumber: "SOMEONE-ELSE" }),
+      ).rejects.toMatchObject({ response: { code: "IDENTITY_MISMATCH" } });
+
+      // Same ID, formatted differently (spacing/case/hyphens), is accepted.
       const second = await service.initiate({
         vaultId: openVaultId,
         amount: "1000",
         currency,
         provider: "stripe",
         donorEmail: email,
+        idType: "other",
+        idNumber: "x1 234",
       });
       vaultContributionIds.push(second.contribution.id);
       expect(second.contribution.status).toBe("pending");
+    });
+
+    test("pending gifts under the same email count toward the threshold — they can't be started in parallel to dodge it", async () => {
+      const email = uniqueEmail("parallel-pending");
+      // Each 600 is under the 1000 threshold alone; none is confirmed yet.
+      const results = await Promise.allSettled([
+        service.initiate({ vaultId: openVaultId, amount: "600", currency, provider: "stripe", donorEmail: email }),
+        service.initiate({ vaultId: openVaultId, amount: "600", currency, provider: "stripe", donorEmail: email }),
+      ]);
+      for (const r of results) if (r.status === "fulfilled") vaultContributionIds.push(r.value.contribution.id);
+
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ response: { code: "IDENTITY_REQUIRED" } });
+    });
+
+    test("an existing donor's identity is never overwritten by later unauthenticated input", async () => {
+      const email = uniqueEmail("no-overwrite");
+      const first = await service.initiate({
+        vaultId: openVaultId,
+        amount: "20",
+        currency,
+        provider: "stripe",
+        donorEmail: email,
+        donorFullName: "Original Name",
+        idType: "passport",
+        idNumber: "ORIGINAL1",
+      });
+      vaultContributionIds.push(first.contribution.id);
+
+      const second = await service.initiate({
+        vaultId: openVaultId,
+        amount: "20",
+        currency,
+        provider: "stripe",
+        donorEmail: email,
+        donorFullName: "Attacker Name",
+        idType: "national_id",
+        idNumber: "ATTACKER9",
+      });
+      vaultContributionIds.push(second.contribution.id);
+
+      const donor = await prisma.vaultDonor.findUniqueOrThrow({ where: { email } });
+      expect(donor.fullName).toBe("Original Name");
+      expect(donor.idType).toBe("passport");
+      expect(new EncryptionService().decrypt(donor.idNumberEncrypted!)).toBe("ORIGINAL1");
+    });
+
+    test("differently-cased emails are the same donor, so they share one threshold", async () => {
+      const email = uniqueEmail("case-fold");
+      const first = await service.initiate({ vaultId: openVaultId, amount: "600", currency, provider: "stripe", donorEmail: email });
+      vaultContributionIds.push(first.contribution.id);
+
+      await expect(
+        service.initiate({ vaultId: openVaultId, amount: "600", currency, provider: "stripe", donorEmail: `  ${email.toUpperCase()} ` }),
+      ).rejects.toMatchObject({ response: { code: "IDENTITY_REQUIRED" } });
+      expect(await prisma.vaultDonor.count({ where: { email: { equals: email, mode: "insensitive" } } })).toBe(1);
     });
   });
 
@@ -555,6 +626,29 @@ describe("VaultContributionsService", () => {
       expect(receiptEmail.sent).toHaveLength(sentCountAfterFirst);
     });
 
+    test("two concurrent deliveries of the same webhook confirm once: one ledger entry, one audit record, one receipt", async () => {
+      const result = await service.initiate({
+        vaultId: openVaultId,
+        amount: "150.00",
+        currency: "USD",
+        provider: "stripe",
+        donorEmail: uniqueEmail("webhook-race"),
+      });
+      vaultContributionIds.push(result.contribution.id);
+      const receiptsBefore = receiptEmail.sent.filter((r) => r.contributionId === result.contribution.id).length;
+
+      stripeFake.nextWebhookResult = { providerReference: result.contribution.providerReference, status: "confirmed" };
+      const outcomes = await Promise.all([
+        service.handleWebhook("stripe", Buffer.from("{}"), {}),
+        service.handleWebhook("stripe", Buffer.from("{}"), {}),
+      ]);
+      expect(outcomes.every((o) => o?.status === "confirmed")).toBe(true);
+
+      expect(await prisma.vaultJournalEntry.count({ where: { source: "contribution", sourceId: result.contribution.id } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: result.contribution.id, action: "vault_contribution.confirmed" } })).toBe(1);
+      expect(receiptEmail.sent.filter((r) => r.contributionId === result.contribution.id).length).toBe(receiptsBefore + 1);
+    });
+
     test("throws UnauthorizedException on an invalid webhook signature", async () => {
       stripeFake.nextWebhookResult = null;
       await expect(service.handleWebhook("stripe", Buffer.from("{}"), {})).rejects.toThrow(UnauthorizedException);
@@ -576,6 +670,26 @@ describe("VaultContributionsService", () => {
         donorEmail: uniqueEmail("unknown-vault"),
       }),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  describe("findPublicStatus()", () => {
+    test("returns only donor-safe fields — never ipAddress, heldReason, donorId, or provider references", async () => {
+      const result = await service.initiate(
+        { vaultId: openVaultId, amount: "200.00", currency: "USD", provider: "stripe", donorEmail: uniqueEmail("public-status") },
+        "203.0.113.9",
+      );
+      vaultContributionIds.push(result.contribution.id);
+      await prisma.vaultContribution.update({
+        where: { id: result.contribution.id },
+        data: { status: "confirmed", heldAt: new Date(), heldReason: "Possible structuring — see IP cluster" },
+      });
+
+      const publicView = await service.findPublicStatus(result.contribution.id);
+      expect(publicView).toMatchObject({ id: result.contribution.id, status: "confirmed", vault: { name: "Contributions Test Vault" } });
+      for (const hidden of ["ipAddress", "heldReason", "heldAt", "donorId", "providerReference", "providerPaymentId", "refundFailedReason"]) {
+        expect(publicView).not.toHaveProperty(hidden);
+      }
+    });
   });
 
   describe("hold() / release()", () => {
@@ -690,6 +804,27 @@ describe("VaultContributionsService", () => {
 
       const logs = await prisma.auditLog.findMany({ where: { entityId: contribution.id, action: "vault_contribution.refunded" } });
       expect(logs).toHaveLength(1);
+
+      // The refund reverses the confirmation's posting, so the books no
+      // longer show money that went back to the donor.
+      const reversal = await prisma.vaultJournalEntry.findFirst({
+        where: { source: "contribution_refund", sourceId: contribution.id },
+        include: { lines: { include: { ledgerAccount: true } } },
+      });
+      expect(reversal?.lines.find((l) => l.ledgerAccount.code === "4000")?.debit.toString()).toBe("200");
+      expect(reversal?.lines.find((l) => l.ledgerAccount.code === "1000")?.credit.toString()).toBe("200");
+    });
+
+    test("a refunded contribution no longer counts as raised on the public vault page", async () => {
+      const before = await vaultsService.findBySlug((await prisma.vault.findUniqueOrThrow({ where: { id: openVaultId } })).slug);
+      const raisedBefore = Number(before!.amountRaised.find((r) => r.currency === "USD")?.amount ?? "0");
+
+      const contribution = await confirmedContribution("stripe");
+      await prisma.$transaction((tx) => service.requestRefund(contribution.id, tx));
+      await service.initiateRefund(contribution.id);
+
+      const after = await vaultsService.findBySlug((await prisma.vault.findUniqueOrThrow({ where: { id: openVaultId } })).slug);
+      expect(Number(after!.amountRaised.find((r) => r.currency === "USD")?.amount ?? "0")).toBe(raisedBefore);
     });
 
     test("initiateRefund() is claimed atomically — calling it twice only refunds once", async () => {

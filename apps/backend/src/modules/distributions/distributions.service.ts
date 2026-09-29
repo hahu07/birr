@@ -11,6 +11,7 @@ import { PayoutProviderAdapter } from "./providers/payout-provider.interface";
 import { PaystackPayoutAdapter } from "./providers/paystack-payout.adapter";
 import { StripePayoutAdapter } from "./providers/stripe-payout.adapter";
 import { StablecoinPayoutAdapter } from "./providers/stablecoin-payout.adapter";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class CreateDistributionInput {
   @IsString()
@@ -34,6 +35,7 @@ export class CreateDistributionInput {
   // See AssetsService's CreateAssetInput.estimatedValue for why this is
   // @IsNumberString rather than @IsNumber.
   @IsNumberString()
+  @IsPositiveDecimal()
   amount!: Prisma.Decimal | number | string;
 
   // No default — every distribution must declare its own currency

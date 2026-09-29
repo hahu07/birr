@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsNumberString, IsOptional, IsString, MinLength } from "class-validator";
 import { prisma, Prisma, InvestmentInstrumentType, InvestmentStatus, ShariahScreeningDecision } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 // "Real" — money genuinely still committed, either awaiting Shariah
 // decision or already cleared. Excludes shariah_rejected/liquidated,
@@ -31,6 +32,7 @@ export class CreateInvestmentInput {
   // See AssetsService's CreateAssetInput.estimatedValue for why this is
   // @IsNumberString rather than @IsNumber.
   @IsNumberString()
+  @IsPositiveDecimal()
   allocatedAmount!: Prisma.Decimal | number | string;
 
   // Required — who actually holds this money (see Counterparty's own
