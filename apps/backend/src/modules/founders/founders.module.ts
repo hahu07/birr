@@ -8,9 +8,10 @@ import { SettingsModule } from "../../common/settings/settings.module";
 import { WhatsAppOtpModule } from "../../common/whatsapp/whatsapp-otp.module";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MfaService } from "../../common/auth/mfa.service";
+import { FunnelEventsModule } from "../funnel-events/funnel-events.module";
 
 @Module({
-  imports: [SettingsModule, WhatsAppOtpModule],
+  imports: [SettingsModule, WhatsAppOtpModule, FunnelEventsModule],
   controllers: [FoundersController],
   providers: [
     FoundersService,

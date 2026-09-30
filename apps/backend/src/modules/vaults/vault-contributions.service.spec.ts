@@ -13,6 +13,7 @@ import {
   RefundResult,
   WebhookResult,
 } from "../contributions/providers/payment-provider.interface";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 /** Same configurable-fake pattern as ContributionsService's own spec. */
 class FakeAdapter implements PaymentProviderAdapter {
@@ -79,6 +80,7 @@ describe("VaultContributionsService", () => {
     new EncryptionService(),
     receiptEmail as any,
     ledger,
+    new FunnelEventsService(),
     stripeFake as any,
     paystackFake as any,
     stablecoinFake as any,

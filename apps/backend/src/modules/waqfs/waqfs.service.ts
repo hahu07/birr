@@ -6,6 +6,7 @@ import { withFounderScope } from "../../common/db/founder-scope";
 import { TrusteeLicensesService } from "../trustee-licenses/trustee-licenses.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 export class CreateWaqfInput {
   @IsString()
@@ -59,6 +60,7 @@ export class WaqfsService {
   constructor(
     private readonly trusteeLicenses: TrusteeLicensesService,
     private readonly notificationsService: NotificationsService,
+    private readonly funnelEvents: FunnelEventsService,
   ) {}
 
   /**
@@ -155,6 +157,15 @@ export class WaqfsService {
       });
 
       return waqf;
+    });
+
+    // Best-effort — record() never throws.
+    void this.funnelEvents.record({
+      funnel: "founder",
+      step: "waqf_fund_created",
+      sessionId: input.founderId,
+      founderId: input.founderId,
+      waqfId: waqf.id,
     });
 
     // No RolePermission row exists for "who may assign caseloads" (this

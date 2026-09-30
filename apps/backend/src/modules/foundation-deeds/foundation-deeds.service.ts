@@ -4,6 +4,7 @@ import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { FOUNDATION_DEED_TEMPLATE_VERSION, renderFoundationDeedText } from "./foundation-deed-template";
 import { NotificationsService } from "../notifications/notifications.service";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 export interface SignFoundationDeedInput {
   foundationId: string;
@@ -17,7 +18,10 @@ export interface SignFoundationDeedInput {
 export class FoundationDeedsService {
   private readonly logger = new Logger(FoundationDeedsService.name);
 
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly funnelEvents: FunnelEventsService,
+  ) {}
 
   /**
    * Step 4, the final onboarding step — the founder's real, structured
@@ -95,6 +99,15 @@ export class FoundationDeedsService {
       });
 
       return deed;
+    });
+
+    // Best-effort, same fire-and-forget posture as the receipt
+    // notification just below — record() never throws.
+    void this.funnelEvents.record({
+      funnel: "founder",
+      step: "deed_signed",
+      sessionId: input.founderId,
+      founderId: input.founderId,
     });
 
     // A signing receipt to the signer, like any e-signature flow — the

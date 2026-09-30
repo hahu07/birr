@@ -23,6 +23,7 @@ import {
 } from "../distributions/test-support/fake-payout-adapters";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
 // local FakeAdapter/FakeReceiptEmailAdapter — duplicated rather than
@@ -108,6 +109,7 @@ describe("GovernedActionsService", () => {
       encryption,
       new FakeVaultReceiptEmailAdapter() as any,
       vaultLedgerService,
+      new FunnelEventsService(),
       new FakeVaultPaymentAdapter() as any,
       new FakeVaultPaymentAdapter() as any,
       new FakeVaultPaymentAdapter() as any,

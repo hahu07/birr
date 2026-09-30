@@ -15,6 +15,7 @@ import { ResendVerificationEmailAdapter } from "./email/resend.adapter";
 import { LogoStorageService } from "../foundations/logo-storage.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MfaService } from "../../common/auth/mfa.service";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 const MIN_PASSWORD_LENGTH = 8;
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/;
@@ -149,6 +150,7 @@ export class FoundersService {
     private readonly logoStorage: LogoStorageService,
     private readonly encryption: EncryptionService,
     private readonly mfa: MfaService,
+    private readonly funnelEvents: FunnelEventsService,
   ) {}
 
   // Bootstrap-scope note: this route is intentionally unauthenticated in
@@ -241,6 +243,15 @@ export class FoundersService {
       });
       return user;
     });
+
+    // Best-effort, outside the transaction — same posture as the
+    // verification email send just below. record() never throws (see
+    // its own comment), so this is deliberately not awaited and needs
+    // no .catch(). sessionId is the new user's own id: there's no
+    // Founder yet at this point (see this method's own doc comment),
+    // and no browser-session correlation is threaded through this
+    // endpoint today.
+    void this.funnelEvents.record({ funnel: "founder", step: "signup_completed", sessionId: user.id });
 
     const verifyLink = `${process.env.BACKEND_URL ?? "http://localhost:4000"}/founders/verify-email?token=${token}`;
     // Best-effort, outside the DB transaction — same posture as every
@@ -650,6 +661,14 @@ export class FoundersService {
       }
 
       return { founder, foundation };
+    }).then((result) => {
+      void this.funnelEvents.record({
+        funnel: "founder",
+        step: "foundation_created",
+        sessionId: result.founder.id,
+        founderId: result.founder.id,
+      });
+      return result;
     });
   }
 

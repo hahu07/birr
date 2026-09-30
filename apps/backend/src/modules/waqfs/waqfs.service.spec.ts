@@ -14,13 +14,18 @@ import {
   createFakeStripePayoutAdapter,
   createFakeStablecoinPayoutAdapter,
 } from "../distributions/test-support/fake-payout-adapters";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 describe("WaqfsService", () => {
   if (!process.env.SETTINGS_ENCRYPTION_KEY) {
     process.env.SETTINGS_ENCRYPTION_KEY = "0".repeat(64);
   }
 
-  const service = new WaqfsService(new TrusteeLicensesService(createFakeNotificationsService()), createFakeNotificationsService());
+  const service = new WaqfsService(
+    new TrusteeLicensesService(createFakeNotificationsService()),
+    createFakeNotificationsService(),
+    new FunnelEventsService(),
+  );
   const financialReportsService = new FinancialReportsService(
     new DistributionsService(
       new BeneficiariesService(new EncryptionService()),

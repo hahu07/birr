@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ApiError, apiFetchJson } from "../../../../lib/api";
+import { trackFunnelEvent } from "../../../../lib/funnel-tracking";
 import { humanize } from "../../../../lib/format";
 import type { Vault, VaultCause } from "../../../../lib/types";
 import { Alert, Button, Card, IconArchive, IconFileText, Input, Select, Skeleton } from "@birr/ui";
@@ -47,7 +48,10 @@ export default function VaultDonationPage() {
 
   useEffect(() => {
     apiFetchJson<Vault>(`/vaults/by-slug/${slug}`)
-      .then(setVault)
+      .then((v) => {
+        setVault(v);
+        trackFunnelEvent("vault", "page_viewed", { vaultId: v.id });
+      })
       .catch(() => setVault(null));
     apiFetchJson<ContributionMinimum[]>("/waqf-funding/contribution-minimums").then(setMinimums).catch(() => setMinimums([]));
   }, [slug]);
@@ -285,6 +289,7 @@ function ContributionForm({
           idNumber: showIdentity && idNumber ? idNumber : undefined,
         }),
       });
+      trackFunnelEvent("vault", "checkout_started", { vaultId: vault.id, metadata: { provider, currency } });
       window.location.href = clientPayload.checkoutUrl;
     } catch (err) {
       // The backend only asks for identity once a compliance threshold is

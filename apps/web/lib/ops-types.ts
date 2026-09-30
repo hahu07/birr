@@ -1250,3 +1250,18 @@ export interface FounderRequest {
   reviewedAt: string | null;
   createdAt: string;
 }
+
+// GET /funnel-events/report — see FunnelEvent's own schema comment
+// (packages/db/prisma/schema.prisma) for what does and doesn't feed
+// this. Steps come back in canonical funnel order, zero-count steps
+// included, so the frontend never has to guess at ordering or fill
+// gaps itself.
+export interface FunnelStepCount {
+  step: string;
+  count: number;
+}
+
+export interface FunnelReport {
+  founder: FunnelStepCount[];
+  vault: FunnelStepCount[];
+}

@@ -12,6 +12,7 @@ import { ResendVaultReceiptEmailAdapter } from "./email/resend-vault-receipt.ada
 import { CASH_AND_BANK_ACCOUNT_CODE, DONATIONS_REVENUE_ACCOUNT_CODE, VaultLedgerService } from "./vault-ledger.service";
 import { findVaultOrThrow } from "./find-vault-or-throw";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 export class HoldVaultContributionInput {
   @IsString()
@@ -98,6 +99,7 @@ export class VaultContributionsService {
     private readonly encryption: EncryptionService,
     private readonly receiptEmail: ResendVaultReceiptEmailAdapter,
     private readonly ledger: VaultLedgerService,
+    private readonly funnelEvents: FunnelEventsService,
     stripeAdapter: StripeAdapter,
     paystackAdapter: PaystackAdapter,
     stablecoinAdapter: StablecoinAdapter,
@@ -203,6 +205,18 @@ export class VaultContributionsService {
         },
       });
       return { contribution, donor };
+    });
+
+    // Best-effort — record() never throws. sessionId falls back to the
+    // contribution's own id for an anonymous gift (donorEmail is
+    // optional) — there's no other stable per-giver handle at all in
+    // that case.
+    void this.funnelEvents.record({
+      funnel: "vault",
+      step: "contribution_initiated",
+      sessionId: donor?.id ?? contribution.id,
+      vaultId: input.vaultId,
+      metadata: { currency: input.currency, provider: input.provider },
     });
 
     let paymentResult;
@@ -530,6 +544,17 @@ export class VaultContributionsService {
       return confirmed;
     });
     if (!confirmed) return current();
+
+    // Best-effort — record() never throws. Same sessionId fallback as
+    // initiate() above, so an anonymous gift's two events still share a
+    // handle even without a donor row.
+    void this.funnelEvents.record({
+      funnel: "vault",
+      step: "contribution_confirmed",
+      sessionId: contribution.donorId ?? confirmed.id,
+      vaultId: contribution.vaultId,
+      metadata: { currency: confirmed.currency, provider: confirmed.provider },
+    });
 
     // No donor row at all means an anonymous contribution (donorEmail
     // was optional) — nowhere to send a receipt, an accepted tradeoff of

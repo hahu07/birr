@@ -8,6 +8,7 @@ import { ResendVerificationEmailAdapter } from "./email/resend.adapter";
 import { LogoStorageService } from "../foundations/logo-storage.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MfaService } from "../../common/auth/mfa.service";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 // Needed for EncryptionService (MFA secret encryption) below — same
 // guard birr-staff.service.spec.ts uses for the same reason.
@@ -71,7 +72,7 @@ const FAKE_LOGO: Express.Multer.File = {
 
 describe("FoundersService.signUp / login / verifyEmail", () => {
   const emailAdapter = new FakeEmailAdapter();
-  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService(), new EncryptionService(), new MfaService());
+  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService(), new EncryptionService(), new MfaService(), new FunnelEventsService());
 
   afterAll(async () => {
     // Users are left in place, same reasoning as every other spec in
@@ -403,7 +404,7 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
 
 describe("FoundersService.establishFounderAndFoundation", () => {
   const emailAdapter = new FakeEmailAdapter();
-  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService(), new EncryptionService(), new MfaService());
+  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService(), new EncryptionService(), new MfaService(), new FunnelEventsService());
 
   afterAll(async () => {
     await prisma.$disconnect();
@@ -640,7 +641,7 @@ describe("FoundersService.establishFounderAndFoundation", () => {
 
 describe("FoundersService.getOnboardingStatus", () => {
   const emailAdapter = new FakeEmailAdapter();
-  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService(), new EncryptionService(), new MfaService());
+  const service = new FoundersService(emailAdapter as unknown as ResendVerificationEmailAdapter, new LogoStorageService(), new EncryptionService(), new MfaService(), new FunnelEventsService());
 
   afterAll(async () => {
     // Deliberately no cleanup here, unlike other spec files' Foundation/
@@ -734,6 +735,7 @@ describe("FoundersService MFA", () => {
     undefined as never,
     new EncryptionService(),
     new MfaService(),
+    new FunnelEventsService(),
   );
 
   let mfaUserId: string;

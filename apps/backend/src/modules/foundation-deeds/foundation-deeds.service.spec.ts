@@ -3,9 +3,10 @@ import { prisma } from "@birr/db";
 import { FoundationDeedsService } from "./foundation-deeds.service";
 import { renderFoundationDeedText } from "./foundation-deed-template";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 describe("FoundationDeedsService", () => {
-  const service = new FoundationDeedsService(createFakeNotificationsService());
+  const service = new FoundationDeedsService(createFakeNotificationsService(), new FunnelEventsService());
 
   const userIds: string[] = [];
   const founderIds: string[] = [];

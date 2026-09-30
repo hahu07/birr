@@ -6,6 +6,7 @@ import { FoundersService } from "./founders.service";
 import { signSessionToken, SESSION_COOKIE_NAME, STAFF_SESSION_COOKIE_NAME } from "../../common/auth/session";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MfaService } from "../../common/auth/mfa.service";
+import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
 // Needed for EncryptionService below — same guard
 // birr-staff.service.spec.ts/founders.service.spec.ts use for the same
@@ -122,7 +123,7 @@ describe("FoundersController — list()/findById() are Birr-staff only", () => {
   // fine here (its email/logo dependencies are never invoked by either
   // route).
   const controller = new FoundersController(
-    new FoundersService(undefined as never, undefined as never, undefined as never, undefined as never),
+    new FoundersService(undefined as never, undefined as never, undefined as never, undefined as never, new FunnelEventsService()),
     undefined as never,
   );
 
@@ -196,7 +197,7 @@ describe("FoundersController — members/:userId/mfa/reset is platform_admin onl
   });
 
   const controller = new FoundersController(
-    new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService()),
+    new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService(), new FunnelEventsService()),
     undefined as never,
   );
 

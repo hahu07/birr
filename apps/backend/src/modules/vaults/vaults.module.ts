@@ -31,9 +31,10 @@ import { StablecoinAdapter } from "../contributions/providers/stablecoin.adapter
 import { PaystackPayoutAdapter } from "../distributions/providers/paystack-payout.adapter";
 import { SettingsModule } from "../../common/settings/settings.module";
 import { EncryptionService } from "../../common/settings/encryption.service";
+import { FunnelEventsModule } from "../funnel-events/funnel-events.module";
 
 @Module({
-  imports: [SettingsModule],
+  imports: [SettingsModule, FunnelEventsModule],
   controllers: [
     VaultsController,
     VaultContributionsController,

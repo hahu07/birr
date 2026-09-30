@@ -10,11 +10,16 @@
 // a dead-end "check your email" screen — the onboarding wizard's own
 // step 1 page shows that "verify your email" state itself.
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
+import { trackFunnelEvent } from "../../../lib/funnel-tracking";
 import { Alert, AuthSplitLayout, Button, IconMark, Input, PasswordInput } from "@birr/ui";
 
 export default function SignUpPage() {
+  useEffect(() => {
+    trackFunnelEvent("founder", "signup_started");
+  }, []);
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");

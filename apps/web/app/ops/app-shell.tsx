@@ -58,6 +58,7 @@ const NAV_GROUPS: {
       // sees an empty "My Desk" link at all.
       { href: "/ops/my-desk", label: "My Desk", icon: IconInbox, requiresCaseload: true },
       { href: "/ops/messages", label: "Messages", icon: IconMessageCircle },
+      { href: "/ops/funnel-report", label: "Funnel Report", icon: IconClipboardCheck },
     ],
   },
   {

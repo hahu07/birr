@@ -188,6 +188,11 @@ enum FounderRequestStatus {
   declined
 }
 
+enum FunnelName {
+  founder
+  vault
+}
+
 enum CaseAssignmentRole {
   mutawalli_officer
   investment_officer
@@ -406,6 +411,7 @@ model Founder {
   causeSuggestions       CauseCategorySuggestion[]
   beneficiaryNominations BeneficiaryNomination[]
   founderRequests        FounderRequest[]
+  funnelEvents           FunnelEvent[]
 
   @@map("founders")
 }
@@ -527,6 +533,7 @@ model Waqf {
   journalEntries         WaqfJournalEntry[]
   expenses               WaqfExpense[]
   milestones             WaqfMilestone[]
+  funnelEvents           FunnelEvent[]
 
   @@index([foundationId])
   @@map("waqfs")
@@ -2174,6 +2181,7 @@ model Vault {
   journalEntries    VaultJournalEntry[]
   expenses          VaultExpense[]
   milestones        VaultMilestone[]
+  funnelEvents      FunnelEvent[]
 
   @@map("vaults")
 }
@@ -2707,4 +2715,45 @@ model VaultMilestone {
 
   @@unique([vaultId, sequence])
   @@map("vault_milestones")
+}
+
+// Lightweight, append-only instrumentation for the two acquisition
+// funnels this codebase's own marketing work identifies (Founder
+// establishment vs. Vault public giving) — analytics only, never a
+// governed entity: no maker-checker, no update/delete path, and
+// nothing here ever gates a real action. Real milestones (signup,
+// foundation created, deed signed, waqf fund created, vault
+// contribution initiated/confirmed) are written directly by the
+// backend service that already performs that write, best-effort and
+// outside its transaction — same posture as every other post-
+// transaction notify() fan-out in this codebase. Steps with no DB row
+// of their own yet (a page view, a checkout started) are written via
+// the public POST /funnel-events endpoint, keyed only by a client-
+// generated sessionId — never used to authorize or attribute anything
+// sensitive.
+model FunnelEvent {
+  id     String     @id @default(uuid())
+  funnel FunnelName
+  step   String
+  // Client-generated, anonymous, stable per browser session — the only
+  // thing that lets a pre-signup step (e.g. "landing page viewed") be
+  // correlated with the signup that may follow it. Never a User/Founder
+  // id itself.
+  sessionId  String
+  founderId  String?
+  waqfId     String?
+  vaultId    String?
+  metadata   Json?
+  occurredAt DateTime @default(now())
+
+  founder Founder? @relation(fields: [founderId], references: [id])
+  waqf    Waqf?    @relation(fields: [waqfId], references: [id])
+  vault   Vault?   @relation(fields: [vaultId], references: [id])
+
+  @@index([funnel, step, occurredAt])
+  @@index([sessionId])
+  @@index([founderId])
+  @@index([waqfId])
+  @@index([vaultId])
+  @@map("funnel_events")
 }
