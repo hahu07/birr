@@ -34,7 +34,11 @@ export class StaffRoleGuard implements CanActivate {
     const requiredRoles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
 
     const request = context.switchToHttp().getRequest<Request>();
-    const staff = await resolveBirrStaffFromSession(request);
+    // requireMfa: false — this guard's own assertStaffMfa call right
+    // below is the exemption-aware check; see
+    // resolveBirrStaffFromSession's own comment on why its default
+    // would preempt that.
+    const staff = await resolveBirrStaffFromSession(request, { requireMfa: false });
     assertStaffMfa(this.reflector, context, staff);
     if (!requiredRoles.includes(staff.staffRole as BirrStaffRole)) {
       throw new ForbiddenException(`Requires one of the following roles: ${requiredRoles.join(", ")}.`);

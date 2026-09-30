@@ -37,7 +37,10 @@ export class SessionAuthGuard implements CanActivate {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest<Request>();
-    const staff = await resolveBirrStaffFromSession(request);
+    // requireMfa: false — this guard does its own exemption-aware check
+    // right below via assertStaffMfa(), which honors @MfaExempt(); the
+    // function's own default would throw before that check ever ran.
+    const staff = await resolveBirrStaffFromSession(request, { requireMfa: false });
     (request as Request & { birrStaff: AuthenticatedBirrStaff }).birrStaff = staff;
 
     assertStaffMfa(this.reflector, context, staff);

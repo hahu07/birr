@@ -61,7 +61,10 @@ export class PermissionGuard implements CanActivate {
     const { side, permissionKey: fixedPermissionKey } = requirement;
 
     const request = context.switchToHttp().getRequest<Request>();
-    const birrStaff = await resolveBirrStaffFromSession(request);
+    // requireMfa: false — same reasoning as SessionAuthGuard/
+    // StaffRoleGuard: this guard's own assertStaffMfa call right below
+    // is the exemption-aware check.
+    const birrStaff = await resolveBirrStaffFromSession(request, { requireMfa: false });
     assertStaffMfa(this.reflector, context, birrStaff);
 
     const permissionId = await this.resolveTargetPermissionId(request, fixedPermissionKey);

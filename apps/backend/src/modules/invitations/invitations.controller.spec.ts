@@ -29,14 +29,19 @@ describe("InvitationsController — birr_staff invitation authorization", () => 
   const founderIds: string[] = [];
 
   beforeAll(async () => {
+    // Both mfaEnabled: true — several tests below expect these sessions
+    // to succeed (not just clear the role gate), so they have to
+    // represent fully-enrolled real staff members (see
+    // resolveBirrStaffFromSession's own comment on why an unenrolled
+    // session is now rejected before the role check ever runs).
     const nonAdminUser = await prisma.user.create({
-      data: { email: `invitations-ctrl-nonadmin-${Date.now()}@example.test`, fullName: "Not An Admin" },
+      data: { email: `invitations-ctrl-nonadmin-${Date.now()}@example.test`, fullName: "Not An Admin", mfaEnabled: true },
     });
     nonAdminUserId = nonAdminUser.id;
     await prisma.birrStaff.create({ data: { userId: nonAdminUser.id, staffRole: "compliance_officer" } });
 
     const adminUser = await prisma.user.create({
-      data: { email: `invitations-ctrl-admin-${Date.now()}@example.test`, fullName: "A Real Admin" },
+      data: { email: `invitations-ctrl-admin-${Date.now()}@example.test`, fullName: "A Real Admin", mfaEnabled: true },
     });
     adminUserId = adminUser.id;
     await prisma.birrStaff.create({ data: { userId: adminUser.id, staffRole: "platform_admin" } });

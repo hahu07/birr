@@ -88,8 +88,12 @@ describe("FoundersController — list()/findById() are Birr-staff only", () => {
   let founderId: string;
 
   beforeAll(async () => {
+    // mfaEnabled: true — this fixture's own tests expect the staff
+    // session to succeed, so it has to represent a fully-enrolled real
+    // staff member (see resolveBirrStaffFromSession's own comment on
+    // why an unenrolled one is now rejected here too).
     const staffUser = await prisma.user.create({
-      data: { email: `founders-roster-staff-${Date.now()}@example.test`, fullName: "Staff, Roster Test" },
+      data: { email: `founders-roster-staff-${Date.now()}@example.test`, fullName: "Staff, Roster Test", mfaEnabled: true },
     });
     staffUserId = staffUser.id;
     await prisma.birrStaff.create({
@@ -165,14 +169,18 @@ describe("FoundersController — members/:userId/mfa/reset is platform_admin onl
   let targetUserId: string;
 
   beforeAll(async () => {
+    // Both mfaEnabled: true — "rejects a non-platform_admin staff
+    // session" below is meant to test the role gate specifically, not
+    // accidentally pass because it also happens to fail the MFA gate
+    // (see resolveBirrStaffFromSession's own comment).
     const adminUser = await prisma.user.create({
-      data: { email: `founders-mfa-reset-admin-${Date.now()}@example.test`, fullName: "Reset Gate Admin" },
+      data: { email: `founders-mfa-reset-admin-${Date.now()}@example.test`, fullName: "Reset Gate Admin", mfaEnabled: true },
     });
     platformAdminUserId = adminUser.id;
     await prisma.birrStaff.create({ data: { userId: adminUser.id, staffRole: "platform_admin" } });
 
     const officerUser = await prisma.user.create({
-      data: { email: `founders-mfa-reset-officer-${Date.now()}@example.test`, fullName: "Reset Gate Officer" },
+      data: { email: `founders-mfa-reset-officer-${Date.now()}@example.test`, fullName: "Reset Gate Officer", mfaEnabled: true },
     });
     complianceOfficerUserId = officerUser.id;
     await prisma.birrStaff.create({ data: { userId: officerUser.id, staffRole: "compliance_officer" } });

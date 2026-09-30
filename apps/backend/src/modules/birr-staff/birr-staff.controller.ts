@@ -123,7 +123,11 @@ export class BirrStaffController {
   @Get("me")
   @MfaExempt()
   async me(@Req() request: Request) {
-    const staff = await resolveBirrStaffFromSession(request);
+    // requireMfa: false — this route IS how a not-yet-enrolled session
+    // learns mfaEnabled: false in the first place; the function's own
+    // default would throw before that ever happened. SessionAuthGuard
+    // already validated the @MfaExempt() exemption above this handler.
+    const staff = await resolveBirrStaffFromSession(request, { requireMfa: false });
     return this.service.getSessionSummary(staff.userId);
   }
 
