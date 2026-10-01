@@ -9,6 +9,8 @@ import { randomUUID } from "crypto";
 import cookieParser from "cookie-parser";
 import { NestFactory } from "@nestjs/core";
 import { HttpException, ValidationPipe } from "@nestjs/common";
+import { FileStorageService } from "./common/storage/file-storage.service";
+import { storedFiles } from "./common/storage/stored-files.middleware";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { prisma } from "@birr/db";
 import { AppModule } from "./app.module";
@@ -35,6 +37,9 @@ const WEBHOOK_PATHS = ["/webhooks/stripe", "/webhooks/paystack", "/webhooks/stab
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  // Where /uploads/* files are read from — local disk in dev, the S3-compatible
+  // bucket in production (see common/storage/file-storage.service.ts).
+  const storage = app.get(FileStorageService);
 
   // Parses the httpOnly session cookie (see common/auth/session.ts).
   // Independent of the JSON/raw body-parser split below — cookie
@@ -46,17 +51,18 @@ async function bootstrap() {
 
   // Foundation logos are meant to be public (shown on public marketing/
   // waqf-types pages) — see modules/foundations/logo-storage.service.ts.
-  app.use("/uploads/logos", express.static(path.join(__dirname, "..", "uploads", "logos")));
+  app.use("/uploads/logos", storedFiles(storage, "logos", "public"));
 
   // Same public-by-design posture as Foundation logos above — a Vault's
   // cover is meant to be shown on the public homepage's "Support a
   // cause" cards. See modules/vaults/vault-cover-storage.service.ts.
-  app.use("/uploads/vault-covers", express.static(path.join(__dirname, "..", "uploads", "vault-covers")));
+  app.use("/uploads/vault-covers", storedFiles(storage, "vault-covers", "public"));
 
-  // Impact photos shown in the homepage's "Our impact" frames — public
-  // once approved (see ImpactPhoto). Only ever re-encoded JPEGs with no
-  // metadata are written here (modules/impact/impact-photo-storage.service.ts).
-  app.use("/uploads/impact-photos", express.static(path.join(__dirname, "..", "uploads", "impact-photos")));
+  // Field photos on the homepage's "Our impact" wall — public once the
+  // delivery/milestone they document is real (see VaultFieldPhoto). Only ever
+  // re-encoded JPEGs with no metadata are written here
+  // (modules/impact/field-photo-storage.service.ts).
+  app.use("/uploads/field-photos", storedFiles(storage, "field-photos", "public"));
 
   // Both public by design, same posture as vault-covers above — see
   // Vault.feasibilityReportUrl's own schema comment (a donor's upfront
@@ -67,10 +73,10 @@ async function bootstrap() {
   // feasibilityReportUrl/evidenceFileUrl saved by
   // VaultDocumentStorageService/VaultMilestoneEvidenceStorageService
   // 404'd when a browser tried to load it.
-  app.use("/uploads/vault-documents", express.static(path.join(__dirname, "..", "uploads", "vault-documents")));
+  app.use("/uploads/vault-documents", storedFiles(storage, "vault-documents", "public"));
   app.use(
     "/uploads/vault-milestone-evidence",
-    express.static(path.join(__dirname, "..", "uploads", "vault-milestone-evidence")),
+    storedFiles(storage, "vault-milestone-evidence", "public"),
   );
 
   // Message attachments are private Founder<->Birr-staff correspondence —
@@ -124,7 +130,7 @@ async function bootstrap() {
         res.status(status).json({ message });
       }
     },
-    express.static(path.join(__dirname, "..", "uploads", "message-attachments")),
+    storedFiles(storage, "message-attachments", "private"),
   );
 
   // Waqf-side milestone evidence — visible to the Founder who
@@ -174,7 +180,7 @@ async function bootstrap() {
         res.status(status).json({ message });
       }
     },
-    express.static(path.join(__dirname, "..", "uploads", "waqf-milestone-evidence")),
+    storedFiles(storage, "waqf-milestone-evidence", "private"),
   );
 
   // CauseCategory.projectPlanFileUrl — a template document attached to a
@@ -200,7 +206,7 @@ async function bootstrap() {
         res.status(status).json({ message });
       }
     },
-    express.static(path.join(__dirname, "..", "uploads", "cause-category-documents")),
+    storedFiles(storage, "cause-category-documents", "private"),
   );
 
   // Correlation id: reuses an inbound x-request-id (e.g. from a load

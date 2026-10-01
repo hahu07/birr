@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import * as path from "path";
 import { detectMimeType } from "../../common/files/detect-mime-type";
+import { FileStorageService } from "../../common/storage/file-storage.service";
 
 // Same allowlist/reasoning as VaultMilestoneEvidenceStorageService — a
 // photo of completed work, or a written completion report.
@@ -15,7 +14,8 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
 
 export const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
-const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "waqf-milestone-evidence");
+/** Folder under uploads/ (or the bucket) — served back at /uploads/waqf-milestone-evidence/<filename>; see FileStorageService. */
+const FOLDER = "waqf-milestone-evidence";
 
 /**
  * Milestone evidence uploads (POST /waqf-milestones/:id/evidence) —
@@ -27,6 +27,8 @@ const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "waqf-miles
  */
 @Injectable()
 export class WaqfMilestoneEvidenceStorageService {
+  constructor(private readonly storage: FileStorageService = new FileStorageService()) {}
+
   async saveEvidence(file: Express.Multer.File): Promise<{ url: string }> {
     const detectedMimeType = detectMimeType(file.buffer);
     const extension = detectedMimeType ? ALLOWED_MIME_TYPES[detectedMimeType] : undefined;
@@ -36,10 +38,8 @@ export class WaqfMilestoneEvidenceStorageService {
     if (file.size > MAX_SIZE_BYTES) {
       throw new BadRequestException(`"${file.originalname}" must be 10MB or smaller.`);
     }
-
-    await mkdir(UPLOAD_DIR, { recursive: true });
     const filename = `${randomUUID()}.${extension}`;
-    await writeFile(path.join(UPLOAD_DIR, filename), file.buffer);
+    await this.storage.put(FOLDER, filename, file.buffer);
 
     const backendUrl = process.env.BACKEND_URL ?? "http://localhost:4000";
     return { url: `${backendUrl}/uploads/waqf-milestone-evidence/${filename}` };

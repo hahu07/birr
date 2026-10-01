@@ -1,5 +1,6 @@
+import sharp from "sharp";
 import { BadRequestException } from "@nestjs/common";
-import { unlink } from "fs/promises";
+import { readFile, unlink } from "fs/promises";
 import * as path from "path";
 import { VaultMilestoneEvidenceStorageService } from "./vault-milestone-evidence-storage.service";
 
@@ -43,11 +44,28 @@ describe("VaultMilestoneEvidenceStorageService", () => {
     expect(result.url).toContain("/uploads/vault-milestone-evidence/");
   });
 
-  test("saves an allowed image", async () => {
-    const realPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
-    const result = await service.saveEvidence(fakeFile({ mimetype: "image/png", originalname: "site-photo.png", buffer: realPng }));
+  test("saves an allowed image — re-encoded as a metadata-free JPEG, so GPS from a phone photo never goes public", async () => {
+    const withGps = await sharp({ create: { width: 120, height: 80, channels: 3, background: "#2a7" } })
+      .withExif({ IFD0: { Make: "SecretPhoneCo" }, IFD3: { GPSLatitudeRef: "N", GPSLatitude: "12/1 0/1 0/1" } })
+      .jpeg()
+      .toBuffer();
+    expect((await sharp(withGps).metadata()).exif).toBeDefined();
+
+    const result = await service.saveEvidence(fakeFile({ mimetype: "image/jpeg", originalname: "site-photo.jpg", buffer: withGps }));
     savedUrls.push(result.url);
     expect(result.url).toContain("/uploads/vault-milestone-evidence/");
+    expect(result.url.endsWith(".jpg")).toBe(true);
+
+    const stored = await readFile(path.join(__dirname, "..", "..", "..", "uploads", "vault-milestone-evidence", path.basename(result.url)));
+    expect((await sharp(stored).metadata()).exif).toBeUndefined();
+    expect(stored.includes(Buffer.from("SecretPhoneCo"))).toBe(false);
+  });
+
+  test("rejects a file that only claims to be an image (valid PNG header, undecodable body)", async () => {
+    const pngHeaderOnly = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+    await expect(
+      service.saveEvidence(fakeFile({ mimetype: "image/png", originalname: "fake.png", buffer: pngHeaderOnly })),
+    ).rejects.toThrow(/couldn't be read/);
   });
 
   test("rejects a disallowed mimetype (e.g. SVG)", async () => {

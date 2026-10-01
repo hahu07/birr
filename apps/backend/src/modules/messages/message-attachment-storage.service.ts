@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import * as path from "path";
 import { detectMimeType } from "../../common/files/detect-mime-type";
+import { FileStorageService } from "../../common/storage/file-storage.service";
 
 const ALLOWED_MIME_TYPES: Record<string, string> = {
   "application/pdf": "pdf",
@@ -27,7 +26,8 @@ export const MAX_SIZE_BYTES = 10 * 1024 * 1024; // documents run bigger than a 2
 // existing `app.use("/uploads", express.static(...))` mount, which
 // serves the whole uploads/ tree, not just uploads/logos — no main.ts
 // change needed for this new subdirectory.
-const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "message-attachments");
+/** Folder under uploads/ (or the bucket) — served back at /uploads/message-attachments/<filename>; see FileStorageService. */
+const FOLDER = "message-attachments";
 
 export interface SavedAttachment {
   fileName: string;
@@ -43,6 +43,8 @@ export interface SavedAttachment {
  */
 @Injectable()
 export class MessageAttachmentStorageService {
+  constructor(private readonly storage: FileStorageService = new FileStorageService()) {}
+
   async saveAttachment(file: Express.Multer.File): Promise<SavedAttachment> {
     // Decided by the file's actual bytes, not the client-supplied
     // mimetype — see detectMimeType's own comment (2026-08-30 security
@@ -55,10 +57,8 @@ export class MessageAttachmentStorageService {
     if (file.size > MAX_SIZE_BYTES) {
       throw new BadRequestException(`"${file.originalname}" must be 10MB or smaller.`);
     }
-
-    await mkdir(UPLOAD_DIR, { recursive: true });
     const filename = `${randomUUID()}.${extension}`;
-    await writeFile(path.join(UPLOAD_DIR, filename), file.buffer);
+    await this.storage.put(FOLDER, filename, file.buffer);
 
     const backendUrl = process.env.BACKEND_URL ?? "http://localhost:4000";
     return {

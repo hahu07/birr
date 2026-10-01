@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import * as path from "path";
 import { detectMimeType } from "../../common/files/detect-mime-type";
+import { FileStorageService } from "../../common/storage/file-storage.service";
 
 // Same convention as LogoStorageService (apps/backend/src/modules/
 // foundations/logo-storage.service.ts) — plain local-disk write, mime
@@ -17,7 +16,8 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
 
 export const MAX_SIZE_BYTES = 4 * 1024 * 1024;
 
-const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "vault-covers");
+/** Folder under uploads/ (or the bucket) — served back at /uploads/vault-covers/<filename>; see FileStorageService. */
+const FOLDER = "vault-covers";
 
 /**
  * Vault cover image uploads (POST /vaults/:id/cover) — public, staff-only
@@ -27,6 +27,8 @@ const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "vault-cove
  */
 @Injectable()
 export class VaultCoverStorageService {
+  constructor(private readonly storage: FileStorageService = new FileStorageService()) {}
+
   async saveCover(file: Express.Multer.File): Promise<{ url: string }> {
     const detectedMimeType = detectMimeType(file.buffer);
     const extension = detectedMimeType ? ALLOWED_MIME_TYPES[detectedMimeType] : undefined;
@@ -36,10 +38,8 @@ export class VaultCoverStorageService {
     if (file.size > MAX_SIZE_BYTES) {
       throw new BadRequestException("Cover image must be 4MB or smaller.");
     }
-
-    await mkdir(UPLOAD_DIR, { recursive: true });
     const filename = `${randomUUID()}.${extension}`;
-    await writeFile(path.join(UPLOAD_DIR, filename), file.buffer);
+    await this.storage.put(FOLDER, filename, file.buffer);
 
     const backendUrl = process.env.BACKEND_URL ?? "http://localhost:4000";
     return { url: `${backendUrl}/uploads/vault-covers/${filename}` };

@@ -140,6 +140,22 @@ services:
       # hostname in Render's dashboard first.
       - key: BACKEND_URL
         value: https://birr-backend-kya6.onrender.com
+      # Uploaded files (logos, Vault covers/documents, evidence, message
+      # attachments, impact photos). Render's filesystem is wiped on every
+      # deploy, so without a bucket these are LOST. Set the secrets in the
+      # Render dashboard (sync: false); see docs/file-storage.md. Leaving
+      # STORAGE_BUCKET unset falls back to local disk (the backend logs a
+      # warning in production).
+      - key: STORAGE_BUCKET
+        sync: false
+      - key: STORAGE_ENDPOINT
+        sync: false
+      - key: STORAGE_REGION
+        value: auto
+      - key: STORAGE_ACCESS_KEY_ID
+        sync: false
+      - key: STORAGE_SECRET_ACCESS_KEY
+        sync: false
       - key: FOUNDER_PORTAL_URL
         value: https://birr-web.onrender.com
       # main.ts's own CORS setup fails closed without this on any

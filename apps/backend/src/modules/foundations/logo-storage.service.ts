@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import * as path from "path";
 import { detectMimeType } from "../../common/files/detect-mime-type";
+import { FileStorageService } from "../../common/storage/file-storage.service";
 
 const ALLOWED_MIME_TYPES: Record<string, string> = {
   "image/png": "png",
@@ -26,7 +25,8 @@ export const MAX_SIZE_BYTES = 2 * 1024 * 1024;
 // three real providers from day one), so an interface here would be
 // premature. Swapping to real object storage later is a single-file
 // change.
-const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "logos");
+/** Folder under uploads/ (or the bucket) — served back at /uploads/logos/<filename>; see FileStorageService. */
+const FOLDER = "logos";
 
 /**
  * Foundation logo uploads (POST /founders/establish). Files are
@@ -36,6 +36,8 @@ const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "logos");
  */
 @Injectable()
 export class LogoStorageService {
+  constructor(private readonly storage: FileStorageService = new FileStorageService()) {}
+
   async saveLogo(file: Express.Multer.File): Promise<{ url: string }> {
     // Decided by the file's actual bytes, not the client-supplied
     // mimetype — see detectMimeType's own comment (2026-08-30 security
@@ -48,10 +50,8 @@ export class LogoStorageService {
     if (file.size > MAX_SIZE_BYTES) {
       throw new BadRequestException("Logo must be 2MB or smaller.");
     }
-
-    await mkdir(UPLOAD_DIR, { recursive: true });
     const filename = `${randomUUID()}.${extension}`;
-    await writeFile(path.join(UPLOAD_DIR, filename), file.buffer);
+    await this.storage.put(FOLDER, filename, file.buffer);
 
     const backendUrl = process.env.BACKEND_URL ?? "http://localhost:4000";
     return { url: `${backendUrl}/uploads/logos/${filename}` };

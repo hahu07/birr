@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import * as path from "path";
 import { detectMimeType } from "../../common/files/detect-mime-type";
+import { FileStorageService } from "../../common/storage/file-storage.service";
 
 // Same allowlist/reasoning as VaultDocumentStorageService — a project
 // plan template is almost always a PDF, but the image formats stay
@@ -17,7 +16,8 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
 
 export const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
-const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "cause-category-documents");
+/** Folder under uploads/ (or the bucket) — served back at /uploads/cause-category-documents/<filename>; see FileStorageService. */
+const FOLDER = "cause-category-documents";
 
 /**
  * CauseCategory.projectPlanFileUrl storage — a template document staff
@@ -29,6 +29,8 @@ const UPLOAD_DIR = path.join(__dirname, "..", "..", "..", "uploads", "cause-cate
  */
 @Injectable()
 export class CauseCategoryDocumentStorageService {
+  constructor(private readonly storage: FileStorageService = new FileStorageService()) {}
+
   async saveDocument(file: Express.Multer.File): Promise<{ url: string }> {
     const detectedMimeType = detectMimeType(file.buffer);
     const extension = detectedMimeType ? ALLOWED_MIME_TYPES[detectedMimeType] : undefined;
@@ -38,10 +40,8 @@ export class CauseCategoryDocumentStorageService {
     if (file.size > MAX_SIZE_BYTES) {
       throw new BadRequestException(`"${file.originalname}" must be 10MB or smaller.`);
     }
-
-    await mkdir(UPLOAD_DIR, { recursive: true });
     const filename = `${randomUUID()}.${extension}`;
-    await writeFile(path.join(UPLOAD_DIR, filename), file.buffer);
+    await this.storage.put(FOLDER, filename, file.buffer);
 
     const backendUrl = process.env.BACKEND_URL ?? "http://localhost:4000";
     return { url: `${backendUrl}/uploads/cause-category-documents/${filename}` };
