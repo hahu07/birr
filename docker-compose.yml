@@ -48,7 +48,13 @@ services:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
-    command: ["pnpm", "--filter", "@birr/db", "exec", "prisma", "migrate", "deploy"]
+    # Migrations, then the roles/permissions sync (see
+    # packages/db/prisma/sync-permissions.ts) — so a new release's
+    # permissions exist before the backend starts. Not the full seed.
+    command:
+      - sh
+      - -c
+      - pnpm --filter @birr/db exec prisma migrate deploy && pnpm --filter @birr/db sync:permissions
     environment:
       DATABASE_URL: postgresql://birr:birr_dev_password@postgres:5432/birr?schema=public
     depends_on:
@@ -57,8 +63,10 @@ services:
 
   # Not run by default (see the `seed` profile) — seeds roles/permissions
   # plus a bootstrap platform_admin (packages/db/prisma/seed.ts prints
-  # its dev password to this container's logs). Safe to re-run; every
-  # row is an upsert.
+  # its dev password to this container's logs). FIRST RUN / LOCAL ONLY —
+  # re-running it resets the bootstrap admin's password and the AI agents'
+  # API keys and overwrites tuned minimums/thresholds. Routine permission
+  # updates happen automatically via `migrate` above.
   seed:
     build:
       context: .

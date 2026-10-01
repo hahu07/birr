@@ -9,6 +9,7 @@
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "seed": "prisma db seed",
+    "sync:permissions": "tsx prisma/sync-permissions.cli.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "backfill:foundations": "tsx scripts/backfill-foundations-and-causes.ts"

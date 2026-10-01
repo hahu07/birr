@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
+import { syncPermissions } from "./sync-permissions";
 import {
   roles,
   permissions,
@@ -92,45 +93,9 @@ async function connectWithRetry(attempts = 5, delayMs = 3000) {
 async function main() {
   await connectWithRetry();
 
-  const roleIdByKey = new Map<string, string>();
-  for (const role of roles) {
-    const row = await prisma.role.upsert({
-      where: { key: role.key },
-      update: { name: role.name, description: role.description },
-      create: role,
-    });
-    roleIdByKey.set(role.key, row.id);
-  }
-
-  const permissionIdByKey = new Map<string, string>();
-  for (const permission of permissions) {
-    const row = await prisma.permission.upsert({
-      where: { key: permission.key },
-      update: {
-        category: permission.category,
-        description: permission.description,
-        requiresMakerChecker: permission.requiresMakerChecker,
-      },
-      create: permission,
-    });
-    permissionIdByKey.set(permission.key, row.id);
-  }
-
-  for (const [roleKey, grants] of Object.entries(rolePermissions)) {
-    const roleId = roleIdByKey.get(roleKey);
-    if (!roleId) throw new Error(`Unknown role key in rolePermissions: ${roleKey}`);
-
-    for (const [permissionKey, { canMaker = false, canChecker = false }] of Object.entries(grants)) {
-      const permissionId = permissionIdByKey.get(permissionKey);
-      if (!permissionId) throw new Error(`Unknown permission key in rolePermissions: ${permissionKey}`);
-
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId, permissionId } },
-        update: { canMaker, canChecker },
-        create: { roleId, permissionId, canMaker, canChecker },
-      });
-    }
-  }
+  // Roles, permissions and role grants — shared with the deploy-time
+  // `sync:permissions` command so the two can never drift apart.
+  await syncPermissions(prisma);
 
   for (const minimum of contributionMinimums) {
     await prisma.contributionMinimum.upsert({

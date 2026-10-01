@@ -12,6 +12,17 @@ set -e
 if [ -n "$MIGRATE_DATABASE_URL" ]; then
   echo "Running database migrations..."
   DATABASE_URL="$MIGRATE_DATABASE_URL" pnpm --filter @birr/db exec prisma migrate deploy
+
+  # Keep the database's roles/permissions/role grants equal to
+  # packages/db/prisma/seed-data.ts on every deploy — a release that adds a
+  # permission (blog.publish, staff.mfa_reset, founder.mfa_reset…) is
+  # broken until those rows exist, and the full seed can't be run in
+  # production (it resets the bootstrap admin's password and the AI
+  # agents' API keys). This touches roles/permissions only. A failure
+  # stops the container, same as a failed migration, rather than starting
+  # an app whose approvals silently don't work.
+  echo "Syncing roles and permissions..."
+  DATABASE_URL="$MIGRATE_DATABASE_URL" pnpm --filter @birr/db sync:permissions
 fi
 
 exec "$@"
