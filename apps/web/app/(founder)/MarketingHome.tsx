@@ -23,7 +23,9 @@ import {
   IconSparkle,
 } from "@birr/ui";
 import { apiFetchJson } from "../../lib/api";
+import type { ArticleSummary } from "../../lib/blog-meta";
 import type { Vault } from "../../lib/types";
+import { ArticleCard } from "./blog/ArticleCard";
 import { GRADIENT, Reveal, SiteFooter, SiteHeader, VaultCard } from "./SiteChrome";
 import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 
@@ -233,7 +235,7 @@ const PILLAR_ICON_CLASSES: Record<(typeof GOVERNANCE_PILLARS)[number]["tone"], s
   violet: "bg-gradient-to-br from-violet-500 to-violet-700 text-white shadow-violet-900/25",
 };
 
-export default function MarketingHome() {
+export default function MarketingHome({ articles = [] }: { articles?: ArticleSummary[] }) {
   const [howItWorksPath, setHowItWorksPath] = useState<"founder" | "giver">("founder");
   const [managesProduct, setManagesProduct] = useState<"waqf" | "vault">("waqf");
 
@@ -555,6 +557,34 @@ export default function MarketingHome() {
         )}
 
       </section>
+
+      {articles.length > 0 && (
+        <section id="learn" className="bg-slate-50/70 px-6 py-20 sm:px-8">
+          <div className="mx-auto max-w-5xl">
+            <Reveal className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="max-w-xl">
+                <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">Learn</p>
+                <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+                  Featured articles.
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                  Plain-English guides to waqf, trusteeship and giving — written for people new to all three.
+                </p>
+              </div>
+              <Link href="/blog" className="shrink-0">
+                <Button variant="secondary">View all articles</Button>
+              </Link>
+            </Reveal>
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {articles.map((a, i) => (
+                <Reveal key={a.slug} delayMs={i * 75}>
+                  <ArticleCard article={a} />
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section id="governance" className="px-6 py-20 sm:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">

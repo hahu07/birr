@@ -10,6 +10,7 @@ description: A test article
 date: 2026-10-15
 author: Birr Editorial
 category: trust
+illustration: endowment
 ${extra}---
 Body text.`;
 
@@ -24,6 +25,11 @@ describe("parseArticle", () => {
 
   it("refuses to publish an article with no reviewer", () => {
     expect(() => parseArticle("hello", base())).toThrow(/reviewedBy/);
+  });
+
+  it("requires a known illustration", () => {
+    expect(() => parseArticle("hello", base("reviewedBy: X\n").replace("illustration: endowment\n", ""))).toThrow(/illustration/);
+    expect(() => parseArticle("hello", base("reviewedBy: X\n").replace("endowment", "nope"))).toThrow(/illustration/);
   });
 
   it("allows a draft without a reviewer", () => {
@@ -45,5 +51,19 @@ describe("listArticles", () => {
     fs.writeFileSync(path.join(dir, "new.md"), base("reviewedBy: X\n").replace("2026-10-15", "2026-11-01"));
     fs.writeFileSync(path.join(dir, "wip.md"), base("draft: true\n"));
     expect(listArticles(dir).map((a) => a.slug)).toEqual(["new", "old"]);
+  });
+});
+
+describe("featuredArticles", () => {
+  it("returns the newest N without bodies, with a read time", async () => {
+    const { featuredArticles, readMinutes } = await import("./blog");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "blog-"));
+    fs.writeFileSync(path.join(dir, "a.md"), base("reviewedBy: X\n"));
+    fs.writeFileSync(path.join(dir, "b.md"), base("reviewedBy: X\n").replace("2026-10-15", "2026-11-01"));
+    const out = featuredArticles(1, dir);
+    expect(out.map((a) => a.slug)).toEqual(["b"]);
+    expect(out[0]).not.toHaveProperty("body");
+    expect(out[0].readMinutes).toBe(1);
+    expect(readMinutes("word ".repeat(600))).toBe(3);
   });
 });

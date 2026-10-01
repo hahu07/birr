@@ -14,27 +14,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const BLOG_CATEGORIES = {
-  "founder-education": "For Founders",
-  vaults: "Vaults & giving",
-  trust: "Trust & transparency",
-  seasonal: "Seasonal",
-} as const;
-export type BlogCategory = keyof typeof BLOG_CATEGORIES;
+import { BLOG_CATEGORIES, ILLUSTRATION_KEYS, type Article, type ArticleSummary, type BlogCategory, type IllustrationKey } from "./blog-meta";
 
-export interface Article {
-  slug: string;
-  title: string;
-  description: string;
-  /** ISO date, YYYY-MM-DD. */
-  date: string;
-  author: string;
-  /** Who signed this off — required unless the article is still a draft. */
-  reviewedBy: string | null;
-  category: BlogCategory;
-  draft: boolean;
-  body: string;
-}
+export { BLOG_CATEGORIES };
+export type { Article, ArticleSummary, BlogCategory };
 
 const DEFAULT_BLOG_DIR = path.join(process.cwd(), "content", "blog");
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -70,6 +53,12 @@ export function parseArticle(slug: string, raw: string): Article {
   if (!(category in BLOG_CATEGORIES)) {
     throw new Error(`Blog article "${slug}": unknown category "${category}".`);
   }
+  const illustration = need("illustration");
+  if (!(ILLUSTRATION_KEYS as readonly string[]).includes(illustration)) {
+    throw new Error(
+      `Blog article "${slug}": unknown illustration "${illustration}" (expected one of ${ILLUSTRATION_KEYS.join(", ")}).`,
+    );
+  }
   const draft = fields.draft === "true";
   const reviewedBy = fields.reviewedBy || null;
   if (!draft && !reviewedBy) {
@@ -86,20 +75,37 @@ export function parseArticle(slug: string, raw: string): Article {
     author: need("author"),
     reviewedBy,
     category: category as BlogCategory,
+    illustration: illustration as IllustrationKey,
     draft,
     body: match[2].trim(),
   };
 }
 
-/** Published articles only, newest first. Drafts are never built or listed. */
+/**
+ * Published articles only, newest first. Drafts are never built or listed
+ * in production — the one exception is `next dev` (NODE_ENV "development"),
+ * where drafts show up so they can be previewed locally before review.
+ */
 export function listArticles(dir: string = DEFAULT_BLOG_DIR): Article[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
     .filter((f) => f.endsWith(".md"))
     .map((f) => parseArticle(f.slice(0, -3), fs.readFileSync(path.join(dir, f), "utf8")))
-    .filter((a) => !a.draft)
+    .filter((a) => !a.draft || process.env.NODE_ENV === "development")
     .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** ~200 words a minute, never under one. */
+export function readMinutes(body: string): number {
+  return Math.max(1, Math.round(body.split(/\s+/).filter(Boolean).length / 200));
+}
+
+/** The newest `count` articles, without bodies — safe to pass to a client component. */
+export function featuredArticles(count: number, dir?: string): ArticleSummary[] {
+  return listArticles(dir)
+    .slice(0, count)
+    .map(({ body, ...rest }) => ({ ...rest, readMinutes: readMinutes(body) }));
 }
 
 export function getArticle(slug: string, dir?: string): Article | undefined {

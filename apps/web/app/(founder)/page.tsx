@@ -1,16 +1,10 @@
-"use client";
-
-// "/" is the one route that's public-or-private depending on session —
-// see app-shell.tsx's HOME_ROUTE handling. Signed out: marketing page.
-// Signed in: the real dashboard (DashboardOverview).
-import { useFounderSession } from "../../lib/founder-session";
-import MarketingHome from "./MarketingHome";
-import DashboardOverview from "./DashboardOverview";
+// "/" — see HomeEntry.tsx for the signed-out/signed-in branch. This stays a
+// Server Component only so the marketing page's "Featured articles"
+// section can read content/blog at build time (lib/blog.ts) — client
+// components can't touch the filesystem.
+import { featuredArticles } from "../../lib/blog";
+import HomeEntry from "./HomeEntry";
 
 export default function HomePage() {
-  const { user, loading } = useFounderSession();
-
-  if (loading) return null;
-  if (!user) return <MarketingHome />;
-  return <DashboardOverview />;
+  return <HomeEntry articles={featuredArticles(3)} />;
 }

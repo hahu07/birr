@@ -3,8 +3,9 @@
 // PUBLIC_ROUTES.
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BLOG_CATEGORIES, formatArticleDate, listArticles } from "../../../lib/blog";
+import { featuredArticles } from "../../../lib/blog";
 import { SiteFooter, SiteHeader } from "../SiteChrome";
+import { ArticleCard } from "./ArticleCard";
 
 export const metadata: Metadata = {
   title: "Learn — Birr",
@@ -13,11 +14,11 @@ export const metadata: Metadata = {
 };
 
 export default function BlogIndexPage() {
-  const articles = listArticles();
+  const articles = featuredArticles(Infinity);
   return (
     <div className="min-h-screen bg-white">
       <SiteHeader />
-      <div className="mx-auto max-w-3xl px-6 py-16 sm:px-8">
+      <div className="mx-auto max-w-5xl px-6 py-16 sm:px-8">
         <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">Learn</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
           Understanding waqf, in plain English
@@ -36,21 +37,11 @@ export default function BlogIndexPage() {
             .
           </p>
         ) : (
-          <ul className="mt-12 divide-y divide-slate-100">
+          <div className="mt-12 grid gap-5 sm:grid-cols-2">
             {articles.map((a) => (
-              <li key={a.slug} className="py-8 first:pt-0">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  {BLOG_CATEGORIES[a.category]} · {formatArticleDate(a.date)}
-                </p>
-                <Link href={`/blog/${a.slug}`} className="mt-2 block">
-                  <h2 className="text-xl font-semibold tracking-tight text-slate-900 hover:text-primary-700">
-                    {a.title}
-                  </h2>
-                </Link>
-                <p className="mt-2 text-slate-600">{a.description}</p>
-              </li>
+              <ArticleCard key={a.slug} article={a} />
             ))}
-          </ul>
+          </div>
         )}
       </div>
       <SiteFooter />

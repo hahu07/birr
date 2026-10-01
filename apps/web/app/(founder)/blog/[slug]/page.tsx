@@ -10,6 +10,7 @@ import { BLOG_CATEGORIES, formatArticleDate, getArticle, listArticles } from "..
 import { SITE_URL } from "../../../../lib/site";
 import { SiteFooter, SiteHeader } from "../../SiteChrome";
 import { BlogMarkdown } from "../BlogMarkdown";
+import { ILLUSTRATIONS } from "../illustrations";
 
 export const dynamicParams = false;
 
@@ -33,6 +34,7 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ sl
   const { slug } = await params;
   const article = getArticle(slug);
   if (!article) notFound();
+  const Illustration = ILLUSTRATIONS[article.illustration];
 
   return (
     <div className="min-h-screen bg-white">
@@ -46,8 +48,17 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ sl
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{article.title}</h1>
         <p className="mt-3 text-sm text-slate-500">
-          By {article.author} · {formatArticleDate(article.date)} · Reviewed by {article.reviewedBy}
+          By {article.author} · {formatArticleDate(article.date)}
+          {article.reviewedBy ? ` · Reviewed by ${article.reviewedBy}` : ""}
         </p>
+        {article.draft && (
+          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Draft preview — not reviewed, and not visible on the live site.
+          </p>
+        )}
+        <div className="mt-8 rounded-2xl bg-gradient-to-br from-primary-50 to-accent-50 px-6 py-8">
+          <Illustration className="mx-auto h-56 w-auto sm:h-64" />
+        </div>
         <div className="mt-10">
           <BlogMarkdown source={article.body} />
         </div>
