@@ -102,6 +102,7 @@ const NAV_LINKS = [
   { href: "/vaults", label: "Support a cause" },
   { href: "/#governance", label: "Governance" },
   { href: "/#ai", label: "AI" },
+  { href: "/blog", label: "Learn" },
 ];
 
 export function SiteHeader() {
@@ -143,6 +144,7 @@ const FOOTER_PLATFORM_LINKS = [
   { href: "/vaults", label: "Support a cause" },
   { href: "/#governance", label: "Governance" },
   { href: "/#ai", label: "AI" },
+  { href: "/blog", label: "Learn" },
 ];
 
 function FooterColumn({ title, children }: { title: string; children: ReactNode }) {
