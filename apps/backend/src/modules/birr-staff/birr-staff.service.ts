@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { IsEmail, IsEnum, IsString } from "class-validator";
-import { prisma, BirrStaffRole } from "@birr/db";
+import { prisma, Prisma, BirrStaffRole } from "@birr/db";
 import { verifyUserPassword } from "../../common/auth/password-auth";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MfaService } from "../../common/auth/mfa.service";
@@ -197,33 +197,28 @@ export class BirrStaffService {
   }
 
   /**
-   * platform_admin-only break-glass path — see MfaBackupCode's own
-   * schema comment. Clears MFA state entirely and forces re-enrollment
-   * on next login; doesn't touch the account's password or status.
+   * Clears a staff member's MFA state entirely and forces re-enrolment on
+   * their next sign-in; doesn't touch their password or status.
+   *
+   * Internal only — there is deliberately no controller route for this
+   * any more. It used to be a single Platform Admin's unilateral
+   * break-glass action; now the only caller is GovernedActionsService's
+   * `staff.mfa_reset` handler, on approval, inside its own transaction —
+   * so a second, different person (Board or Compliance) has always signed
+   * off. The audit record is written by that engine from the returned
+   * before/after, not here. For a lone locked-out Platform Admin with
+   * nobody to propose it, see emergency-mfa-reset.ts and
+   * docs/staff-mfa-recovery.md.
    */
-  async resetMfa(staffId: string, actorUserId: string) {
-    const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true } });
+  async resetMfaInTransaction(staffId: string, tx: Prisma.TransactionClient) {
+    const staff = await tx.birrStaff.findUnique({ where: { id: staffId }, include: { user: true } });
     if (!staff) throw new NotFoundException(`BirrStaff "${staffId}" not found.`);
-
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: staff.userId },
-        data: { mfaEnabled: false, mfaSecretEncrypted: null },
-      });
-      await tx.mfaBackupCode.deleteMany({ where: { userId: staff.userId } });
-      await tx.auditLog.create({
-        data: {
-          actorType: "birr_staff",
-          actorUserId,
-          action: "birr_staff.mfa_reset",
-          entityType: "User",
-          entityId: staff.userId,
-          before: { mfaEnabled: staff.user.mfaEnabled } as any,
-          after: { mfaEnabled: false } as any,
-        },
-      });
-    });
-    return { ok: true };
+    if (!staff.user.mfaEnabled) {
+      throw new BadRequestException(`${staff.user.fullName} has no two-factor authentication enrolled — nothing to reset.`);
+    }
+    await tx.user.update({ where: { id: staff.userId }, data: { mfaEnabled: false, mfaSecretEncrypted: null } });
+    await tx.mfaBackupCode.deleteMany({ where: { userId: staff.userId } });
+    return { userId: staff.userId, fullName: staff.user.fullName, staffRole: staff.staffRole };
   }
 
   /** GET /birr-staff/me — session bootstrap for the Ops Console. */

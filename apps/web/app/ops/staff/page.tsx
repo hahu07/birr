@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { humanize, formatDate } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
+import { ProposeGovernedActionButton } from "../_components/ProposeGovernedAction";
 import type { BirrStaff, BirrStaffRole, Invitation } from "../../../lib/ops-types";
 import {
   Alert,
@@ -50,12 +51,6 @@ export default function StaffPage() {
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [search, setSearch] = useState("");
   const isAdmin = currentStaff?.staffRole === "platform_admin";
-  // Break-glass MFA reset (see BirrStaffService.resetMfa's own comment)
-  // — platform_admin only, so this state doesn't need the per-row
-  // extraction InvitationRow below uses for its own action.
-  const [resettingMfaId, setResettingMfaId] = useState<string | null>(null);
-  const [resetMfaError, setResetMfaError] = useState<string | null>(null);
-
   const load = useCallback(() => {
     setError(null);
     Promise.all([apiFetchJson<BirrStaff[]>("/birr-staff"), apiFetchJson<Invitation[]>("/invitations")])
@@ -70,25 +65,10 @@ export default function StaffPage() {
     load();
   }, [load]);
 
-  async function handleResetMfa(s: BirrStaff) {
-    if (
-      !window.confirm(
-        `Reset two-factor authentication for ${s.user.fullName}? They'll be forced to re-enroll from scratch the next time they sign in, and their current backup codes stop working immediately.`,
-      )
-    ) {
-      return;
-    }
-    setResetMfaError(null);
-    setResettingMfaId(s.id);
-    try {
-      await apiFetchJson(`/birr-staff/${s.id}/mfa/reset`, { method: "POST" });
-      load();
-    } catch (err) {
-      setResetMfaError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setResettingMfaId(null);
-    }
-  }
+  // Fewer than two active Platform Admins means a locked-out admin has
+  // nobody to request their MFA reset in the app — see
+  // docs/staff-mfa-recovery.md (paths A and B).
+  const activePlatformAdmins = staff?.filter((s) => s.staffRole === "platform_admin" && s.status === "active").length ?? 0;
 
   const pendingInvitations = invitations?.filter((i) => i.status === "pending") ?? [];
   const query = search.trim().toLowerCase();
@@ -128,10 +108,19 @@ export default function StaffPage() {
         </Alert>
       )}
 
-      {resetMfaError && (
-        <Alert tone="danger" title="Couldn't reset MFA" className="mb-6">
-          {resetMfaError}
+      {isAdmin && staff !== null && activePlatformAdmins < 2 && (
+        <Alert tone="warning" title="Only one active Platform Admin" className="mb-6">
+          If this account loses its authenticator and backup codes, nobody can request its MFA reset in the app — it
+          would need the server-side emergency procedure. Invite a second Platform Admin. See
+          docs/staff-mfa-recovery.md.
         </Alert>
+      )}
+
+      {isAdmin && (
+        <p className="mb-4 text-xs text-slate-500">
+          "Request MFA reset" doesn't reset anything by itself — a Board member or Compliance officer has to approve it
+          on the Approvals page, and the person is emailed once it's done.
+        </p>
       )}
 
       {showInviteForm && (
@@ -198,14 +187,12 @@ export default function StaffPage() {
                         {isAdmin && (
                           <TableCell className="text-right">
                             {s.user.mfaEnabled && (
-                              <Button
-                                variant="danger"
-                                className="px-2.5 py-1 text-xs"
-                                disabled={resettingMfaId === s.id}
-                                onClick={() => handleResetMfa(s)}
-                              >
-                                {resettingMfaId === s.id ? "Resetting…" : "Reset MFA"}
-                              </Button>
+                              <ProposeGovernedActionButton
+                                permissionKey="staff.mfa_reset"
+                                payload={{ staffId: s.id }}
+                                label="Request MFA reset"
+                                onProposed={load}
+                              />
                             )}
                           </TableCell>
                         )}

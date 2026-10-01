@@ -178,12 +178,8 @@ export class BirrStaffController {
     return staff;
   }
 
-  // Declared after the literal "me/mfa/*" routes above — Nest/Express
-  // resolve routes in registration order, and ":id" here would
-  // otherwise swallow a request meant for those.
-  @Post(":id/mfa/reset")
-  @RequiresStaffRole("platform_admin")
-  async resetMfa(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
-    return this.service.resetMfa(id, staff.userId);
-  }
+  // Resetting a staff member's MFA is NOT a route here — it's the governed
+  // `staff.mfa_reset` action (proposed via POST /governed-actions, approved
+  // by a second person). The old one-person POST :id/mfa/reset was removed
+  // on purpose; birr-staff.controller.spec.ts asserts it stays gone.
 }

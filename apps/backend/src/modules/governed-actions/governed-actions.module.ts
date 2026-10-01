@@ -9,6 +9,7 @@ import { DistributionsModule } from "../distributions/distributions.module";
 import { VaultsModule } from "../vaults/vaults.module";
 import { WaqfLedgerModule } from "../waqf-ledger/waqf-ledger.module";
 import { BlogModule } from "../blog/blog.module";
+import { BirrStaffModule } from "../birr-staff/birr-staff.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
@@ -20,6 +21,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
     DistributionsModule,
     VaultsModule,
     BlogModule,
+    BirrStaffModule,
     WaqfLedgerModule,
     NotificationsModule,
   ],

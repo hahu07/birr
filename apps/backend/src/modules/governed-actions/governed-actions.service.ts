@@ -14,6 +14,7 @@ import { CounterpartiesService } from "../counterparties/counterparties.service"
 import { DistributionsService } from "../distributions/distributions.service";
 import { VaultsService } from "../vaults/vaults.service";
 import { BlogService } from "../blog/blog.service";
+import { BirrStaffService } from "../birr-staff/birr-staff.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
@@ -87,6 +88,14 @@ interface GovernedActionHandler {
    * correct one-liner in its own handler.
    */
   resolveVaultId?(payload: unknown): Promise<string | undefined>;
+  /**
+   * propose()-time, before checkDuplicate: reject a proposal that could
+   * never be fulfilled (e.g. target doesn't exist, or is already in the
+   * state the action would put it in), so a checker isn't asked to
+   * review something that can only fail on approval. Optional; most
+   * handlers' targets are validated by the service they call on approval.
+   */
+  validatePropose?(payload: unknown): Promise<void>;
   /**
    * propose()-time, before the row is created: reject if an equivalent
    * proposal is already pending for this same target. A target entity's
@@ -175,6 +184,7 @@ export class GovernedActionsService {
     private readonly waqfMilestonesService: WaqfMilestonesService,
     private readonly notificationsService: NotificationsService,
     private readonly blogService: BlogService,
+    private readonly birrStaffService: BirrStaffService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1078,6 +1088,62 @@ export class GovernedActionsService {
           },
         },
       ],
+      // ---- Staff security. Not scoped to a Waqf or Vault. Resetting a
+      // staff member's two-factor authentication used to be one Platform
+      // Admin's unilateral action; it's maker-checker now (maker:
+      // platform_admin, checkers: board_of_trustees / compliance_officer —
+      // see seed-data.ts). The affected person is emailed when it takes
+      // effect (see notifyDecision). ----
+      [
+        "staff.mfa_reset",
+        {
+          validatePropose: async (payload) => {
+            const { staffId } = payload as { staffId: string };
+            const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true } });
+            if (!staff) throw new NotFoundException(`Staff member "${staffId}" not found.`);
+            if (!staff.user.mfaEnabled) {
+              throw new BadRequestException(
+                `${staff.user.fullName} has no two-factor authentication enrolled — there's nothing to reset.`,
+              );
+            }
+          },
+          checkDuplicate: async (payload) => {
+            const { staffId } = payload as { staffId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "staff.mfa_reset" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["staffId"], equals: staffId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "An MFA reset for this staff member is already awaiting approval — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { staffId } = payload as { staffId: string };
+            const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true } });
+            return staff
+              ? `Reset two-factor authentication for ${staff.user.fullName} (${staff.staffRole}, ${staff.user.email}) — they must re-enrol on next sign-in. Confirm the request through a separate channel before approving.`
+              : `Staff member "${staffId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { staffId } = payload as { staffId: string };
+            const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: { select: { mfaEnabled: true } } } });
+            return staff ? { mfaEnabled: staff.user.mfaEnabled, status: staff.status } : null;
+          },
+          onApprove: async (payload, tx, ctx) => {
+            const { staffId } = payload as { staffId: string };
+            const target = await this.birrStaffService.resetMfaInTransaction(staffId, tx);
+            return {
+              auditAction: "birr_staff.mfa_reset",
+              entityType: "User",
+              entityId: target.userId,
+              before: { mfaEnabled: true },
+              after: { mfaEnabled: false, approvedByUserId: ctx.checkerUserId },
+            };
+          },
+        },
+      ],
     ]);
   }
 
@@ -1115,6 +1181,7 @@ export class GovernedActionsService {
     }
 
     const handler = this.handlers.get(input.permissionKey)!;
+    await handler.validatePropose?.(input.payload);
     await handler.checkDuplicate?.(input.payload);
     const waqfId = await handler.resolveWaqfId?.(input.payload);
     const vaultId = await handler.resolveVaultId?.(input.payload);
@@ -1383,6 +1450,32 @@ export class GovernedActionsService {
    * itself is no longer a governed_actions concept at all, so this can
    * only be old history, and is skipped entirely.
    */
+  private async notifyMfaReset(
+    action: { id: string; makerUserId: string | null },
+    decided: { checkerUserId: string | null },
+    affectedUserId: string,
+  ): Promise<void> {
+    const people = await prisma.user.findMany({
+      where: { id: { in: [action.makerUserId, decided.checkerUserId].filter((id): id is string => Boolean(id)) } },
+      select: { id: true, fullName: true },
+    });
+    const nameOf = (id: string | null) => people.find((p) => p.id === id)?.fullName ?? "a Birr staff member";
+    await this.notificationsService.notify({
+      recipientType: "birr_staff",
+      recipientUserId: affectedUserId,
+      type: "birr_staff.mfa_reset",
+      title: "Two-factor authentication on your Birr staff account was reset",
+      body:
+        `${nameOf(action.makerUserId)} requested, and ${nameOf(decided.checkerUserId)} approved, a reset of two-factor ` +
+        `authentication on your account. At your next sign-in you'll be asked to set up your authenticator app again, ` +
+        `and your old backup codes no longer work. If you did not expect this, contact Birr's security lead immediately ` +
+        `and do not sign in until you have spoken to them.`,
+      linkUrl: "/ops/sign-in",
+      relatedEntityType: "GovernedAction",
+      relatedEntityId: action.id,
+    });
+  }
+
   private async notifyDecision(
     action: {
       id: string;
@@ -1391,7 +1484,7 @@ export class GovernedActionsService {
       makerUserId: string | null;
       permission: { key: string };
     },
-    decided: { status: string },
+    decided: { status: string; checkerUserId: string | null },
     fulfillment: FulfillmentResult | undefined,
   ): Promise<void> {
     if (action.makerType === "human" && action.makerUserId) {
@@ -1405,6 +1498,15 @@ export class GovernedActionsService {
         relatedEntityType: "GovernedAction",
         relatedEntityId: action.id,
       });
+    }
+
+    // An approved MFA reset tells the affected person (email + WhatsApp,
+    // see CHANNEL_PLAN) — it's the one message that lets them catch a
+    // reset they never asked for. Not scoped to a waqf, so it has to run
+    // before the waqf-only early return below.
+    if (decided.status === "approved" && fulfillment?.auditAction === "birr_staff.mfa_reset") {
+      await this.notifyMfaReset(action, decided, fulfillment.entityId);
+      return;
     }
 
     if (!action.waqfId) return;

@@ -8,6 +8,8 @@ import { InvestmentsService } from "../investments/investments.service";
 import { CounterpartiesService } from "../counterparties/counterparties.service";
 import { DistributionsService } from "../distributions/distributions.service";
 import { BlogService } from "../blog/blog.service";
+import { BirrStaffService } from "../birr-staff/birr-staff.service";
+import { MfaService } from "../../common/auth/mfa.service";
 import { VaultsService } from "../vaults/vaults.service";
 import { VaultProceedsService } from "../vaults/vault-proceeds.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
@@ -119,6 +121,7 @@ describe("GovernedActionsService", () => {
     new WaqfMilestonesService(),
     notificationsService,
     new BlogService(),
+    new BirrStaffService(new EncryptionService(), new MfaService()),
   );
 
   const governedActionIds: string[] = [];
@@ -2069,6 +2072,114 @@ describe("GovernedActionsService", () => {
 
       await expect(
         service.propose({ permissionKey: "blog.publish", payload: { articleId: article.id }, makerUserId }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+  // staff.mfa_reset (2026-10-01) — replaced a Platform Admin's unilateral
+  // reset. Maker: platform_admin; checkers: board_of_trustees /
+  // compliance_officer. The affected person is notified when it lands.
+  describe("staff.mfa_reset", () => {
+    let adminUserId: string;
+    let boardUserId: string;
+
+    beforeAll(async () => {
+      const admin = await prisma.user.create({
+        data: { email: `mfa-admin-${Date.now()}@example.com`, fullName: "MFA Request Admin" },
+      });
+      adminUserId = admin.id;
+      await prisma.birrStaff.create({ data: { userId: admin.id, staffRole: "platform_admin" } });
+      const board = await prisma.user.create({
+        data: { email: `mfa-board-${Date.now()}@example.com`, fullName: "MFA Approving Board Member" },
+      });
+      boardUserId = board.id;
+      await prisma.birrStaff.create({ data: { userId: board.id, staffRole: "board_of_trustees" } });
+    });
+
+    async function enrolledStaff(label: string) {
+      const user = await prisma.user.create({
+        data: {
+          email: `mfa-target-${label}-${Date.now()}-${Math.floor(Math.random() * 10000)}@example.com`,
+          fullName: `MFA Target ${label}`,
+          mfaEnabled: true,
+          mfaSecretEncrypted: "not-a-real-secret",
+        },
+      });
+      const staff = await prisma.birrStaff.create({ data: { userId: user.id, staffRole: "mutawalli_officer" } });
+      await prisma.mfaBackupCode.create({ data: { userId: user.id, codeHash: "x" } });
+      return { user, staff };
+    }
+
+    test("approve → MFA cleared, audit-logged by the engine, and the affected person is notified", async () => {
+      const { user, staff } = await enrolledStaff("approve");
+      const action = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId });
+      governedActionIds.push(action.id);
+
+      // Nothing changes on propose — a second person has to approve first.
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).mfaEnabled).toBe(true);
+
+      await service.decide({ governedActionId: action.id, checkerUserId: boardUserId, approve: true });
+
+      const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+      expect(after.mfaEnabled).toBe(false);
+      expect(after.mfaSecretEncrypted).toBeNull();
+      expect(await prisma.mfaBackupCode.count({ where: { userId: user.id } })).toBe(0);
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: user.id, action: "birr_staff.mfa_reset" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0].actorUserId).toBe(boardUserId);
+
+      // The notification is fire-and-forget after commit — poll briefly.
+      let notice = null;
+      for (let i = 0; i < 20 && !notice; i++) {
+        notice = await prisma.notification.findFirst({ where: { recipientUserId: user.id, type: "birr_staff.mfa_reset" } });
+        if (!notice) await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(notice).not.toBeNull();
+      expect(notice!.body).toContain("MFA Request Admin");
+      expect(notice!.body).toContain("MFA Approving Board Member");
+    });
+
+    test("reject → MFA is left exactly as it was, and nobody is told it was reset", async () => {
+      const { user, staff } = await enrolledStaff("reject");
+      const action = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId });
+      governedActionIds.push(action.id);
+
+      await service.decide({ governedActionId: action.id, checkerUserId: boardUserId, approve: false });
+
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).mfaEnabled).toBe(true);
+      expect(await prisma.notification.count({ where: { recipientUserId: user.id, type: "birr_staff.mfa_reset" } })).toBe(0);
+    });
+
+    test("the proposer cannot approve their own reset request, and the database refuses it too", async () => {
+      const { staff } = await enrolledStaff("self");
+      const action = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId });
+      governedActionIds.push(action.id);
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: adminUserId, approve: true }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: adminUserId } }),
+      ).rejects.toThrow();
+    });
+
+    test("propose() rejects an unknown staff member, or one with no MFA enrolled", async () => {
+      await expect(
+        service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: randomUUID() }, makerUserId: adminUserId }),
+      ).rejects.toThrow();
+      const { staff, user } = await enrolledStaff("not-enrolled");
+      await prisma.user.update({ where: { id: user.id }, data: { mfaEnabled: false, mfaSecretEncrypted: null } });
+      await expect(
+        service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    test("a second pending request for the same person is rejected as a duplicate", async () => {
+      const { staff } = await enrolledStaff("dup");
+      const first = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId });
+      governedActionIds.push(first.id);
+      await expect(
+        service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId }),
       ).rejects.toThrow(ConflictException);
     });
   });

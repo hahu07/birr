@@ -136,22 +136,22 @@ describe("BirrStaffService", () => {
 
     // Same reasoning as the test above — startMfaEnrollment() + confirmMfaEnrollment()
     // do real QR generation + bcrypt hashing.
-    test("resetMfa() clears MFA state, deletes backup codes, and is audit-logged", async () => {
+    test("resetMfaInTransaction() clears MFA state and deletes backup codes (the audit record is the governed-action engine's job)", async () => {
       const { secretForManualEntry } = await service.startMfaEnrollment(mfaUserId);
       await service.confirmMfaEnrollment(mfaUserId, codeFor(secretForManualEntry));
 
-      await service.resetMfa(mfaStaffId, actorUserId);
+      await prisma.$transaction((tx) => service.resetMfaInTransaction(mfaStaffId, tx));
 
       const user = await prisma.user.findUniqueOrThrow({ where: { id: mfaUserId } });
       expect(user.mfaEnabled).toBe(false);
       expect(user.mfaSecretEncrypted).toBeNull();
-
-      const remainingCodes = await prisma.mfaBackupCode.findMany({ where: { userId: mfaUserId } });
-      expect(remainingCodes).toHaveLength(0);
-
-      const logs = await prisma.auditLog.findMany({ where: { entityId: mfaUserId, action: "birr_staff.mfa_reset" } });
-      expect(logs).toHaveLength(1);
-      expect(logs[0]).toMatchObject({ actorUserId });
+      expect(await prisma.mfaBackupCode.count({ where: { userId: mfaUserId } })).toBe(0);
     }, 25000);
+
+    test("resetMfaInTransaction() refuses an account with no MFA enrolled", async () => {
+      await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(mfaStaffId, tx))).rejects.toThrow(
+        /nothing to reset/,
+      );
+    });
   });
 });

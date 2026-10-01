@@ -68,6 +68,14 @@ export const permissions = [
   // like vault.publish — and checkers are Legal/Compliance only (not the
   // Board, not just any staff member), per CLAUDE.md's Bashir row.
   { key: "blog.publish", category: "blog", requiresMakerChecker: true, description: "Publish a draft educational article to the public blog." },
+  // Resetting a Birr staff member's two-factor authentication (2026-10-01)
+  // — previously one Platform Admin could do it alone, which meant a single
+  // compromised or careless admin session could strip MFA from anyone. Now
+  // maker-checker: a Platform Admin requests it, a Board member or
+  // Compliance officer (never another Platform Admin — no role may be both
+  // maker and checker) approves. Platform Admin is deliberately NOT a
+  // checker: that role is "not a substitute for Board/Committee sign-off".
+  { key: "staff.mfa_reset", category: "staff", requiresMakerChecker: true, description: "Reset a Birr staff member's two-factor authentication, forcing them to re-enrol." },
   { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
 ] as const;
 
@@ -112,6 +120,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.distribution_approve": { canChecker: true },
     "vault.contribution_refund": { canChecker: true },
     "vault.milestone_complete": { canChecker: true },
+    "staff.mfa_reset": { canChecker: true },
   },
   investment_committee: {
     "asset.dispose": { canChecker: true },
@@ -160,6 +169,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     // it; the Board (above) is the independent checker.
     "vault.contribution_refund": { canMaker: true },
     "blog.publish": { canChecker: true },
+    "staff.mfa_reset": { canChecker: true },
   },
   legal_adviser: {
     "waqf.view": { canMaker: true },
@@ -176,6 +186,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
   platform_admin: {
     "compliance.report_export": { canMaker: true },
     "waqf.view": { canMaker: true },
+    "staff.mfa_reset": { canMaker: true },
   },
 };
 

@@ -69,6 +69,11 @@ const CHANNEL_PLAN: Record<string, { email: boolean; whatsapp: boolean }> = {
   "coi.reviewed": { email: false, whatsapp: false },
   // Critical — a trustee license lapsing blocks Birr from acting in that jurisdiction.
   "trustee_license.expiring": { email: true, whatsapp: true },
+  // Critical — two-factor authentication on your own staff account was
+  // reset. Always email + WhatsApp, never user-configurable (deliberately
+  // not in TYPE_TO_PREFERENCE_CATEGORY): if someone is resetting MFA on an
+  // account you didn't ask about, this is the message that lets you catch it.
+  "birr_staff.mfa_reset": { email: true, whatsapp: true },
   // Medium — a real message from the other side of the relationship,
   // but not itself time-sensitive the way a governed-action proposal or
   // a payment event is. Same tier as cause_suggestion.pending.
