@@ -63,6 +63,11 @@ export const permissions = [
   // (2026-09-15) — same fiduciary weight as distribution.approve, so it
   // shares that permission's exact maker/checker set below rather than
   // vault.milestone_complete's own (broader) set.
+  // Public educational articles (the /blog section). Marketing about a
+  // fiduciary service is regulated, so taking one live is maker-checker
+  // like vault.publish — and checkers are Legal/Compliance only (not the
+  // Board, not just any staff member), per CLAUDE.md's Bashir row.
+  { key: "blog.publish", category: "blog", requiresMakerChecker: true, description: "Publish a draft educational article to the public blog." },
   { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
 ] as const;
 
@@ -85,6 +90,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.cause_allocate": { canMaker: true },
     "vault.distribution_approve": { canMaker: true },
     "vault.milestone_complete": { canMaker: true },
+    "blog.publish": { canMaker: true },
   },
   // Apex checker across every maker-checker gated permission — the Board
   // is the last line of sign-off, distinct from (and above) the
@@ -153,9 +159,11 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     // .hold's own role gate) and is best placed to propose reversing
     // it; the Board (above) is the independent checker.
     "vault.contribution_refund": { canMaker: true },
+    "blog.publish": { canChecker: true },
   },
   legal_adviser: {
     "waqf.view": { canMaker: true },
+    "blog.publish": { canChecker: true },
   },
   // Read-only by design: no canMaker/canChecker grant on any
   // maker-checker gated permission. An external auditor who could

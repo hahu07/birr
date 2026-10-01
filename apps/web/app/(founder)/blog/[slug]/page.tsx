@@ -1,38 +1,36 @@
-// One article. Fully static: generateStaticParams enumerates every
-// published article at build time and dynamicParams = false 404s anything
-// else, so an unpublished draft is never reachable by guessing its URL.
-// Server Component: it can't import from "@birr/ui" (that barrel pulls in
+// One article, fetched from the backend's public endpoint — which only
+// ever returns published articles, so an unpublished draft 404s here
+// exactly like a slug that doesn't exist. Rendered on demand and
+// revalidated every few minutes (a newly approved article needs no
+// redeploy). Server Component: it can't import from "@birr/ui" (that barrel pulls in
 // client-only components), so the CTAs below are plain styled links.
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BLOG_CATEGORIES, formatArticleDate, getArticle, listArticles } from "../../../../lib/blog";
+import { getPublishedArticle } from "../../../../lib/blog-api";
+import { BLOG_CATEGORIES, formatArticleDate } from "../../../../lib/blog-meta";
 import { SITE_URL } from "../../../../lib/site";
 import { SiteFooter, SiteHeader } from "../../SiteChrome";
-import { BlogMarkdown } from "../BlogMarkdown";
-import { ILLUSTRATIONS } from "../illustrations";
+import { BlogMarkdown } from "../../../../components/blog/BlogMarkdown";
+import { ILLUSTRATIONS } from "../../../../components/blog/illustrations";
 
-export const dynamicParams = false;
-
-export function generateStaticParams() {
-  return listArticles().map((a) => ({ slug: a.slug }));
-}
+export const revalidate = 300;
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const article = getArticle(slug);
+  const article = await getPublishedArticle(slug);
   if (!article) return {};
   return {
     title: `${article.title} — Birr`,
     description: article.description,
     alternates: { canonical: `${SITE_URL}/blog/${article.slug}` },
-    openGraph: { title: article.title, description: article.description, type: "article", publishedTime: article.date },
+    openGraph: { title: article.title, description: article.description, type: "article", publishedTime: article.publishedAt },
   };
 }
 
 export default async function BlogArticlePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const article = getArticle(slug);
+  const article = await getPublishedArticle(slug);
   if (!article) notFound();
   const Illustration = ILLUSTRATIONS[article.illustration];
 
@@ -48,14 +46,8 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ sl
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{article.title}</h1>
         <p className="mt-3 text-sm text-slate-500">
-          By {article.author} · {formatArticleDate(article.date)}
-          {article.reviewedBy ? ` · Reviewed by ${article.reviewedBy}` : ""}
+          By {article.authorName} · {formatArticleDate(article.publishedAt)} · Reviewed by {article.reviewedByName}
         </p>
-        {article.draft && (
-          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Draft preview — not reviewed, and not visible on the live site.
-          </p>
-        )}
         <div className="mt-8 rounded-2xl bg-gradient-to-br from-primary-50 to-accent-50 px-6 py-8">
           <Illustration className="mx-auto h-56 w-auto sm:h-64" />
         </div>

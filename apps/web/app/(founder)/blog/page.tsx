@@ -1,11 +1,14 @@
-// Public blog index — static, built from content/blog at build time (see
-// lib/blog.ts). Public regardless of founder session; see app-shell.tsx's
+// Public blog index — articles come from the backend (published only;
+// authored and approved in the Ops Console), revalidated every few
+// minutes. Public regardless of founder session; see app-shell.tsx's
 // PUBLIC_ROUTES.
 import type { Metadata } from "next";
 import Link from "next/link";
-import { featuredArticles } from "../../../lib/blog";
+import { listPublishedArticles } from "../../../lib/blog-api";
+import { ArticleCard } from "../../../components/blog/ArticleCard";
 import { SiteFooter, SiteHeader } from "../SiteChrome";
-import { ArticleCard } from "./ArticleCard";
+
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Learn — Birr",
@@ -13,8 +16,8 @@ export const metadata: Metadata = {
   alternates: { types: { "application/rss+xml": "/blog/feed.xml" } },
 };
 
-export default function BlogIndexPage() {
-  const articles = featuredArticles(Infinity);
+export default async function BlogIndexPage() {
+  const articles = await listPublishedArticles();
   return (
     <div className="min-h-screen bg-white">
       <SiteHeader />

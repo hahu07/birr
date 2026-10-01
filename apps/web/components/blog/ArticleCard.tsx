@@ -3,7 +3,7 @@
 // illustrations.tsx) so a card says what it's about at a glance. The whole
 // card is one Link (same reasoning as VaultCard in SiteChrome.tsx).
 import Link from "next/link";
-import { BLOG_CATEGORIES, type ArticleSummary } from "../../../lib/blog-meta";
+import { BLOG_CATEGORIES, type ArticleSummary } from "../../lib/blog-meta";
 import { ILLUSTRATIONS } from "./illustrations";
 
 export function ArticleCard({ article }: { article: ArticleSummary }) {
@@ -19,9 +19,6 @@ export function ArticleCard({ article }: { article: ArticleSummary }) {
           <span className="rounded-md bg-white/95 px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm">
             {BLOG_CATEGORIES[article.category]}
           </span>
-          {article.draft && (
-            <span className="rounded-md bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">Draft</span>
-          )}
         </div>
       </div>
       <div className="flex flex-1 flex-col p-5">

@@ -14,20 +14,26 @@ export type BlogCategory = keyof typeof BLOG_CATEGORIES;
 export const ILLUSTRATION_KEYS = ["endowment", "trustee", "giving-types"] as const;
 export type IllustrationKey = (typeof ILLUSTRATION_KEYS)[number];
 
-export interface Article {
+/** What GET /blog-articles/public returns per article (no body). */
+export interface ArticleSummary {
   slug: string;
   title: string;
   description: string;
-  /** ISO date, YYYY-MM-DD. */
-  date: string;
-  author: string;
-  /** Who signed this off — required unless the article is still a draft. */
-  reviewedBy: string | null;
   category: BlogCategory;
-  /** Every article needs a picture — required, validated against ILLUSTRATION_KEYS. */
   illustration: IllustrationKey;
-  draft: boolean;
+  authorName: string;
+  /** The approving Legal/Compliance reviewer — set by the governed blog.publish action, never typed in. */
+  reviewedByName: string;
+  /** ISO timestamp. */
+  publishedAt: string;
+  readMinutes: number;
+}
+
+/** A single article, as GET /blog-articles/public/:slug returns it. */
+export interface Article extends ArticleSummary {
   body: string;
 }
 
-export type ArticleSummary = Omit<Article, "body"> & { readMinutes: number };
+export function formatArticleDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+}

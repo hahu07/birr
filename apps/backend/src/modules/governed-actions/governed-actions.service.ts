@@ -13,6 +13,7 @@ import { InvestmentsService } from "../investments/investments.service";
 import { CounterpartiesService } from "../counterparties/counterparties.service";
 import { DistributionsService } from "../distributions/distributions.service";
 import { VaultsService } from "../vaults/vaults.service";
+import { BlogService } from "../blog/blog.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
@@ -125,10 +126,17 @@ interface GovernedActionHandler {
    * single row expand, never bundled into list().
    */
   describeCurrentState?(payload: unknown): Promise<Record<string, unknown> | null>;
-  /** decide()-time, on approval, inside the same transaction. */
+  /**
+   * decide()-time, on approval, inside the same transaction. `ctx`
+   * carries who is approving — added (2026-10-01) for blog.publish,
+   * which records its approving checker on the article itself as the
+   * public "Reviewed by". Every earlier handler ignores it, which is
+   * why it's a trailing parameter they can simply omit.
+   */
   onApprove(
     payload: unknown,
     tx: Prisma.TransactionClient,
+    ctx: { checkerUserId: string },
   ): Promise<FulfillmentResult>;
   /**
    * decide()-time, on rejection, inside the same transaction. Optional
@@ -166,6 +174,7 @@ export class GovernedActionsService {
     private readonly vaultMilestonesService: VaultMilestonesService,
     private readonly waqfMilestonesService: WaqfMilestonesService,
     private readonly notificationsService: NotificationsService,
+    private readonly blogService: BlogService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1019,6 +1028,56 @@ export class GovernedActionsService {
           },
         },
       ],
+      // ---- Blog (public educational articles). Not a Waqf or Vault
+      // action, so neither resolveWaqfId nor resolveVaultId applies — the
+      // governed_actions/audit rows just carry no scope, same as the
+      // permission's own category ("blog"). Governed because marketing
+      // about a fiduciary service is regulated; checkers are limited to
+      // legal_adviser/compliance_officer in seed-data.ts. ----
+      [
+        "blog.publish",
+        {
+          checkDuplicate: async (payload) => {
+            const { articleId } = payload as { articleId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "blog.publish" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["articleId"], equals: articleId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "A publish proposal for this article is already awaiting review — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { articleId } = payload as { articleId: string };
+            const article = await prisma.blogArticle.findUnique({ where: { id: articleId } });
+            return article
+              ? `Publish "${article.title}" to the public blog (by ${article.authorName}) — read the full text at /ops/articles/${article.id} before deciding.`
+              : `Article "${articleId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { articleId } = payload as { articleId: string };
+            const article = await prisma.blogArticle.findUnique({
+              where: { id: articleId },
+              select: { status: true, title: true, description: true, category: true },
+            });
+            return article ? { ...article } : null;
+          },
+          onApprove: async (payload, tx, ctx) => {
+            const { articleId } = payload as { articleId: string };
+            const before = await tx.blogArticle.findUnique({ where: { id: articleId } });
+            const article = await this.blogService.publish(articleId, tx, ctx.checkerUserId);
+            return {
+              auditAction: "blog_article.published",
+              entityType: "BlogArticle",
+              entityId: article.id,
+              before,
+              after: article,
+            };
+          },
+        },
+      ],
     ]);
   }
 
@@ -1237,7 +1296,7 @@ export class GovernedActionsService {
         // required, so approval always has a handler to call once
         // `handler` itself resolved.
         if (input.approve) {
-          fulfillment = await handler.onApprove(action.payload, tx);
+          fulfillment = await handler.onApprove(action.payload, tx, { checkerUserId: input.checkerUserId });
         } else if (handler.onReject) {
           fulfillment = await handler.onReject(action.payload, tx);
         }

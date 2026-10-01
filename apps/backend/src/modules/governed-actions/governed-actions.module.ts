@@ -8,6 +8,7 @@ import { CounterpartiesModule } from "../counterparties/counterparties.module";
 import { DistributionsModule } from "../distributions/distributions.module";
 import { VaultsModule } from "../vaults/vaults.module";
 import { WaqfLedgerModule } from "../waqf-ledger/waqf-ledger.module";
+import { BlogModule } from "../blog/blog.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
@@ -18,6 +19,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
     CounterpartiesModule,
     DistributionsModule,
     VaultsModule,
+    BlogModule,
     WaqfLedgerModule,
     NotificationsModule,
   ],

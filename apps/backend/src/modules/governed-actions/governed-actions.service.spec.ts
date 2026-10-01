@@ -7,6 +7,7 @@ import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { InvestmentsService } from "../investments/investments.service";
 import { CounterpartiesService } from "../counterparties/counterparties.service";
 import { DistributionsService } from "../distributions/distributions.service";
+import { BlogService } from "../blog/blog.service";
 import { VaultsService } from "../vaults/vaults.service";
 import { VaultProceedsService } from "../vaults/vault-proceeds.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
@@ -117,6 +118,7 @@ describe("GovernedActionsService", () => {
     new VaultMilestonesService(),
     new WaqfMilestonesService(),
     notificationsService,
+    new BlogService(),
   );
 
   const governedActionIds: string[] = [];
@@ -132,6 +134,7 @@ describe("GovernedActionsService", () => {
   const vaultInvestmentIds: string[] = [];
   const vaultDistributionIds: string[] = [];
   const vaultDonorIds: string[] = [];
+  const blogArticleIds: string[] = [];
 
   let makerUserId: string;
   let assetCheckerUserId: string;
@@ -233,6 +236,7 @@ describe("GovernedActionsService", () => {
   });
 
   afterAll(async () => {
+    await prisma.blogArticle.deleteMany({ where: { id: { in: blogArticleIds } } });
     // audit_logs is insert-only at the DB role level (see
     // packages/db/prisma/migrations/20260731201431_governed_actions_constraints) —
     // the app role cannot DELETE (or UPDATE) it, in tests or anywhere else,
@@ -1934,6 +1938,137 @@ describe("GovernedActionsService", () => {
           payload: { vaultCauseId: cause.id, newAllocatedAmount: "200" },
           makerUserId,
         }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+  // blog.publish (2026-10-01) — public educational articles. Maker is
+  // mutawalli_officer (makerUserId); checkers are legal_adviser /
+  // compliance_officer only. Not scoped to a Waqf or Vault.
+  describe("blog.publish", () => {
+    let legalUserId: string;
+    let otherLegalUserId: string;
+
+    beforeAll(async () => {
+      const legal = await prisma.user.create({
+        data: { email: `blog-legal-${Date.now()}@example.com`, fullName: "Test Legal Adviser" },
+      });
+      legalUserId = legal.id;
+      await prisma.birrStaff.create({ data: { userId: legal.id, staffRole: "legal_adviser" } });
+      const other = await prisma.user.create({
+        data: { email: `blog-legal-2-${Date.now()}@example.com`, fullName: "Second Legal Adviser" },
+      });
+      otherLegalUserId = other.id;
+      await prisma.birrStaff.create({ data: { userId: other.id, staffRole: "legal_adviser" } });
+    });
+
+    async function draftArticle(createdByUserId: string) {
+      const article = await prisma.blogArticle.create({
+        data: {
+          slug: `blog-gov-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+          title: "Governed Fixture Article",
+          description: "A fixture article for governed-action tests.",
+          body: "Body text.",
+          category: "trust",
+          illustration: "endowment",
+          authorName: "Fixture Author",
+          createdByUserId,
+        },
+      });
+      blogArticleIds.push(article.id);
+      return article;
+    }
+
+    test("approve → published, reviewer recorded from the checker, audit-logged", async () => {
+      const article = await draftArticle(makerUserId);
+      const action = await service.propose({ permissionKey: "blog.publish", payload: { articleId: article.id }, makerUserId });
+      governedActionIds.push(action.id);
+
+      await service.decide({ governedActionId: action.id, checkerUserId: legalUserId, approve: true });
+
+      const published = await prisma.blogArticle.findUniqueOrThrow({ where: { id: article.id } });
+      expect(published.status).toBe("published");
+      expect(published.publishedAt).not.toBeNull();
+      expect(published.reviewedByUserId).toBe(legalUserId);
+      expect(published.reviewedByName).toBe("Test Legal Adviser");
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: article.id } });
+      expect(logs.some((l) => l.action === "blog_article.published" && l.actorUserId === legalUserId)).toBe(true);
+    });
+
+    test("reject → article stays a draft with no reviewer", async () => {
+      const article = await draftArticle(makerUserId);
+      const action = await service.propose({ permissionKey: "blog.publish", payload: { articleId: article.id }, makerUserId });
+      governedActionIds.push(action.id);
+
+      await service.decide({ governedActionId: action.id, checkerUserId: legalUserId, approve: false });
+
+      const after = await prisma.blogArticle.findUniqueOrThrow({ where: { id: article.id } });
+      expect(after.status).toBe("draft");
+      expect(after.reviewedByUserId).toBeNull();
+    });
+
+    test("the proposer cannot approve their own publish proposal", async () => {
+      const article = await draftArticle(otherLegalUserId);
+      const action = await service.propose({ permissionKey: "blog.publish", payload: { articleId: article.id }, makerUserId });
+      governedActionIds.push(action.id);
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: makerUserId, approve: true }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    test("the database itself rejects checker_user_id = maker_user_id on a blog.publish action", async () => {
+      const article = await draftArticle(makerUserId);
+      const action = await service.propose({ permissionKey: "blog.publish", payload: { articleId: article.id }, makerUserId });
+      governedActionIds.push(action.id);
+
+      await expect(
+        prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } }),
+      ).rejects.toThrow();
+    });
+
+    test("an article's author cannot be the reviewer who approves it, even when someone else proposed it", async () => {
+      const article = await draftArticle(legalUserId);
+      const action = await service.propose({ permissionKey: "blog.publish", payload: { articleId: article.id }, makerUserId });
+      governedActionIds.push(action.id);
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: legalUserId, approve: true }),
+      ).rejects.toThrow(BadRequestException);
+      expect((await prisma.blogArticle.findUniqueOrThrow({ where: { id: article.id } })).status).toBe("draft");
+    });
+
+    test("the database itself rejects a reviewer who is also the author, and a published row with no reviewer", async () => {
+      const article = await draftArticle(legalUserId);
+      await expect(
+        prisma.blogArticle.update({
+          where: { id: article.id },
+          data: { status: "published", publishedAt: new Date(), reviewedByUserId: legalUserId, reviewedByName: "Self" },
+        }),
+      ).rejects.toThrow();
+      await expect(
+        prisma.blogArticle.update({ where: { id: article.id }, data: { status: "published", publishedAt: new Date() } }),
+      ).rejects.toThrow();
+    });
+
+    test("approving a proposal for an article that is no longer a draft fails", async () => {
+      const article = await draftArticle(makerUserId);
+      const action = await service.propose({ permissionKey: "blog.publish", payload: { articleId: article.id }, makerUserId });
+      governedActionIds.push(action.id);
+      await prisma.blogArticle.update({ where: { id: article.id }, data: { status: "archived", deletedAt: new Date() } });
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: legalUserId, approve: true }),
+      ).rejects.toThrow();
+    });
+
+    test("a second pending proposal for the same article is rejected as a duplicate", async () => {
+      const article = await draftArticle(makerUserId);
+      const first = await service.propose({ permissionKey: "blog.publish", payload: { articleId: article.id }, makerUserId });
+      governedActionIds.push(first.id);
+
+      await expect(
+        service.propose({ permissionKey: "blog.publish", payload: { articleId: article.id }, makerUserId }),
       ).rejects.toThrow(ConflictException);
     });
   });

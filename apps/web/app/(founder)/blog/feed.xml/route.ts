@@ -1,19 +1,19 @@
-import { listArticles } from "../../../../lib/blog";
+import { listPublishedArticles } from "../../../../lib/blog-api";
 import { SITE_URL } from "../../../../lib/site";
 
-export const dynamic = "force-static";
+export const revalidate = 300;
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-export function GET() {
-  const items = listArticles()
+export async function GET() {
+  const items = (await listPublishedArticles())
     .map(
       (a) => `    <item>
       <title>${esc(a.title)}</title>
       <link>${SITE_URL}/blog/${a.slug}</link>
       <guid>${SITE_URL}/blog/${a.slug}</guid>
-      <pubDate>${new Date(`${a.date}T00:00:00Z`).toUTCString()}</pubDate>
+      <pubDate>${new Date(a.publishedAt).toUTCString()}</pubDate>
       <description>${esc(a.description)}</description>
     </item>`,
     )

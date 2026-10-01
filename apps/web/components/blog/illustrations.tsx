@@ -7,7 +7,7 @@
 // To add one: draw it here, add its key to ILLUSTRATION_KEYS in
 // lib/blog-meta.ts, and register it in ILLUSTRATIONS below.
 import type { ComponentType } from "react";
-import type { IllustrationKey } from "../../../lib/blog-meta";
+import type { IllustrationKey } from "../../lib/blog-meta";
 
 type Props = { className?: string };
 

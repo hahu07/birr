@@ -25,7 +25,7 @@ import {
 import { apiFetchJson } from "../../lib/api";
 import type { ArticleSummary } from "../../lib/blog-meta";
 import type { Vault } from "../../lib/types";
-import { ArticleCard } from "./blog/ArticleCard";
+import { ArticleCard } from "../../components/blog/ArticleCard";
 import { GRADIENT, Reveal, SiteFooter, SiteHeader, VaultCard } from "./SiteChrome";
 import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
 

@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { listArticles } from "../lib/blog";
+import { listPublishedArticles } from "../lib/blog-api";
 import { SITE_URL } from "../lib/site";
 
 // Mirrors WAQF_TYPE_SLUGS (waqf-types/content.ts), listed literally here
@@ -7,14 +7,16 @@ import { SITE_URL } from "../lib/site";
 // client-only components into this server route and breaks the build.
 const WAQF_TYPE_SLUGS = ["investment", "asset", "project"];
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export const revalidate = 300;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const fixed = ["", "/vaults", "/blog", "/sign-up", "/privacy-policy", "/terms-of-service"].map((p) => ({
     url: `${SITE_URL}${p}`,
   }));
   const types = WAQF_TYPE_SLUGS.map((s) => ({ url: `${SITE_URL}/waqf-types/${s}` }));
-  const posts = listArticles().map((a) => ({
+  const posts = (await listPublishedArticles()).map((a) => ({
     url: `${SITE_URL}/blog/${a.slug}`,
-    lastModified: new Date(`${a.date}T00:00:00Z`),
+    lastModified: new Date(a.publishedAt),
   }));
   return [...fixed, ...types, ...posts];
 }

@@ -366,6 +366,8 @@ model User {
   vaultShariahScreeningDecisions VaultShariahScreening[]         @relation("VaultShariahScreeningReviewer")
   investmentTargetsSet           InvestmentTarget[]
   vaultInvestmentTargetsSet      VaultInvestmentTarget[]
+  blogArticlesCreated            BlogArticle[]                   @relation("BlogArticleCreator")
+  blogArticlesReviewed           BlogArticle[]                   @relation("BlogArticleReviewer")
 
   @@map("users")
 }
@@ -2732,9 +2734,9 @@ model VaultMilestone {
 // generated sessionId — never used to authorize or attribute anything
 // sensitive.
 model FunnelEvent {
-  id     String     @id @default(uuid())
-  funnel FunnelName
-  step   String
+  id         String     @id @default(uuid())
+  funnel     FunnelName
+  step       String
   // Client-generated, anonymous, stable per browser session — the only
   // thing that lets a pre-signup step (e.g. "landing page viewed") be
   // correlated with the signup that may follow it. Never a User/Founder
@@ -2744,7 +2746,7 @@ model FunnelEvent {
   waqfId     String?
   vaultId    String?
   metadata   Json?
-  occurredAt DateTime @default(now())
+  occurredAt DateTime   @default(now())
 
   founder Founder? @relation(fields: [founderId], references: [id])
   waqf    Waqf?    @relation(fields: [waqfId], references: [id])
@@ -2756,4 +2758,56 @@ model FunnelEvent {
   @@index([waqfId])
   @@index([vaultId])
   @@map("funnel_events")
+}
+
+// Public educational articles (the /blog section) — Birr-staff-authored,
+// never Founder- or donor-facing input. Marketing about a fiduciary
+// service is itself regulated, so this is NOT plain CMS CRUD: drafting
+// and editing are ordinary staff actions, but taking an article live
+// (draft -> published) goes through the same governed_actions
+// maker-checker engine as vault.publish — permission `blog.publish`,
+// checkers limited to legal_adviser/compliance_officer (CLAUDE.md's
+// Bashir row: claims about licensing, returns, guarantees or
+// compliance need Legal/Compliance sign-off specifically, not just any
+// staff member). The approving checker is recorded on the row
+// (reviewedByUserId, plus reviewedByName as a snapshot so the public
+// byline survives a later staff change) — that's the "Reviewed by"
+// shown on the page, not free text anyone types in.
+//
+// A published article's content is frozen: it can only be edited after
+// unpublishing back to draft, so approved text can't be quietly
+// changed once it's live without going back through review. Never
+// hard-deleted — `archived` (plus deletedAt) is the removal path.
+// `category` and `illustration` are plain strings validated in
+// BlogService against the same key lists apps/web/lib/blog-meta.ts
+// declares, not Postgres enums — adding a category or a new drawing is
+// a code change on both sides, not a migration.
+enum BlogArticleStatus {
+  draft
+  published
+  archived
+}
+
+model BlogArticle {
+  id               String            @id @default(uuid())
+  slug             String            @unique
+  title            String
+  description      String
+  body             String
+  category         String
+  illustration     String
+  authorName       String
+  status           BlogArticleStatus @default(draft)
+  createdByUserId  String
+  createdBy        User              @relation("BlogArticleCreator", fields: [createdByUserId], references: [id])
+  reviewedByUserId String?
+  reviewedBy       User?             @relation("BlogArticleReviewer", fields: [reviewedByUserId], references: [id])
+  reviewedByName   String?
+  publishedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+
+  @@index([status, publishedAt])
+  @@map("blog_articles")
 }

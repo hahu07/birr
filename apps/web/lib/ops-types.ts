@@ -1265,3 +1265,23 @@ export interface FunnelReport {
   founder: FunnelStepCount[];
   vault: FunnelStepCount[];
 }
+
+export type BlogArticleStatus = "draft" | "published" | "archived";
+
+/** Staff view of a blog article — includes the body and review fields the public endpoint never returns. */
+export interface BlogArticle {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  body: string;
+  category: string;
+  illustration: string;
+  authorName: string;
+  status: BlogArticleStatus;
+  reviewedByName: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+

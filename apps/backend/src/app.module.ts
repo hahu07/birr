@@ -46,6 +46,7 @@ import { BanksModule } from "./modules/banks/banks.module";
 import { VaultsModule } from "./modules/vaults/vaults.module";
 import { WaqfLedgerModule } from "./modules/waqf-ledger/waqf-ledger.module";
 import { FunnelEventsModule } from "./modules/funnel-events/funnel-events.module";
+import { BlogModule } from "./modules/blog/blog.module";
 import { PermissionGuard } from "./common/guards/permission.guard";
 import { StaffRoleGuard } from "./common/guards/staff-role.guard";
 import { SessionAuthGuard } from "./common/guards/session-auth.guard";
@@ -97,6 +98,7 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     VaultsModule,
     WaqfLedgerModule,
     FunnelEventsModule,
+    BlogModule,
   ],
   providers: [
     // First in the list — captures unhandled request-path errors for
