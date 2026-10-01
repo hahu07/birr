@@ -368,8 +368,8 @@ model User {
   vaultInvestmentTargetsSet      VaultInvestmentTarget[]
   blogArticlesCreated            BlogArticle[]                   @relation("BlogArticleCreator")
   blogArticlesReviewed           BlogArticle[]                   @relation("BlogArticleReviewer")
-  impactPhotosCreated            ImpactPhoto[]                   @relation("ImpactPhotoCreator")
-  impactPhotosReviewed           ImpactPhoto[]                   @relation("ImpactPhotoReviewer")
+  fieldPhotosUploaded            VaultFieldPhoto[]               @relation("FieldPhotoUploader")
+  fieldPhotosHidden              VaultFieldPhoto[]               @relation("FieldPhotoHider")
 
   @@map("users")
 }
@@ -2186,6 +2186,7 @@ model Vault {
   expenses          VaultExpense[]
   milestones        VaultMilestone[]
   funnelEvents      FunnelEvent[]
+  fieldPhotos       VaultFieldPhoto[]
 
   @@map("vaults")
 }
@@ -2526,6 +2527,7 @@ model VaultDistribution {
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   deletedAt        DateTime?
+  fieldPhotos      VaultFieldPhoto[]
 
   @@index([vaultId])
   @@index([vaultCauseId])
@@ -2716,6 +2718,7 @@ model VaultMilestone {
 
   distributions VaultDistribution[]
   expenses      VaultExpense[]
+  fieldPhotos   VaultFieldPhoto[]
 
   @@unique([vaultId, sequence])
   @@map("vault_milestones")
@@ -2814,38 +2817,47 @@ model BlogArticle {
   @@map("blog_articles")
 }
 
-// A photo for the homepage's "Our impact" frames — Birr-staff-uploaded,
-// public once approved. Same publishing posture as BlogArticle: marketing
-// about a fiduciary service, so going live (draft -> published) is the
-// governed `impact_photo.publish` action (proposed by a Mutawalli Officer,
-// approved by Legal or Compliance only, who is recorded as reviewedBy).
-// Photos of real beneficiaries are a consent/safeguarding matter on top of
-// that, so uploading requires an explicit attestation (consentConfirmed)
-// that Birr has the right to publish it and every identifiable person has
-// consented (a child's guardian, for a child) — enforced by the API and a
-// DB CHECK. The stored file is always RE-ENCODED server-side (metadata such
-// as GPS location stripped, rotation baked in, size capped), never the
-// uploaded bytes. As with BlogArticle, published photos are frozen
-// (unpublish to change), a published row must carry its reviewer, the
-// reviewer can't be the uploader, and nothing is hard-deleted. Reuses
-// BlogArticleStatus (draft/published/archived) — the same lifecycle.
-model ImpactPhoto {
-  id               String            @id @default(uuid())
-  imageUrl         String
-  altText          String
-  credit           String?
-  consentConfirmed Boolean
-  status           BlogArticleStatus @default(draft)
-  createdByUserId  String
-  createdBy        User              @relation("ImpactPhotoCreator", fields: [createdByUserId], references: [id])
-  reviewedByUserId String?
-  reviewedBy       User?             @relation("ImpactPhotoReviewer", fields: [reviewedByUserId], references: [id])
-  reviewedByName   String?
-  publishedAt      DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  deletedAt        DateTime?
+// Photos taken in the field when a Vault's money is actually delivered or a
+// project step is executed — the pictures behind the homepage's "Our impact"
+// wall. Each photo documents ONE real event of ONE vault: either a
+// VaultDistribution (a delivery to a partner) or a VaultMilestone (a project
+// step); a DB CHECK enforces exactly one.
+//
+// Publishing is automatic, not a marketing approval step: a photo appears on
+// the public site by itself once the event it documents is real — the
+// distribution is `paid` (itself two-person approved) or the milestone is
+// `completed` (also governed), and the vault is public. That's computed when
+// read (FieldPhotosService), not stored, so it can never drift from the event.
+// What guards the people in the pictures instead: the uploader must attest
+// they have consent (a child's guardian, for a child — enforced by the API and
+// a DB CHECK), the stored file is re-encoded with all metadata such as GPS
+// stripped, and any staff member (Legal/Compliance included) can hide a photo
+// instantly (`hiddenAt`) — taking something down never needs a second person.
+// Never hard-deleted.
+model VaultFieldPhoto {
+  id                  String             @id @default(uuid())
+  vaultId             String
+  vault               Vault              @relation(fields: [vaultId], references: [id])
+  vaultDistributionId String?
+  vaultDistribution   VaultDistribution? @relation(fields: [vaultDistributionId], references: [id])
+  vaultMilestoneId    String?
+  vaultMilestone      VaultMilestone?    @relation(fields: [vaultMilestoneId], references: [id])
+  imageUrl            String
+  // Optional extra detail from the field team ("Boreholes handed over to the
+  // Kaduna community committee"); the public label itself is derived from the
+  // event, never typed.
+  caption             String?
+  consentConfirmed    Boolean
+  uploadedByUserId    String
+  uploadedBy          User               @relation("FieldPhotoUploader", fields: [uploadedByUserId], references: [id])
+  hiddenAt            DateTime?
+  hiddenByUserId      String?
+  hiddenBy            User?              @relation("FieldPhotoHider", fields: [hiddenByUserId], references: [id])
+  createdAt           DateTime           @default(now())
+  deletedAt           DateTime?
 
-  @@index([status, publishedAt])
-  @@map("impact_photos")
+  @@index([vaultId])
+  @@index([vaultDistributionId])
+  @@index([vaultMilestoneId])
+  @@map("vault_field_photos")
 }

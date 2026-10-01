@@ -45,3 +45,29 @@
     transform: translateY(0);
   }
 }
+
+/* Homepage "Our impact" photo wall (app/(founder)/ImpactSection.tsx): two rows
+   of field photos drifting in opposite directions. Each track holds the same
+   set of photos twice, so sliding it by exactly half loops with no jump. Pauses
+   on hover/focus so a visitor can read a caption and click through. Motion is
+   switched off entirely under prefers-reduced-motion (the row becomes a plain,
+   manually scrollable strip instead — see the component). */
+@keyframes impact-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.impact-marquee-track {
+  animation: impact-marquee 90s linear infinite;
+}
+.impact-marquee-track[data-reverse="true"] {
+  animation-direction: reverse;
+}
+.impact-marquee:hover .impact-marquee-track,
+.impact-marquee:focus-within .impact-marquee-track {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .impact-marquee-track {
+    animation: none;
+  }
+}

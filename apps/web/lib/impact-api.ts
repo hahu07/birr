@@ -27,18 +27,26 @@ export async function getImpactSummary(): Promise<ImpactSummary | null> {
   }
 }
 
-export interface ImpactPhoto {
+/** One photo on the impact wall — taken when a Vault's money was delivered or a project step done. */
+export interface FieldPhoto {
+  id: string;
   imageUrl: string;
-  altText: string;
-  credit: string | null;
+  /** "delivery" = a paid distribution; "milestone" = a completed project step. */
+  kind: "delivery" | "milestone";
+  /** The cause delivered to, or the milestone's name — derived from the real event. */
+  title: string;
+  caption: string | null;
+  vaultName: string;
+  vaultSlug: string;
+  occurredAt: string;
 }
 
-/** Approved photos for the Impact frames, newest first. Empty — never throws — if the backend can't be reached. */
-export async function getImpactPhotos(limit = 4): Promise<ImpactPhoto[]> {
+/** Field photos for the impact wall, newest first. Empty — never throws — if the backend can't be reached. */
+export async function getFieldPhotos(limit = 24): Promise<FieldPhoto[]> {
   if (!BACKEND_URL) return [];
   try {
     const res = await fetch(`${BACKEND_URL}/impact/photos?limit=${limit}`, { next: { revalidate: 300 } });
-    return res.ok ? ((await res.json()) as ImpactPhoto[]) : [];
+    return res.ok ? ((await res.json()) as FieldPhoto[]) : [];
   } catch {
     return [];
   }

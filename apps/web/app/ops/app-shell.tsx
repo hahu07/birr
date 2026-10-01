@@ -81,12 +81,6 @@ const NAV_GROUPS: {
       // Public blog articles — authoring is limited to the same roles the
       // backend's BlogController allows (UX only; the backend enforces it).
       {
-        href: "/ops/impact-photos",
-        label: "Impact Photos",
-        icon: IconFileText,
-        requiresRole: ["mutawalli_officer", "legal_adviser", "compliance_officer", "platform_admin"],
-      },
-      {
         href: "/ops/articles",
         label: "Articles",
         icon: IconFileText,

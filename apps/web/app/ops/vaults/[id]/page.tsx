@@ -25,6 +25,7 @@ import { VaultMilestonesSection } from "./VaultMilestonesSection";
 import { VaultExpensesSection } from "./VaultExpensesSection";
 import { VaultLedgerSection } from "./VaultLedgerSection";
 import { VaultFeasibilityReportSection } from "./VaultFeasibilityReportSection";
+import { VaultFieldPhotosSection } from "./VaultFieldPhotosSection";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 import { useLoadedResource } from "../../_components/SectionChrome";
 
@@ -184,6 +185,7 @@ export default function VaultDetailPage() {
           causes={causes}
           milestones={milestones ?? []}
         />
+        <VaultFieldPhotosSection vaultId={id} causes={causes} milestones={milestones ?? []} />
         <VaultContributionsSection vaultId={id} />
         <VaultLedgerSection vaultId={id} currency={vault.currency} additionalCurrencies={vault.additionalCurrencies} refreshKey={ledgerVersion} />
       </div>

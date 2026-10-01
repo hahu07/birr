@@ -24,7 +24,7 @@ import {
 } from "@birr/ui";
 import { apiFetchJson } from "../../lib/api";
 import type { ArticleSummary } from "../../lib/blog-meta";
-import type { ImpactPhoto, ImpactSummary } from "../../lib/impact-api";
+import type { FieldPhoto, ImpactSummary } from "../../lib/impact-api";
 import { ImpactSection } from "./ImpactSection";
 import type { Vault } from "../../lib/types";
 import { ArticleCard } from "../../components/blog/ArticleCard";
@@ -244,7 +244,7 @@ export default function MarketingHome({
 }: {
   articles?: ArticleSummary[];
   impact?: ImpactSummary | null;
-  impactPhotos?: ImpactPhoto[];
+  impactPhotos?: FieldPhoto[];
 }) {
   const [howItWorksPath, setHowItWorksPath] = useState<"founder" | "giver">("founder");
   const [managesProduct, setManagesProduct] = useState<"waqf" | "vault">("waqf");
@@ -568,11 +568,7 @@ export default function MarketingHome({
 
       </section>
 
-      <ImpactSection
-        impact={impact}
-        photos={impactPhotos}
-        covers={(openVaults ?? []).map((v) => v.coverImageUrl).filter((url): url is string => Boolean(url)).slice(0, 4)}
-      />
+      <ImpactSection impact={impact} photos={impactPhotos} />
 
       {articles.length > 0 && (
         <section id="learn" className="bg-slate-50/70 px-6 py-20 sm:px-8">

@@ -1285,15 +1285,16 @@ export interface BlogArticle {
   updatedAt: string;
 }
 
-/** Staff view of an Impact photo (the homepage's "Our impact" frames). */
-export interface ImpactPhoto {
+/** Staff view of a field photo on a vault (see VaultFieldPhoto): what it documents and whether it's showing on the homepage yet. */
+export interface VaultFieldPhoto {
   id: string;
   imageUrl: string;
-  altText: string;
-  credit: string | null;
-  status: BlogArticleStatus;
-  reviewedByName: string | null;
-  publishedAt: string | null;
+  caption: string | null;
+  kind: "delivery" | "milestone";
+  title: string;
+  hidden: boolean;
+  showing: boolean;
+  /** Why it isn't public yet, e.g. "the delivery to be paid" — null once showing or when hidden. */
+  waitingFor: string | null;
   createdAt: string;
 }
-

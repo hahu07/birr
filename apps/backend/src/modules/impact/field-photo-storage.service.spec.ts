@@ -2,10 +2,10 @@ import { BadRequestException } from "@nestjs/common";
 import { readFile, rm } from "fs/promises";
 import * as path from "path";
 import sharp from "sharp";
-import { ImpactPhotoStorageService, MAX_DIMENSION } from "./impact-photo-storage.service";
+import { FieldPhotoStorageService, MAX_DIMENSION } from "./field-photo-storage.service";
 
-describe("ImpactPhotoStorageService", () => {
-  const service = new ImpactPhotoStorageService();
+describe("FieldPhotoStorageService", () => {
+  const service = new FieldPhotoStorageService();
   const written: string[] = [];
 
   afterAll(async () => {
@@ -13,7 +13,7 @@ describe("ImpactPhotoStorageService", () => {
   });
 
   const asUpload = (buffer: Buffer) => ({ buffer, size: buffer.length }) as Express.Multer.File;
-  const fileFor = (url: string) => path.join(__dirname, "..", "..", "..", "uploads", "impact-photos", path.basename(url));
+  const fileFor = (url: string) => path.join(__dirname, "..", "..", "..", "uploads", "field-photos", path.basename(url));
   async function save(buffer: Buffer) {
     const { url } = await service.savePhoto(asUpload(buffer));
     written.push(fileFor(url));
