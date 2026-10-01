@@ -10,6 +10,7 @@ import { VaultsModule } from "../vaults/vaults.module";
 import { WaqfLedgerModule } from "../waqf-ledger/waqf-ledger.module";
 import { BlogModule } from "../blog/blog.module";
 import { BirrStaffModule } from "../birr-staff/birr-staff.module";
+import { FoundersModule } from "../founders/founders.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
@@ -22,6 +23,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
     VaultsModule,
     BlogModule,
     BirrStaffModule,
+    FoundersModule,
     WaqfLedgerModule,
     NotificationsModule,
   ],

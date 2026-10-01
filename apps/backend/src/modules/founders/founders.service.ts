@@ -9,7 +9,7 @@ import {
 import { randomBytes } from "crypto";
 import { hash, compare } from "bcryptjs";
 import { IsEnum, IsOptional, IsString, Matches, MinLength } from "class-validator";
-import { prisma, FounderKind, InstitutionType } from "@birr/db";
+import { prisma, Prisma, FounderKind, InstitutionType } from "@birr/db";
 import { assertUserEmailVerified, assertUserWhatsAppVerified } from "../../common/auth/current-founder";
 import { ResendVerificationEmailAdapter } from "./email/resend.adapter";
 import { LogoStorageService } from "../foundations/logo-storage.service";
@@ -489,34 +489,29 @@ export class FoundersService {
   }
 
   /**
-   * platform_admin-only break-glass path — a Founder who loses both
-   * their device and their backup codes has no self-service recovery
-   * (MFA has no self-service disable, same reasoning as the staff
-   * side). Clears MFA state entirely; doesn't touch password or status.
+   * Clears a Founder Portal user's MFA state entirely; doesn't touch their
+   * password or status. Internal only — there is deliberately no
+   * controller route for this any more. It used to be a single Platform
+   * Admin's unilateral break-glass action; now the only caller is
+   * GovernedActionsService's `founder.mfa_reset` handler, on approval,
+   * inside its own transaction, so a second person (Board or Compliance)
+   * has always signed off. The audit record is written by that engine.
+   *
+   * Refuses a Birr staff account — staff MFA has its own governed action
+   * (`staff.mfa_reset`) and recovery path (docs/staff-mfa-recovery.md).
    */
-  async resetMfa(userId: string, actorStaffUserId: string) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+  async resetMfaInTransaction(userId: string, tx: Prisma.TransactionClient) {
+    const user = await tx.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException(`User "${userId}" not found.`);
-
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: userId },
-        data: { mfaEnabled: false, mfaSecretEncrypted: null },
-      });
-      await tx.mfaBackupCode.deleteMany({ where: { userId } });
-      await tx.auditLog.create({
-        data: {
-          actorType: "birr_staff",
-          actorUserId: actorStaffUserId,
-          action: "founder.mfa_reset",
-          entityType: "User",
-          entityId: userId,
-          before: { mfaEnabled: user.mfaEnabled } as any,
-          after: { mfaEnabled: false } as any,
-        },
-      });
-    });
-    return { ok: true };
+    if (await tx.birrStaff.findUnique({ where: { userId } })) {
+      throw new BadRequestException(`${user.fullName} is a Birr staff member — use the staff MFA reset instead.`);
+    }
+    if (!user.mfaEnabled) {
+      throw new BadRequestException(`${user.fullName} has no two-factor authentication enrolled — nothing to reset.`);
+    }
+    await tx.user.update({ where: { id: userId }, data: { mfaEnabled: false, mfaSecretEncrypted: null } });
+    await tx.mfaBackupCode.deleteMany({ where: { userId } });
+    return { userId, fullName: user.fullName };
   }
 
   async verifyEmail(token: string) {

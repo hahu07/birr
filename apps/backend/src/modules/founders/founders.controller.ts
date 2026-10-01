@@ -174,27 +174,11 @@ export class FoundersController {
     return this.service.confirmMfaEnrollment(user.id, body.code);
   }
 
-  // Staff-only break-glass, keyed by the individual User's own id — a
-  // deliberately different path shape from the ":id" routes above
-  // (which all mean a Founder id on this controller) to avoid exactly
-  // that ambiguity. Same manual hasAnySessionCookie + isBirrStaffSession
-  // pattern this controller already uses, since this file doesn't use
-  // @RequiresStaffRole anywhere, narrowed further to platform_admin
-  // specifically — same restriction that decorator would enforce.
-  @Post("members/:userId/mfa/reset")
-  async resetMfa(@Param("userId") userId: string, @Req() request: Request) {
-    if (!hasAnySessionCookie(request)) {
-      throw new UnauthorizedException("Not signed in.");
-    }
-    if (!(await isBirrStaffSession(request))) {
-      throw new UnauthorizedException("This route is Birr-staff only.");
-    }
-    const staff = await resolveBirrStaffFromSession(request);
-    if (staff.staffRole !== "platform_admin") {
-      throw new UnauthorizedException("Only a platform admin can reset a Founder's two-factor setup.");
-    }
-    return this.service.resetMfa(userId, staff.userId);
-  }
+  // Resetting a Founder user's MFA is NOT a route here — it's the governed
+  // `founder.mfa_reset` action (proposed via POST /governed-actions,
+  // approved by a second person). The old one-person
+  // POST members/:userId/mfa/reset was removed on purpose;
+  // founders.controller.spec.ts asserts it stays gone.
 
   @Post("logout")
   logout(@Res({ passthrough: true }) res: Response) {

@@ -74,6 +74,8 @@ const CHANNEL_PLAN: Record<string, { email: boolean; whatsapp: boolean }> = {
   // not in TYPE_TO_PREFERENCE_CATEGORY): if someone is resetting MFA on an
   // account you didn't ask about, this is the message that lets you catch it.
   "birr_staff.mfa_reset": { email: true, whatsapp: true },
+  // Same, for a Founder Portal account.
+  "founder.mfa_reset": { email: true, whatsapp: true },
   // Medium — a real message from the other side of the relationship,
   // but not itself time-sensitive the way a governed-action proposal or
   // a payment event is. Same tier as cause_suggestion.pending.

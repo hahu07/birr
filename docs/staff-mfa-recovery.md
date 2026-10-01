@@ -105,9 +105,25 @@ record and skips every check above.
 - Review `birr_staff.mfa_reset` and `birr_staff.mfa_reset_emergency` audit
   entries periodically; each should match a request you recognise.
 
-## Not covered here
+## Founder Portal accounts
 
-Resetting MFA for a **Founder Portal** account (done from a Foundation's team
-page in the Ops Console) is a separate flow and is still a single Platform
-Admin action. See the note in the project's change log if that should also
-become two-person.
+A Founder who loses their authenticator **and** backup codes follows the same
+two-person rule — there is no self-service recovery for them either.
+
+1. The Founder contacts Birr. **Confirm it is really them, outside the app**
+   (call back on a number already on file, or the contact details in their
+   Foundation record) — not by replying to an email.
+2. A **Platform Admin** opens the Foundation in the Ops Console, finds the
+   person under that Foundation's team, and clicks **Request MFA reset**.
+3. A **Board member or Compliance officer** approves it under *Governance →
+   Approvals*, after independently re-confirming the request.
+4. On approval their authenticator and backup codes are cleared and they must
+   re-enrol at next sign-in (password unchanged). **They are emailed (and
+   WhatsApped, if verified) at once**, with an instruction to contact Birr if
+   they didn't ask for it. The email does not name the Birr staff involved; the
+   audit log (`governed_action.*`, `founder.mfa_reset`) does.
+
+The request is refused for an unknown user, someone with no MFA enrolled, or a
+Birr staff account (staff have their own reset above). A Founder reset never
+needs the emergency procedure in B: that exists only because staff recovery
+depends on a staff member being able to sign in.

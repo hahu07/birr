@@ -796,25 +796,25 @@ describe("FoundersService MFA", () => {
     await expect(service.verifyLoginMfaCode(mfaUserId, backupCode)).rejects.toThrow(UnauthorizedException);
   }, 25000);
 
-  test("resetMfa() clears MFA state, deletes backup codes, and is audit-logged against the acting staff member", async () => {
+  test("resetMfaInTransaction() clears MFA state and deletes backup codes (the audit record is the governed-action engine's job)", async () => {
     const { secretForManualEntry } = await service.startMfaEnrollment(mfaUserId);
     await service.confirmMfaEnrollment(mfaUserId, codeFor(secretForManualEntry));
 
-    await service.resetMfa(mfaUserId, actorStaffUserId);
+    await prisma.$transaction((tx) => service.resetMfaInTransaction(mfaUserId, tx));
 
     const user = await prisma.user.findUniqueOrThrow({ where: { id: mfaUserId } });
     expect(user.mfaEnabled).toBe(false);
     expect(user.mfaSecretEncrypted).toBeNull();
-
-    const remainingCodes = await prisma.mfaBackupCode.findMany({ where: { userId: mfaUserId } });
-    expect(remainingCodes).toHaveLength(0);
-
-    const logs = await prisma.auditLog.findMany({ where: { entityId: mfaUserId, action: "founder.mfa_reset" } });
-    expect(logs).toHaveLength(1);
-    expect(logs[0]).toMatchObject({ actorType: "birr_staff", actorUserId: actorStaffUserId });
+    expect(await prisma.mfaBackupCode.count({ where: { userId: mfaUserId } })).toBe(0);
   }, 25000);
 
-  test("resetMfa() rejects an unknown user id", async () => {
-    await expect(service.resetMfa(randomUUID(), actorStaffUserId)).rejects.toThrow(NotFoundException);
+  test("resetMfaInTransaction() rejects an unknown user, an unenrolled user, and a Birr staff account", async () => {
+    await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(randomUUID(), tx))).rejects.toThrow(NotFoundException);
+    await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(mfaUserId, tx))).rejects.toThrow(/nothing to reset/);
+    const staffUser = await prisma.user.create({
+      data: { email: testEmail("mfa-founder-is-staff"), fullName: "Staff Not Founder", mfaEnabled: true, mfaSecretEncrypted: "x" },
+    });
+    await prisma.birrStaff.create({ data: { userId: staffUser.id, staffRole: "mutawalli_officer" } });
+    await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(staffUser.id, tx))).rejects.toThrow(/staff member/);
   });
 });

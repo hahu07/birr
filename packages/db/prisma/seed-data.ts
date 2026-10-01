@@ -75,6 +75,11 @@ export const permissions = [
   // Compliance officer (never another Platform Admin — no role may be both
   // maker and checker) approves. Platform Admin is deliberately NOT a
   // checker: that role is "not a substitute for Board/Committee sign-off".
+  // Same rule for a Founder Portal account (2026-10-01): a Founder who loses
+  // their device and backup codes has no self-service recovery, and one
+  // Platform Admin used to be able to strip their MFA alone. Maker:
+  // platform_admin; checkers: board_of_trustees / compliance_officer.
+  { key: "founder.mfa_reset", category: "founder", requiresMakerChecker: true, description: "Reset a Founder Portal user's two-factor authentication, forcing them to re-enrol." },
   { key: "staff.mfa_reset", category: "staff", requiresMakerChecker: true, description: "Reset a Birr staff member's two-factor authentication, forcing them to re-enrol." },
   { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
 ] as const;
@@ -120,6 +125,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.distribution_approve": { canChecker: true },
     "vault.contribution_refund": { canChecker: true },
     "vault.milestone_complete": { canChecker: true },
+    "founder.mfa_reset": { canChecker: true },
     "staff.mfa_reset": { canChecker: true },
   },
   investment_committee: {
@@ -169,6 +175,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     // it; the Board (above) is the independent checker.
     "vault.contribution_refund": { canMaker: true },
     "blog.publish": { canChecker: true },
+    "founder.mfa_reset": { canChecker: true },
     "staff.mfa_reset": { canChecker: true },
   },
   legal_adviser: {
@@ -186,6 +193,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
   platform_admin: {
     "compliance.report_export": { canMaker: true },
     "waqf.view": { canMaker: true },
+    "founder.mfa_reset": { canMaker: true },
     "staff.mfa_reset": { canMaker: true },
   },
 };

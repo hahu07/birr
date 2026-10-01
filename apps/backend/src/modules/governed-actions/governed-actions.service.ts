@@ -15,6 +15,7 @@ import { DistributionsService } from "../distributions/distributions.service";
 import { VaultsService } from "../vaults/vaults.service";
 import { BlogService } from "../blog/blog.service";
 import { BirrStaffService } from "../birr-staff/birr-staff.service";
+import { FoundersService } from "../founders/founders.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
@@ -185,6 +186,7 @@ export class GovernedActionsService {
     private readonly notificationsService: NotificationsService,
     private readonly blogService: BlogService,
     private readonly birrStaffService: BirrStaffService,
+    private readonly foundersService: FoundersService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1144,6 +1146,60 @@ export class GovernedActionsService {
           },
         },
       ],
+      // ---- Founder Portal security. Same two-person rule as staff.mfa_reset
+      // above, for a Founder user's own MFA. The Founder is emailed when it
+      // takes effect (see notifyDecision). ----
+      [
+        "founder.mfa_reset",
+        {
+          validatePropose: async (payload) => {
+            const { userId } = payload as { userId: string };
+            const user = await prisma.user.findUnique({ where: { id: userId }, include: { birrStaff: true } });
+            if (!user) throw new NotFoundException(`User "${userId}" not found.`);
+            if (user.birrStaff) {
+              throw new BadRequestException(`${user.fullName} is a Birr staff member — use the staff MFA reset instead.`);
+            }
+            if (!user.mfaEnabled) {
+              throw new BadRequestException(`${user.fullName} has no two-factor authentication enrolled — there's nothing to reset.`);
+            }
+          },
+          checkDuplicate: async (payload) => {
+            const { userId } = payload as { userId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "founder.mfa_reset" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["userId"], equals: userId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "An MFA reset for this Founder user is already awaiting approval — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { userId } = payload as { userId: string };
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            return user
+              ? `Reset two-factor authentication for Founder user ${user.fullName} (${user.email}) — they must re-enrol on next sign-in. Confirm the request through a separate channel before approving.`
+              : `User "${userId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { userId } = payload as { userId: string };
+            const user = await prisma.user.findUnique({ where: { id: userId }, select: { mfaEnabled: true } });
+            return user ? { ...user } : null;
+          },
+          onApprove: async (payload, tx, ctx) => {
+            const { userId } = payload as { userId: string };
+            const target = await this.foundersService.resetMfaInTransaction(userId, tx);
+            return {
+              auditAction: "founder.mfa_reset",
+              entityType: "User",
+              entityId: target.userId,
+              before: { mfaEnabled: true },
+              after: { mfaEnabled: false, approvedByUserId: ctx.checkerUserId },
+            };
+          },
+        },
+      ],
     ]);
   }
 
@@ -1506,6 +1562,26 @@ export class GovernedActionsService {
     // before the waqf-only early return below.
     if (decided.status === "approved" && fulfillment?.auditAction === "birr_staff.mfa_reset") {
       await this.notifyMfaReset(action, decided, fulfillment.entityId);
+      return;
+    }
+    if (decided.status === "approved" && fulfillment?.auditAction === "founder.mfa_reset") {
+      // Deliberately doesn't name the two Birr staff involved — a Founder
+      // has no relationship with those individuals, and the audit trail
+      // (visible to Birr) is where that detail belongs.
+      await this.notificationsService.notify({
+        recipientType: "founder_user",
+        recipientUserId: fulfillment.entityId,
+        type: "founder.mfa_reset",
+        title: "Two-factor authentication on your Birr account was reset",
+        body:
+          "Two members of Birr's staff reset two-factor authentication on your account, at your request or after " +
+          "confirming with you. At your next sign-in you'll be asked to set up your authenticator app again, and your " +
+          "old backup codes no longer work. If you did not ask for this, contact Birr immediately at info@birrwaqf.org " +
+          "and do not sign in until you have spoken to us.",
+        linkUrl: "/sign-in",
+        relatedEntityType: "GovernedAction",
+        relatedEntityId: action.id,
+      });
       return;
     }
 

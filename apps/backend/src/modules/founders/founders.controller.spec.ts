@@ -158,66 +158,18 @@ describe("FoundersController — list()/findById() are Birr-staff only", () => {
   });
 });
 
-// resetMfa() is a real break-glass action (clears MFA state entirely,
-// no self-service undo) — this only exercises the role gate itself
-// (StaffRoleGuard-equivalent, written inline since this controller
-// doesn't use @RequiresStaffRole elsewhere), same scope
-// staff-role.guard.spec.ts gives the equivalent staff-side route. The
-// actual reset logic is covered by FoundersService's own MFA tests.
-describe("FoundersController — members/:userId/mfa/reset is platform_admin only", () => {
-  let platformAdminUserId: string;
-  let complianceOfficerUserId: string;
-  let targetUserId: string;
-
-  beforeAll(async () => {
-    // Both mfaEnabled: true — "rejects a non-platform_admin staff
-    // session" below is meant to test the role gate specifically, not
-    // accidentally pass because it also happens to fail the MFA gate
-    // (see resolveBirrStaffFromSession's own comment).
-    const adminUser = await prisma.user.create({
-      data: { email: `founders-mfa-reset-admin-${Date.now()}@example.test`, fullName: "Reset Gate Admin", mfaEnabled: true },
-    });
-    platformAdminUserId = adminUser.id;
-    await prisma.birrStaff.create({ data: { userId: adminUser.id, staffRole: "platform_admin" } });
-
-    const officerUser = await prisma.user.create({
-      data: { email: `founders-mfa-reset-officer-${Date.now()}@example.test`, fullName: "Reset Gate Officer", mfaEnabled: true },
-    });
-    complianceOfficerUserId = officerUser.id;
-    await prisma.birrStaff.create({ data: { userId: officerUser.id, staffRole: "compliance_officer" } });
-
-    const targetUser = await prisma.user.create({
-      data: { email: `founders-mfa-reset-target-${Date.now()}@example.test`, fullName: "Reset Gate Target" },
-    });
-    targetUserId = targetUser.id;
-  });
-
-  afterAll(async () => {
-    await prisma.$disconnect();
-  });
-
-  const controller = new FoundersController(
-    new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService(), new FunnelEventsService()),
-    undefined as never,
-  );
-
-  test("rejects a request with no session at all", async () => {
-    await expect(controller.resetMfa(targetUserId, requestWithNoCookie())).rejects.toThrow(UnauthorizedException);
-  });
-
-  test("rejects a Founder session", async () => {
-    const request = requestWithFounderCookie(signSessionToken(targetUserId));
-    await expect(controller.resetMfa(targetUserId, request)).rejects.toThrow(UnauthorizedException);
-  });
-
-  test("rejects a non-platform_admin staff session", async () => {
-    const request = requestWithStaffCookie(signSessionToken(complianceOfficerUserId));
-    await expect(controller.resetMfa(targetUserId, request)).rejects.toThrow(UnauthorizedException);
-  });
-
-  test("succeeds for a platform_admin session", async () => {
-    const request = requestWithStaffCookie(signSessionToken(platformAdminUserId));
-    const result = await controller.resetMfa(targetUserId, request);
-    expect(result).toEqual({ ok: true });
+// The one-person Founder MFA reset was removed on purpose — resetting a
+// Founder user's MFA is now the governed `founder.mfa_reset` action (a
+// second person approves). This fails loudly if someone re-adds a direct
+// route, which would silently undo that.
+describe("FoundersController — no direct MFA-reset route", () => {
+  it("exposes no MFA-reset route (it must go through governed_actions)", () => {
+    const proto = FoundersController.prototype as unknown as Record<string, unknown>;
+    expect(proto.resetMfa).toBeUndefined();
+    const paths = Object.getOwnPropertyNames(proto)
+      .map((name) => proto[name])
+      .filter((fn): fn is (...args: unknown[]) => unknown => typeof fn === "function")
+      .map((fn) => String(Reflect.getMetadata("path", fn) ?? ""));
+    expect(paths.some((p) => /mfa\/reset/.test(p))).toBe(false);
   });
 });

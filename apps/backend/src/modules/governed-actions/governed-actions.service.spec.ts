@@ -9,6 +9,7 @@ import { CounterpartiesService } from "../counterparties/counterparties.service"
 import { DistributionsService } from "../distributions/distributions.service";
 import { BlogService } from "../blog/blog.service";
 import { BirrStaffService } from "../birr-staff/birr-staff.service";
+import { FoundersService } from "../founders/founders.service";
 import { MfaService } from "../../common/auth/mfa.service";
 import { VaultsService } from "../vaults/vaults.service";
 import { VaultProceedsService } from "../vaults/vault-proceeds.service";
@@ -122,6 +123,7 @@ describe("GovernedActionsService", () => {
     notificationsService,
     new BlogService(),
     new BirrStaffService(new EncryptionService(), new MfaService()),
+    new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService(), new FunnelEventsService()),
   );
 
   const governedActionIds: string[] = [];
@@ -2181,6 +2183,113 @@ describe("GovernedActionsService", () => {
       await expect(
         service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId }),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+  // founder.mfa_reset (2026-10-01) — the Founder Portal counterpart of
+  // staff.mfa_reset. Maker: platform_admin; checkers: board_of_trustees /
+  // compliance_officer. The Founder is notified when it lands.
+  describe("founder.mfa_reset", () => {
+    let adminUserId: string;
+    let boardUserId: string;
+
+    beforeAll(async () => {
+      const admin = await prisma.user.create({
+        data: { email: `fmfa-admin-${Date.now()}@example.com`, fullName: "Founder MFA Request Admin" },
+      });
+      adminUserId = admin.id;
+      await prisma.birrStaff.create({ data: { userId: admin.id, staffRole: "platform_admin" } });
+      const board = await prisma.user.create({
+        data: { email: `fmfa-board-${Date.now()}@example.com`, fullName: "Founder MFA Approving Board" },
+      });
+      boardUserId = board.id;
+      await prisma.birrStaff.create({ data: { userId: board.id, staffRole: "board_of_trustees" } });
+    });
+
+    async function enrolledFounderUser(label: string) {
+      const user = await prisma.user.create({
+        data: {
+          email: `fmfa-target-${label}-${Date.now()}-${Math.floor(Math.random() * 10000)}@example.com`,
+          fullName: `Founder MFA Target ${label}`,
+          mfaEnabled: true,
+          mfaSecretEncrypted: "not-a-real-secret",
+        },
+      });
+      await prisma.mfaBackupCode.create({ data: { userId: user.id, codeHash: "x" } });
+      return user;
+    }
+
+    const propose = (userId: string) =>
+      service.propose({ permissionKey: "founder.mfa_reset", payload: { userId }, makerUserId: adminUserId });
+
+    test("approve → MFA cleared, audit-logged by the engine, the Founder is notified without staff names", async () => {
+      const user = await enrolledFounderUser("approve");
+      const action = await propose(user.id);
+      governedActionIds.push(action.id);
+
+      // Nothing changes on propose — a second person has to approve first.
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).mfaEnabled).toBe(true);
+
+      await service.decide({ governedActionId: action.id, checkerUserId: boardUserId, approve: true });
+
+      const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+      expect(after.mfaEnabled).toBe(false);
+      expect(after.mfaSecretEncrypted).toBeNull();
+      expect(await prisma.mfaBackupCode.count({ where: { userId: user.id } })).toBe(0);
+
+      const logs = await prisma.auditLog.findMany({ where: { entityId: user.id, action: "founder.mfa_reset" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({ actorType: "birr_staff", actorUserId: boardUserId });
+
+      let notice = null;
+      for (let i = 0; i < 20 && !notice; i++) {
+        notice = await prisma.notification.findFirst({ where: { recipientUserId: user.id, type: "founder.mfa_reset" } });
+        if (!notice) await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(notice).not.toBeNull();
+      expect(notice!.recipientType).toBe("founder_user");
+      expect(notice!.body).not.toContain("Founder MFA Request Admin");
+      expect(notice!.body).not.toContain("Founder MFA Approving Board");
+    });
+
+    test("reject → MFA is left exactly as it was, and nobody is told it was reset", async () => {
+      const user = await enrolledFounderUser("reject");
+      const action = await propose(user.id);
+      governedActionIds.push(action.id);
+
+      await service.decide({ governedActionId: action.id, checkerUserId: boardUserId, approve: false });
+
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).mfaEnabled).toBe(true);
+      expect(await prisma.notification.count({ where: { recipientUserId: user.id, type: "founder.mfa_reset" } })).toBe(0);
+    });
+
+    test("the proposer cannot approve their own request, and the database refuses it too", async () => {
+      const user = await enrolledFounderUser("self");
+      const action = await propose(user.id);
+      governedActionIds.push(action.id);
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: adminUserId, approve: true }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: adminUserId } }),
+      ).rejects.toThrow();
+    });
+
+    test("propose() rejects an unknown user, an unenrolled user, and a Birr staff account (which has its own action)", async () => {
+      await expect(propose(randomUUID())).rejects.toThrow();
+
+      const unenrolled = await enrolledFounderUser("not-enrolled");
+      await prisma.user.update({ where: { id: unenrolled.id }, data: { mfaEnabled: false, mfaSecretEncrypted: null } });
+      await expect(propose(unenrolled.id)).rejects.toThrow(BadRequestException);
+
+      await expect(propose(boardUserId)).rejects.toThrow(/staff member/);
+    });
+
+    test("a second pending request for the same Founder user is rejected as a duplicate", async () => {
+      const user = await enrolledFounderUser("dup");
+      const first = await propose(user.id);
+      governedActionIds.push(first.id);
+      await expect(propose(user.id)).rejects.toThrow(ConflictException);
     });
   });
 });
