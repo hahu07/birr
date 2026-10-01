@@ -7,14 +7,22 @@
 // from disk and pass the featured few down as plain props.
 import { useFounderSession } from "../../lib/founder-session";
 import type { ArticleSummary } from "../../lib/blog-meta";
-import type { ImpactSummary } from "../../lib/impact-api";
+import type { ImpactPhoto, ImpactSummary } from "../../lib/impact-api";
 import MarketingHome from "./MarketingHome";
 import DashboardOverview from "./DashboardOverview";
 
-export default function HomeEntry({ articles, impact }: { articles: ArticleSummary[]; impact: ImpactSummary | null }) {
+export default function HomeEntry({
+  articles,
+  impact,
+  impactPhotos,
+}: {
+  articles: ArticleSummary[];
+  impact: ImpactSummary | null;
+  impactPhotos: ImpactPhoto[];
+}) {
   const { user, loading } = useFounderSession();
 
   if (loading) return null;
-  if (!user) return <MarketingHome articles={articles} impact={impact} />;
+  if (!user) return <MarketingHome articles={articles} impact={impact} impactPhotos={impactPhotos} />;
   return <DashboardOverview />;
 }

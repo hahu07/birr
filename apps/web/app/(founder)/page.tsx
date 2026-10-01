@@ -5,12 +5,12 @@
 // at request/revalidate time without a loading flash on a page that's
 // meant to be the first thing a visitor sees.
 import { listPublishedArticles } from "../../lib/blog-api";
-import { getImpactSummary, visibleImpact } from "../../lib/impact-api";
+import { getImpactPhotos, getImpactSummary, visibleImpact } from "../../lib/impact-api";
 import HomeEntry from "./HomeEntry";
 
 export const revalidate = 300;
 
 export default async function HomePage() {
-  const [articles, impact] = await Promise.all([listPublishedArticles(3), getImpactSummary()]);
-  return <HomeEntry articles={articles} impact={visibleImpact(impact)} />;
+  const [articles, impact, photos] = await Promise.all([listPublishedArticles(3), getImpactSummary(), getImpactPhotos()]);
+  return <HomeEntry articles={articles} impact={visibleImpact(impact)} impactPhotos={photos} />;
 }

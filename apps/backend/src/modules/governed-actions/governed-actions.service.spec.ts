@@ -10,6 +10,7 @@ import { DistributionsService } from "../distributions/distributions.service";
 import { BlogService } from "../blog/blog.service";
 import { BirrStaffService } from "../birr-staff/birr-staff.service";
 import { FoundersService } from "../founders/founders.service";
+import { ImpactPhotosService } from "../impact/impact-photos.service";
 import { MfaService } from "../../common/auth/mfa.service";
 import { VaultsService } from "../vaults/vaults.service";
 import { VaultProceedsService } from "../vaults/vault-proceeds.service";
@@ -124,6 +125,7 @@ describe("GovernedActionsService", () => {
     new BlogService(),
     new BirrStaffService(new EncryptionService(), new MfaService()),
     new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService(), new FunnelEventsService()),
+    new ImpactPhotosService(),
   );
 
   const governedActionIds: string[] = [];
@@ -140,6 +142,7 @@ describe("GovernedActionsService", () => {
   const vaultDistributionIds: string[] = [];
   const vaultDonorIds: string[] = [];
   const blogArticleIds: string[] = [];
+  const impactPhotoIds: string[] = [];
 
   let makerUserId: string;
   let assetCheckerUserId: string;
@@ -242,6 +245,7 @@ describe("GovernedActionsService", () => {
 
   afterAll(async () => {
     await prisma.blogArticle.deleteMany({ where: { id: { in: blogArticleIds } } });
+    await prisma.impactPhoto.deleteMany({ where: { id: { in: impactPhotoIds } } });
     // audit_logs is insert-only at the DB role level (see
     // packages/db/prisma/migrations/20260731201431_governed_actions_constraints) —
     // the app role cannot DELETE (or UPDATE) it, in tests or anywhere else,
@@ -2290,6 +2294,79 @@ describe("GovernedActionsService", () => {
       const first = await propose(user.id);
       governedActionIds.push(first.id);
       await expect(propose(user.id)).rejects.toThrow(ConflictException);
+    });
+  });
+  // impact_photo.publish (2026-10-01) — photos on the homepage's Impact
+  // frames. Same shape as blog.publish: maker mutawalli_officer
+  // (makerUserId), checkers legal_adviser / compliance_officer.
+  describe("impact_photo.publish", () => {
+    let legalUserId: string;
+
+    beforeAll(async () => {
+      const legal = await prisma.user.create({
+        data: { email: `photo-legal-${Date.now()}@example.com`, fullName: "Photo Legal Adviser" },
+      });
+      legalUserId = legal.id;
+      await prisma.birrStaff.create({ data: { userId: legal.id, staffRole: "legal_adviser" } });
+    });
+
+    async function draftPhoto(createdByUserId: string) {
+      const photo = await prisma.impactPhoto.create({
+        data: { imageUrl: "http://localhost:4000/uploads/impact-photos/fixture.jpg", altText: "Governed fixture photo", consentConfirmed: true, createdByUserId },
+      });
+      impactPhotoIds.push(photo.id);
+      return photo;
+    }
+    const propose = (photoId: string) => service.propose({ permissionKey: "impact_photo.publish", payload: { photoId }, makerUserId });
+
+    test("approve → published with the checker recorded as reviewer, audit-logged", async () => {
+      const photo = await draftPhoto(makerUserId);
+      const action = await propose(photo.id);
+      governedActionIds.push(action.id);
+
+      await service.decide({ governedActionId: action.id, checkerUserId: legalUserId, approve: true });
+
+      const live = await prisma.impactPhoto.findUniqueOrThrow({ where: { id: photo.id } });
+      expect(live).toMatchObject({ status: "published", reviewedByUserId: legalUserId, reviewedByName: "Photo Legal Adviser" });
+      expect(live.publishedAt).not.toBeNull();
+      const logs = await prisma.auditLog.findMany({ where: { entityId: photo.id, action: "impact_photo.published" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0].actorUserId).toBe(legalUserId);
+    });
+
+    test("reject → the photo stays a private draft", async () => {
+      const photo = await draftPhoto(makerUserId);
+      const action = await propose(photo.id);
+      governedActionIds.push(action.id);
+      await service.decide({ governedActionId: action.id, checkerUserId: legalUserId, approve: false });
+      expect((await prisma.impactPhoto.findUniqueOrThrow({ where: { id: photo.id } })).status).toBe("draft");
+    });
+
+    test("the proposer cannot approve their own proposal; nor can the photo's uploader approve it", async () => {
+      const own = await draftPhoto(legalUserId);
+      const action = await propose(own.id);
+      governedActionIds.push(action.id);
+      // Legal is eligible by role, but uploaded it — refused.
+      await expect(service.decide({ governedActionId: action.id, checkerUserId: legalUserId, approve: true })).rejects.toThrow(BadRequestException);
+      expect((await prisma.impactPhoto.findUniqueOrThrow({ where: { id: own.id } })).status).toBe("draft");
+
+      const other = await draftPhoto(makerUserId);
+      const second = await propose(other.id);
+      governedActionIds.push(second.id);
+      await expect(service.decide({ governedActionId: second.id, checkerUserId: makerUserId, approve: true })).rejects.toThrow(ForbiddenException);
+    });
+
+    test("propose() rejects an unknown photo and one that isn't a draft; a duplicate pending request is refused", async () => {
+      await expect(propose(randomUUID())).rejects.toThrow();
+
+      const archived = await draftPhoto(makerUserId);
+      await prisma.impactPhoto.update({ where: { id: archived.id }, data: { status: "archived", deletedAt: new Date() } });
+      await expect(propose(archived.id)).rejects.toThrow();
+
+      const photo = await draftPhoto(makerUserId);
+      const first = await propose(photo.id);
+      governedActionIds.push(first.id);
+      await expect(propose(photo.id)).rejects.toThrow(ConflictException);
     });
   });
 });

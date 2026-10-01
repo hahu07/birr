@@ -16,6 +16,7 @@ import { VaultsService } from "../vaults/vaults.service";
 import { BlogService } from "../blog/blog.service";
 import { BirrStaffService } from "../birr-staff/birr-staff.service";
 import { FoundersService } from "../founders/founders.service";
+import { ImpactPhotosService } from "../impact/impact-photos.service";
 import { VaultInvestmentsService } from "../vaults/vault-investments.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
@@ -187,6 +188,7 @@ export class GovernedActionsService {
     private readonly blogService: BlogService,
     private readonly birrStaffService: BirrStaffService,
     private readonly foundersService: FoundersService,
+    private readonly impactPhotosService: ImpactPhotosService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1196,6 +1198,59 @@ export class GovernedActionsService {
               entityId: target.userId,
               before: { mfaEnabled: true },
               after: { mfaEnabled: false, approvedByUserId: ctx.checkerUserId },
+            };
+          },
+        },
+      ],
+      // ---- Impact photos (the homepage's "Our impact" frames). Not scoped
+      // to a Waqf or Vault. Same posture as blog.publish: marketing about a
+      // fiduciary service, plus beneficiary consent/safeguarding — checkers
+      // are limited to legal_adviser/compliance_officer (seed-data.ts). ----
+      [
+        "impact_photo.publish",
+        {
+          validatePropose: async (payload) => {
+            const { photoId } = payload as { photoId: string };
+            const photo = await prisma.impactPhoto.findFirst({ where: { id: photoId, deletedAt: null } });
+            if (!photo) throw new NotFoundException(`Impact photo "${photoId}" not found.`);
+            if (photo.status !== "draft") {
+              throw new BadRequestException(`This photo is "${photo.status}", not "draft" — nothing to publish.`);
+            }
+          },
+          checkDuplicate: async (payload) => {
+            const { photoId } = payload as { photoId: string };
+            const permission = await prisma.permission.findUnique({ where: { key: "impact_photo.publish" } });
+            const existing = await prisma.governedAction.findFirst({
+              where: { permissionId: permission?.id, status: "proposed", payload: { path: ["photoId"], equals: photoId } },
+            });
+            if (existing) {
+              throw new ConflictException(
+                "A publish proposal for this photo is already awaiting review — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { photoId } = payload as { photoId: string };
+            const photo = await prisma.impactPhoto.findUnique({ where: { id: photoId } });
+            return photo
+              ? `Publish impact photo "${photo.altText}" on the public homepage — look at the image itself at /ops/impact-photos/${photo.id} and check it shows nothing identifying that shouldn't be public before deciding.`
+              : `Photo "${photoId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { photoId } = payload as { photoId: string };
+            const photo = await prisma.impactPhoto.findUnique({ where: { id: photoId }, select: { status: true, altText: true, consentConfirmed: true } });
+            return photo ? { ...photo } : null;
+          },
+          onApprove: async (payload, tx, ctx) => {
+            const { photoId } = payload as { photoId: string };
+            const before = await tx.impactPhoto.findUnique({ where: { id: photoId } });
+            const photo = await this.impactPhotosService.publish(photoId, tx, ctx.checkerUserId);
+            return {
+              auditAction: "impact_photo.published",
+              entityType: "ImpactPhoto",
+              entityId: photo.id,
+              before,
+              after: photo,
             };
           },
         },

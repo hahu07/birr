@@ -368,6 +368,8 @@ model User {
   vaultInvestmentTargetsSet      VaultInvestmentTarget[]
   blogArticlesCreated            BlogArticle[]                   @relation("BlogArticleCreator")
   blogArticlesReviewed           BlogArticle[]                   @relation("BlogArticleReviewer")
+  impactPhotosCreated            ImpactPhoto[]                   @relation("ImpactPhotoCreator")
+  impactPhotosReviewed           ImpactPhoto[]                   @relation("ImpactPhotoReviewer")
 
   @@map("users")
 }
@@ -2810,4 +2812,40 @@ model BlogArticle {
 
   @@index([status, publishedAt])
   @@map("blog_articles")
+}
+
+// A photo for the homepage's "Our impact" frames — Birr-staff-uploaded,
+// public once approved. Same publishing posture as BlogArticle: marketing
+// about a fiduciary service, so going live (draft -> published) is the
+// governed `impact_photo.publish` action (proposed by a Mutawalli Officer,
+// approved by Legal or Compliance only, who is recorded as reviewedBy).
+// Photos of real beneficiaries are a consent/safeguarding matter on top of
+// that, so uploading requires an explicit attestation (consentConfirmed)
+// that Birr has the right to publish it and every identifiable person has
+// consented (a child's guardian, for a child) — enforced by the API and a
+// DB CHECK. The stored file is always RE-ENCODED server-side (metadata such
+// as GPS location stripped, rotation baked in, size capped), never the
+// uploaded bytes. As with BlogArticle, published photos are frozen
+// (unpublish to change), a published row must carry its reviewer, the
+// reviewer can't be the uploader, and nothing is hard-deleted. Reuses
+// BlogArticleStatus (draft/published/archived) — the same lifecycle.
+model ImpactPhoto {
+  id               String            @id @default(uuid())
+  imageUrl         String
+  altText          String
+  credit           String?
+  consentConfirmed Boolean
+  status           BlogArticleStatus @default(draft)
+  createdByUserId  String
+  createdBy        User              @relation("ImpactPhotoCreator", fields: [createdByUserId], references: [id])
+  reviewedByUserId String?
+  reviewedBy       User?             @relation("ImpactPhotoReviewer", fields: [reviewedByUserId], references: [id])
+  reviewedByName   String?
+  publishedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+
+  @@index([status, publishedAt])
+  @@map("impact_photos")
 }

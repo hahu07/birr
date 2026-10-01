@@ -53,6 +53,11 @@ async function bootstrap() {
   // cause" cards. See modules/vaults/vault-cover-storage.service.ts.
   app.use("/uploads/vault-covers", express.static(path.join(__dirname, "..", "uploads", "vault-covers")));
 
+  // Impact photos shown in the homepage's "Our impact" frames — public
+  // once approved (see ImpactPhoto). Only ever re-encoded JPEGs with no
+  // metadata are written here (modules/impact/impact-photo-storage.service.ts).
+  app.use("/uploads/impact-photos", express.static(path.join(__dirname, "..", "uploads", "impact-photos")));
+
   // Both public by design, same posture as vault-covers above — see
   // Vault.feasibilityReportUrl's own schema comment (a donor's upfront
   // due-diligence material) and VaultMilestone's (proof of work done

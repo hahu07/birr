@@ -79,6 +79,11 @@ export const permissions = [
   // their device and backup codes has no self-service recovery, and one
   // Platform Admin used to be able to strip their MFA alone. Maker:
   // platform_admin; checkers: board_of_trustees / compliance_officer.
+  // A photo on the homepage's Impact frames (2026-10-01) — same posture as
+  // blog.publish: public marketing about a fiduciary service, plus a
+  // beneficiary consent/safeguarding concern, so a Mutawalli Officer
+  // proposes and only Legal or Compliance approves.
+  { key: "impact_photo.publish", category: "impact", requiresMakerChecker: true, description: "Publish an uploaded photo to the public homepage's Impact section." },
   { key: "founder.mfa_reset", category: "founder", requiresMakerChecker: true, description: "Reset a Founder Portal user's two-factor authentication, forcing them to re-enrol." },
   { key: "staff.mfa_reset", category: "staff", requiresMakerChecker: true, description: "Reset a Birr staff member's two-factor authentication, forcing them to re-enrol." },
   { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
@@ -104,6 +109,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.distribution_approve": { canMaker: true },
     "vault.milestone_complete": { canMaker: true },
     "blog.publish": { canMaker: true },
+    "impact_photo.publish": { canMaker: true },
   },
   // Apex checker across every maker-checker gated permission — the Board
   // is the last line of sign-off, distinct from (and above) the
@@ -175,12 +181,14 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     // it; the Board (above) is the independent checker.
     "vault.contribution_refund": { canMaker: true },
     "blog.publish": { canChecker: true },
+    "impact_photo.publish": { canChecker: true },
     "founder.mfa_reset": { canChecker: true },
     "staff.mfa_reset": { canChecker: true },
   },
   legal_adviser: {
     "waqf.view": { canMaker: true },
     "blog.publish": { canChecker: true },
+    "impact_photo.publish": { canChecker: true },
   },
   // Read-only by design: no canMaker/canChecker grant on any
   // maker-checker gated permission. An external auditor who could

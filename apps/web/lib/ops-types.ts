@@ -1285,3 +1285,15 @@ export interface BlogArticle {
   updatedAt: string;
 }
 
+/** Staff view of an Impact photo (the homepage's "Our impact" frames). */
+export interface ImpactPhoto {
+  id: string;
+  imageUrl: string;
+  altText: string;
+  credit: string | null;
+  status: BlogArticleStatus;
+  reviewedByName: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+}
+

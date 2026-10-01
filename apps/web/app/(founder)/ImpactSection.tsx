@@ -11,6 +11,7 @@ import {
   formatCompactMoney,
   splitCurrencies,
   type CurrencyTotal,
+  type ImpactPhoto,
   type ImpactSummary,
 } from "../../lib/impact-api";
 import { Reveal } from "./SiteChrome";
@@ -40,8 +41,21 @@ function others(list: CurrencyTotal[]): string | undefined {
   return list.length > 0 ? `plus ${list.map(formatCompactMoney).join(", ")}` : undefined;
 }
 
-export function ImpactSection({ impact, covers }: { impact: ImpactSummary | null; covers: string[] }) {
+export function ImpactSection({
+  impact,
+  photos,
+  covers,
+}: {
+  impact: ImpactSummary | null;
+  photos: ImpactPhoto[];
+  covers: string[];
+}) {
   if (!impact) return null;
+  // Real approved photos first (with their real description), then Vault covers (decorative).
+  const pictures = [
+    ...photos.map((p) => ({ src: p.imageUrl, alt: p.altText })),
+    ...covers.map((src) => ({ src, alt: "" })),
+  ].slice(0, FRAMES.length);
 
   const given = splitCurrencies(impact.givenByCurrency);
   const paid = splitCurrencies(impact.paidOutByCurrency);
@@ -55,20 +69,22 @@ export function ImpactSection({ impact, covers }: { impact: ImpactSummary | null
   return (
     <section id="impact" className="overflow-hidden px-6 py-24 sm:px-8">
       <div className="relative mx-auto max-w-5xl">
-        <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true">
+        <div className="pointer-events-none absolute inset-0 hidden lg:block">
           {FRAMES.map((frame, i) => {
-            const cover = covers[i];
+            const picture = pictures[i];
             const Fallback = FALLBACKS[i];
             return (
               <div
                 key={i}
                 className={`absolute ${frame.position} ${frame.size} ${frame.tilt} overflow-hidden rounded-2xl border-2 border-primary-600 bg-primary-50 shadow-lg shadow-primary-900/10`}
               >
-                {cover ? (
+                {picture ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cover} alt="" className="h-full w-full object-cover" />
+                  <img src={picture.src} alt={picture.alt} className="h-full w-full object-cover" />
                 ) : (
-                  <Fallback className="h-full w-full" />
+                  <span aria-hidden="true">
+                    <Fallback className="h-full w-full" />
+                  </span>
                 )}
               </div>
             );

@@ -24,7 +24,7 @@ import {
 } from "@birr/ui";
 import { apiFetchJson } from "../../lib/api";
 import type { ArticleSummary } from "../../lib/blog-meta";
-import type { ImpactSummary } from "../../lib/impact-api";
+import type { ImpactPhoto, ImpactSummary } from "../../lib/impact-api";
 import { ImpactSection } from "./ImpactSection";
 import type { Vault } from "../../lib/types";
 import { ArticleCard } from "../../components/blog/ArticleCard";
@@ -240,9 +240,11 @@ const PILLAR_ICON_CLASSES: Record<(typeof GOVERNANCE_PILLARS)[number]["tone"], s
 export default function MarketingHome({
   articles = [],
   impact = null,
+  impactPhotos = [],
 }: {
   articles?: ArticleSummary[];
   impact?: ImpactSummary | null;
+  impactPhotos?: ImpactPhoto[];
 }) {
   const [howItWorksPath, setHowItWorksPath] = useState<"founder" | "giver">("founder");
   const [managesProduct, setManagesProduct] = useState<"waqf" | "vault">("waqf");
@@ -568,6 +570,7 @@ export default function MarketingHome({
 
       <ImpactSection
         impact={impact}
+        photos={impactPhotos}
         covers={(openVaults ?? []).map((v) => v.coverImageUrl).filter((url): url is string => Boolean(url)).slice(0, 4)}
       />
 

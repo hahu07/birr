@@ -27,6 +27,23 @@ export async function getImpactSummary(): Promise<ImpactSummary | null> {
   }
 }
 
+export interface ImpactPhoto {
+  imageUrl: string;
+  altText: string;
+  credit: string | null;
+}
+
+/** Approved photos for the Impact frames, newest first. Empty — never throws — if the backend can't be reached. */
+export async function getImpactPhotos(limit = 4): Promise<ImpactPhoto[]> {
+  if (!BACKEND_URL) return [];
+  try {
+    const res = await fetch(`${BACKEND_URL}/impact/photos?limit=${limit}`, { next: { revalidate: 300 } });
+    return res.ok ? ((await res.json()) as ImpactPhoto[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Below this many confirmed gifts the section stays hidden: a row of tiny
  * numbers undersells a young platform more than an absent section does,
