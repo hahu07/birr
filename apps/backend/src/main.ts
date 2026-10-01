@@ -58,6 +58,10 @@ async function bootstrap() {
   // cause" cards. See modules/vaults/vault-cover-storage.service.ts.
   app.use("/uploads/vault-covers", storedFiles(storage, "vault-covers", "public"));
 
+  // Cover photos and in-text images for blog articles — public content (see
+  // modules/blog/blog-image-storage.service.ts: re-encoded, no metadata).
+  app.use("/uploads/blog-images", storedFiles(storage, "blog-images", "public"));
+
   // Field photos on the homepage's "Our impact" wall — public once the
   // delivery/milestone they document is real (see VaultFieldPhoto). Only ever
   // re-encoded JPEGs with no metadata are written here

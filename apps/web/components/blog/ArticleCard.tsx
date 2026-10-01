@@ -14,7 +14,12 @@ export function ArticleCard({ article }: { article: ArticleSummary }) {
       className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:shadow-md"
     >
       <div className="relative bg-gradient-to-br from-primary-50 to-accent-50 px-6 pt-4">
-        <Illustration className="mx-auto h-44 w-auto transition group-hover:scale-[1.03]" />
+        {article.coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={article.coverImageUrl} alt="" loading="lazy" className="-mx-6 -mt-4 block h-52 w-[calc(100%+3rem)] max-w-none object-cover transition duration-500 group-hover:scale-[1.03]" />
+        ) : (
+          <Illustration className="mx-auto h-44 w-auto transition group-hover:scale-[1.03]" />
+        )}
         <div className="absolute left-4 top-4 flex gap-2">
           <span className="rounded-md bg-white/95 px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm">
             {BLOG_CATEGORIES[article.category]}

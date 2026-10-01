@@ -29,4 +29,18 @@ describe("BlogMarkdown", () => {
     expect(screen.getAllByRole("columnheader")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: "After heading" })).toBeTruthy();
   });
+
+  it("renders an image on its own line with its description as the caption", () => {
+    render(<BlogMarkdown source={"Before.\n\n![Children at the borehole](https://cdn.example.org/a.jpg)\n\nAfter."} />);
+    const img = screen.getByAltText("Children at the borehole");
+    expect(img.getAttribute("src")).toBe("https://cdn.example.org/a.jpg");
+    expect(img.closest("figure")?.textContent).toContain("Children at the borehole");
+    expect(screen.getByText("Before.")).toBeTruthy();
+    expect(screen.getByText("After.")).toBeTruthy();
+  });
+
+  it("refuses an image whose link isn't http(s) — it falls through as plain text, never an <img>", () => {
+    const { container } = render(<BlogMarkdown source={"![x](javascript:alert(1))\n\n![y](data:text/html;base64,AAAA)"} />);
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+  });
 });

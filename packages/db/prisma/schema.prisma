@@ -2801,6 +2801,11 @@ model BlogArticle {
   body             String
   category         String
   illustration     String
+  // Optional uploaded cover photo — when set it replaces the built-in
+  // illustration on the article page and cards (the illustration stays
+  // required as the fallback). The stored file is re-encoded server-side
+  // (metadata stripped); like the text, it is frozen once published.
+  coverImageUrl    String?
   authorName       String
   status           BlogArticleStatus @default(draft)
   createdByUserId  String

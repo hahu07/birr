@@ -1277,6 +1277,7 @@ export interface BlogArticle {
   body: string;
   category: string;
   illustration: string;
+  coverImageUrl: string | null;
   authorName: string;
   status: BlogArticleStatus;
   reviewedByName: string | null;

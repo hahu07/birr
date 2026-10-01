@@ -24,7 +24,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: `${article.title} — Birr`,
     description: article.description,
     alternates: { canonical: `${SITE_URL}/blog/${article.slug}` },
-    openGraph: { title: article.title, description: article.description, type: "article", publishedTime: article.publishedAt },
+    openGraph: {
+      title: article.title,
+      description: article.description,
+      type: "article",
+      publishedTime: article.publishedAt,
+      ...(article.coverImageUrl ? { images: [article.coverImageUrl] } : {}),
+    },
   };
 }
 
@@ -48,9 +54,14 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ sl
         <p className="mt-3 text-sm text-slate-500">
           By {article.authorName} · {formatArticleDate(article.publishedAt)} · Reviewed by {article.reviewedByName}
         </p>
-        <div className="mt-8 rounded-2xl bg-gradient-to-br from-primary-50 to-accent-50 px-6 py-8">
-          <Illustration className="mx-auto h-56 w-auto sm:h-64" />
-        </div>
+        {article.coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={article.coverImageUrl} alt="" className="mt-8 h-64 w-full rounded-2xl object-cover sm:h-80" />
+        ) : (
+          <div className="mt-8 rounded-2xl bg-gradient-to-br from-primary-50 to-accent-50 px-6 py-8">
+            <Illustration className="mx-auto h-56 w-auto sm:h-64" />
+          </div>
+        )}
         <div className="mt-10">
           <BlogMarkdown source={article.body} />
         </div>

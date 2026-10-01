@@ -13,6 +13,8 @@
 //   | A | B |               a table (header row, a |---|---| separator
 //   |---|---|               row, then data rows)
 //   | 1 | 2 |
+//   ![what it shows](url)   an image on its own line, shown with its
+//                           description as the caption (http/https URLs only)
 import Link from "next/link";
 import { ReactNode } from "react";
 
@@ -131,6 +133,17 @@ function TextBlocks({ source }: { source: string }) {
                 </tbody>
               </table>
             </div>
+          );
+        }
+        const image = /^!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)$/.exec(block);
+        if (image) {
+          const [, alt, src] = image;
+          return (
+            <figure key={i} className="my-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={src} alt={alt} loading="lazy" className="w-full rounded-xl border border-slate-200 object-cover" />
+              {alt && <figcaption className="mt-2 text-center text-sm text-slate-500">{alt}</figcaption>}
+            </figure>
           );
         }
         if (block.startsWith("### ")) {

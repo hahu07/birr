@@ -92,6 +92,7 @@ const PUBLIC_SELECT = {
   description: true,
   category: true,
   illustration: true,
+  coverImageUrl: true,
   authorName: true,
   reviewedByName: true,
   publishedAt: true,
@@ -197,6 +198,47 @@ export class BlogService {
         reviewedByName: reviewer.fullName,
       },
     });
+  }
+
+  /**
+   * Sets or clears the article's cover photo (`url: null` clears it, falling
+   * back to the built-in illustration). Drafts only — like the text, a
+   * published article's cover is what a reviewer approved, so changing it means
+   * unpublishing first and going back through review.
+   */
+  async setCover(id: string, url: string | null, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const before = await findArticleOrThrow(tx, id);
+      if (before.status !== "draft") {
+        throw new BadRequestException(
+          `Article "${before.title}" is "${before.status}" — only a draft can be edited. Unpublish it first so changes go back through review.`,
+        );
+      }
+      const article = await tx.blogArticle.update({ where: { id }, data: { coverImageUrl: url } });
+      await tx.auditLog.create({
+        data: {
+          actorType: "birr_staff",
+          actorUserId,
+          action: url ? "blog_article.cover_set" : "blog_article.cover_removed",
+          entityType: "BlogArticle",
+          entityId: id,
+          before: { coverImageUrl: before.coverImageUrl } as any,
+          after: { coverImageUrl: article.coverImageUrl } as any,
+        },
+      });
+      return article;
+    });
+  }
+
+  /** Throws unless the article exists and is still a draft — checked BEFORE an image is stored, so a refused upload writes no file. */
+  async assertEditable(id: string) {
+    const article = await prisma.blogArticle.findFirst({ where: { id, deletedAt: null }, select: { title: true, status: true } });
+    if (!article) throw new NotFoundException(`Blog article "${id}" not found.`);
+    if (article.status !== "draft") {
+      throw new BadRequestException(
+        `Article "${article.title}" is "${article.status}" — only a draft can be edited. Unpublish it first so changes go back through review.`,
+      );
+    }
   }
 
   /**

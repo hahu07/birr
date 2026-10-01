@@ -1,9 +1,10 @@
 import { BlogController } from "./blog.controller";
 import type { BlogService } from "./blog.service";
+import type { BlogImageStorageService } from "./blog-image-storage.service";
 
 describe("BlogController.listPublic", () => {
   const listPublic = jest.fn().mockResolvedValue([]);
-  const controller = new BlogController({ listPublic } as unknown as BlogService);
+  const controller = new BlogController({ listPublic } as unknown as BlogService, {} as unknown as BlogImageStorageService);
 
   beforeEach(() => listPublic.mockClear());
 

@@ -1,5 +1,7 @@
-import { Body, Controller, Get, NotFoundException, Param, Patch, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { BlogService, CreateBlogArticleInput, UpdateBlogArticleInput } from "./blog.service";
+import { BlogImageStorageService, MAX_BLOG_IMAGE_BYTES } from "./blog-image-storage.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
 import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
@@ -12,7 +14,10 @@ const BLOG_AUTHOR_ROLES = ["mutawalli_officer", "legal_adviser", "compliance_off
 
 @Controller("blog-articles")
 export class BlogController {
-  constructor(private readonly service: BlogService) {}
+  constructor(
+    private readonly service: BlogService,
+    private readonly images: BlogImageStorageService,
+  ) {}
 
   // ---- Public (no session) — published articles only ----
 
@@ -73,5 +78,39 @@ export class BlogController {
   @Post(":id/archive")
   archive(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.archive(id, staff.userId);
+  }
+
+  // multipart/form-data, field "image". `limits.fileSize` stops multer buffering
+  // an oversized upload before the app-layer check runs. Drafts only, checked
+  // before the file is stored.
+  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @Post(":id/cover")
+  @UseInterceptors(FileInterceptor("image", { limits: { fileSize: MAX_BLOG_IMAGE_BYTES } }))
+  async uploadCover(
+    @Param("id") id: string,
+    @UploadedFile() image: Express.Multer.File | undefined,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    if (!image) throw new BadRequestException("No image was uploaded.");
+    await this.service.assertEditable(id);
+    const { url } = await this.images.saveImage(image);
+    return this.service.setCover(id, url, staff.userId);
+  }
+
+  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @Post(":id/cover/remove")
+  removeCover(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.service.setCover(id, null, staff.userId);
+  }
+
+  // An image to place inside the article text. Returns only its URL — the
+  // editor inserts it into the body as ![description](url).
+  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @Post(":id/images")
+  @UseInterceptors(FileInterceptor("image", { limits: { fileSize: MAX_BLOG_IMAGE_BYTES } }))
+  async uploadBodyImage(@Param("id") id: string, @UploadedFile() image: Express.Multer.File | undefined) {
+    if (!image) throw new BadRequestException("No image was uploaded.");
+    await this.service.assertEditable(id);
+    return this.images.saveImage(image);
   }
 }

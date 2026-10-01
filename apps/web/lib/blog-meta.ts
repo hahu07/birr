@@ -21,6 +21,8 @@ export interface ArticleSummary {
   description: string;
   category: BlogCategory;
   illustration: IllustrationKey;
+  /** Optional uploaded cover photo; replaces the illustration when set. */
+  coverImageUrl: string | null;
   authorName: string;
   /** The approving Legal/Compliance reviewer — set by the governed blog.publish action, never typed in. */
   reviewedByName: string;

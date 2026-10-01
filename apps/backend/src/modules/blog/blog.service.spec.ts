@@ -136,4 +136,42 @@ describe("BlogService", () => {
     expect(single).not.toHaveProperty("createdByUserId");
     expect(await service.findPublicBySlug(draft.slug)).toBeNull();
   });
+  test("setCover() sets and clears a cover photo on a draft, audit-logging each change", async () => {
+    const article = await newArticle();
+    expect(article.coverImageUrl).toBeNull();
+
+    const withCover = await service.setCover(article.id, "http://localhost:4000/uploads/blog-images/c.jpg", authorUserId);
+    expect(withCover.coverImageUrl).toBe("http://localhost:4000/uploads/blog-images/c.jpg");
+    const cleared = await service.setCover(article.id, null, authorUserId);
+    expect(cleared.coverImageUrl).toBeNull();
+
+    expect(await prisma.auditLog.count({ where: { entityId: article.id, action: "blog_article.cover_set" } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { entityId: article.id, action: "blog_article.cover_removed" } })).toBe(1);
+  });
+
+  test("a published article's cover is frozen like its text — setCover() and assertEditable() refuse it", async () => {
+    const article = await newArticle();
+    await service.setCover(article.id, "http://localhost:4000/uploads/blog-images/approved.jpg", authorUserId);
+    await publish(article.id);
+
+    await expect(service.setCover(article.id, "http://localhost:4000/uploads/blog-images/swapped.jpg", authorUserId)).rejects.toThrow(BadRequestException);
+    await expect(service.setCover(article.id, null, authorUserId)).rejects.toThrow(BadRequestException);
+    await expect(service.assertEditable(article.id)).rejects.toThrow(/only a draft/);
+    expect((await service.findById(article.id))?.coverImageUrl).toBe("http://localhost:4000/uploads/blog-images/approved.jpg");
+
+    await service.unpublish(article.id, authorUserId);
+    await expect(service.assertEditable(article.id)).resolves.toBeUndefined();
+  });
+
+  test("assertEditable() 404s an unknown article", async () => {
+    await expect(service.assertEditable("00000000-0000-0000-0000-000000000000")).rejects.toThrow(NotFoundException);
+  });
+
+  test("the public listing and slug lookup include the cover photo", async () => {
+    const live = await newArticle();
+    await service.setCover(live.id, "http://localhost:4000/uploads/blog-images/public.jpg", authorUserId);
+    await publish(live.id);
+    expect((await service.listPublic()).find((a) => a.slug === live.slug)?.coverImageUrl).toBe("http://localhost:4000/uploads/blog-images/public.jpg");
+    expect((await service.findPublicBySlug(live.slug))?.coverImageUrl).toBe("http://localhost:4000/uploads/blog-images/public.jpg");
+  });
 });
