@@ -24,6 +24,8 @@ import {
 } from "@birr/ui";
 import { apiFetchJson } from "../../lib/api";
 import type { ArticleSummary } from "../../lib/blog-meta";
+import type { ImpactSummary } from "../../lib/impact-api";
+import { ImpactSection } from "./ImpactSection";
 import type { Vault } from "../../lib/types";
 import { ArticleCard } from "../../components/blog/ArticleCard";
 import { GRADIENT, Reveal, SiteFooter, SiteHeader, VaultCard } from "./SiteChrome";
@@ -235,7 +237,13 @@ const PILLAR_ICON_CLASSES: Record<(typeof GOVERNANCE_PILLARS)[number]["tone"], s
   violet: "bg-gradient-to-br from-violet-500 to-violet-700 text-white shadow-violet-900/25",
 };
 
-export default function MarketingHome({ articles = [] }: { articles?: ArticleSummary[] }) {
+export default function MarketingHome({
+  articles = [],
+  impact = null,
+}: {
+  articles?: ArticleSummary[];
+  impact?: ImpactSummary | null;
+}) {
   const [howItWorksPath, setHowItWorksPath] = useState<"founder" | "giver">("founder");
   const [managesProduct, setManagesProduct] = useState<"waqf" | "vault">("waqf");
 
@@ -557,6 +565,11 @@ export default function MarketingHome({ articles = [] }: { articles?: ArticleSum
         )}
 
       </section>
+
+      <ImpactSection
+        impact={impact}
+        covers={(openVaults ?? []).map((v) => v.coverImageUrl).filter((url): url is string => Boolean(url)).slice(0, 4)}
+      />
 
       {articles.length > 0 && (
         <section id="learn" className="bg-slate-50/70 px-6 py-20 sm:px-8">
