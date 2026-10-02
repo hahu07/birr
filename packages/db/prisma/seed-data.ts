@@ -261,6 +261,36 @@ export const causeCategories = [
   { name: "Religious Education", description: "Quran memorization, Islamic studies, and mosque support.", icon: "🕌", sortOrder: 50, typicalWaqfTypes: ["asset", "investment"] },
   { name: "Water & Sanitation", description: "Clean water access and sanitation infrastructure.", icon: "💧", sortOrder: 60, typicalWaqfTypes: ["project", "asset"] },
   { name: "Disaster Relief", description: "Emergency response to natural disasters and crises.", icon: "🚨", sortOrder: 70, typicalWaqfTypes: ["project"] },
+  // Update, 2026-10-02 — four additions grounded in Nigeria's own giving
+  // patterns, not generic global NGO categories: Birr operates only as a
+  // Nigeria-registered non-profit (see this file's own currency/minimum
+  // seeds above), and these are distinct, recurring needs the original
+  // seven don't name specifically enough to surface well in a Founder's
+  // or a Vault donor's picker. Each is deliberately kept distinct from
+  // its nearest existing neighbor rather than folded in — see each
+  // entry's own note.
+  //
+  // Distinct from Disaster Relief: that's single-event emergency
+  // response; this is the protracted, ongoing reality of Northern
+  // Nigeria's conflict-driven displacement crisis (Boko Haram/ISWAP-
+  // affected states), where camps and host communities need sustained
+  // support, not one relief push.
+  { name: "Displacement & IDP Support", description: "Shelter, food, and essentials for people displaced from their homes by conflict or crisis.", icon: "🏕️", sortOrder: 80, typicalWaqfTypes: ["project"] },
+  // Also distinct from Disaster Relief: Nigeria's seasonal floods
+  // (Niger Delta, Lagos, the 2022 floods) are a recurring, climate-
+  // driven pattern with their own rebuild/water-management needs, not
+  // one-off crisis response.
+  { name: "Flood & Climate Relief", description: "Emergency response and rebuilding support for communities hit by flooding and seasonal climate disasters.", icon: "🌊", sortOrder: 90, typicalWaqfTypes: ["project"] },
+  // Distinct from Poverty Relief: that's direct material aid (food,
+  // shelter); this is enabling self-sufficiency (training, tools,
+  // micro-grants) — the classical waqf/zakat distinction between giving
+  // a fish and funding the means to earn one.
+  { name: "Livelihood & Skills Empowerment", description: "Vocational training, micro-grants, and tools that help people earn a sustainable income.", icon: "🛠️", sortOrder: 100, typicalWaqfTypes: ["investment", "project"] },
+  // Distinct from Orphan Care: that's child-focused; this is the
+  // classical waqf/zakat beneficiary category of widows and families
+  // who've lost their breadwinner, with needs (income replacement,
+  // housing stability) that don't map onto a child-support program.
+  { name: "Widow & Vulnerable Family Support", description: "Direct support for widows and families who've lost their primary breadwinner.", icon: "🫂", sortOrder: 110, typicalWaqfTypes: ["investment", "project"] },
 ] as const;
 
 // The four accounts VaultLedgerService's three auto-posting hooks
