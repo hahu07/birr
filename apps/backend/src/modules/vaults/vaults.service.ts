@@ -411,9 +411,13 @@ export class VaultsService {
    * vaultCauseId ("wherever it's needed most") belongs to no cause, so
    * the causes' totals legitimately sum to less than the vault's.
    *
-   * Only wired into findBySlug, not listOpen — same reasoning as
-   * spentSoFar above: the detail page is where a donor picks between
-   * causes; a grid of vault cards doesn't show per-cause figures.
+   * Update, 2026-10-02 — now wired into listOpen() too (the browse grid
+   * VaultCard renders), not just findBySlug, so a donor sees which
+   * causes are closest to their goal before opening a specific vault,
+   * not only after. Unlike spentSoFar (detail-page-only, one extra
+   * ledger query per vault), this stays cheap at list scale because the
+   * caller batches every vault's causes into one groupBy together —
+   * see listOpen()'s own comment.
    */
   private async withCauseAmountRaised<C extends { id: string }>(
     causes: C[],
@@ -493,10 +497,24 @@ export class VaultsService {
       select: VaultsService.PUBLIC_VAULT_SELECT,
       orderBy: { openedAt: "desc" },
     });
-    // Icon flattened here too, so a cause has the same shape whichever
-    // public route served it — but no per-cause amountRaised (see
-    // withCauseAmountRaised's own comment on why that's detail-page-only).
-    return this.withAmountRaised(vaults.map((v) => ({ ...v, causes: v.causes.map(VaultsService.publicCause) })));
+    const withIcons = vaults.map((v) => ({ ...v, causes: v.causes.map(VaultsService.publicCause) }));
+    // One batched query across every vault's causes combined (same
+    // N+1-avoidance shape as withAmountRaised below) — withCauseAmountRaised
+    // doesn't care which vault a cause belongs to, it just groups by
+    // vaultCauseId, so flattening first and re-attaching after is cheaper
+    // than calling it once per vault. The browse grid (homepage teaser +
+    // /vaults index, both rendered by VaultCard) shows this per-cause
+    // figure alongside each cause's targetAmount so a donor can compare
+    // causes before ever opening a specific vault, not only once they're
+    // on its detail page.
+    const allCauses = withIcons.flatMap((v) => v.causes);
+    const causesWithRaised = await this.withCauseAmountRaised(allCauses);
+    const raisedByCauseId = new Map(causesWithRaised.map((c) => [c.id, c.amountRaised]));
+    const withCauseFigures = withIcons.map((v) => ({
+      ...v,
+      causes: v.causes.map((c) => ({ ...c, amountRaised: raisedByCauseId.get(c.id) ?? [] })),
+    }));
+    return this.withAmountRaised(withCauseFigures);
   }
 
   /**

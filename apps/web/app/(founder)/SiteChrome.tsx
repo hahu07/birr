@@ -10,7 +10,7 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button, IconArchive, IconMark } from "@birr/ui";
 import { humanize } from "../../lib/format";
-import type { Vault } from "../../lib/types";
+import type { Vault, VaultCause } from "../../lib/types";
 
 // Four stops, not two-color interpolation across the full distance: a
 // straight primary-900 → violet-700 sRGB ramp passes through a
@@ -266,11 +266,9 @@ export function VaultCard({ vault, showType = false }: { vault: Vault; showType?
         {vault.description && <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-slate-600">{vault.description}</p>}
 
         {vault.causes && vault.causes.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-3 space-y-2.5">
             {vault.causes.map((c) => (
-              <span key={c.id} className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700">
-                {c.name}
-              </span>
+              <CauseProgressRow key={c.id} cause={c} vaultCurrency={vault.currency} />
             ))}
           </div>
         )}
@@ -321,5 +319,52 @@ export function VaultCard({ vault, showType = false }: { vault: Vault; showType?
         </span>
       </div>
     </Link>
+  );
+}
+
+// One cause, compact enough for a browse-grid card rather than the full
+// CauseChoice treatment the detail page (vaults/[slug]/page.tsx) gives
+// each cause — a donor browsing many vault cards needs to compare causes
+// at a glance, not read a full description for each one here. Same
+// underlying figures as the detail page (VaultCause.targetAmount/
+// amountRaised), just name + icon + bar, no description/project-plan
+// text and no selection affordance (this card's whole surface is
+// already the link to the vault; picking a specific cause happens once
+// a donor is actually on that vault's own page).
+function CauseProgressRow({ cause, vaultCurrency }: { cause: VaultCause; vaultCurrency: string }) {
+  const target = cause.targetAmount ? Number(cause.targetAmount) : null;
+  const raised = Number(cause.amountRaised?.find((r) => r.currency === vaultCurrency)?.amount ?? "0");
+  const pct = target && target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : null;
+
+  return (
+    <div>
+      <div className="flex items-center gap-1 text-xs font-medium text-slate-700">
+        {cause.icon && (
+          <span aria-hidden="true" className="leading-none">
+            {cause.icon}
+          </span>
+        )}
+        <span className="truncate">{cause.name}</span>
+      </div>
+      {pct !== null ? (
+        <>
+          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-primary-500" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[11px] text-slate-500">
+            <span>
+              {vaultCurrency} {raised.toLocaleString()}
+            </span>
+            <span className="shrink-0">of {vaultCurrency} {target!.toLocaleString()}</span>
+          </div>
+        </>
+      ) : (
+        raised > 0 && (
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            {vaultCurrency} {raised.toLocaleString()} given so far
+          </p>
+        )
+      )}
+    </div>
   );
 }

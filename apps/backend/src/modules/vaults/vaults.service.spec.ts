@@ -353,6 +353,32 @@ describe("VaultsService", () => {
     expect(listed.find((c) => c.id === custom.id)?.icon).toBeNull();
   });
 
+  test("listOpen() reports each cause's own amountRaised too, not just the vault total — batched across every open vault in one query", async () => {
+    const slug = uniqueSlug("listopen-cause-raised");
+    const vault = await service.create(
+      { name: "ListOpen Cause Raised Vault", slug, type: "project", currency: "NGN", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+    const cause = await service.createCause({ vaultId: vault.id, name: "ListOpen Cause" }, actorUserId);
+    const untouchedCause = await service.createCause({ vaultId: vault.id, name: "ListOpen Untouched Cause" }, actorUserId);
+    vaultCauseIds.push(cause.id, untouchedCause.id);
+    await service.updateCauseTargetAmount(cause.id, { targetAmount: "1000000" }, actorUserId);
+
+    await prisma.vaultContribution.createMany({
+      data: [
+        { vaultId: vault.id, vaultCauseId: cause.id, amount: "300000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-listopen-1`, status: "confirmed" },
+        { vaultId: vault.id, vaultCauseId: cause.id, amount: "999", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-listopen-pending`, status: "pending" },
+      ],
+    });
+
+    const openList = await service.listOpen();
+    const found = openList.find((v) => v.id === vault.id);
+    expect(found?.causes.find((c) => c.id === cause.id)?.amountRaised).toEqual([{ currency: "NGN", amount: "300000" }]);
+    expect(found?.causes.find((c) => c.id === untouchedCause.id)?.amountRaised).toEqual([]);
+  });
+
   test("findBySlug() exposes a cause's own targetAmount publicly, null when no goal has been set", async () => {
     const slug = uniqueSlug("cause-goal-public");
     const vault = await service.create(
