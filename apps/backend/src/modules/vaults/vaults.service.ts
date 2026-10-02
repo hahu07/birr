@@ -325,7 +325,22 @@ export class VaultsService {
     feasibilityReportTitle: true,
     causes: {
       where: { deletedAt: null },
-      select: { id: true, vaultId: true, causeCategoryId: true, name: true, description: true, projectPlan: true },
+      select: {
+        id: true,
+        vaultId: true,
+        causeCategoryId: true,
+        name: true,
+        description: true,
+        projectPlan: true,
+        // Only the catalog row's `icon` — never its projectPlan/
+        // projectPlanFileUrl, which are staff reference material by
+        // design (see CauseCategory's own schema comments). Flattened to
+        // a bare `icon` on the cause by publicCause() below, so the
+        // public payload keeps the shape apps/web/lib/types.ts declares
+        // rather than growing a nested relation. A one-off custom cause
+        // has no category at all, hence null.
+        causeCategory: { select: { icon: true } },
+      },
     },
     // Update, 2026-09-14 — evidenceNotes/evidenceFileUrl are public too:
     // the whole point of photographing/documenting completed work is
@@ -339,9 +354,19 @@ export class VaultsService {
     },
   } as const;
 
+  /**
+   * Collapses the nested causeCategory relation PUBLIC_VAULT_SELECT
+   * joins in down to the bare `icon` the donation page actually renders.
+   */
+  private static publicCause<C extends { causeCategory: { icon: string | null } | null }>(cause: C) {
+    const { causeCategory, ...rest } = cause;
+    return { ...rest, icon: causeCategory?.icon ?? null };
+  }
+
   async findBySlug(slug: string) {
-    const vault = await prisma.vault.findFirst({ where: { slug, deletedAt: null }, select: VaultsService.PUBLIC_VAULT_SELECT });
-    if (!vault) return null;
+    const found = await prisma.vault.findFirst({ where: { slug, deletedAt: null }, select: VaultsService.PUBLIC_VAULT_SELECT });
+    if (!found) return null;
+    const vault = { ...found, causes: found.causes.map(VaultsService.publicCause) };
     const [withRaised] = await this.withAmountRaised([vault]);
     // Real committed program spend, per currency — the one already-
     // public-safe figure the Program Expenses ledger account gives for
@@ -351,7 +376,43 @@ export class VaultsService {
     // THIS vault benefits from seeing real spend against it; a grid of
     // many vault cards doesn't need the extra query per card.
     const spentSoFar = await this.ledger.spentByCurrency(withRaised.id);
-    return { ...withRaised, spentSoFar };
+    return { ...withRaised, causes: await this.withCauseAmountRaised(withRaised.causes), spentSoFar };
+  }
+
+  /**
+   * Per-cause counterpart to withAmountRaised below — how much each
+   * cause on this vault has actually been given, so the donation page can
+   * show a donor which cause the campaign's gifts have gone to rather
+   * than only the vault-wide total.
+   *
+   * Same SPENDABLE_CONTRIBUTION_WHERE filter and same group-by-currency
+   * posture as the vault-level sum (never converted or added across
+   * currencies), so the two figures can't disagree about what counts as
+   * raised. A cause's total is NOT a share of the vault's: a gift with no
+   * vaultCauseId ("wherever it's needed most") belongs to no cause, so
+   * the causes' totals legitimately sum to less than the vault's.
+   *
+   * Only wired into findBySlug, not listOpen — same reasoning as
+   * spentSoFar above: the detail page is where a donor picks between
+   * causes; a grid of vault cards doesn't show per-cause figures.
+   */
+  private async withCauseAmountRaised<C extends { id: string }>(
+    causes: C[],
+  ): Promise<(C & { amountRaised: { currency: string; amount: string }[] })[]> {
+    if (causes.length === 0) return [];
+    const sums = await prisma.vaultContribution.groupBy({
+      by: ["vaultCauseId", "currency"],
+      where: { vaultCauseId: { in: causes.map((c) => c.id) }, ...SPENDABLE_CONTRIBUTION_WHERE },
+      _sum: { amount: true },
+    });
+    const raisedByCauseId = new Map<string, { currency: string; amount: string }[]>();
+    for (const s of sums) {
+      if (!s.vaultCauseId) continue;
+      const list = raisedByCauseId.get(s.vaultCauseId) ?? [];
+      list.push({ currency: s.currency, amount: s._sum.amount?.toString() ?? "0" });
+      raisedByCauseId.set(s.vaultCauseId, list);
+    }
+    return causes.map((c) => ({ ...c, amountRaised: raisedByCauseId.get(c.id) ?? [] }));
   }
 
   /**
@@ -413,7 +474,10 @@ export class VaultsService {
       select: VaultsService.PUBLIC_VAULT_SELECT,
       orderBy: { openedAt: "desc" },
     });
-    return this.withAmountRaised(vaults);
+    // Icon flattened here too, so a cause has the same shape whichever
+    // public route served it — but no per-cause amountRaised (see
+    // withCauseAmountRaised's own comment on why that's detail-page-only).
+    return this.withAmountRaised(vaults.map((v) => ({ ...v, causes: v.causes.map(VaultsService.publicCause) })));
   }
 
   /**

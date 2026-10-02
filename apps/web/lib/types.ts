@@ -186,6 +186,17 @@ export interface VaultCause {
   // see VaultCause.projectPlan's own schema comment. Distinct from
   // Vault.feasibilityReportUrl, which is campaign-wide.
   projectPlan: string | null;
+  // The CauseCategory catalog row's own emoji glyph, flattened onto the
+  // cause by VaultsService.publicCause. null for a one-off custom cause,
+  // which belongs to no category — callers need a fallback.
+  icon: string | null;
+  // How much has actually been given to THIS cause, per currency — same
+  // confirmed-and-not-refunded basis as the vault's own amountRaised,
+  // never summed across currencies. Only present from GET
+  // /vaults/by-slug/:slug, like spentSoFar. These do NOT add up to the
+  // vault's total: a gift left unearmarked ("wherever it's needed most")
+  // counts toward the vault but toward no cause.
+  amountRaised?: { currency: string; amount: string }[];
 }
 
 export interface VaultMilestone {

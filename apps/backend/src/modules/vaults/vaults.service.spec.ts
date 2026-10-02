@@ -438,6 +438,108 @@ describe("VaultsService", () => {
     expect(bySlug?.amountRaised).toHaveLength(2);
   });
 
+  test("findBySlug() reports each cause's own amountRaised, leaving an unearmarked gift out of every cause's total", async () => {
+    const slug = uniqueSlug("per-cause-raised");
+    const vault = await service.create(
+      { name: "Per Cause Raised Vault", slug, type: "project", currency: "NGN", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+    const water = await service.createCause({ vaultId: vault.id, name: "Clean Water Wells" }, actorUserId);
+    const food = await service.createCause({ vaultId: vault.id, name: "Food Parcels" }, actorUserId);
+    vaultCauseIds.push(water.id, food.id);
+
+    await prisma.vaultContribution.createMany({
+      data: [
+        { vaultId: vault.id, vaultCauseId: water.id, amount: "500000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-w1`, status: "confirmed" },
+        { vaultId: vault.id, vaultCauseId: water.id, amount: "320000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-w2`, status: "confirmed" },
+        { vaultId: vault.id, vaultCauseId: food.id, amount: "1240000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-f1`, status: "confirmed" },
+        // "Wherever it's needed most" — counts toward the vault, toward no cause.
+        { vaultId: vault.id, amount: "60000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-any`, status: "confirmed" },
+      ],
+    });
+
+    const bySlug = await service.findBySlug(slug);
+    expect(bySlug?.causes.find((c) => c.id === water.id)?.amountRaised).toEqual([{ currency: "NGN", amount: "820000" }]);
+    expect(bySlug?.causes.find((c) => c.id === food.id)?.amountRaised).toEqual([{ currency: "NGN", amount: "1240000" }]);
+    // The unearmarked 60,000 is in the vault total but in neither cause's.
+    expect(bySlug?.amountRaised).toEqual([{ currency: "NGN", amount: "2120000" }]);
+  });
+
+  test("a cause's amountRaised excludes held and refunded gifts, and reports each currency separately", async () => {
+    const slug = uniqueSlug("per-cause-raised-filtered");
+    const vault = await service.create(
+      { name: "Per Cause Filtered Vault", slug, type: "project", currency: "NGN", jurisdiction: "NG", additionalCurrencies: ["USDC"] },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+    const cause = await service.createCause({ vaultId: vault.id, name: "Filtered Cause" }, actorUserId);
+    const emptyCause = await service.createCause({ vaultId: vault.id, name: "Nothing Given Yet" }, actorUserId);
+    vaultCauseIds.push(cause.id, emptyCause.id);
+
+    await prisma.vaultContribution.createMany({
+      data: [
+        { vaultId: vault.id, vaultCauseId: cause.id, amount: "100000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-ok`, status: "confirmed" },
+        { vaultId: vault.id, vaultCauseId: cause.id, amount: "40", currency: "USDC", provider: "stablecoin", providerReference: `${vault.id}-usdc`, status: "confirmed" },
+        { vaultId: vault.id, vaultCauseId: cause.id, amount: "999000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-pending`, status: "pending" },
+        { vaultId: vault.id, vaultCauseId: cause.id, amount: "888000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-held`, status: "confirmed", heldAt: new Date() },
+        { vaultId: vault.id, vaultCauseId: cause.id, amount: "777000", currency: "NGN", provider: "paystack", providerReference: `${vault.id}-refunded`, status: "confirmed", refundStatus: "refunded" },
+      ],
+    });
+
+    const bySlug = await service.findBySlug(slug);
+    const raised = bySlug?.causes.find((c) => c.id === cause.id)?.amountRaised ?? [];
+    expect(raised).toEqual(
+      expect.arrayContaining([
+        { currency: "NGN", amount: "100000" },
+        { currency: "USDC", amount: "40" },
+      ]),
+    );
+    expect(raised).toHaveLength(2);
+    // Empty array, never missing, for a cause nobody's given to yet.
+    expect(bySlug?.causes.find((c) => c.id === emptyCause.id)?.amountRaised).toEqual([]);
+  });
+
+  test("findBySlug() exposes a cause's catalog icon but no other category field, and null for a custom cause", async () => {
+    const category = await prisma.causeCategory.create({
+      data: {
+        name: `Vault Icon Category ${Date.now()}`,
+        icon: "💧",
+        // Staff reference material, never copied onto a cause by
+        // createCause the way name/description/projectPlan are — so it's
+        // the honest canary for "did the joined category row leak".
+        projectPlanFileUrl: "https://example.invalid/staff-only-checklist.pdf",
+      },
+    });
+    causeCategoryIds.push(category.id);
+
+    const slug = uniqueSlug("cause-icons");
+    const vault = await service.create(
+      { name: "Cause Icons Vault", slug, type: "project", currency: "NGN", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+    const fromCatalog = await service.createCause({ vaultId: vault.id, causeCategoryId: category.id }, actorUserId);
+    const custom = await service.createCause({ vaultId: vault.id, name: "One-off Custom Cause" }, actorUserId);
+    vaultCauseIds.push(fromCatalog.id, custom.id);
+
+    const bySlug = await service.findBySlug(slug);
+    const catalogCause = bySlug?.causes.find((c) => c.id === fromCatalog.id);
+    expect(catalogCause?.icon).toBe("💧");
+    // The nested relation is flattened away, so the category's own
+    // staff-only fields can't ride along into the public payload.
+    expect(catalogCause).not.toHaveProperty("causeCategory");
+    expect(JSON.stringify(bySlug)).not.toContain("staff-only-checklist.pdf");
+    expect(bySlug?.causes.find((c) => c.id === custom.id)?.icon).toBeNull();
+
+    // Same flattened shape from the public list route, not just by-slug.
+    const fromList = (await service.listOpen()).find((v) => v.id === vault.id);
+    expect(fromList?.causes.find((c) => c.id === fromCatalog.id)?.icon).toBe("💧");
+  });
+
   describe("setFeasibilityReport()", () => {
     test("sets title and url, audit-logged with a real before/after, and only overwrites whichever field is sent", async () => {
       const slug = uniqueSlug("feasibility-report");

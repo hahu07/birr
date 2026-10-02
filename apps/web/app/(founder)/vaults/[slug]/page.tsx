@@ -124,6 +124,11 @@ export default function VaultDonationPage() {
           <div className="mt-5 flex flex-wrap gap-1.5">
             {causes.map((c) => (
               <span key={c.id} className="rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">
+                {c.icon && (
+                  <span aria-hidden="true" className="mr-1">
+                    {c.icon}
+                  </span>
+                )}
                 {c.name}
               </span>
             ))}
@@ -366,33 +371,7 @@ function ContributionForm({
           )}
         </div>
 
-        {causes.length > 0 && (
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Support a specific cause (optional)</label>
-            <Select className="w-full" value={vaultCauseId} onChange={(e) => setVaultCauseId(e.target.value)}>
-              <option value="">Wherever it's needed most</option>
-              {causes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-            {/* Progressive disclosure — only the cause a donor is actually
-                considering, not a wall of text for every cause up front.
-                description was already fetched here but never rendered
-                anywhere on this page before this (found 2026-09-29). */}
-            {(() => {
-              const selected = causes.find((c) => c.id === vaultCauseId);
-              if (!selected || (!selected.description && !selected.projectPlan)) return null;
-              return (
-                <div className="mt-2 space-y-1.5 rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-                  {selected.description && <p>{selected.description}</p>}
-                  {selected.projectPlan && <p>{selected.projectPlan}</p>}
-                </div>
-              );
-            })()}
-          </div>
-        )}
+        {causes.length > 0 && <CauseChoice causes={causes} selectedId={vaultCauseId} onSelect={setVaultCauseId} />}
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700">Payment method</label>
@@ -466,4 +445,111 @@ function ContributionForm({
 
 function formatMinimum(amount: string) {
   return Number(amount).toLocaleString();
+}
+
+// Selectable cause cards, not the plain <select> this used to be: a
+// campaign bundling several genuinely different initiatives (a water
+// cause and a food-parcels cause in one Ramadan vault) gave a donor
+// nothing to choose between until after they'd already picked an option
+// out of a dropdown. Each card carries the catalog icon, the cause's own
+// one-line description, and what's actually been given to it so far, so
+// the comparison happens before the choice.
+//
+// Deliberately no goal/progress bar per cause — a VaultCause has no
+// fundraising target of its own, and its VaultCauseAllocation ceilings
+// are governed internal figures kept out of the public payload on
+// purpose (see VaultsService.PUBLIC_VAULT_SELECT). A bar needs an honest
+// denominator, so this shows the raised figure alone.
+function CauseChoice({
+  causes,
+  selectedId,
+  onSelect,
+}: {
+  causes: VaultCause[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="mb-1.5 text-sm font-medium text-slate-700">Support a specific cause (optional)</legend>
+      <div className="space-y-2">
+        <CauseCard
+          name="Wherever it's needed most"
+          description="Birr directs your gift to whichever of this vault's causes needs it most."
+          icon="✨"
+          selected={selectedId === ""}
+          onSelect={() => onSelect("")}
+        />
+        {causes.map((c) => (
+          <CauseCard
+            key={c.id}
+            name={c.name}
+            description={c.description}
+            // A one-off custom cause belongs to no catalog category and so
+            // has no icon of its own — a neutral glyph keeps the row from
+            // reading as broken next to the ones that do.
+            icon={c.icon ?? "◆"}
+            raised={c.amountRaised}
+            // Progressive disclosure for the longer write-up only: a
+            // 2,000-character project plan on every card at once is the
+            // wall of text the description line exists to avoid.
+            projectPlan={selectedId === c.id ? c.projectPlan : null}
+            selected={selectedId === c.id}
+            onSelect={() => onSelect(c.id)}
+          />
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function CauseCard({
+  name,
+  description,
+  icon,
+  raised,
+  projectPlan,
+  selected,
+  onSelect,
+}: {
+  name: string;
+  description: string | null;
+  icon: string;
+  raised?: { currency: string; amount: string }[];
+  projectPlan?: string | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  // Every currency this cause has actually received, each on its own
+  // terms — same never-convert posture as the vault-level totals above.
+  const given = (raised ?? []).filter((r) => Number(r.amount) > 0);
+
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+        selected ? "border-primary-400 bg-primary-50/60" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+      }`}
+    >
+      <input
+        type="radio"
+        name="vaultCause"
+        checked={selected}
+        onChange={onSelect}
+        className="mt-1 h-4 w-4 shrink-0 accent-primary-600"
+      />
+      <span aria-hidden="true" className="mt-0.5 shrink-0 text-base leading-none">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-slate-900">{name}</span>
+        {description && <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">{description}</span>}
+        {given.length > 0 && (
+          <span className="mt-1 block text-xs text-slate-500">
+            {given.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")} given so far
+          </span>
+        )}
+        {projectPlan && <span className="mt-1.5 block rounded-md bg-white/70 p-2 text-xs leading-relaxed text-slate-600">{projectPlan}</span>}
+      </span>
+    </label>
+  );
 }
