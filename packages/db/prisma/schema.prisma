@@ -2220,6 +2220,19 @@ model VaultCause {
   // VaultsService) — shown to a donor once they pick this specific
   // cause on the donation form.
   projectPlan     String?
+  // Update, 2026-10-02 — a cause-level fundraising goal, so the public
+  // donation page can show a progress bar per cause, not just for the
+  // vault as a whole. Same deliberately-display-only posture as
+  // Vault.targetAmount (see that field's own schema comment): never
+  // wired into assertWithinAllocation or any other enforcement — the
+  // real ceiling a distribution is checked against is still
+  // VaultCauseAllocation, set separately via the governed
+  // vault.cause_allocate/vault.proceeds_allocate actions. Always
+  // denominated in the parent Vault's primary `currency`, same
+  // single-currency convention Vault.targetAmount itself uses even on a
+  // vault that accepts additionalCurrencies — a goal bar needs one
+  // honest denominator, not a blended one.
+  targetAmount    Decimal?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   deletedAt       DateTime?

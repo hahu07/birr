@@ -6,6 +6,7 @@ import {
   UpdateVaultStatusInput,
   CreateVaultCauseInput,
   UpdateVaultCauseProjectPlanInput,
+  UpdateVaultCauseTargetAmountInput,
   UpdateVaultFeasibilityReportInput,
 } from "./vaults.service";
 import { VaultCoverStorageService, MAX_SIZE_BYTES as MAX_COVER_SIZE_BYTES } from "./vault-cover-storage.service";
@@ -96,6 +97,17 @@ export class VaultsController {
     @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
   ) {
     return this.service.updateCauseProjectPlan(id, body, staff.userId);
+  }
+
+  // Same trust tier as updateCauseProjectPlan above — see
+  // VaultsService.updateCauseTargetAmount's own comment.
+  @Patch("causes/:id/target-amount")
+  updateCauseTargetAmount(
+    @Param("id") id: string,
+    @Body() body: UpdateVaultCauseTargetAmountInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.service.updateCauseTargetAmount(id, body, staff.userId);
   }
 
   // multipart/form-data, same FileInterceptor shape as

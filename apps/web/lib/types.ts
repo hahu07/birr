@@ -186,6 +186,12 @@ export interface VaultCause {
   // see VaultCause.projectPlan's own schema comment. Distinct from
   // Vault.feasibilityReportUrl, which is campaign-wide.
   projectPlan: string | null;
+  // Display-only fundraising goal for THIS cause, in the parent Vault's
+  // primary currency — see VaultCause.targetAmount's own schema comment.
+  // Never an enforcement ceiling (that's VaultCauseAllocation); null
+  // means no goal has been set, same "optional, no bar shown" posture
+  // Vault.targetAmount itself already has.
+  targetAmount: string | null;
   // The CauseCategory catalog row's own emoji glyph, flattened onto the
   // cause by VaultsService.publicCause. null for a one-off custom cause,
   // which belongs to no category — callers need a fallback.

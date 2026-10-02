@@ -292,6 +292,60 @@ describe("VaultsService", () => {
     });
   });
 
+  describe("updateCauseTargetAmount()", () => {
+    test("sets targetAmount, audit-logged with a real before/after, and null clears it back to no goal", async () => {
+      const vault = await service.create(
+        { name: "Update Target Amount Vault", slug: uniqueSlug("update-target-amount"), type: "project", currency: "NGN", jurisdiction: "NG" },
+        actorUserId,
+      );
+      vaultIds.push(vault.id);
+      const cause = await service.createCause({ vaultId: vault.id, name: "Water Wells" }, actorUserId);
+      vaultCauseIds.push(cause.id);
+      expect(cause.targetAmount).toBeNull();
+
+      const withGoal = await service.updateCauseTargetAmount(cause.id, { targetAmount: "2000000" }, actorUserId);
+      expect(withGoal.targetAmount?.toString()).toBe("2000000");
+
+      const cleared = await service.updateCauseTargetAmount(cause.id, { targetAmount: null }, actorUserId);
+      expect(cleared.targetAmount).toBeNull();
+
+      const logs = await prisma.auditLog.findMany({
+        where: { entityId: cause.id, action: "vault_cause.target_amount_updated" },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(logs).toHaveLength(2);
+      expect(logs[0]).toMatchObject({ actorType: "birr_staff", actorUserId, vaultId: vault.id });
+      expect(logs[0].before).toMatchObject({ targetAmount: null });
+      expect(logs[0].after).toMatchObject({ targetAmount: "2000000" });
+      expect(logs[1].before).toMatchObject({ targetAmount: "2000000" });
+      expect(logs[1].after).toMatchObject({ targetAmount: null });
+    });
+
+    test("throws NotFoundException for an unknown cause id", async () => {
+      await expect(
+        service.updateCauseTargetAmount("00000000-0000-0000-0000-000000000000", { targetAmount: "100" }, actorUserId),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  test("findBySlug() exposes a cause's own targetAmount publicly, null when no goal has been set", async () => {
+    const slug = uniqueSlug("cause-goal-public");
+    const vault = await service.create(
+      { name: "Cause Goal Public Vault", slug, type: "project", currency: "NGN", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    await publishVault(vault.id);
+    const withGoal = await service.createCause({ vaultId: vault.id, name: "Clean Water Wells" }, actorUserId);
+    const withoutGoal = await service.createCause({ vaultId: vault.id, name: "No Goal Yet" }, actorUserId);
+    vaultCauseIds.push(withGoal.id, withoutGoal.id);
+    await service.updateCauseTargetAmount(withGoal.id, { targetAmount: "2000000" }, actorUserId);
+
+    const bySlug = await service.findBySlug(slug);
+    expect(bySlug?.causes.find((c) => c.id === withGoal.id)?.targetAmount?.toString()).toBe("2000000");
+    expect(bySlug?.causes.find((c) => c.id === withoutGoal.id)?.targetAmount).toBeNull();
+  });
+
   test("findBySlug() exposes a cause's projectPlan publicly, alongside its description", async () => {
     const slug = uniqueSlug("project-plan-public");
     const vault = await service.create(

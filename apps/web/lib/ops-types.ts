@@ -985,6 +985,12 @@ export interface VaultCause {
   // /vaults/causes/:id/project-plan) — name/description stay
   // create-only, a separate pre-existing gap not addressed here.
   projectPlan: string | null;
+  // Display-only donation-page goal for this cause, in the vault's
+  // primary currency — edited via PATCH
+  // /vaults/causes/:id/target-amount, the same plain-CRUD trust tier as
+  // projectPlan above. Never an enforcement ceiling — see
+  // VaultCause.targetAmount's own schema comment.
+  targetAmount: string | null;
   // Update, 2026-09-15 — one row per currency the vault accepts
   // (VaultCauseAllocation), replacing what used to be a bare
   // allocatedAmount/proceedsAllocatedAmount scalar with no currency of

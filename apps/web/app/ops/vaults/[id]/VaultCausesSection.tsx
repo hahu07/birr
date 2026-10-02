@@ -72,7 +72,7 @@ export function VaultCausesSection({
         />
       )}
 
-      {!error && causes === null && <RowsSkeleton columns={showProceeds ? 6 : 5} />}
+      {!error && causes === null && <RowsSkeleton columns={showProceeds ? 7 : 6} />}
 
       {!error && causes !== null && causes.length === 0 && !showForm && (
         <EmptyState title="No causes yet" description="Add one above before publishing this vault." />
@@ -85,6 +85,7 @@ export function VaultCausesSection({
               <TableHeaderCell>Name</TableHeaderCell>
               <TableHeaderCell>Description</TableHeaderCell>
               <TableHeaderCell>Project plan</TableHeaderCell>
+              <TableHeaderCell>Goal ({currency})</TableHeaderCell>
               <TableHeaderCell>Allocated</TableHeaderCell>
               {showProceeds && <TableHeaderCell>Proceeds allocated</TableHeaderCell>}
               <TableHeaderCell className="text-right">Added</TableHeaderCell>
@@ -97,6 +98,9 @@ export function VaultCausesSection({
                 <TableCell className="text-slate-500">{c.description ?? "—"}</TableCell>
                 <TableCell className="text-slate-500">
                   <ProjectPlanCell causeId={c.id} value={c.projectPlan} onSaved={load} />
+                </TableCell>
+                <TableCell className="text-slate-500">
+                  <TargetAmountCell causeId={c.id} value={c.targetAmount} onSaved={load} />
                 </TableCell>
                 <TableCell className="text-slate-500">
                   <AllocationCell
@@ -519,6 +523,83 @@ function ProjectPlanCell({ causeId, value, onSaved }: { causeId: string; value: 
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+      />
+      <div className="flex items-center gap-2">
+        <Button type="button" disabled={submitting} onClick={handleSave} className="px-2.5 py-1 text-xs">
+          {submitting ? "Saving…" : "Save"}
+        </Button>
+        <button type="button" className="text-xs text-slate-500 hover:underline" onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+// Plain staff CRUD (PATCH /vaults/causes/:id/target-amount), same shape
+// as ProjectPlanCell above — a display-only donation-page goal, not a
+// fiduciary ceiling (that's AllocationCell's governed propose below).
+// Clearing the field back to empty sends null, removing the goal
+// (and the public progress bar) rather than leaving a stale number.
+function TargetAmountCell({ causeId, value, onSaved }: { causeId: string; value: string | null; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span>{value ? formatAmount(value) : "—"}</span>
+        <button
+          type="button"
+          className="shrink-0 text-xs font-medium text-primary-700 hover:underline"
+          onClick={() => {
+            setDraft(value ?? "");
+            setError(null);
+            setEditing(true);
+          }}
+        >
+          {value ? "Edit" : "Set"}
+        </button>
+      </div>
+    );
+  }
+
+  async function handleSave() {
+    setError(null);
+    const trimmed = draft.trim();
+    if (trimmed && (Number.isNaN(Number(trimmed)) || Number(trimmed) <= 0)) {
+      setError("Enter a positive amount, or leave it blank to clear the goal.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await apiFetchJson(`/vaults/causes/${causeId}/target-amount`, {
+        method: "PATCH",
+        body: JSON.stringify({ targetAmount: trimmed || null }),
+      });
+      setEditing(false);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="min-w-[9rem] space-y-1.5">
+      <Input
+        type="number"
+        min="0"
+        step="0.01"
+        autoFocus
+        placeholder="No goal"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        className="w-28 px-2 py-1.5 text-xs"
       />
       <div className="flex items-center gap-2">
         <Button type="button" disabled={submitting} onClick={handleSave} className="px-2.5 py-1 text-xs">

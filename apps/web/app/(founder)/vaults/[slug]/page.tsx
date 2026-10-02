@@ -371,7 +371,9 @@ function ContributionForm({
           )}
         </div>
 
-        {causes.length > 0 && <CauseChoice causes={causes} selectedId={vaultCauseId} onSelect={setVaultCauseId} />}
+        {causes.length > 0 && (
+          <CauseChoice causes={causes} vaultCurrency={vault.currency} selectedId={vaultCauseId} onSelect={setVaultCauseId} />
+        )}
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700">Payment method</label>
@@ -455,17 +457,20 @@ function formatMinimum(amount: string) {
 // one-line description, and what's actually been given to it so far, so
 // the comparison happens before the choice.
 //
-// Deliberately no goal/progress bar per cause — a VaultCause has no
-// fundraising target of its own, and its VaultCauseAllocation ceilings
-// are governed internal figures kept out of the public payload on
-// purpose (see VaultsService.PUBLIC_VAULT_SELECT). A bar needs an honest
-// denominator, so this shows the raised figure alone.
+// A per-cause goal bar needs an honest denominator — VaultCause.targetAmount
+// (2026-10-02) is purely display, always in the vault's own primary
+// currency, never the VaultCauseAllocation ceiling (that stays a
+// governed, internal figure kept out of the public payload — see
+// VaultsService.PUBLIC_VAULT_SELECT). A cause with no goal set shows the
+// raised figure alone, same as before this field existed.
 function CauseChoice({
   causes,
+  vaultCurrency,
   selectedId,
   onSelect,
 }: {
   causes: VaultCause[];
+  vaultCurrency: string;
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
@@ -477,6 +482,7 @@ function CauseChoice({
           name="Wherever it's needed most"
           description="Birr directs your gift to whichever of this vault's causes needs it most."
           icon="✨"
+          vaultCurrency={vaultCurrency}
           selected={selectedId === ""}
           onSelect={() => onSelect("")}
         />
@@ -490,6 +496,8 @@ function CauseChoice({
             // reading as broken next to the ones that do.
             icon={c.icon ?? "◆"}
             raised={c.amountRaised}
+            targetAmount={c.targetAmount}
+            vaultCurrency={vaultCurrency}
             // Progressive disclosure for the longer write-up only: a
             // 2,000-character project plan on every card at once is the
             // wall of text the description line exists to avoid.
@@ -508,6 +516,8 @@ function CauseCard({
   description,
   icon,
   raised,
+  targetAmount,
+  vaultCurrency,
   projectPlan,
   selected,
   onSelect,
@@ -516,6 +526,8 @@ function CauseCard({
   description: string | null;
   icon: string;
   raised?: { currency: string; amount: string }[];
+  targetAmount?: string | null;
+  vaultCurrency: string;
   projectPlan?: string | null;
   selected: boolean;
   onSelect: () => void;
@@ -523,6 +535,13 @@ function CauseCard({
   // Every currency this cause has actually received, each on its own
   // terms — same never-convert posture as the vault-level totals above.
   const given = (raised ?? []).filter((r) => Number(r.amount) > 0);
+  // The goal bar can only ever compare like with like — the target is
+  // always in vaultCurrency, so only that currency's raised figure (if
+  // any) has an honest percentage against it. A gift in some other
+  // accepted currency still shows in `given` above, just not in the bar.
+  const target = targetAmount ? Number(targetAmount) : null;
+  const raisedInVaultCurrency = Number(raised?.find((r) => r.currency === vaultCurrency)?.amount ?? "0");
+  const pct = target && target > 0 ? Math.min(100, Math.round((raisedInVaultCurrency / target) * 100)) : null;
 
   return (
     <label
@@ -543,10 +562,29 @@ function CauseCard({
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium text-slate-900">{name}</span>
         {description && <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">{description}</span>}
-        {given.length > 0 && (
-          <span className="mt-1 block text-xs text-slate-500">
-            {given.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")} given so far
+        {pct !== null ? (
+          <span className="mt-1.5 block">
+            <span className="block h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+              <span className="block h-full rounded-full bg-primary-600" style={{ width: `${pct}%` }} />
+            </span>
+            <span className="mt-1 flex items-baseline justify-between gap-2 text-xs text-slate-500">
+              <span>
+                {vaultCurrency} {raisedInVaultCurrency.toLocaleString()} raised
+              </span>
+              <span>of {vaultCurrency} {target!.toLocaleString()} goal</span>
+            </span>
+            {given.length > 1 && (
+              <span className="mt-0.5 block text-xs text-slate-500">
+                Also given: {given.filter((r) => r.currency !== vaultCurrency).map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")}
+              </span>
+            )}
           </span>
+        ) : (
+          given.length > 0 && (
+            <span className="mt-1 block text-xs text-slate-500">
+              {given.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")} given so far
+            </span>
+          )
         )}
         {projectPlan && <span className="mt-1.5 block rounded-md bg-white/70 p-2 text-xs leading-relaxed text-slate-600">{projectPlan}</span>}
       </span>

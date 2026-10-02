@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsArray, IsEnum, IsOptional, IsString, Matches, MaxLength } from "class-validator";
+import { IsArray, IsEnum, IsNumberString, IsOptional, IsString, Matches, MaxLength, ValidateIf } from "class-validator";
 import { prisma, Prisma, VaultType, VaultStatus } from "@birr/db";
 import { VaultProceedsService } from "./vault-proceeds.service";
 import { VaultLedgerService } from "./vault-ledger.service";
 import { findVaultOrThrow } from "./find-vault-or-throw";
 import { SPENDABLE_CONTRIBUTION_WHERE } from "./spendable-contributions";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
@@ -91,6 +92,19 @@ export class UpdateVaultCauseProjectPlanInput {
   @IsString()
   @MaxLength(2000)
   projectPlan?: string;
+}
+
+export class UpdateVaultCauseTargetAmountInput {
+  // Not @IsOptional() the way projectPlan's own update input is — this
+  // endpoint only ever has one job (set or clear the goal), so unlike
+  // updateCauseProjectPlan's "only overwrite whichever field is sent"
+  // multi-purpose shape, an absent body here would be ambiguous between
+  // "leave it alone" and a client bug. null clears it back to no goal;
+  // a positive decimal string sets it.
+  @ValidateIf((o) => o.targetAmount !== null)
+  @IsNumberString()
+  @IsPositiveDecimal()
+  targetAmount!: string | null;
 }
 
 // Every VaultStatus transition a staff member may trigger directly via
@@ -332,6 +346,11 @@ export class VaultsService {
         name: true,
         description: true,
         projectPlan: true,
+        // Display-only goal — see VaultCause.targetAmount's own schema
+        // comment on why it's safe to show publicly despite never being
+        // an enforcement ceiling (that stays VaultCauseAllocation,
+        // deliberately excluded from this select).
+        targetAmount: true,
         // Only the catalog row's `icon` — never its projectPlan/
         // projectPlanFileUrl, which are staff reference material by
         // design (see CauseCategory's own schema comments). Flattened to
@@ -579,6 +598,42 @@ export class VaultsService {
           entityId: updated.id,
           before: { projectPlan: cause.projectPlan } as any,
           after: { projectPlan: updated.projectPlan } as any,
+        },
+      });
+
+      return updated;
+    });
+  }
+
+  /**
+   * Sets (or, with null, clears) a cause's own fundraising goal — the
+   * donation page's per-cause progress bar denominator (see
+   * VaultCause.targetAmount's own schema comment on why this is purely
+   * display, never an enforcement ceiling). Plain staff CRUD, same trust
+   * tier as updateCauseProjectPlan above — setting a goal figure isn't
+   * the fiduciary decision; the real ceiling stays
+   * VaultCauseAllocation, set only via the governed actions.
+   */
+  async updateCauseTargetAmount(id: string, input: { targetAmount: string | null }, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const cause = await tx.vaultCause.findFirst({ where: { id, deletedAt: null } });
+      if (!cause) throw new NotFoundException(`VaultCause "${id}" not found.`);
+
+      const updated = await tx.vaultCause.update({
+        where: { id },
+        data: { targetAmount: input.targetAmount },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          vaultId: cause.vaultId,
+          actorType: "birr_staff",
+          actorUserId,
+          action: "vault_cause.target_amount_updated",
+          entityType: "VaultCause",
+          entityId: updated.id,
+          before: { targetAmount: cause.targetAmount?.toString() ?? null } as any,
+          after: { targetAmount: updated.targetAmount?.toString() ?? null } as any,
         },
       });
 
