@@ -266,7 +266,7 @@ export function VaultCard({ vault, showType = false }: { vault: Vault; showType?
         {vault.description && <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-slate-600">{vault.description}</p>}
 
         {vault.causes && vault.causes.length > 0 && (
-          <div className="mt-3 space-y-2.5">
+          <div className="mt-3 space-y-2">
             {vault.causes.map((c) => (
               <CauseProgressRow key={c.id} cause={c} vaultCurrency={vault.currency} />
             ))}
@@ -340,7 +340,7 @@ function CauseProgressRow({ cause, vaultCurrency }: { cause: VaultCause; vaultCu
   const pct = target && target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : null;
 
   return (
-    <div>
+    <div className="rounded-md border border-slate-200 bg-slate-50/60 px-2.5 py-2">
       <div className="flex items-center gap-1 text-xs font-medium text-slate-700">
         {cause.icon && (
           <span aria-hidden="true" className="leading-none">
