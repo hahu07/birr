@@ -45,6 +45,14 @@ export default function VaultDonationPage() {
   const { slug } = useParams<{ slug: string }>();
   const [vault, setVault] = useState<Vault | null | undefined>(undefined);
   const [minimums, setMinimums] = useState<ContributionMinimum[]>([]);
+  // A genuine "this vault isn't open" (real 404 from our own backend) is
+  // a different message from "something broke while loading" (network
+  // failure, 500, or — the exact case that surfaced this, 2026-10-02 — a
+  // misconfigured NEXT_PUBLIC_BACKEND_URL producing a 404-shaped
+  // response from the wrong server entirely). Both used to collapse into
+  // "This vault isn't open right now," telling a donor a real vault was
+  // closed/unpublished when the actual problem was the fetch itself.
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     apiFetchJson<Vault>(`/vaults/by-slug/${slug}`)
@@ -52,9 +60,34 @@ export default function VaultDonationPage() {
         setVault(v);
         trackFunnelEvent("vault", "page_viewed", { vaultId: v.id });
       })
-      .catch(() => setVault(null));
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          setVault(null);
+        } else {
+          setLoadError(true);
+        }
+      });
     apiFetchJson<ContributionMinimum[]>("/waqf-funding/contribution-minimums").then(setMinimums).catch(() => setMinimums([]));
   }, [slug]);
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-white">
+        <SiteHeader />
+        <div className="mx-auto max-w-xl px-6 py-24 text-center sm:px-8">
+          <h1 className="text-xl font-semibold text-slate-900">Couldn't load this vault.</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Something went wrong reaching Birr — this isn't the same as the vault being closed. Try again in a
+            moment.
+          </p>
+          <Button type="button" className="mt-6" onClick={() => window.location.reload()}>
+            Try again
+          </Button>
+        </div>
+        <SiteFooter />
+      </div>
+    );
+  }
 
   if (vault === undefined) {
     return (

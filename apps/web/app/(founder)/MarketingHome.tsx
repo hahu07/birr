@@ -255,11 +255,18 @@ export default function MarketingHome({
   // comment) — GET /vaults/:id/causes is staff-only, not something this
   // unauthenticated page could call per vault to fill them in afterward.
   const [openVaults, setOpenVaults] = useState<Vault[] | null>(null);
+  // On a fetch failure, openVaults deliberately stays null rather than
+  // being forced to [] — the hero badge and "no vaults open" copy below
+  // both already treat null as "nothing to show yet," which is honest
+  // here (unlike claiming zero vaults are open when the real count is
+  // unknown). See /vaults/page.tsx's own loadError for the fuller
+  // version of this same fix on the page where it matters more.
+  const [vaultsLoadError, setVaultsLoadError] = useState(false);
 
   useEffect(() => {
     apiFetchJson<Vault[]>("/vaults/open")
       .then(setOpenVaults)
-      .catch(() => setOpenVaults([]));
+      .catch(() => setVaultsLoadError(true));
   }, []);
 
   return (
@@ -544,6 +551,19 @@ export default function MarketingHome({
         {openVaults !== null && openVaults.length === 0 && (
           <p className="mx-auto mt-10 max-w-md text-center text-sm text-slate-500">
             No vaults are open for giving right now — check back soon.
+          </p>
+        )}
+
+        {/* A load failure shouldn't claim "nothing's open" — just say
+            nothing here; /vaults (this section's own "Browse every open
+            vault" link) shows a real retry affordance instead. */}
+        {vaultsLoadError && (
+          <p className="mx-auto mt-10 max-w-md text-center text-sm text-slate-500">
+            Couldn't load open vaults right now.{" "}
+            <Link href="/vaults" className="font-semibold text-primary-700 hover:text-primary-800">
+              Try the full list
+            </Link>
+            .
           </p>
         )}
 

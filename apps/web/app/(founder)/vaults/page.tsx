@@ -8,20 +8,39 @@
 // section) unchanged — this page is the fuller, linkable one, not a
 // replacement for it. Same @Public() GET /vaults/open this page's data
 // comes from.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import type { Vault } from "../../../lib/types";
-import { Skeleton } from "@birr/ui";
+import { Alert, Button, Skeleton } from "@birr/ui";
 import { Reveal, SiteFooter, SiteHeader, VaultCard } from "../SiteChrome";
 
 export default function VaultsIndexPage() {
   const [vaults, setVaults] = useState<Vault[] | null>(null);
+  // Distinct from `vaults === null` (still loading) and `vaults === []`
+  // (genuinely nothing open) — a fetch failure used to collapse into the
+  // same empty-state copy as a real zero-vaults result, silently telling
+  // a donor "nothing's open" when the backend was actually unreachable
+  // (found 2026-10-02, misconfigured NEXT_PUBLIC_BACKEND_URL made this
+  // exact page show "No vaults are open" while 16 were).
+  const [loadError, setLoadError] = useState(false);
+
+  // No synchronous setLoadError(false) at the top of this function —
+  // both state updates stay inside the .then/.catch callbacks (genuinely
+  // async), so calling load() directly from the effect body below never
+  // triggers a synchronous setState-in-effect. A stale loadError clears
+  // itself the moment a retry actually succeeds.
+  const load = useCallback(() => {
+    apiFetchJson<Vault[]>("/vaults/open")
+      .then((data) => {
+        setVaults(data);
+        setLoadError(false);
+      })
+      .catch(() => setLoadError(true));
+  }, []);
 
   useEffect(() => {
-    apiFetchJson<Vault[]>("/vaults/open")
-      .then(setVaults)
-      .catch(() => setVaults([]));
-  }, []);
+    load();
+  }, [load]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -46,7 +65,7 @@ export default function VaultsIndexPage() {
             changing how the section reads visually. */}
         <h2 className="sr-only">Open vaults</h2>
 
-        {vaults === null && (
+        {vaults === null && !loadError && (
           <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-64 w-full" />
@@ -54,13 +73,25 @@ export default function VaultsIndexPage() {
           </div>
         )}
 
-        {vaults !== null && vaults.length === 0 && (
+        {loadError && (
+          <div className="mx-auto mt-10 max-w-md">
+            <Alert tone="danger" title="Couldn't load open vaults">
+              Something went wrong reaching Birr — this isn't the same as there being nothing open. Try again in a
+              moment.
+            </Alert>
+            <Button type="button" className="mt-4 w-full" onClick={load}>
+              Try again
+            </Button>
+          </div>
+        )}
+
+        {vaults !== null && !loadError && vaults.length === 0 && (
           <p className="mx-auto mt-12 max-w-md text-center text-sm text-slate-500">
             No vaults are open for giving right now — check back soon.
           </p>
         )}
 
-        {vaults !== null && vaults.length > 0 && (
+        {vaults !== null && !loadError && vaults.length > 0 && (
           <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {vaults.map((vault, i) => (
               <Reveal key={vault.id} delayMs={i * 75}>
