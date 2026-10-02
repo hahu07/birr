@@ -94,7 +94,14 @@ export function VaultCausesSection({
           <TableBody>
             {causes.map((c) => (
               <TableRow key={c.id}>
-                <TableCell className="font-medium text-slate-900">{c.name}</TableCell>
+                <TableCell className="font-medium text-slate-900">
+                  {c.icon && (
+                    <span aria-hidden="true" className="mr-1.5">
+                      {c.icon}
+                    </span>
+                  )}
+                  {c.name}
+                </TableCell>
                 <TableCell className="text-slate-500">{c.description ?? "—"}</TableCell>
                 <TableCell className="text-slate-500">
                   <ProjectPlanCell causeId={c.id} value={c.projectPlan} onSaved={load} />

@@ -328,6 +328,31 @@ describe("VaultsService", () => {
     });
   });
 
+  test("listCauses() flattens each cause's catalog icon the same way the public routes do, alongside its allocations and targetAmount", async () => {
+    const category = await prisma.causeCategory.create({
+      data: { name: `Ops List Icon Category ${Date.now()}`, icon: "🚨" },
+    });
+    causeCategoryIds.push(category.id);
+
+    const vault = await service.create(
+      { name: "Ops List Causes Vault", slug: uniqueSlug("ops-list-causes"), type: "project", currency: "NGN", jurisdiction: "NG" },
+      actorUserId,
+    );
+    vaultIds.push(vault.id);
+    const fromCatalog = await service.createCause({ vaultId: vault.id, causeCategoryId: category.id }, actorUserId);
+    const custom = await service.createCause({ vaultId: vault.id, name: "Ops Custom Cause" }, actorUserId);
+    vaultCauseIds.push(fromCatalog.id, custom.id);
+    await service.updateCauseTargetAmount(fromCatalog.id, { targetAmount: "500000" }, actorUserId);
+
+    const listed = await service.listCauses(vault.id);
+    const catalogRow = listed.find((c) => c.id === fromCatalog.id);
+    expect(catalogRow?.icon).toBe("🚨");
+    expect(catalogRow).not.toHaveProperty("causeCategory");
+    expect(catalogRow?.targetAmount?.toString()).toBe("500000");
+    expect(catalogRow?.allocations).toEqual([]);
+    expect(listed.find((c) => c.id === custom.id)?.icon).toBeNull();
+  });
+
   test("findBySlug() exposes a cause's own targetAmount publicly, null when no goal has been set", async () => {
     const slug = uniqueSlug("cause-goal-public");
     const vault = await service.create(

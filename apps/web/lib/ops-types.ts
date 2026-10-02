@@ -991,6 +991,12 @@ export interface VaultCause {
   // projectPlan above. Never an enforcement ceiling — see
   // VaultCause.targetAmount's own schema comment.
   targetAmount: string | null;
+  // The CauseCategory catalog row's own emoji glyph, flattened onto the
+  // cause by VaultsService.listCauses the same way VaultsService
+  // .publicCause does for the donor-facing routes — so staff see the
+  // same icon a donor will. null for a one-off custom cause, which
+  // belongs to no category.
+  icon: string | null;
   // Update, 2026-09-15 — one row per currency the vault accepts
   // (VaultCauseAllocation), replacing what used to be a bare
   // allocatedAmount/proceedsAllocatedAmount scalar with no currency of

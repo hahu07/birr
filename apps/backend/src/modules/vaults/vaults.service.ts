@@ -561,12 +561,17 @@ export class VaultsService {
     });
   }
 
-  listCauses(vaultId: string) {
-    return prisma.vaultCause.findMany({
+  async listCauses(vaultId: string) {
+    const causes = await prisma.vaultCause.findMany({
       where: { vaultId, deletedAt: null },
-      include: { allocations: true },
+      // causeCategory joined (icon only) and flattened the same way
+      // publicCause() does for the donor-facing route — Ops Console's own
+      // causes table shows the icon next to each cause's name too, so a
+      // staff member sees the same glyph a donor will.
+      include: { allocations: true, causeCategory: { select: { icon: true } } },
       orderBy: { createdAt: "desc" },
     });
+    return causes.map(VaultsService.publicCause);
   }
 
   /**
