@@ -324,13 +324,16 @@ export function VaultCard({ vault, showType = false }: { vault: Vault; showType?
 
 // One cause, compact enough for a browse-grid card rather than the full
 // CauseChoice treatment the detail page (vaults/[slug]/page.tsx) gives
-// each cause — a donor browsing many vault cards needs to compare causes
-// at a glance, not read a full description for each one here. Same
-// underlying figures as the detail page (VaultCause.targetAmount/
-// amountRaised), just name + icon + bar, no description/project-plan
-// text and no selection affordance (this card's whole surface is
-// already the link to the vault; picking a specific cause happens once
-// a donor is actually on that vault's own page).
+// each cause — no projectPlan text (that one can run to 2,000 characters,
+// genuinely a detail-page-only read) and no selection affordance (this
+// card's whole surface is already the link to the vault; picking a
+// specific cause happens once a donor is actually on that vault's own
+// page). description DOES show here though (2026-10-02 — dropping it was
+// a miss, not a deliberate trim): a donor comparing causes across many
+// vault cards needs to know what each one actually does, not just its
+// name and a bar — "Two new boreholes in rural Kaduna" is the thing that
+// turns a bare progress bar into a reason to pick one cause over
+// another.
 function CauseProgressRow({ cause, vaultCurrency }: { cause: VaultCause; vaultCurrency: string }) {
   const target = cause.targetAmount ? Number(cause.targetAmount) : null;
   const raised = Number(cause.amountRaised?.find((r) => r.currency === vaultCurrency)?.amount ?? "0");
@@ -346,6 +349,7 @@ function CauseProgressRow({ cause, vaultCurrency }: { cause: VaultCause; vaultCu
         )}
         <span className="truncate">{cause.name}</span>
       </div>
+      {cause.description && <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500">{cause.description}</p>}
       {pct !== null ? (
         <>
           <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
