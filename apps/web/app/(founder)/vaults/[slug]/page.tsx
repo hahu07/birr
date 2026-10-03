@@ -362,8 +362,11 @@ function ContributionForm({
 
         {acceptedCurrencies.length > 1 && (
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Currency</label>
+            <label htmlFor="contribution-currency" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Currency
+            </label>
             <Select
+              id="contribution-currency"
               className="w-full"
               value={currency}
               onChange={(e) => {
@@ -387,8 +390,11 @@ function ContributionForm({
         )}
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700">Amount ({currency})</label>
+          <label htmlFor="contribution-amount" className="mb-1.5 block text-sm font-medium text-slate-700">
+            Amount ({currency})
+          </label>
           <Input
+            id="contribution-amount"
             type="number"
             min="0"
             step="0.01"
@@ -409,8 +415,15 @@ function ContributionForm({
         )}
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700">Payment method</label>
-          <Select className="w-full" value={provider} onChange={(e) => setProvider(e.target.value as (typeof PROVIDERS)[number]["value"])}>
+          <label htmlFor="contribution-provider" className="mb-1.5 block text-sm font-medium text-slate-700">
+            Payment method
+          </label>
+          <Select
+            id="contribution-provider"
+            className="w-full"
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as (typeof PROVIDERS)[number]["value"])}
+          >
             {availableProviders.map((p) => (
               <option key={p.value} value={p.value}>
                 {p.label}
@@ -421,8 +434,11 @@ function ContributionForm({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Email (optional)</label>
+            <label htmlFor="contribution-donor-email" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Email (optional)
+            </label>
             <Input
+              id="contribution-donor-email"
               type="email"
               placeholder="you@example.com"
               value={donorEmail}
@@ -431,8 +447,10 @@ function ContributionForm({
             <p className="mt-1 text-xs text-slate-500">For your receipt. Leave blank to give anonymously, without a receipt.</p>
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Full name (optional)</label>
-            <Input value={donorFullName} onChange={(e) => setDonorFullName(e.target.value)} />
+            <label htmlFor="contribution-donor-name" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Full name (optional)
+            </label>
+            <Input id="contribution-donor-name" value={donorFullName} onChange={(e) => setDonorFullName(e.target.value)} />
           </div>
         </div>
 
@@ -453,8 +471,15 @@ function ContributionForm({
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">ID type</label>
-                <Select className="w-full" value={idType} onChange={(e) => setIdType(e.target.value as (typeof ID_TYPES)[number])}>
+                <label htmlFor="contribution-id-type" className="mb-1.5 block text-sm font-medium text-slate-700">
+                  ID type
+                </label>
+                <Select
+                  id="contribution-id-type"
+                  className="w-full"
+                  value={idType}
+                  onChange={(e) => setIdType(e.target.value as (typeof ID_TYPES)[number])}
+                >
                   {ID_TYPES.map((t) => (
                     <option key={t} value={t}>
                       {humanize(t)}
@@ -463,8 +488,10 @@ function ContributionForm({
                 </Select>
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">ID number</label>
-                <Input value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
+                <label htmlFor="contribution-id-number" className="mb-1.5 block text-sm font-medium text-slate-700">
+                  ID number
+                </label>
+                <Input id="contribution-id-number" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
               </div>
             </div>
           </div>
