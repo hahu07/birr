@@ -1896,7 +1896,34 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorUserId])
   @@index([createdAt])
+  // 2026-10-03 — supports audit_logs_verify_chain()'s recursive walk by
+  // actual hash linkage (previousHash -> recordHash), not by sequence —
+  // see that migration's own comment for why sequence order isn't a
+  // safe stand-in for chain order under concurrent inserts.
+  @@index([previousHash])
   @@map("audit_logs")
+}
+
+// Tracks the current tip of the audit-log hash chain — one row, always.
+// See 20261003010000_fix_audit_log_chain_head_race's own migration
+// comment for why this exists: audit_logs_chain_hash() (the BEFORE
+// INSERT trigger on AuditLog) reads and advances this row's lastHash
+// via SELECT ... FOR UPDATE, replacing an advisory-lock-plus-plain-
+// SELECT pattern that had a real, confirmed concurrency bug — a plain
+// SELECT's snapshot stays fixed for its whole statement even across a
+// lock wait, so two transactions could both read the same "last row"
+// and fork the chain. SELECT ... FOR UPDATE doesn't have that problem.
+// Application code never touches this through Prisma Client directly —
+// only the trigger (raw SQL) reads/writes it. Deliberately not
+// tamper-evident itself (no revoked UPDATE grant, unlike AuditLog) —
+// it holds no independently meaningful record, only working state, the
+// same operational role the audit_logs_sequence_seq sequence already
+// plays for `sequence`.
+model AuditLogChainHead {
+  id       Boolean @id @default(true)
+  lastHash String?
+
+  @@map("audit_log_chain_head")
 }
 
 // "Who needs to know," not "what happened" — a deliberately separate
