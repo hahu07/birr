@@ -8,17 +8,22 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@birr/db": "workspace:^",
     "@birr/ui": "workspace:*",
     "@sentry/nextjs": "^10.73.0",
+    "bcryptjs": "^3.0.3",
     "next": "^16.2.12",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.3.4",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -29,6 +34,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^30.0.1",
+    "otpauth": "^9.5.2",
     "postcss": "^8.5.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.6.0",

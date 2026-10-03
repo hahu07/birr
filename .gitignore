@@ -9,6 +9,12 @@ coverage
 apps/backend/uploads/
 .claude/
 
+# Playwright (apps/web/e2e)
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+apps/web/e2e/.auth/
+
 
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md

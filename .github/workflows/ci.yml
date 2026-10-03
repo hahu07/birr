@@ -212,6 +212,75 @@ jobs:
       # own comment for why that's the right seam.
       - run: pnpm --filter @birr/agents test
 
+  # Playwright, against real backend + web dev servers started by
+  # apps/web/playwright.config.ts's own webServer entries (not `pnpm
+  # dev`'s/the Docker-compose default ports — see that file's own
+  # comment on the dedicated 3100/4150 ports this suite uses instead, so
+  # it never collides with anything). Unlike `test` above, this needs the
+  # frontend too, so both DBs — er, both apps — come up against the same
+  # migrated+seeded Postgres instance the `test` job's own shape already
+  # establishes.
+  e2e-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: birr
+          POSTGRES_PASSWORD: birr_dev_password
+          POSTGRES_DB: birr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U birr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Superuser connection for migrate deploy, same posture as `test`
+      # above — the e2e run itself (seed + Playwright's own fixtures,
+      # and the backend dev server Playwright spawns) uses birr_app
+      # instead, set per-step below, so RLS is live for this run exactly
+      # as it is for a real deployment.
+      DATABASE_URL: postgresql://birr:birr_dev_password@localhost:5432/birr?schema=public
+      JWT_SECRET: ci-test-secret-not-for-real-use
+      SETTINGS_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @birr/db exec prisma generate
+      # Same gap `test`'s own comment flags for its direct-test-runner
+      # bypass of turbo's dependsOn graph — e2e/fixtures/seed.ts's `import
+      # ... from "@birr/db"` needs this package's own compiled JS, not
+      # just the generated Prisma Client.
+      - run: pnpm --filter @birr/db build
+      - run: pnpm --filter @birr/db exec prisma migrate deploy
+      - run: pnpm --filter @birr/db exec prisma db seed
+        env:
+          DATABASE_URL: postgresql://birr_app:birr_app_dev_password@localhost:5432/birr?schema=public
+      # CI has root, unlike a local sandboxed run — --with-deps installs
+      # the system shared libraries headless Chromium needs alongside
+      # the browser binary itself, which a local run without sudo access
+      # can't do (falls back to a browser-only install there instead;
+      # see apps/web/e2e's own notes on that gap).
+      - run: pnpm --filter @birr/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @birr/web e2e
+        env:
+          DATABASE_URL: postgresql://birr_app:birr_app_dev_password@localhost:5432/birr?schema=public
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+
   web-test:
     runs-on: ubuntu-latest
     steps:
@@ -266,7 +335,7 @@ jobs:
       - run: pnpm audit --audit-level=high
 
   deploy:
-    needs: [typecheck, lint, migration-drift, test, agents-test, web-test, build, dependency-audit]
+    needs: [typecheck, lint, migration-drift, test, agents-test, web-test, e2e-test, build, dependency-audit]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
