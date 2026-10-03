@@ -72,15 +72,20 @@ export function visibleImpact(summary: ImpactSummary | null): ImpactSummary | nu
 /** "₦141M", "$12.3K" — compact, one decimal at most. Non-ISO codes (USDC, USDT) fall back to "USDC 4.1K". */
 export function formatCompactMoney({ currency, amount }: CurrencyTotal): string {
   const value = Number(amount);
+  // trailingZeroDisplay defaults to "auto", whose rounding/display
+  // behavior has differed across Node/ICU versions (observed: "₦141M"
+  // locally vs "₦141.0M" in CI on a different Node build) — "stripIfInteger"
+  // pins the one behavior this app actually wants (no trailing .0 on a
+  // whole compact unit) regardless of runtime.
+  const options: Intl.NumberFormatOptions = {
+    notation: "compact",
+    maximumFractionDigits: 1,
+    trailingZeroDisplay: "stripIfInteger",
+  };
   try {
-    return new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency,
-      notation: "compact",
-      maximumFractionDigits: 1,
-    }).format(value);
+    return new Intl.NumberFormat("en-NG", { ...options, style: "currency", currency }).format(value);
   } catch {
-    const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+    const compact = new Intl.NumberFormat("en", options).format(value);
     return `${currency} ${compact}`;
   }
 }

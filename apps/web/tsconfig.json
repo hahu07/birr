@@ -5,7 +5,13 @@
     "moduleResolution": "Bundler",
     "jsx": "preserve",
     "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./*"] }
+    "paths": { "@/*": ["./*"] },
+    // Same default set TS implies for an unset `lib` at target ES2022
+    // (ES2022 + DOM + DOM.Iterable), plus ES2023.Intl explicitly — the
+    // lib that declares Intl.NumberFormatOptions.trailingZeroDisplay,
+    // which lib/impact-api.ts's formatCompactMoney() needs to pin
+    // deterministic compact-currency rounding across Node/ICU versions.
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "ES2023.Intl"]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]

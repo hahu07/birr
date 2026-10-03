@@ -332,6 +332,19 @@ jobs:
       # this job flaky against upstream advisories nobody here can act
       # on immediately), but a high/critical finding on a fiduciary
       # system's dependency tree should stop the build.
+      #
+      # 2026-10-03: root package.json's pnpm.auditConfig.ignoreCves
+      # exempts exactly two of these — CVE-2026-93748 (http-cache-
+      # semantics, only reachable via Docusaurus's update-notifier in
+      # apps/docs — a dev-only build tool, never deployed) and
+      # CVE-2026-93687 (braces, only reachable via @nestjs/cli's file
+      # watcher — also dev-only, never shipped in the backend's
+      # production build). Neither has a patched version published yet
+      # (confirmed against the npm registry directly, not just this
+      # advisory's own metadata) — bumping can't fix what upstream
+      # hasn't released. Revisit by removing the ignore once either
+      # package ships a fix; a high/critical hit on anything else still
+      # stops this job.
       - run: pnpm audit --audit-level=high
 
   deploy:
