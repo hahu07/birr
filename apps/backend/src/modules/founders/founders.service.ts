@@ -697,10 +697,20 @@ export class FoundersService {
     }
 
     const rafiqAgent = await prisma.aiAgent.findUnique({ where: { name: "rafiq" } });
+    if (!rafiqAgent) {
+      // Every agent-initiated write must be attributable to a specific
+      // ai_agents row, never an undifferentiated "the AI" (CLAUDE.md's
+      // own non-negotiable) — actorAgentId?.id silently writing
+      // undefined here would otherwise persist an actorType: "ai_agent"
+      // audit row with no agent attached at all (found during a
+      // comprehensive codebase audit, 2026-10-03). Same fail-closed
+      // posture as the AGENT_SERVICE_INTERNAL_KEY check just above.
+      throw new Error('No "rafiq" row exists in ai_agents — has the database been seeded?');
+    }
     const draft = await prisma.auditLog.create({
       data: {
         actorType: "ai_agent",
-        actorAgentId: rafiqAgent?.id,
+        actorAgentId: rafiqAgent.id,
         action: "onboarding_assist.drafted",
         entityType: "User",
         entityId: userId,
