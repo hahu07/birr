@@ -44,40 +44,42 @@ function FounderTeam({ founderId, founderName }: { founderId: string; founderNam
       {!error && members === null && <Skeleton className="h-16 w-full" />}
       {!error && members !== null && (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <tbody className="divide-y divide-slate-100">
-              {members.map((member) => (
-                <tr key={member.id}>
-                  <td className="px-4 py-2.5">
-                    <p className="font-medium text-slate-900">{member.user.fullName}</p>
-                    <p className="text-xs text-slate-500">{member.user.email}</p>
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-500">{member.permissionLevel}</td>
-                  <td className="px-4 py-2.5">
-                    <Badge tone={member.status === "active" ? "success" : "neutral"}>{member.status}</Badge>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <Badge tone={member.user.mfaEnabled ? "success" : "neutral"}>
-                      {member.user.mfaEnabled ? "2FA enrolled" : "2FA not enrolled"}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    {isAdmin && member.user.mfaEnabled && (
-                      // Not a direct reset — a Board member or Compliance
-                      // officer has to approve it on the Approvals page, and
-                      // the Founder is emailed once it's done.
-                      <ProposeGovernedActionButton
-                        permissionKey="founder.mfa_reset"
-                        payload={{ userId: member.user.id }}
-                        label="Request MFA reset"
-                        onProposed={load}
-                      />
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-sm">
+              <tbody className="divide-y divide-slate-100">
+                {members.map((member) => (
+                  <tr key={member.id}>
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-slate-900">{member.user.fullName}</p>
+                      <p className="text-xs text-slate-500">{member.user.email}</p>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-500">{member.permissionLevel}</td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={member.status === "active" ? "success" : "neutral"}>{member.status}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <Badge tone={member.user.mfaEnabled ? "success" : "neutral"}>
+                        {member.user.mfaEnabled ? "2FA enrolled" : "2FA not enrolled"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {isAdmin && member.user.mfaEnabled && (
+                        // Not a direct reset — a Board member or Compliance
+                        // officer has to approve it on the Approvals page, and
+                        // the Founder is emailed once it's done.
+                        <ProposeGovernedActionButton
+                          permissionKey="founder.mfa_reset"
+                          payload={{ userId: member.user.id }}
+                          label="Request MFA reset"
+                          onProposed={load}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
