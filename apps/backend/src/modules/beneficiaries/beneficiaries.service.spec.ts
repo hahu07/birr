@@ -528,4 +528,64 @@ describe("BeneficiariesService", () => {
       expect(issues.find((i) => i.beneficiaryId === beneficiary.id)).toBeUndefined();
     });
   });
+
+  // No coverage existed for this method at all before this — a real gap
+  // given it's the one Founder-reachable beneficiary read
+  // (BeneficiariesController.summary(), @Public() + resolveFounderFromSession,
+  // no staff fallback) and its own comment flags a 2026-09-29 reversal
+  // from aggregate-only to including real per-beneficiary records —
+  // exactly the kind of change that risks silently widening what crosses
+  // the Founder Portal boundary. Found during the comprehensive review's
+  // §5 PII-boundary pass.
+  describe("summaryForFounder()", () => {
+    let founderAId: string;
+    let founderBId: string;
+
+    beforeAll(async () => {
+      // Founder/User fixtures not cleaned up in afterAll — same
+      // reasoning as every other spec in this codebase.
+      const founderA = await prisma.founder.create({ data: { name: "Summary Fixture Founder A", kind: "institution" } });
+      founderAId = founderA.id;
+      await prisma.foundationFounder.create({ data: { foundationId: (await prisma.waqf.findUniqueOrThrow({ where: { id: waqfAId } })).foundationId, founderId: founderAId } });
+
+      const founderB = await prisma.founder.create({ data: { name: "Summary Fixture Founder B (unrelated)", kind: "institution" } });
+      founderBId = founderB.id;
+    });
+
+    test("never includes bank/payout details, even for a beneficiary that has them on file", async () => {
+      const beneficiary = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "Summary Fixture Beneficiary", eligibilityCriteria: "Fixture" },
+        actorUserId,
+      );
+      beneficiaryIds.push(beneficiary.id);
+      await service.setPayoutDetails(
+        beneficiary.id,
+        { payoutProvider: "paystack", bankDetails: { bankName: "GTBank", accountNumber: "0123456789", accountName: "Summary Fixture Beneficiary" } },
+        actorUserId,
+      );
+
+      const summary = await service.summaryForFounder(waqfAId, founderAId);
+      expect(summary).not.toBeNull();
+      const entry = summary!.beneficiaries.find((b) => b.id === beneficiary.id);
+      expect(entry).toBeDefined();
+      expect(entry).not.toHaveProperty("bankDetailsEncrypted");
+      expect(entry).not.toHaveProperty("bankDetails");
+      expect(entry).not.toHaveProperty("payoutProvider");
+      expect(JSON.stringify(summary)).not.toContain("0123456789");
+      expect(JSON.stringify(summary)).not.toContain("GTBank");
+    });
+
+    test("returns null for a waqf that isn't the calling Founder's — an unrelated Founder can't enumerate it by id", async () => {
+      const summary = await service.summaryForFounder(waqfAId, founderBId);
+      expect(summary).toBeNull();
+    });
+
+    test("byStatus/byCause aggregates match the actual beneficiaries returned", async () => {
+      const summary = await service.summaryForFounder(waqfAId, founderAId);
+      expect(summary).not.toBeNull();
+      const activeCount = summary!.beneficiaries.filter((b) => b.status === "active").length;
+      expect(summary!.byStatus.active).toBe(activeCount);
+      expect(summary!.total).toBe(summary!.beneficiaries.length);
+    });
+  });
 });
