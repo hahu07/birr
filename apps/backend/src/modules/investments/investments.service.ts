@@ -383,15 +383,24 @@ export class InvestmentsService {
     return prisma.investment.findUnique({ where: { id }, include: { shariahScreening: true } });
   }
 
+  // deletedAt: null on both branches — nothing currently soft-deletes an
+  // Investment (status flips instead; see the status-change method
+  // above), so this is a no-op today, but listForFounder() below already
+  // filters it and this method shouldn't silently resurrect retired rows
+  // the moment something does start setting it (found during a
+  // comprehensive codebase audit, 2026-10-03 — the exact same gap
+  // existed in AssetsService.list() and BeneficiariesService.list(),
+  // fixed alongside this one).
   list(waqfId?: string) {
     if (waqfId) {
       return prisma.investment.findMany({
-        where: { waqfId },
+        where: { waqfId, deletedAt: null },
         include: { shariahScreening: true },
         orderBy: { createdAt: "desc" },
       });
     }
     return prisma.investment.findMany({
+      where: { deletedAt: null },
       include: { shariahScreening: true },
       orderBy: { createdAt: "desc" },
       take: MAX_UNSCOPED_LIST_ROWS,

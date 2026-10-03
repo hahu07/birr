@@ -119,11 +119,42 @@ describe("AssetsService", () => {
     });
   });
 
-  // Regression coverage for the 2026-08-31 codebase audit finding:
-  // listForFounder() had no test at all, unlike its sibling
-  // WaqfCausesService.listForFounder/InvestmentsService.list — a
-  // regression dropping the ownership WHERE clause or RLS binding here
-  // would have gone undetected.
+  // Regression coverage for a 2026-10-03 codebase audit finding: list()
+  // had no deletedAt: null filter in either branch, unlike its sibling
+  // listForFounder() below — a no-op today (nothing in this service ever
+  // sets Asset.deletedAt; disposal uses the separate status field
+  // instead — see dispose() above), but list() would have silently
+  // resurrected a soft-deleted asset in the Ops Console the moment any
+  // future code path started setting it. Sets deletedAt directly via
+  // Prisma (not through service code, since nothing in this service
+  // exposes a way to) specifically to simulate that future path.
+  describe("list()", () => {
+    // waqfId-scoped only — the unscoped branch is capped at
+    // MAX_UNSCOPED_LIST_ROWS most-recent rows, which a shared dev
+    // database running many concurrent spec files could push this
+    // fixture out of regardless of the filter under test, making that
+    // branch's absence-of-a-row assertion unreliable. This branch is
+    // deterministic: scoping to one fixture waqf means the result set
+    // is small and fully under this test's control.
+    test("excludes a soft-deleted asset, but still returns a non-deleted sibling on the same waqf", async () => {
+      const kept = await service.create(
+        { waqfId, name: "Kept Fixture Asset", category: "cash", estimatedValue: "50" },
+        { actorType: "birr_staff", actorUserId },
+      );
+      assetIds.push(kept.id);
+      const softDeleted = await service.create(
+        { waqfId, name: "Soft-Deleted Fixture Asset", category: "cash", estimatedValue: "50" },
+        { actorType: "birr_staff", actorUserId },
+      );
+      assetIds.push(softDeleted.id);
+      await prisma.asset.update({ where: { id: softDeleted.id }, data: { deletedAt: new Date() } });
+
+      const scoped = await service.list(waqfId);
+      expect(scoped.find((a) => a.id === softDeleted.id)).toBeUndefined();
+      expect(scoped.find((a) => a.id === kept.id)).toBeDefined();
+    });
+  });
+
   describe("listForFounder()", () => {
     test("returns the waqf's own assets for the founder that owns it", async () => {
       const asset = await service.create(

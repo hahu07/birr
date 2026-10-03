@@ -115,11 +115,19 @@ export class AssetsService {
     return prisma.asset.findUnique({ where: { id } });
   }
 
+  // deletedAt: null on both branches — nothing currently soft-deletes an
+  // Asset (status flips to "disposed" instead; see dispose() above), so
+  // this is a no-op today, but listForFounder() below already filters it
+  // and this method shouldn't silently resurrect retired rows the
+  // moment something does start setting it (found during a
+  // comprehensive codebase audit, 2026-10-03 — the exact same gap
+  // existed in BeneficiariesService.list() and InvestmentsService
+  // .list(), fixed alongside this one).
   list(waqfId?: string) {
     if (waqfId) {
-      return prisma.asset.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" } });
+      return prisma.asset.findMany({ where: { waqfId, deletedAt: null }, orderBy: { createdAt: "desc" } });
     }
-    return prisma.asset.findMany({ orderBy: { createdAt: "desc" }, take: MAX_UNSCOPED_LIST_ROWS });
+    return prisma.asset.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "desc" }, take: MAX_UNSCOPED_LIST_ROWS });
   }
 
   // Founder-Portal read-only visibility into their own waqf's registered

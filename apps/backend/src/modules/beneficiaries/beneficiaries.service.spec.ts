@@ -366,6 +366,36 @@ describe("BeneficiariesService", () => {
         findManySpy.mockRestore();
       }
     });
+
+    // Regression coverage for a 2026-10-03 codebase audit finding: every
+    // branch of list() was missing deletedAt: null, unlike its sibling
+    // summaryForFounder() — a no-op today (nothing in this service ever
+    // sets Beneficiary.deletedAt; status flips active/inactive instead;
+    // see updateStatus() above), but list() would have silently
+    // resurrected a soft-deleted beneficiary — including their
+    // decrypted bank details, per the comment two tests up — the moment
+    // any future code path started setting it. Sets deletedAt directly
+    // via Prisma (not through service code, since nothing in this
+    // service exposes a way to) specifically to simulate that future
+    // path. waqfId-scoped only, same determinism reasoning as the
+    // MAX_UNSCOPED_LIST_ROWS test above.
+    test("excludes a soft-deleted beneficiary, but still returns a non-deleted sibling on the same waqf", async () => {
+      const kept = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "Kept Fixture Beneficiary", eligibilityCriteria: "Fixture" },
+        actorUserId,
+      );
+      beneficiaryIds.push(kept.id);
+      const softDeleted = await service.create(
+        { waqfId: waqfAId, causeId: causeOnWaqfAId, name: "Soft-Deleted Fixture Beneficiary", eligibilityCriteria: "Fixture" },
+        actorUserId,
+      );
+      beneficiaryIds.push(softDeleted.id);
+      await prisma.beneficiary.update({ where: { id: softDeleted.id }, data: { deletedAt: new Date() } });
+
+      const scoped = await service.list(waqfAId, { id: actorUserId, staffRole: "mutawalli_officer" });
+      expect(scoped.find((b) => b.id === softDeleted.id)).toBeUndefined();
+      expect(scoped.find((b) => b.id === kept.id)).toBeDefined();
+    });
   });
 
   describe("findPossibleDuplicates()", () => {

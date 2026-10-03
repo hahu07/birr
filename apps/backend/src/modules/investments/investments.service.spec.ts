@@ -540,4 +540,45 @@ describe("InvestmentsService", () => {
       expect(result).toBeNull();
     });
   });
+
+  // Regression coverage for a 2026-10-03 codebase audit finding: every
+  // branch of list() was missing deletedAt: null, unlike its sibling
+  // listForFounder() above — a no-op today (nothing in this service ever
+  // sets Investment.deletedAt; status flips instead), but list() would
+  // have silently resurrected a soft-deleted investment in the Ops
+  // Console the moment any future code path started setting it. Sets
+  // deletedAt directly via Prisma (not through service code, since
+  // nothing in this service exposes a way to) specifically to simulate
+  // that future path. A dedicated waqf/contribution fixture, not the
+  // describe-level one — the shared waqfId's allocation pool is already
+  // drawn down by earlier tests in this file, and this test doesn't need
+  // to reason about remaining headroom to stay reliable.
+  describe("list()", () => {
+    test("excludes a soft-deleted investment, but still returns a non-deleted sibling on the same waqf", async () => {
+      const foundation = await prisma.foundation.create({ data: { name: "Investments List Fixture Foundation" } });
+      const listWaqf = await prisma.waqf.create({
+        data: { name: "Investments List Fixture Waqf", type: "investment", jurisdiction: "AE", foundationId: foundation.id, corpusCurrency: "USD" },
+      });
+      waqfIds.push(listWaqf.id);
+      await prisma.contribution.create({
+        data: { waqfId: listWaqf.id, amount: "2000", currency: "USD", provider: "stripe", providerReference: `investments-list-fixture-${Date.now()}`, status: "confirmed" },
+      });
+
+      const kept = await service.create(
+        { waqfId: listWaqf.id, name: "Kept Fixture Investment", instrumentType: "sukuk", allocatedAmount: "100", counterpartyId: activeCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
+        actorUserId,
+      );
+      investmentIds.push(kept.id);
+      const softDeleted = await service.create(
+        { waqfId: listWaqf.id, name: "Soft-Deleted Fixture Investment", instrumentType: "sukuk", allocatedAmount: "100", counterpartyId: activeCounterpartyId, businessDescription: "Fixture business description for Shariah screening purposes." },
+        actorUserId,
+      );
+      investmentIds.push(softDeleted.id);
+      await prisma.investment.update({ where: { id: softDeleted.id }, data: { deletedAt: new Date() } });
+
+      const scoped = await service.list(listWaqf.id);
+      expect(scoped.find((i) => i.id === softDeleted.id)).toBeUndefined();
+      expect(scoped.find((i) => i.id === kept.id)).toBeDefined();
+    });
+  });
 });

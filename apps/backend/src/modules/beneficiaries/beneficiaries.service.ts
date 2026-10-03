@@ -331,14 +331,22 @@ export class BeneficiariesService {
   // cursor-pagination primitive yet, so a hard cap is the established
   // pattern, not a partial fix.
   list(waqfId: string | undefined, staff: { id: string; staffRole: string }) {
+    // deletedAt: null on every branch — nothing currently soft-deletes a
+    // Beneficiary (status flips active/inactive instead; see
+    // updateStatus()), so this is a no-op today, but listForFounder()
+    // below already filters it and this method shouldn't silently
+    // resurrect retired rows the moment something does start setting it
+    // (found during a comprehensive codebase audit, 2026-10-03 — the
+    // exact same gap existed in AssetsService.list() and
+    // InvestmentsService.list(), fixed alongside this one).
     if (waqfId) {
-      return prisma.beneficiary.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" } });
+      return prisma.beneficiary.findMany({ where: { waqfId, deletedAt: null }, orderBy: { createdAt: "desc" } });
     }
     if (staff.staffRole === "platform_admin") {
-      return prisma.beneficiary.findMany({ orderBy: { createdAt: "desc" }, take: MAX_UNSCOPED_LIST_ROWS });
+      return prisma.beneficiary.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "desc" }, take: MAX_UNSCOPED_LIST_ROWS });
     }
     return prisma.beneficiary.findMany({
-      where: { waqf: { caseAssignments: { some: { birrStaffId: staff.id, status: "active" } } } },
+      where: { deletedAt: null, waqf: { caseAssignments: { some: { birrStaffId: staff.id, status: "active" } } } },
       orderBy: { createdAt: "desc" },
       take: MAX_UNSCOPED_LIST_ROWS,
     });
