@@ -739,22 +739,12 @@ describe("FoundersService MFA", () => {
   );
 
   let mfaUserId: string;
-  let actorStaffUserId: string;
 
   beforeAll(async () => {
     const user = await prisma.user.create({
       data: { email: testEmail("mfa-founder"), fullName: "MFA Founder Fixture" },
     });
     mfaUserId = user.id;
-
-    // A platform_admin acting as the reset button's caller — resetMfa()
-    // itself doesn't check the role (the controller does), so any real
-    // User id is enough to prove actorUserId lands correctly on the
-    // audit log.
-    const actorUser = await prisma.user.create({
-      data: { email: testEmail("mfa-founder-admin-actor"), fullName: "MFA Reset Actor" },
-    });
-    actorStaffUserId = actorUser.id;
   });
 
   afterAll(async () => {

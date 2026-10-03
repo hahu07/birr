@@ -4,16 +4,7 @@ import { prisma } from "@birr/db";
 import { FoundersController } from "./founders.controller";
 import { FoundersService } from "./founders.service";
 import { signSessionToken, SESSION_COOKIE_NAME, STAFF_SESSION_COOKIE_NAME } from "../../common/auth/session";
-import { EncryptionService } from "../../common/settings/encryption.service";
-import { MfaService } from "../../common/auth/mfa.service";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
-
-// Needed for EncryptionService below — same guard
-// birr-staff.service.spec.ts/founders.service.spec.ts use for the same
-// reason.
-if (!process.env.SETTINGS_ENCRYPTION_KEY) {
-  process.env.SETTINGS_ENCRYPTION_KEY = "0".repeat(64);
-}
 
 function requestWithFounderCookie(token: string): Request {
   return { cookies: { [SESSION_COOKIE_NAME]: token } } as unknown as Request;

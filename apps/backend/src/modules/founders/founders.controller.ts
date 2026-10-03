@@ -29,7 +29,7 @@ import {
 import { WhatsAppVerificationService } from "./whatsapp/whatsapp-verification.service";
 import { MAX_SIZE_BYTES as MAX_LOGO_SIZE_BYTES } from "../foundations/logo-storage.service";
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
-import { isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
+import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import {
   setSessionCookie,
   clearSessionCookie,
