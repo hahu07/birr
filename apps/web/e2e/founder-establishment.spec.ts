@@ -61,9 +61,18 @@ test.describe("founder self-service establishment", () => {
     // Real HTTP GET against the backend's own verify-email redirect —
     // not a seeded shortcut. FOUNDER_PORTAL_URL is pointed at this
     // suite's own BASE_URL (see playwright.config.ts's own comment), so
-    // following the redirect lands on this app's real /verified page.
+    // following the redirect lands on this app's real /verified page,
+    // which immediately kicks off window.location.href = "/" on its
+    // own ok=1 branch (see that page's own effect). That client-side
+    // redirect can fire fast enough on a warm route to beat a
+    // getByText("Email verified") assertion to the punch — a real race,
+    // observed failing in CI, not a transient flake retries should be
+    // papering over. waitForURL("/") is the non-racy proof verification
+    // succeeded (it resolves immediately if the redirect already landed
+    // by the time this runs, and waits for it otherwise); the DB
+    // assertions below confirm the backend side of it, so nothing about
+    // dropping the fleeting intermediate text check loses real coverage.
     await page.goto(`${BACKEND_URL}/founders/verify-email?token=${user.verificationToken}`);
-    await expect(page.getByText("Email verified")).toBeVisible();
     await page.waitForURL("/", { timeout: 10_000 });
 
     const verifiedUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
