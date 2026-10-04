@@ -987,6 +987,22 @@ describe("VaultContributionsService", () => {
     // vaultDonorEmails array) and every contribution's id is pushed onto
     // the outer vaultContributionIds, both already cleaned up by this
     // describe block's own outer afterAll, in the correct FK order.
+
+    // getStructuringReview() clusters across every VaultContribution ever
+    // created, not scoped to this test's own fixtures (it's a global AML
+    // check by design) — so three tests each drawing an IP from only 200
+    // possible values (198.51.100.1-200) could, and in CI on
+    // 2026-10-04 did, collide with each other within the same run,
+    // making one test's fixture rows bleed into another's cluster
+    // assertion. A monotonic counter across this describe block's own 3
+    // draws guarantees they're distinct from each other, which a wider
+    // random range would only have made less likely, not impossible.
+    let nextTestIp = 1;
+    function uniqueTestIp(): string {
+      nextTestIp += 1;
+      return `198.51.100.${nextTestIp}`;
+    }
+
     async function confirmedContribution(opts: { email?: string; donorId?: string; ipAddress: string | null; amount?: string }) {
       // donorId takes precedence when both are given — lets a test reuse
       // one already-created VaultDonor across two contributions (email is
@@ -1010,7 +1026,7 @@ describe("VaultContributionsService", () => {
     }
 
     test("clusters two different declared donors who gave from the same IP", async () => {
-      const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+      const ip = uniqueTestIp();
       await confirmedContribution({ email: uniqueEmail("ip-cluster-a"), ipAddress: ip });
       await confirmedContribution({ email: uniqueEmail("ip-cluster-b"), ipAddress: ip });
 
@@ -1022,7 +1038,7 @@ describe("VaultContributionsService", () => {
     });
 
     test("does not cluster the same donor giving twice from the same IP", async () => {
-      const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+      const ip = uniqueTestIp();
       const donor = await prisma.vaultDonor.create({ data: { email: uniqueEmail("ip-cluster-solo") } });
       await confirmedContribution({ donorId: donor.id, ipAddress: ip });
       await confirmedContribution({ donorId: donor.id, ipAddress: ip });
@@ -1032,7 +1048,7 @@ describe("VaultContributionsService", () => {
     });
 
     test("excludes anonymous (no-email) contributions — they have no declared identity to compare", async () => {
-      const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+      const ip = uniqueTestIp();
       await confirmedContribution({ email: uniqueEmail("ip-cluster-named"), ipAddress: ip });
       await confirmedContribution({ ipAddress: ip }); // anonymous — no email, no donorId
 
