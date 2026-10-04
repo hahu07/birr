@@ -22,6 +22,7 @@ import {
 import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 import { Public } from "../../common/guards/public.decorator";
 import { MfaExempt } from "../../common/guards/mfa-exempt.decorator";
+import { loginThrottleLimit } from "../../common/auth/login-throttle";
 
 class RequestWhatsAppOtpBody {
   @IsString()
@@ -72,7 +73,7 @@ export class BirrStaffController {
   // that state).
   @Post("login")
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 600_000 } })
+  @Throttle({ default: { limit: loginThrottleLimit(), ttl: 600_000 } })
   async login(@Body() body: BirrStaffLoginInput, @Res({ passthrough: true }) res: Response) {
     const { userId, mfaEnabled } = await this.service.login(body);
     if (mfaEnabled) {
@@ -89,7 +90,7 @@ export class BirrStaffController {
   // only source of identity here.
   @Post("login/mfa")
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 600_000 } })
+  @Throttle({ default: { limit: loginThrottleLimit(), ttl: 600_000 } })
   async verifyLoginMfa(
     @Body() body: VerifyLoginMfaBody,
     @Req() req: Request,

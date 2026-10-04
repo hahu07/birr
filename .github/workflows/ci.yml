@@ -271,6 +271,12 @@ jobs:
       # can't do (falls back to a browser-only install there instead;
       # see apps/web/e2e's own notes on that gap).
       - run: pnpm --filter @birr/web exec playwright install --with-deps chromium
+      # The real login-endpoint rate limit (10 per 10 min — see
+      # apps/backend/src/common/auth/login-throttle.ts) is raised for
+      # this run via apps/web/playwright.config.ts's own backend
+      # webServer.env, not here — that env is merged into the backend
+      # process Playwright spawns regardless of who invokes this
+      # command, so nothing CI-specific is needed in this step.
       - run: pnpm --filter @birr/web e2e
         env:
           DATABASE_URL: postgresql://birr_app:birr_app_dev_password@localhost:5432/birr?schema=public

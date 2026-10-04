@@ -30,6 +30,7 @@ import { WhatsAppVerificationService } from "./whatsapp/whatsapp-verification.se
 import { MAX_SIZE_BYTES as MAX_LOGO_SIZE_BYTES } from "../foundations/logo-storage.service";
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
+import { loginThrottleLimit } from "../../common/auth/login-throttle";
 import {
   setSessionCookie,
   clearSessionCookie,
@@ -125,7 +126,7 @@ export class FoundersController {
   // exactly as before this existed — see account/page.tsx's own
   // comment on why nothing here is mandatory, unlike birr_staff.
   @Post("login")
-  @Throttle({ default: { limit: 10, ttl: 600_000 } })
+  @Throttle({ default: { limit: loginThrottleLimit(), ttl: 600_000 } })
   async login(@Body() body: LoginInput, @Res({ passthrough: true }) res: Response) {
     const { userId, mfaEnabled } = await this.service.login(body);
     if (mfaEnabled) {
@@ -141,7 +142,7 @@ export class FoundersController {
   // set — that cookie (not a client-supplied userId) is the only source
   // of identity here. Mirrors BirrStaffController.verifyLoginMfa.
   @Post("login/mfa")
-  @Throttle({ default: { limit: 10, ttl: 600_000 } })
+  @Throttle({ default: { limit: loginThrottleLimit(), ttl: 600_000 } })
   async verifyLoginMfa(
     @Body() body: VerifyLoginMfaBody,
     @Req() req: Request,

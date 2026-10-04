@@ -99,6 +99,17 @@ export default defineConfig({
         // test would hit ERR_CONNECTION_REFUSED on the redirect instead
         // of landing on this suite's own /verified page.
         FOUNDER_PORTAL_URL: BASE_URL,
+        // /founders/login, /founders/login/mfa, /birr-staff/login, and
+        // /birr-staff/login/mfa are real production rate limits (10 per
+        // 10 min each — see common/auth/login-throttle.ts's own
+        // comment). This suite's own many independently-authenticated
+        // maker/checker logins across its spec files legitimately
+        // exceed that within one run. Setting it here (not duplicated
+        // in ci.yml's own e2e-test job) is enough for both: this
+        // webServer env is merged into the backend process Playwright
+        // spawns regardless of who invokes `playwright test`, local run
+        // or CI. Never set in production.
+        AUTH_LOGIN_THROTTLE_LIMIT: "100",
       },
     },
     {
