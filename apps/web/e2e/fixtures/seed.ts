@@ -142,3 +142,64 @@ export async function seedDraftVault(actorUserId: string) {
   });
   return { vaultId: vault.id, name: vault.name, slug: vault.slug };
 }
+
+/**
+ * An already-active (funded) Waqf under the given Foundation — the
+ * state SignFoundationDeedForm itself requires (hasActiveWaqf) before it
+ * will render a signable form at all. Seeded directly rather than
+ * re-driven through a real Paystack/stablecoin checkout — same
+ * reasoning as donation-flow.spec.ts's own contribution mocking: no real
+ * payment-provider credentials exist in this environment, and the
+ * deed-signing flow itself is what's under test here, not the payment
+ * confirmation webhook that would normally flip a waqf from draft to
+ * active (that's WaqfFundForm's/the donation adapters' own job to prove).
+ */
+export async function seedActiveWaqf(foundationId: string) {
+  const waqf = await prisma.waqf.create({
+    data: {
+      foundationId,
+      name: `E2E Fixture Waqf ${randomUUID().slice(0, 8)}`,
+      type: "project",
+      jurisdiction: "NG",
+      status: "active",
+      corpusAmount: "500000",
+      corpusCurrency: "NGN",
+    },
+  });
+  return { waqfId: waqf.id, name: waqf.name };
+}
+
+/**
+ * A Waqf with one active Asset — the minimum the Ops Console's
+ * AssetsSection needs to show a real "Propose disposal" button (gated on
+ * `a.status === "active"`). Uses a standalone throwaway Foundation, not
+ * seedEstablishedFounder()'s — this is Birr-staff-side governance, which
+ * has no Founder session involved at all (see AssetsController's own
+ * guard: any valid staff session, no founder scoping).
+ */
+export async function seedWaqfWithActiveAsset() {
+  const foundation = await prisma.foundation.create({
+    data: { name: `E2E Fixture Governance Foundation ${randomUUID().slice(0, 8)}` },
+  });
+  const waqf = await prisma.waqf.create({
+    data: {
+      foundationId: foundation.id,
+      name: `E2E Fixture Governance Waqf ${randomUUID().slice(0, 8)}`,
+      type: "asset",
+      jurisdiction: "NG",
+      status: "active",
+      corpusAmount: "250000",
+      corpusCurrency: "NGN",
+    },
+  });
+  const asset = await prisma.asset.create({
+    data: {
+      waqfId: waqf.id,
+      name: `E2E Fixture Asset ${randomUUID().slice(0, 8)}`,
+      category: "real_estate",
+      estimatedValue: "250000",
+      currency: "NGN",
+    },
+  });
+  return { foundationId: foundation.id, waqfId: waqf.id, assetId: asset.id, assetName: asset.name };
+}

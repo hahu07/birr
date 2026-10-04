@@ -99,7 +99,17 @@ test.describe("donation submission", () => {
   test("a successful contribution redirects to the returned checkout URL", async ({ page }) => {
     const staff = await seedFixtureStaffUser();
     const { slug, minimumAmount } = await seedFixtureOpenVault(staff.userId);
-    const checkoutUrl = "https://checkout.paystack.com/e2e-fixture-session";
+    // A relative, same-origin path — not a real external domain like
+    // checkout.paystack.com. This suite's webServer is the only thing
+    // guaranteed reachable from this sandbox; a live third-party domain
+    // isn't (observed: an intermittent browser-level network error
+    // instead of a real navigation, failing this assertion outright on
+    // a network hiccup that has nothing to do with the app itself).
+    // Next.js renders its own 404 here, which is still a real,
+    // successful same-origin navigation — exactly what this test needs
+    // to prove window.location.href actually fired with the backend's
+    // returned checkoutUrl.
+    const checkoutUrl = "/e2e-fixture-checkout";
 
     await page.route("**/vault-contributions", (route) =>
       route.fulfill({
@@ -114,11 +124,7 @@ test.describe("donation submission", () => {
     await page.getByLabel("Email").fill("donor@e2e.birr.test");
 
     await Promise.all([
-      page.waitForURL(checkoutUrl, { timeout: 10_000 }).catch(() => {
-        // navigating to an external, non-existent checkout URL may
-        // never settle as a successful load — what this test cares
-        // about is that the browser *attempted* the redirect.
-      }),
+      page.waitForURL(checkoutUrl, { timeout: 10_000 }),
       page.getByRole("button", { name: "Continue to payment" }).click(),
     ]);
 
