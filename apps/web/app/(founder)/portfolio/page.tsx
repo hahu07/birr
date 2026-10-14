@@ -216,32 +216,11 @@ function FoundationCard({ foundation, funds, totalFunds }: { foundation: Foundat
               ))}
             </p>
             <div className="mt-2.5">
-              {foundation.foundationDeed ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-800 ring-1 ring-inset ring-primary-200">
-                  <IconCheckCircle className="h-3.5 w-3.5" />
-                  Deed signed {formatDate(foundation.foundationDeed.signedAt)}
-                </span>
-              ) : (
-                <Link
-                  href={`/foundations/${foundation.id}/deed`}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-accent-50 px-2.5 py-1 text-xs font-semibold text-accent-800 ring-1 ring-inset ring-accent-200 hover:bg-accent-100"
-                >
-                  <IconFileText className="h-3.5 w-3.5" />
-                  Deed not signed — sign now
-                </Link>
-              )}
+              <DeedStatus foundation={foundation} />
             </div>
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Link href={`/foundations/${foundation.id}`} className={`${linkButton.secondary} px-3 py-2 text-xs`}>
-            View Foundation
-          </Link>
-          <Link href={`/foundations/${foundation.id}/waqf-funds/new`} className={`${linkButton.primary} px-3 py-2 text-xs`}>
-            <IconPlus className="h-3.5 w-3.5" />
-            Add Waqf Fund
-          </Link>
-        </div>
+        <FoundationActions foundationId={foundation.id} />
       </div>
       {funds.length === 0 ? (
         <div className="px-5 py-6 text-sm text-slate-600">
@@ -260,6 +239,41 @@ function FoundationCard({ foundation, funds, totalFunds }: { foundation: Foundat
         </ul>
       )}
     </Panel>
+  );
+}
+
+function FoundationActions({ foundationId }: { foundationId: string }) {
+  return (
+    <div className="flex shrink-0 flex-wrap gap-2">
+      <Link href={`/foundations/${foundationId}`} className={`${linkButton.secondary} px-3 py-2 text-xs`}>
+        View Foundation
+      </Link>
+      <Link href={`/foundations/${foundationId}/waqf-funds/new`} className={`${linkButton.primary} px-3 py-2 text-xs`}>
+        <IconPlus className="h-3.5 w-3.5" />
+        Add Waqf Fund
+      </Link>
+    </div>
+  );
+}
+
+/** Signed (with date) or a link to sign — the Foundation-level deed covers every fund under it. */
+function DeedStatus({ foundation }: { foundation: Foundation }) {
+  if (foundation.foundationDeed) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-800 ring-1 ring-inset ring-primary-200">
+        <IconCheckCircle className="h-3.5 w-3.5" />
+        Deed signed {formatDate(foundation.foundationDeed.signedAt)}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={`/foundations/${foundation.id}/deed`}
+      className="inline-flex items-center gap-1.5 rounded-full bg-accent-50 px-2.5 py-1 text-xs font-semibold text-accent-800 ring-1 ring-inset ring-accent-200 hover:bg-accent-100"
+    >
+      <IconFileText className="h-3.5 w-3.5" />
+      Deed not signed — sign now
+    </Link>
   );
 }
 
