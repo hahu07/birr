@@ -9,7 +9,7 @@ import { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from "react";
 export type TableTone = "primary" | "violet";
 
 const wrapperToneClasses: Record<TableTone, string> = {
-  primary: "border-primary-100",
+  primary: "border-slate-200/80",
   violet: "border-violet-100",
 };
 
@@ -19,7 +19,7 @@ export function Table({
   ...props
 }: HTMLAttributes<HTMLTableElement> & { tone?: TableTone }) {
   return (
-    <div className={`overflow-hidden rounded-lg border ${wrapperToneClasses[tone]} bg-white shadow-sm`}>
+    <div className={`overflow-hidden rounded-xl border ${wrapperToneClasses[tone]} bg-white shadow-sm`}>
       <div className="overflow-x-auto">
         {/* table-auto (the default), not table-fixed: tried table-fixed to
             stop a colSpan error row from reflowing other columns (a
@@ -45,7 +45,7 @@ const headToneClasses: Record<TableTone, string> = {
   // Full-strength, not a 50/70%-opacity wash — the single most-repeated
   // surface in every dense list view, so this is where "the content
   // canvas is still black-and-white" gets fixed or doesn't.
-  primary: "border-b border-primary-200 bg-primary-100",
+  primary: "border-b border-slate-200 bg-slate-50",
   // AI Agents' registry table — the one place in the content canvas
   // where violet (AI-agent semantics) gets real surface presence, not
   // just a 40px header badge.
@@ -53,12 +53,12 @@ const headToneClasses: Record<TableTone, string> = {
 };
 
 const headerCellToneClasses: Record<TableTone, string> = {
-  primary: "text-primary-900",
+  primary: "text-slate-500",
   violet: "text-violet-900",
 };
 
 const rowToneClasses: Record<TableTone, string> = {
-  primary: "hover:bg-primary-100/60",
+  primary: "hover:bg-slate-50/80",
   violet: "hover:bg-violet-100/60",
 };
 

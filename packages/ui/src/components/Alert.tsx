@@ -26,10 +26,10 @@ export function Alert({ tone = "neutral", title, className = "", children, ...pr
     <div
       role={tone === "danger" ? "alert" : undefined}
       aria-live={tone === "danger" ? undefined : "polite"}
-      className={`rounded-md border px-4 py-3 text-sm ${toneClasses[tone]} ${className}`}
+      className={`rounded-xl border px-4 py-3 text-sm ${toneClasses[tone]} ${className}`}
       {...props}
     >
-      {title && <p className="font-medium">{title}</p>}
+      {title && <p className="font-semibold">{title}</p>}
       {children && <div className={title ? "mt-1" : undefined}>{children}</div>}
     </div>
   );
