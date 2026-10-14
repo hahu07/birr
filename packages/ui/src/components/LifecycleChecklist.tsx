@@ -49,10 +49,16 @@ export function LifecycleChecklist({ rows, completedCount, trackableCount }: Lif
         {rows.map((row) => {
           const Icon = STATUS_ICON[row.status];
           return (
-            <li key={row.key} className="flex items-center gap-3 px-4 py-2.5">
+            // flex-wrap, with the detail dropping to its own indented line
+            // below sm — a long detail ("Guaranteed by the immutable audit
+            // trail") ran past the right edge of a phone screen as a
+            // shrink-0 span beside the label.
+            <li key={row.key} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-2.5">
               <Icon className={`h-[18px] w-[18px] shrink-0 ${STATUS_ICON_TONE[row.status]}`} />
-              <span className={`flex-1 text-sm font-medium ${STATUS_TEXT_TONE[row.status]}`}>{row.label}</span>
-              {row.detail && <span className="shrink-0 text-xs text-slate-500">{row.detail}</span>}
+              <span className={`min-w-0 flex-1 text-sm font-medium ${STATUS_TEXT_TONE[row.status]}`}>{row.label}</span>
+              {row.detail && (
+                <span className="basis-full pl-[30px] text-xs text-slate-500 sm:basis-auto sm:shrink-0 sm:pl-0">{row.detail}</span>
+              )}
             </li>
           );
         })}

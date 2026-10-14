@@ -2,6 +2,13 @@ import { HTMLAttributes } from "react";
 
 export interface CardProps extends HTMLAttributes<HTMLDivElement> {
   tone?: "neutral" | "primary" | "accent" | "violet";
+  /**
+   * false for a card whose children set their own padding (e.g. a
+   * divided list). Same reason as `tone` below: a caller's `p-0` can't
+   * reliably override the base `p-6` by class order, so it silently
+   * double-padded instead (found squeezing content on a phone screen).
+   */
+  padded?: boolean;
 }
 
 // Resolved through a lookup map — same pattern as StatCard — rather than
@@ -21,10 +28,10 @@ const toneClasses: Record<NonNullable<CardProps["tone"]>, string> = {
   violet: "border-violet-200 bg-violet-50",
 };
 
-export function Card({ tone = "neutral", className = "", ...props }: CardProps) {
+export function Card({ tone = "neutral", padded = true, className = "", ...props }: CardProps) {
   return (
     <div
-      className={`rounded-lg border p-6 shadow-sm ${toneClasses[tone]} ${className}`}
+      className={`rounded-lg border shadow-sm ${padded ? "p-6" : ""} ${toneClasses[tone]} ${className}`}
       {...props}
     />
   );

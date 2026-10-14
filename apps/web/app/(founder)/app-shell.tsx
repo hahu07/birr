@@ -230,7 +230,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             formatTimestamp={formatRelativeTime}
           />
         </header>
-        <main className="px-6 py-12 sm:px-10 sm:py-16 print:p-0">
+        <main className="px-4 py-8 sm:px-10 sm:py-16 print:p-0">
           {/* max-w-6xl, matching the Ops Console shell's own content
               width — max-w-4xl left a wide, empty margin on anything
               wider than a laptop screen. Pages with their own narrower

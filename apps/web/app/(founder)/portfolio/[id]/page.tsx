@@ -149,7 +149,7 @@ export default function WaqfFundDetailPage() {
                   })()}
                 </span>
                 <div className="min-w-0">
-                  <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{waqf.name}</h1>
+                  <h1 className="break-words text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{waqf.name}</h1>
                   <p className="mt-0.5 text-sm text-slate-500">
                     Part of{" "}
                     <Link href="/portfolio" className="font-medium text-primary-700 hover:text-primary-800">
