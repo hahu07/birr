@@ -22,7 +22,7 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
 // conflict entirely: only one background/border utility for the
 // property is ever emitted for a given render.
 const toneClasses: Record<NonNullable<CardProps["tone"]>, string> = {
-  neutral: "border-slate-200 bg-white",
+  neutral: "border-slate-200/80 bg-white",
   primary: "border-primary-200 bg-primary-50",
   accent: "border-accent-200 bg-accent-50",
   violet: "border-violet-200 bg-violet-50",
@@ -31,7 +31,7 @@ const toneClasses: Record<NonNullable<CardProps["tone"]>, string> = {
 export function Card({ tone = "neutral", padded = true, className = "", ...props }: CardProps) {
   return (
     <div
-      className={`rounded-lg border shadow-sm ${padded ? "p-6" : ""} ${toneClasses[tone]} ${className}`}
+      className={`rounded-2xl border shadow-sm ${padded ? "p-6" : ""} ${toneClasses[tone]} ${className}`}
       {...props}
     />
   );

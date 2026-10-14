@@ -16,10 +16,10 @@ export function Input({ className = "", error, id, ...props }: InputProps) {
   const input = (
     <input
       id={id}
-      className={`w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 ${
+      className={`w-full rounded-lg border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
         error
-          ? "border-red-300 focus:border-red-500 focus:ring-red-500"
-          : "border-slate-300 focus:border-primary-500 focus:ring-primary-500"
+          ? "border-red-300 focus:border-red-500 focus:ring-red-500/20"
+          : "border-slate-300 focus:border-primary-500 focus:ring-primary-500/20"
       } ${className}`}
       aria-invalid={error ? true : undefined}
       aria-describedby={errorId}
