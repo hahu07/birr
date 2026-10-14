@@ -8,24 +8,21 @@
 // id whenever x-founder-id is present). This page is for post-onboarding
 // use (2nd+ Foundation) — the onboarding wizard's step 2 renders
 // FoundationForm directly (see app/onboarding/foundation/page.tsx).
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FoundationForm } from "./FoundationForm";
+import { PageHeader } from "../../_components/ui";
 
 export default function NewFoundationPage() {
   const router = useRouter();
 
   return (
     <div className="mx-auto max-w-2xl">
-      <header className="mb-8">
-        <Link href="/portfolio" className="text-sm font-medium text-primary-700 hover:text-primary-800">
-          ← Portfolio
-        </Link>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">Establish a Foundation</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
-          This takes effect immediately — Birr becomes Mutawalli (trustee) over it as soon as it's created.
-        </p>
-      </header>
+      <PageHeader
+        back={{ href: "/portfolio", label: "Portfolio" }}
+        eyebrow="New Foundation"
+        title="Establish a Foundation"
+        description="This takes effect immediately — Birr becomes Mutawalli (trustee) over it as soon as it's created."
+      />
 
       <FoundationForm onSuccess={() => router.push("/portfolio")} cancelHref="/portfolio" />
     </div>

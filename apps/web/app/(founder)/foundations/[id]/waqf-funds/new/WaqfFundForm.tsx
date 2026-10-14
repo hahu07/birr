@@ -15,9 +15,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetchJson } from "../../../../../../lib/api";
+import { formatMoney } from "../../../../../../lib/format";
 import type { Waqf } from "../../../../../../lib/types";
-import { Alert, Button, Card } from "@birr/ui";
-import { WaqfTypeGuide } from "./WaqfTypeGuide";
+import { Alert, Button, IconShieldCheck, Select } from "@birr/ui";
+import { TYPE_GUIDE, WaqfTypeGuide } from "./WaqfTypeGuide";
+import { ChoiceCard, Field, FormSection, inputClass, MoneyInput } from "../../../../_components/form";
 
 const WAQF_TYPES = ["investment", "asset", "project"] as const;
 
@@ -246,6 +248,12 @@ export function WaqfFundForm({
     Number(amount) > 0 &&
     !submitting;
 
+  const amountLocked = isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0;
+  const providerLabel = PROVIDERS.find((p) => p.value === provider)!.label;
+  // Numbered only when there's more than one step on screen (a brand-new
+  // fund); a top-up/retry is the payment step alone.
+  const paymentStep = waqfAlreadyExists ? undefined : 3;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {submitError && (
@@ -255,270 +263,244 @@ export function WaqfFundForm({
       )}
 
       {/*
-        One grid for the whole form, not two separately-widthed blocks
-        stacked on top of each other — that earlier version had the
-        fund-details card and the guide side by side, then a *separately
-        centered*, narrower block underneath for Corpus/Payment that
-        didn't line up with either column above it, with a large dead
-        gap wherever the guide (four detailed entries) ran taller than
-        the short form beside it. Now every card that belongs to "the
-        form" — details, corpus, payment, the submit buttons — lives in
-        one left-column stack of consistent width; the guide is the only
-        thing in the right column, and lg:sticky keeps it in view
-        alongside whichever card the founder has scrolled to, instead of
-        being a fixed-height block that either runs dry or overflows.
-        Only rendered as a real two-column grid when the guide is
-        actually shown (!waqfAlreadyExists) — otherwise it's just a
-        single centered column, same as before.
+        One grid for the whole form: every card that belongs to "the
+        form" — details, corpus, payment, the submit bar — lives in one
+        left-column stack of consistent width; the selected type's guide
+        is the only thing in the right column, sticky so it stays in view
+        alongside whichever card the founder has scrolled to. Only a real
+        two-column grid when the guide is shown (!waqfAlreadyExists) —
+        otherwise a single centered column.
       */}
-      <div className={!waqfAlreadyExists ? "grid gap-6 lg:grid-cols-[1fr_300px] lg:items-start" : "mx-auto max-w-2xl"}>
+      <div className={!waqfAlreadyExists ? "grid gap-6 lg:grid-cols-[1fr_320px] lg:items-start" : "mx-auto max-w-2xl"}>
         <div className="space-y-6">
           {!waqfAlreadyExists && (
-            <Card>
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Name
-                  </label>
+            <FormSection step={1} title="Fund details" description="What this Waqf Fund is, and the jurisdiction it's governed under.">
+              <div className="space-y-5">
+                <Field label="Name" htmlFor="name">
                   <input
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
                     placeholder='e.g. "Northern Nigeria Orphan Education Fund"'
-                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    className={inputClass}
                   />
-                </div>
-                <div>
-                  <label htmlFor="type" className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Type
-                  </label>
-                  <select
-                    id="type"
-                    value={type}
-                    onChange={(e) => setType(e.target.value as (typeof WAQF_TYPES)[number])}
-                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  >
+                </Field>
+                <fieldset>
+                  <legend className="mb-2 block text-sm font-medium text-slate-800">Type</legend>
+                  <div className="grid gap-2.5 sm:grid-cols-3">
                     {WAQF_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t.charAt(0).toUpperCase() + t.slice(1)}
-                      </option>
+                      <ChoiceCard
+                        key={t}
+                        name="type"
+                        checked={type === t}
+                        onChange={() => setType(t)}
+                        title={TYPE_GUIDE[t].label}
+                        body={TYPE_GUIDE[t].summary}
+                      />
                     ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="purpose" className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Purpose <span className="font-normal text-slate-500">(optional)</span>
-                  </label>
+                  </div>
+                  {/* Phones: the full explanation sits right here; on
+                      desktop it's the sticky WaqfTypeGuide beside the form. */}
+                  <p className="mt-2.5 rounded-xl bg-primary-50/70 p-3 text-xs leading-relaxed text-slate-600 lg:hidden">
+                    {TYPE_GUIDE[type].description}
+                  </p>
+                </fieldset>
+                <Field label="Purpose" optional htmlFor="purpose">
                   <textarea
                     id="purpose"
                     value={purpose}
                     onChange={(e) => setPurpose(e.target.value)}
                     rows={3}
                     placeholder='e.g. "Scholarships for orphaned students at Northern Nigerian universities."'
-                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    className={inputClass}
                   />
-                </div>
-                <div>
-                  <label htmlFor="jurisdiction" className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Jurisdiction
-                  </label>
+                </Field>
+                <Field label="Jurisdiction" htmlFor="jurisdiction" hint="The country whose rules govern this fund, as a 2-letter code — e.g. NG for Nigeria.">
                   <input
                     id="jurisdiction"
                     value={jurisdiction}
                     onChange={(e) => setJurisdiction(e.target.value)}
                     required
                     placeholder="e.g. NG"
-                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    className={`${inputClass} sm:max-w-[10rem]`}
                   />
-                </div>
+                </Field>
               </div>
-            </Card>
+            </FormSection>
           )}
 
           {!waqfAlreadyExists && (
-            <Card>
-              <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">Waqf Corpus</p>
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="corpusAmount" className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Corpus amount — the total you're dedicating to this waqf
-                  </label>
-                  <input
+            <FormSection step={2} title="Waqf corpus" description="The total you're dedicating to this waqf, and how you'll pay it in.">
+              <div className="space-y-5">
+                <Field
+                  label="Corpus amount"
+                  htmlFor="corpusAmount"
+                  hint={corpusMinimumForCurrency ? `Minimum ${formatMoney(corpusMinimumForCurrency, currency, { decimals: 0 })}` : undefined}
+                >
+                  <MoneyInput
                     id="corpusAmount"
-                    type="number"
-                    min="0"
-                    step="0.01"
+                    currency={currency}
                     value={corpusAmount}
                     onChange={(e) => setCorpusAmount(e.target.value)}
                     required
-                    placeholder="0.00"
-                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   />
-                  {corpusMinimumForCurrency && (
-                    <p className="mt-1.5 text-xs text-slate-500">
-                      Minimum for {currency}: {corpusMinimumForCurrency}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="mb-1.5 text-sm font-medium text-slate-700">Funding plan</p>
-                  {/* Stacked below sm — side by side, each option wrapped to
-                      one or two words per line on a phone. */}
-                  <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
-                    <label className="flex items-center gap-2 text-sm text-slate-700">
-                      <input
-                        type="radio"
-                        name="fundingPlan"
-                        checked={fundingPlan === "lump_sum"}
-                        onChange={() => {
-                          setFundingPlan("lump_sum");
-                          setAmountTouched(false);
-                        }}
-                      />
-                      Lump sum — pay it all now
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-slate-700">
-                      <input
-                        type="radio"
-                        name="fundingPlan"
-                        checked={fundingPlan === "installment"}
-                        onChange={() => {
-                          setFundingPlan("installment");
-                          setAmountTouched(false);
-                        }}
-                      />
-                      Installment — pay at least {installmentPercent}% now, the rest later
-                    </label>
+                </Field>
+                <fieldset>
+                  <legend className="mb-2 block text-sm font-medium text-slate-800">Funding plan</legend>
+                  <div className="grid gap-2.5 sm:grid-cols-2">
+                    <ChoiceCard
+                      name="fundingPlan"
+                      checked={fundingPlan === "lump_sum"}
+                      onChange={() => {
+                        setFundingPlan("lump_sum");
+                        setAmountTouched(false);
+                      }}
+                      title="Lump sum"
+                      body="Pay the full corpus now."
+                    />
+                    <ChoiceCard
+                      name="fundingPlan"
+                      checked={fundingPlan === "installment"}
+                      onChange={() => {
+                        setFundingPlan("installment");
+                        setAmountTouched(false);
+                      }}
+                      title="Installments"
+                      body={`Pay at least ${installmentPercent}% now, top up the rest anytime.`}
+                    />
                   </div>
-                </div>
+                </fieldset>
               </div>
-            </Card>
+            </FormSection>
           )}
 
           {waqfAlreadyExists && progress && (
-            <Card>
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Funding progress</p>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Funding progress</p>
+                <p className="text-xs font-medium tabular-nums text-slate-500">{Math.floor(progress.percent)}%</p>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
                 <div className="h-full rounded-full bg-primary-600" style={{ width: `${progress.percent}%` }} />
               </div>
-              <p className="mt-2 text-sm text-slate-600">
-                {progress.currency} {progress.raised.toLocaleString()} of {progress.currency}{" "}
-                {progress.target.toLocaleString()} raised
+              <p className="mt-2.5 text-sm text-slate-600">
+                <span className="font-semibold tabular-nums text-slate-900">
+                  {formatMoney(progress.raised, progress.currency ?? "", { decimals: 0 })}
+                </span>{" "}
+                of {formatMoney(progress.target, progress.currency ?? "", { decimals: 0 })} raised
                 {progress.raised >= progress.target && " — fully funded"}
               </p>
-            </Card>
+            </div>
           )}
 
-          <Card>
-            <p className="mb-4 text-xs font-medium uppercase tracking-wide text-slate-500">
-              {waqfAlreadyExists ? `Add funds to "${resolvedName}"` : "Declare and pay the first contribution"}
-            </p>
-            <div className="space-y-4">
-              {/* One column below sm — the amount's helper text was squeezed
-                  into a half-width column on a phone. */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="amount" className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Amount
-                  </label>
-                  <input
-                    id="amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={amount}
-                    onChange={(e) => {
-                      setAmount(e.target.value);
-                      setAmountTouched(true);
-                    }}
-                    // Only lock the field once there's an actual corpus to lock
-                    // it to (firstPaymentFloor > 0, same guard the helper text
-                    // below already uses) — without this, a draft waqf with no
-                    // corpusAmount recorded (nullable in the schema; see Waqf's
-                    // own comment) left the field permanently read-only on an
-                    // empty value, with no way to ever set or submit an amount.
-                    readOnly={isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0}
-                    required
-                    placeholder="0.00"
-                    className={`w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
-                      isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0 ? "bg-slate-50" : "bg-white"
-                    }`}
-                  />
-                  {isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0 && (
-                    <p className="mt-1.5 text-xs text-slate-500">
-                      A lump-sum waqf's first payment must cover the full declared corpus — at least{" "}
-                      {firstPaymentFloor.toLocaleString()} {currency}.
-                    </p>
-                  )}
-                  {isFirstPayment && effectiveFundingPlan === "installment" && firstPaymentFloor > 0 && (
-                    <p className="mt-1.5 text-xs text-slate-500">
-                      At least {installmentPercent}% of the corpus ({firstPaymentFloor.toLocaleString()} {currency}) —
-                      the rest can be paid anytime as a top-up.
-                    </p>
-                  )}
-                  {!isFirstPayment && contributionMinimumForCurrency > 0 && (
-                    <p className="mt-1.5 text-xs text-slate-500">
-                      Minimum for {currency}: {contributionMinimumForCurrency.toLocaleString()}.
-                    </p>
-                  )}
+          <FormSection
+            step={paymentStep}
+            title={waqfAlreadyExists ? `Add funds to "${resolvedName}"` : "First contribution"}
+            description={waqfAlreadyExists ? "Paid through a secure checkout; it's added to this fund once confirmed." : "The fund becomes active once this payment is confirmed."}
+          >
+            <div className="space-y-5">
+              <fieldset disabled={currencyLocked}>
+                <legend className="mb-2 block text-sm font-medium text-slate-800">Payment method</legend>
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  {PROVIDERS.map((p) => (
+                    <ChoiceCard
+                      key={p.value}
+                      name="provider"
+                      checked={provider === p.value}
+                      onChange={() => handleProviderChange(p.value)}
+                      title={p.value === "paystack" ? "Card or bank (Nigeria)" : "Stablecoin"}
+                      body={p.value === "paystack" ? "Naira, via Paystack" : "USDC or USDT"}
+                      disabled={currencyLocked && provider !== p.value}
+                    />
+                  ))}
                 </div>
-                <div>
-                  <label htmlFor="currency" className="mb-1.5 block text-sm font-medium text-slate-700">
-                    Currency
-                  </label>
-                  <select
-                    id="currency"
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value)}
-                    disabled={currencyLocked}
-                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
-                  >
+                {currencyLocked && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Locked to {existingWaqf?.corpusCurrency} — this waqf's corpus was declared in that currency.
+                  </p>
+                )}
+              </fieldset>
+
+              {/* Only the stablecoin rail has more than one currency to pick. */}
+              {PROVIDERS.find((p) => p.value === provider)!.currencies.length > 1 && (
+                <Field label="Currency" htmlFor="currency">
+                  <Select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value)} disabled={currencyLocked} className="sm:max-w-[12rem]">
                     {PROVIDERS.find((p) => p.value === provider)!.currencies.map((c) => (
                       <option key={c} value={c}>
                         {c}
                       </option>
                     ))}
-                  </select>
+                  </Select>
+                </Field>
+              )}
+
+              <Field
+                label="Amount"
+                htmlFor="amount"
+                hint={
+                  isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0
+                    ? `A lump-sum fund's first payment covers the full declared corpus — ${formatMoney(firstPaymentFloor, currency, { decimals: 0 })}.`
+                    : isFirstPayment && effectiveFundingPlan === "installment" && firstPaymentFloor > 0
+                      ? `At least ${installmentPercent}% of the corpus (${formatMoney(firstPaymentFloor, currency, { decimals: 0 })}) — the rest can be paid anytime as a top-up.`
+                      : !isFirstPayment && contributionMinimumForCurrency > 0
+                        ? `Minimum ${formatMoney(contributionMinimumForCurrency, currency, { decimals: 0 })}.`
+                        : undefined
+                }
+              >
+                <MoneyInput
+                  id="amount"
+                  currency={currency}
+                  value={amount}
+                  onChange={(e) => {
+                    setAmount(e.target.value);
+                    setAmountTouched(true);
+                  }}
+                  // Only lock the field once there's an actual corpus to lock
+                  // it to (firstPaymentFloor > 0, same guard the hint above
+                  // uses) — without this, a draft waqf with no corpusAmount
+                  // recorded (nullable in the schema; see Waqf's own
+                  // comment) left the field permanently read-only on an
+                  // empty value, with no way to ever set or submit an amount.
+                  readOnly={amountLocked}
+                  required
+                />
+              </Field>
+            </div>
+          </FormSection>
+
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-700">
+                  <IconShieldCheck className="h-[18px] w-[18px]" />
+                </span>
+                <div>
+                  <p className="text-sm text-slate-600">
+                    {Number(amount) > 0 ? (
+                      <>
+                        You'll pay{" "}
+                        <span className="font-semibold tabular-nums text-slate-900">{formatMoney(amount, currency)}</span> via{" "}
+                        {providerLabel === "Card (Nigeria)" ? "Paystack" : "stablecoin checkout"}.
+                      </>
+                    ) : (
+                      "Enter an amount to continue."
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">You'll be taken to a secure checkout, then brought back here.</p>
                 </div>
               </div>
-              <div>
-                <label htmlFor="provider" className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Payment method
-                </label>
-                <select
-                  id="provider"
-                  value={provider}
-                  onChange={(e) => handleProviderChange(e.target.value as (typeof PROVIDERS)[number]["value"])}
-                  disabled={currencyLocked}
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
-                >
-                  {PROVIDERS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1.5 text-xs text-slate-500">
-                  {currencyLocked
-                    ? `Locked to ${existingWaqf?.corpusCurrency} — this waqf's corpus was declared in that currency.`
-                    : "You'll be taken to a secure checkout to complete payment. The fund becomes active once payment is confirmed."}
-                </p>
+              <div className="flex shrink-0 gap-2.5">
+                {cancelHref && (
+                  <Link href={cancelHref} className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                    Cancel
+                  </Link>
+                )}
+                <Button type="submit" variant="primary" disabled={!canSubmit} className="rounded-lg px-5 py-2.5 font-semibold">
+                  {submitting ? "Redirecting to checkout…" : "Continue to payment"}
+                </Button>
               </div>
             </div>
-          </Card>
-
-          <div className="flex justify-end gap-3">
-            {cancelHref && (
-              <Link href={cancelHref}>
-                <Button type="button" variant="secondary">
-                  Cancel
-                </Button>
-              </Link>
-            )}
-            <Button type="submit" variant="primary" disabled={!canSubmit}>
-              {submitting ? "Redirecting to checkout…" : "Continue to payment"}
-            </Button>
           </div>
         </div>
 

@@ -1,40 +1,35 @@
 "use client";
 
-// Waqf Overview — a real summary page, not where the portfolio itself
-// lives. Shows the headline stat and the founder's own profile; the
-// actual Foundation/Waqf Fund breakdown lives on /portfolio (see
-// app/portfolio/page.tsx) and each fund's full detail on
-// /portfolio/[id]. Establishment (Foundation, Waqf Fund) is donor
+// Waqf Overview — the signed-in Founder's home: what they've endowed,
+// what needs their attention, and what's happened recently. The full
+// Foundation/Waqf Fund breakdown lives on /portfolio, each fund's detail
+// on /portfolio/[id]. Establishment (Foundation, Waqf Fund) is Founder
 // self-service, immediate, no approval gate; ongoing governance of an
-// existing Waqf Fund stays exclusively Birr-staff-mediated elsewhere.
-// Rendered by page.tsx only once a session exists — see MarketingHome
-// for the signed-out counterpart at the same route ("/").
+// existing Waqf Fund stays exclusively Birr-staff-mediated elsewhere —
+// nothing here is a governance control, only a view and shortcuts to the
+// Founder's own self-service steps. Rendered by page.tsx only once a
+// session exists — see MarketingHome for the signed-out counterpart.
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { Founder, useFounderSession } from "../../lib/founder-session";
+import { ReactNode, useEffect, useMemo, useState } from "react";
+import { useFounderSession } from "../../lib/founder-session";
 import { apiFetchJson } from "../../lib/api";
-import { describeFounderKind, formatAmount, humanize, WAQF_STATUS_CHART_COLOR } from "../../lib/format";
-import { countByStatus, groupByFoundation, STATUS_ICON, STATUS_STAT_TONE } from "../../lib/portfolio";
-import type { Waqf } from "../../lib/types";
+import { describeAuditAction, formatMoney, formatRelativeTime } from "../../lib/format";
+import { groupByFoundation } from "../../lib/portfolio";
+import { FundRow, GeometricPattern, linkButton, Panel, PanelHeader, ProgressBar, TYPE_LABEL } from "./_components/ui";
+import type { FounderAuditLogEntry, FounderAuditLogPage, Waqf } from "../../lib/types";
 import {
   Alert,
-  Button,
-  Card,
-  DetailGrid,
-  DonutChart,
-  EmptyState,
+  IconArrowRight,
   IconBriefcase,
   IconCheckCircle,
   IconClipboardCheck,
+  IconFileText,
+  IconHeart,
+  IconLandmark,
+  IconMessageCircle,
+  IconPlus,
   Skeleton,
-  StatCard,
 } from "@birr/ui";
-import type { DonutChartSegment } from "@birr/ui";
-
-interface CurrencyTotal {
-  currency: string;
-  totalAmount: string;
-}
 
 // Distributed money is kept split by waqf type, never blended into one
 // figure — an Investment-type waqf's distributions draw on
@@ -44,329 +39,453 @@ interface CurrencyTotal {
 // Folding both into one "Distributed" number would silently mix money
 // with two different fiduciary characters. See DistributionsService
 // .founderSummary's own comment.
-interface DistributedTotal extends CurrencyTotal {
+interface DistributedTotal {
+  currency: string;
+  totalAmount: string;
   waqfType: Waqf["type"];
 }
 
-const WAQF_TYPE_LABEL: Record<Waqf["type"], string> = {
-  investment: "Distributed via Investment funds",
-  asset: "Distributed via Asset funds",
-  project: "Distributed via Project funds",
-};
+/**
+ * Raised vs. declared corpus, one entry per currency — never converted
+ * or added across currencies (no exchange-rate feed, by design; same
+ * posture as Vault's per-currency totals). Within a currency, the
+ * per-type split is kept alongside the total and shown under it, so an
+ * Investment fund's corpus and a Project fund's corpus stay visibly
+ * distinct rather than disappearing into one number.
+ */
+interface CurrencyPosition {
+  currency: string;
+  raised: number;
+  declared: number;
+  fundCount: number;
+  byType: { type: Waqf["type"]; raised: number }[];
+}
+
+function positionsByCurrency(waqfs: Waqf[]): CurrencyPosition[] {
+  const map = new Map<string, CurrencyPosition>();
+  for (const w of waqfs) {
+    if (!w.corpusCurrency) continue;
+    const p = map.get(w.corpusCurrency) ?? { currency: w.corpusCurrency, raised: 0, declared: 0, fundCount: 0, byType: [] };
+    const raised = Number(w.amountRaised ?? 0);
+    p.raised += raised;
+    p.declared += Number(w.corpusAmount ?? 0);
+    p.fundCount += 1;
+    const t = p.byType.find((b) => b.type === w.type);
+    if (t) t.raised += raised;
+    else p.byType.push({ type: w.type, raised });
+    map.set(w.corpusCurrency, p);
+  }
+  for (const p of map.values()) p.byType.sort((a, b) => b.raised - a.raised);
+  // NGN first — Birr's home currency and its one fully working rail.
+  return [...map.values()].sort((a, b) => (a.currency === "NGN" ? -1 : b.currency === "NGN" ? 1 : a.currency.localeCompare(b.currency)));
+}
+
+interface AttentionItem {
+  key: string;
+  title: string;
+  detail: string;
+  href: string;
+  cta: string;
+  tone: "accent" | "primary";
+}
+
+/**
+ * Only things the Founder can actually act on themselves, derived from
+ * data already loaded — never a governance action (those are Birr
+ * staff's, via governed_actions).
+ */
+function attentionItems(waqfs: Waqf[]): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  for (const { foundation } of groupByFoundation(waqfs)) {
+    if (!foundation.foundationDeed) {
+      items.push({
+        key: `deed-${foundation.id}`,
+        title: "Sign the Foundation Deed",
+        detail: `${foundation.name} has no signed deed yet — it formally appoints Birr as Mutawalli.`,
+        href: `/foundations/${foundation.id}/deed`,
+        cta: "Review & sign",
+        tone: "accent",
+      });
+    }
+  }
+  for (const w of waqfs) {
+    if (w.status === "draft") {
+      items.push({
+        key: `draft-${w.id}`,
+        title: "Complete the first contribution",
+        detail: `${w.name} becomes active once its first payment is confirmed.`,
+        href: `/portfolio/${w.id}/top-up`,
+        cta: "Add funds",
+        tone: "primary",
+      });
+    } else if (w.status === "active" && w.fundingPlan === "installment" && w.corpusAmount && w.corpusCurrency) {
+      const remaining = Number(w.corpusAmount) - Number(w.amountRaised ?? 0);
+      if (remaining > 0) {
+        items.push({
+          key: `installment-${w.id}`,
+          title: `${formatMoney(remaining, w.corpusCurrency, { decimals: 0 })} left to fund`,
+          detail: `${w.name} is on an installment plan toward its ${formatMoney(w.corpusAmount, w.corpusCurrency, { decimals: 0 })} corpus.`,
+          href: `/portfolio/${w.id}/top-up`,
+          cta: "Top up",
+          tone: "primary",
+        });
+      }
+    }
+  }
+  return items;
+}
+
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function DashboardOverview() {
-  // AppShell only ever renders this page once `founder` has resolved to a
-  // real record (see app/app-shell.tsx), so this is never null in practice
-  // — the check below is just for TypeScript.
-  const { founder } = useFounderSession();
+  // AppShell only renders this page once `founder` has resolved (see
+  // app-shell.tsx) — the null checks below are for TypeScript.
+  const { founder, user } = useFounderSession();
   const [waqfs, setWaqfs] = useState<Waqf[] | null>(null);
-  const [raised, setRaised] = useState<CurrencyTotal[] | null>(null);
   const [distributed, setDistributed] = useState<DistributedTotal[] | null>(null);
+  const [activity, setActivity] = useState<FounderAuditLogEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!founder) return;
     let cancelled = false;
-    setError(null);
-    Promise.all([
-      apiFetchJson<Waqf[]>("/waqfs"),
-      apiFetchJson<CurrencyTotal[]>("/contributions/founder-summary"),
-      apiFetchJson<DistributedTotal[]>("/distributions/founder-summary"),
-    ])
-      .then(([w, r, d]) => {
+    Promise.all([apiFetchJson<Waqf[]>("/waqfs"), apiFetchJson<DistributedTotal[]>("/distributions/founder-summary")])
+      .then(([w, d]) => {
         if (cancelled) return;
         setWaqfs(w);
-        setRaised(r);
         setDistributed(d);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");
       });
+    // Recent activity is a side panel — its failure shouldn't blank the
+    // whole page, so it's fetched (and fails) on its own.
+    apiFetchJson<FounderAuditLogPage>("/audit-logs/me")
+      .then((page) => !cancelled && setActivity(page.items.slice(0, 6)))
+      .catch(() => !cancelled && setActivity([]));
     return () => {
       cancelled = true;
     };
   }, [founder]);
 
-  // Keyed by (type, currency), not currency alone — same reasoning as
-  // the Distributed split above (see DistributedTotal's own comment):
-  // an Investment waqf's corpus and a Project waqf's corpus carry
-  // different fiduciary character, so blending them hides that.
-  const corpusByTypeAndCurrency = useMemo(() => {
-    if (!waqfs) return new Map<string, number>();
-    const map = new Map<string, number>();
-    for (const w of waqfs) {
-      if (!w.corpusAmount || !w.corpusCurrency) continue;
-      const key = `${w.type}:${w.corpusCurrency}`;
-      map.set(key, (map.get(key) ?? 0) + Number(w.corpusAmount));
-    }
-    return map;
-  }, [waqfs]);
+  const positions = useMemo(() => (waqfs ? positionsByCurrency(waqfs) : []), [waqfs]);
+  const attention = useMemo(() => (waqfs ? attentionItems(waqfs) : []), [waqfs]);
+  const foundations = useMemo(() => (waqfs ? groupByFoundation(waqfs).map((g) => g.foundation) : []), [waqfs]);
 
-  const statusSegments: DonutChartSegment[] = useMemo(() => {
-    if (!waqfs) return [];
-    const counts = countByStatus(waqfs);
-    return (Object.keys(counts) as Waqf["status"][]).map((status) => ({
-      label: humanize(status),
-      value: counts[status] ?? 0,
-      color: WAQF_STATUS_CHART_COLOR[status],
-    }));
-  }, [waqfs]);
+  if (!founder || !user) return null;
 
-  if (!founder) return null;
-
-  const foundationCount = waqfs ? groupByFoundation(waqfs).length : null;
+  const firstName = user.fullName.trim().split(/\s+/)[0] ?? user.fullName;
+  // "Add Waqf Fund" needs a Foundation to sit under — go straight to it
+  // when there's exactly one, otherwise let the Portfolio page choose.
+  const addFundHref = foundations.length === 1 ? `/foundations/${foundations[0]!.id}/waqf-funds/new` : "/portfolio";
 
   return (
-    <div>
-      <Hero founder={founder} waqfs={waqfs} error={error} foundationCount={foundationCount} />
-
-      {!error && waqfs !== null && waqfs.length > 0 && (
-        <>
-          {/* auto-fit/minmax, not a fixed column count — this grid's tile
-              count varies (one per waqf type/currency combination, could
-              be 1 or several), and a fixed grid-cols-2/4 split forced
-              each tile into a column far narrower than its content (a
-              13-character amount like "1,500,000.00" in 20px bold text)
-              whenever there were fewer tiles than columns. Found on an
-              800px-wide viewport with just 2 tiles, 2026-09-29 codebase
-              walkthrough — each tile was squeezed into 1 of 4 equal
-              columns and its value clipped/wrapped character-by-character.
-              220px floor (vs. the status-count grid below's 140px) —
-              these values are formatted currency amounts, a single
-              unbroken token roughly twice as wide as a plain integer
-              count, so they need more room before wrapping at all. */}
-          <div className="mb-8 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
-            {[...corpusByTypeAndCurrency.entries()].map(([key, amount]) => {
-              const [type, currency] = key.split(":") as [Waqf["type"], string];
-              return (
-                <StatCard
-                  key={`corpus-${key}`}
-                  label={`Declared corpus — ${humanize(type)} (${currency})`}
-                  value={formatAmount(amount)}
-                  tone="neutral"
-                  icon={<IconBriefcase className="h-[18px] w-[18px]" />}
-                />
-              );
-            })}
-            {(raised ?? []).map((r) => (
-              <StatCard
-                key={`raised-${r.currency}`}
-                label={`Raised (${r.currency})`}
-                value={formatAmount(r.totalAmount)}
-                tone="success"
-                icon={<IconCheckCircle className="h-[18px] w-[18px]" />}
-              />
-            ))}
-            {(distributed ?? []).map((d) => (
-              <StatCard
-                key={`distributed-${d.waqfType}-${d.currency}`}
-                label={`${WAQF_TYPE_LABEL[d.waqfType]} (${d.currency})`}
-                value={formatAmount(d.totalAmount)}
-                tone="primary"
-                icon={<IconClipboardCheck className="h-[18px] w-[18px]" />}
-              />
-            ))}
+    <div className="space-y-8">
+      <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-700">
+            {new Date().toLocaleDateString("en-NG", { weekday: "long", day: "numeric", month: "long" })}
+          </p>
+          <h1 className="mt-2 font-display text-3xl font-medium tracking-tight text-slate-900 sm:text-4xl">
+            {greeting()}, {firstName}
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
+            Birr serves as Mutawalli (trustee) for <span className="font-medium text-slate-800">{founder.name}</span>
+            {foundations.length > 0 &&
+              ` across ${foundations.length} ${foundations.length === 1 ? "foundation" : "foundations"}`}
+            .
+          </p>
+        </div>
+        {waqfs && waqfs.length > 0 && (
+          <div className="flex flex-wrap gap-2.5">
+            <Link href="/messages" className={linkButton.secondary}>
+              <IconMessageCircle className="h-4 w-4" />
+              Message Birr
+            </Link>
+            <Link href={addFundHref} className={linkButton.primary}>
+              <IconPlus className="h-4 w-4" />
+              Add Waqf Fund
+            </Link>
           </div>
-
-          {statusSegments.length > 1 && (
-            <Card className="mb-8">
-              <h2 className="mb-4 text-sm font-semibold text-slate-900">Waqf funds by status</h2>
-              <DonutChart segments={statusSegments} centerLabel="funds" />
-            </Card>
-          )}
-        </>
-      )}
-
-      <Card tone="primary" padded={false} className="mb-8 p-5 shadow-none">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">About {founder.name}</p>
-        <DetailGrid
-          columns={2}
-          items={[
-            { label: "Type", value: describeFounderKind(founder) },
-            { label: "Home jurisdiction", value: founder.homeJurisdiction ?? "Not on file" },
-          ]}
-        />
-      </Card>
+        )}
+      </header>
 
       {error && (
-        <Alert tone="danger" title="Couldn't load your waqf">
+        <Alert tone="danger" title="Couldn't load your overview">
           {error}
         </Alert>
       )}
 
-      {!error && waqfs === null && <SummarySkeleton />}
+      {!error && waqfs === null && <OverviewSkeleton />}
 
-      {!error && waqfs !== null && waqfs.length === 0 && (
-        <EmptyState
-          title="No waqf yet"
-          description="Establish a Foundation to get started — you can add Waqf Funds under it right away."
-          action={
-            <Link href="/foundations/new">
-              <Button variant="primary">Establish a Foundation</Button>
-            </Link>
-          }
-        />
-      )}
+      {!error && waqfs !== null && waqfs.length === 0 && <WelcomePanel />}
 
       {!error && waqfs !== null && waqfs.length > 0 && (
-        <Card tone="accent" padded={false}>
-          <div className="flex items-center justify-between gap-4 border-b border-accent-100 px-5 py-4">
-            <p className="text-sm font-medium text-slate-700">
-              {foundationCount} {foundationCount === 1 ? "foundation" : "foundations"}
-            </p>
-            <Link href="/portfolio" className="text-sm font-medium text-primary-700 hover:text-primary-800">
-              View full portfolio →
-            </Link>
-          </div>
-          <ul className="divide-y divide-accent-100">
-            {groupByFoundation(waqfs).map(({ foundation, waqfs: foundationWaqfs }) => (
-              // Two separate links side by side, not one nested inside the
-              // other (an <a> can't contain another <a>) — same split as
-              // each foundation section's header on /portfolio.
-              <li
-                key={foundation.id}
-                // flex-col below sm — the fixed-width "+ Add Waqf Fund"
-                // link + icon on the same row as the name left almost no
-                // width for the name's own truncation on a narrow phone
-                // screen (e.g. "Test Institution NGO" clipped down to
-                // "Te…"; found on a 375px viewport, 2026-09-29 codebase
-                // walkthrough). Stacking gives the name the full row.
-                className="flex flex-col gap-2 px-5 py-4 transition-colors hover:bg-accent-100/60 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-              >
-                <Link href="/portfolio" className="flex min-w-0 items-center gap-3 sm:flex-1">
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-slate-900">{foundation.name}</span>
-                    <span className="block text-xs text-slate-500">
-                      {foundationWaqfs.length} waqf {foundationWaqfs.length === 1 ? "fund" : "funds"}
-                    </span>
+        <>
+          <EndowmentHero positions={positions} />
+
+          <section aria-label="Key figures" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            <KpiTile
+              icon={<IconCheckCircle className="h-[18px] w-[18px]" />}
+              label="Active funds"
+              value={String(waqfs.filter((w) => w.status === "active").length)}
+              sub={`of ${waqfs.length} established`}
+            />
+            <KpiTile
+              icon={<IconHeart className="h-[18px] w-[18px]" />}
+              label="Causes supported"
+              value={String(waqfs.reduce((sum, w) => sum + (w.causesCount ?? 0), 0))}
+              sub={`across ${waqfs.length} ${waqfs.length === 1 ? "fund" : "funds"}`}
+            />
+            <KpiTile
+              icon={<IconClipboardCheck className="h-[18px] w-[18px]" />}
+              label="Distributed"
+              value={
+                distributed && distributed.length > 0 ? null : <span className="text-slate-400">None yet</span>
+              }
+              sub={
+                distributed && distributed.length > 0 ? (
+                  <span className="space-y-0.5">
+                    {distributed.map((d) => (
+                      <span key={`${d.waqfType}-${d.currency}`} className="block">
+                        <span className="font-semibold tabular-nums text-slate-900">
+                          {formatMoney(d.totalAmount, d.currency, { decimals: 0 })}
+                        </span>{" "}
+                        <span className="text-slate-500">via {TYPE_LABEL[d.waqfType]}</span>
+                      </span>
+                    ))}
                   </span>
-                </Link>
-                <div className="flex shrink-0 items-center gap-4">
-                  <Link
-                    href={`/foundations/${foundation.id}/waqf-funds/new`}
-                    className="text-xs font-medium text-primary-700 hover:text-primary-800"
-                  >
-                    + Add Waqf Fund
-                  </Link>
-                  <IconBriefcase className="h-4 w-4 shrink-0 text-slate-300" />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Card>
+                ) : (
+                  "Paid out to beneficiaries"
+                )
+              }
+            />
+            <KpiTile
+              icon={<IconLandmark className="h-[18px] w-[18px]" />}
+              label="Foundations"
+              value={String(foundations.length)}
+              sub={`${foundations.filter((f) => f.foundationDeed).length} with a signed deed`}
+            />
+          </section>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            <FundsPanel waqfs={waqfs} className="lg:col-span-2" />
+            <div className="space-y-6">
+              <AttentionPanel items={attention} />
+              <ActivityPanel entries={activity} />
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-/**
- * The page's focal point — a large, honest number before any supporting
- * detail (Mercury-style account summary), derived entirely from the
- * `GET /waqfs` response already being fetched. Deliberately does NOT
- * render "0" as the big numeral for a founder with no waqf yet: a bare
- * "0" in this type size reads as a failure/error state, not as the
- * (entirely normal, pre-establishment) status it actually is — so the
- * zero case gets a welcoming sentence instead of a numeral.
- */
-function Hero({
-  founder,
-  waqfs,
-  error,
-  foundationCount,
-}: {
-  founder: Founder;
-  waqfs: Waqf[] | null;
-  error: string | null;
-  foundationCount: number | null;
-}) {
-  const eyebrow = <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Waqf Overview</p>;
-
-  if (error) {
-    return (
-      <header className="mb-10">
-        {eyebrow}
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Welcome, {founder.name}</h1>
-      </header>
-    );
-  }
-
-  if (waqfs === null) {
-    return (
-      <header className="mb-10">
-        {eyebrow}
-        <div className="mt-3">
-          <Skeleton className="h-12 w-20" />
-        </div>
-        <Skeleton className="mt-3 h-4 w-72 max-w-full" />
-      </header>
-    );
-  }
-
-  if (waqfs.length === 0) {
-    return (
-      <header className="mb-10">
-        {eyebrow}
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Welcome, {founder.name}</h1>
-        <p className="mt-2 max-w-xl text-sm text-slate-500">
-          Birr serves as Mutawalli (trustee) on your behalf. Once your waqf is established, it will appear here.
-        </p>
-      </header>
-    );
-  }
-
-  const counts = countByStatus(waqfs);
-  const statuses = Object.keys(counts) as Waqf["status"][];
-
+function EndowmentHero({ positions }: { positions: CurrencyPosition[] }) {
   return (
-    <header className="mb-10">
-      {eyebrow}
-      <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-6xl font-semibold tracking-tight text-primary-900">{waqfs.length}</span>
-        <span className="text-lg font-medium text-slate-600">
-          {`${waqfs.length === 1 ? "waqf" : "waqfs"} under Birr’s trusteeship`}
-        </span>
+    <section
+      aria-label="Endowed to date"
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-950 via-primary-900 to-primary-700 text-white shadow-lg shadow-primary-950/20"
+    >
+      <GeometricPattern className="pointer-events-none absolute inset-y-0 right-0 h-full w-2/3 text-white/[0.06] [mask-image:linear-gradient(to_left,black,transparent)]" />
+      <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-accent-400/15 blur-3xl" aria-hidden="true" />
+      <div
+        className={`relative grid gap-8 p-6 sm:p-8 ${positions.length > 1 ? "md:grid-cols-2 md:divide-x md:divide-white/10" : ""}`}
+      >
+        {positions.length === 0 && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-300">Endowed to date</p>
+            <p className="mt-3 text-sm text-primary-100/80">No corpus has been declared on your funds yet.</p>
+          </div>
+        )}
+        {positions.map((p, i) => {
+          const pct = p.declared > 0 ? Math.min(100, (p.raised / p.declared) * 100) : null;
+          return (
+            <div key={p.currency} className={i > 0 ? "md:pl-8" : ""}>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-300">
+                Endowed to date{positions.length > 1 && ` · ${p.currency}`}
+              </p>
+              <p className="mt-3 font-display text-4xl font-medium tabular-nums tracking-tight sm:text-5xl">
+                {formatMoney(p.raised, p.currency, { decimals: 0 })}
+              </p>
+              <p className="mt-2 text-sm text-primary-100/80">
+                of {formatMoney(p.declared, p.currency, { decimals: 0 })} declared across {p.fundCount}{" "}
+                {p.fundCount === 1 ? "fund" : "funds"}
+              </p>
+              {pct !== null && (
+                <div className="mt-5">
+                  <ProgressBar pct={pct} tone="gold" label={`${Math.round(pct)}% of declared corpus funded`} />
+                  <p className="mt-2 text-xs font-medium text-primary-100/80">{Math.floor(pct)}% funded</p>
+                </div>
+              )}
+              {p.byType.length > 1 && (
+                <ul className="mt-5 flex flex-wrap gap-2" aria-label="By fund type">
+                  {p.byType.map((t) => (
+                    <li key={t.type} className="rounded-full bg-white/10 px-3 py-1 text-xs text-primary-50 ring-1 ring-inset ring-white/10">
+                      {TYPE_LABEL[t.type]} · <span className="font-semibold tabular-nums">{formatMoney(t.raised, p.currency, { decimals: 0 })}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
       </div>
-      <p className="mt-2 text-sm text-slate-500">
-        Birr serves as Mutawalli (trustee) on behalf of {founder.name}, across {foundationCount}{" "}
-        {foundationCount === 1 ? "foundation" : "foundations"}.
-      </p>
-
-      {statuses.length > 1 && (
-        // Same auto-fit reasoning as the corpus/raised grid above — the
-        // number of statuses present varies (2 to 4), so a fixed column
-        // count squeezes tiles too narrow whenever fewer are present.
-        <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
-          {statuses.map((status) => {
-            const Icon = STATUS_ICON[status];
-            return (
-              <StatCard
-                key={status}
-                label={humanize(status)}
-                value={counts[status]}
-                tone={STATUS_STAT_TONE[status]}
-                icon={<Icon className="h-[18px] w-[18px]" />}
-              />
-            );
-          })}
-        </div>
-      )}
-    </header>
+    </section>
   );
 }
 
-function SummarySkeleton() {
+function KpiTile({ icon, label, value, sub }: { icon: ReactNode; label: string; value: ReactNode; sub: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="divide-y divide-slate-100">
-        {[0, 1].map((i) => (
-          <div key={i} className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-3 w-20" />
-            </div>
-            <Skeleton className="h-4 w-4" />
-          </div>
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-700">{icon}</span>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      </div>
+      {value !== null && <p className="mt-3 text-2xl font-semibold tabular-nums tracking-tight text-slate-900">{value}</p>}
+      <p className={`text-xs leading-relaxed text-slate-500 ${value !== null ? "mt-1" : "mt-3 text-sm"}`}>{sub}</p>
+    </div>
+  );
+}
+
+const FUNDS_SHOWN = 6;
+
+function FundsPanel({ waqfs, className = "" }: { waqfs: Waqf[]; className?: string }) {
+  return (
+    <Panel className={className}>
+      <PanelHeader title="Your waqf funds" href="/portfolio" linkLabel={waqfs.length > FUNDS_SHOWN ? `View all ${waqfs.length}` : "Portfolio"} />
+      <ul className="divide-y divide-slate-100">
+        {waqfs.slice(0, FUNDS_SHOWN).map((w) => (
+          <li key={w.id}>
+            <FundRow waqf={w} />
+          </li>
         ))}
+      </ul>
+    </Panel>
+  );
+}
+
+function AttentionPanel({ items }: { items: AttentionItem[] }) {
+  return (
+    <Panel>
+      <PanelHeader title="Needs your attention" />
+      {items.length === 0 ? (
+        <div className="flex items-center gap-3 px-5 py-5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-700">
+            <IconCheckCircle className="h-[18px] w-[18px]" />
+          </span>
+          <div>
+            <p className="text-sm font-medium text-slate-900">You're all caught up</p>
+            <p className="text-xs text-slate-500">Nothing is waiting on you right now.</p>
+          </div>
+        </div>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {items.slice(0, 5).map((item) => (
+            <li key={item.key} className="flex gap-3 px-5 py-4">
+              <span
+                className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.tone === "accent" ? "bg-accent-500" : "bg-primary-500"}`}
+                aria-hidden="true"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{item.detail}</p>
+                <Link href={item.href} className={`${linkButton.quiet} mt-2`}>
+                  {item.cta}
+                  <IconArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+function ActivityPanel({ entries }: { entries: FounderAuditLogEntry[] | null }) {
+  return (
+    <Panel>
+      <PanelHeader title="Recent activity" href="/activity" linkLabel="View all" />
+      {entries === null ? (
+        <div className="space-y-3 px-5 py-4">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      ) : entries.length === 0 ? (
+        <p className="px-5 py-5 text-sm text-slate-500">Actions you and your team take will show up here.</p>
+      ) : (
+        <ol className="relative px-5 py-4">
+          {entries.map((e, i) => (
+            <li key={e.id} className="relative flex gap-3 pb-4 last:pb-0">
+              {i < entries.length - 1 && <span className="absolute left-[5px] top-4 h-full w-px bg-slate-200" aria-hidden="true" />}
+              <span className="relative mt-1.5 h-[11px] w-[11px] shrink-0 rounded-full border-2 border-primary-500 bg-white" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-sm text-slate-800">{describeAuditAction(e.action)}</p>
+                <p className="text-xs text-slate-500">
+                  {e.actorUser ? `${e.actorUser.fullName} · ` : ""}
+                  {formatRelativeTime(e.createdAt)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Panel>
+  );
+}
+
+function WelcomePanel() {
+  const steps = [
+    { icon: IconLandmark, title: "Establish a Foundation", body: "The umbrella your Waqf Funds sit under." },
+    { icon: IconBriefcase, title: "Create a Waqf Fund", body: "Choose Investment, Asset or Project, and declare its corpus." },
+    { icon: IconFileText, title: "Sign the deed", body: "One Foundation Deed appoints Birr as Mutawalli for every fund." },
+  ];
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-10">
+      <GeometricPattern className="pointer-events-none absolute inset-y-0 right-0 h-full w-1/2 text-primary-900/[0.04]" />
+      <div className="relative max-w-2xl">
+        <h2 className="font-display text-2xl font-medium tracking-tight text-slate-900">Begin your endowment</h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          It takes a few minutes, entirely self-service — Birr becomes Mutawalli (trustee) the moment your first fund is
+          established.
+        </p>
+        <ol className="mt-6 grid gap-4 sm:grid-cols-3">
+          {steps.map((s, i) => (
+            <li key={s.title} className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-700 text-xs font-bold text-white">{i + 1}</span>
+              <p className="mt-3 text-sm font-semibold text-slate-900">{s.title}</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+        <Link href="/foundations/new" className={`${linkButton.primary} mt-6`}>
+          Establish a Foundation
+          <IconArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-8" aria-busy="true" aria-label="Loading your overview">
+      <Skeleton className="h-52 w-full rounded-2xl" />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-28 rounded-2xl" />
+        ))}
+      </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Skeleton className="h-72 rounded-2xl lg:col-span-2" />
+        <Skeleton className="h-72 rounded-2xl" />
       </div>
     </div>
   );
