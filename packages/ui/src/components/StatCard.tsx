@@ -43,11 +43,11 @@ const wrapperClasses: Record<NonNullable<StatCardProps["tone"]>, string> = {
 export function StatCard({ label, value, icon, tone = "neutral", className = "", ...props }: StatCardProps) {
   return (
     <div
-      className={`flex items-center gap-3.5 rounded-lg border px-4 py-3.5 ${wrapperClasses[tone]} ${className}`}
+      className={`flex items-center gap-3.5 rounded-xl border px-4 py-3.5 ${wrapperClasses[tone]} ${className}`}
       {...props}
     >
       {icon && (
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md shadow-sm ${iconClasses[tone]}`}>
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm ${iconClasses[tone]}`}>
           {icon}
         </span>
       )}
@@ -56,7 +56,7 @@ export function StatCard({ label, value, icon, tone = "neutral", className = "",
             spaces to wrap at) otherwise overflows this tile's width
             instead of wrapping, clipped by the parent grid cell (found
             on a 375px mobile viewport, 2026-09-29 codebase walkthrough). */}
-        <p className="break-words text-xl font-semibold leading-tight tracking-tight text-slate-900">{value}</p>
+        <p className="break-words text-xl font-semibold leading-tight tracking-tight tabular-nums text-slate-900">{value}</p>
         <p className="text-xs font-medium leading-snug text-slate-500">{label}</p>
       </div>
     </div>
