@@ -504,7 +504,25 @@ export class WaqfsService {
         orderBy: { createdAt: "desc" },
         take,
       });
-      return waqfs.map(({ _count, ...waqf }) => ({ ...waqf, causesCount: _count.waqfCauses }));
+      // amountRaised per fund (Founder Portal only — the Ops Console list
+      // above is unchanged), so the Overview/Portfolio can show each
+      // fund's funding progress without one GET /waqfs/:id per fund.
+      // Same rule as attachAmountRaised: confirmed Contributions, in the
+      // fund's own corpusCurrency when set — one grouped query, then
+      // matched per fund, so an off-currency row never blends in.
+      const raisedRows = waqfs.length
+        ? await tx.contribution.groupBy({
+            by: ["waqfId", "currency"],
+            where: { waqfId: { in: waqfs.map((w) => w.id) }, status: "confirmed" },
+            _sum: { amount: true },
+          })
+        : [];
+      return waqfs.map(({ _count, ...waqf }) => {
+        const raised = raisedRows
+          .filter((r) => r.waqfId === waqf.id && (!waqf.corpusCurrency || r.currency === waqf.corpusCurrency))
+          .reduce((sum, r) => sum.plus(r._sum.amount ?? 0), new Prisma.Decimal(0));
+        return { ...waqf, causesCount: _count.waqfCauses, amountRaised: raised.toString() };
+      });
     });
   }
 }
