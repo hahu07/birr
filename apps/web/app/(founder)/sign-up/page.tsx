@@ -13,7 +13,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { trackFunnelEvent } from "../../../lib/funnel-tracking";
-import { Alert, AuthSplitLayout, Button, IconMark, Input, PasswordInput } from "@birr/ui";
+import { Alert, Button, IconMark, Input, PasswordInput } from "@birr/ui";
+import { FounderAuthLayout } from "../_components/FounderAuthLayout";
 
 export default function SignUpPage() {
   useEffect(() => {
@@ -61,8 +62,7 @@ export default function SignUpPage() {
     !submitting;
 
   return (
-    <AuthSplitLayout
-      tone="founder"
+    <FounderAuthLayout
       eyebrow="Waqf Trustee Platform"
       headline="Establish your Foundation and Waqf Fund, self-service."
       subcopy="No approval gate — creating a Waqf Fund is itself how you agree Birr becomes Mutawalli (trustee) over it."
@@ -72,7 +72,7 @@ export default function SignUpPage() {
         <span className="text-lg font-semibold tracking-tight text-slate-900">Birr</span>
       </Link>
 
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Create your account</h1>
+      <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Create your account</h1>
       <p className="mt-2 text-sm text-slate-500">
         Already have an account?{" "}
         <Link href="/sign-in" className="font-medium text-primary-700 hover:text-primary-800">
@@ -146,10 +146,10 @@ export default function SignUpPage() {
           </span>
         </label>
 
-        <Button type="submit" variant="primary" disabled={!canSubmit} className="w-full">
+        <Button type="submit" variant="primary" disabled={!canSubmit} className="w-full rounded-lg py-2.5 font-semibold">
           {submitting ? "Creating account…" : "Create account"}
         </Button>
       </form>
-    </AuthSplitLayout>
+    </FounderAuthLayout>
   );
 }

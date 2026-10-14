@@ -48,7 +48,7 @@ function CheckYourEmail() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold tracking-tight text-slate-900">Check your email</h1>
+      <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Check your email</h1>
       <p className="mt-1.5 text-sm text-slate-500">
         We sent a verification link to your inbox. Click it to continue — this page will move on automatically
         once you're verified.
@@ -133,7 +133,7 @@ function VerifyWhatsAppForm() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold tracking-tight text-slate-900">Verify your WhatsApp number</h1>
+      <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Verify your WhatsApp number</h1>
       <p className="mt-1.5 text-sm text-slate-500">
         We&apos;ve added this as a required verification step alongside email, to keep every Founder account
         secure.

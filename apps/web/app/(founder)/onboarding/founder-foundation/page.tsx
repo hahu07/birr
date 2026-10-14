@@ -13,7 +13,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import { humanize } from "../../../../lib/format";
 import { ROUTE_FOR_STEP } from "../../../../lib/onboarding";
 import type { Invitation } from "../../../../lib/types";
-import { Alert, Button, Card, Input } from "@birr/ui";
+import { Alert, Button, Card, Input, Select } from "@birr/ui";
 import { FounderFoundationGuide } from "./FounderFoundationGuide";
 
 interface PurposeSuggestion {
@@ -241,7 +241,7 @@ export default function OnboardingFounderFoundationPage() {
   if (inviteResults) {
     return (
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900">Foundation established</h1>
+        <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Foundation established</h1>
         <p className="mt-1.5 text-sm text-slate-500">
           Birr is now Mutawalli (trustee) over it. Here&apos;s the status of the co-founder invitation
           {inviteResults.length > 1 ? "s" : ""} you sent:
@@ -301,7 +301,7 @@ export default function OnboardingFounderFoundationPage() {
       >
         ← Back
       </Link>
-      <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+      <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">
         {alreadyEstablished ? "Your Foundation is established" : "Establish your Foundation"}
       </h1>
       <p className="mt-1.5 text-sm text-slate-500">
@@ -352,15 +352,14 @@ export default function OnboardingFounderFoundationPage() {
               <label htmlFor="kind" className="mb-1.5 block text-sm font-medium text-slate-700">
                 Founder type
               </label>
-              <select
+              <Select
                 id="kind"
                 value={kind}
                 onChange={(e) => setKind(e.target.value as "institution" | "individual")}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               >
                 <option value="institution">Institution</option>
                 <option value="individual">Individual</option>
-              </select>
+              </Select>
             </div>
             <div>
               <label htmlFor="founderName" className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -373,18 +372,17 @@ export default function OnboardingFounderFoundationPage() {
                 <label htmlFor="institutionType" className="mb-1.5 block text-sm font-medium text-slate-700">
                   Institution type
                 </label>
-                <select
+                <Select
                   id="institutionType"
                   value={institutionType}
                   onChange={(e) => setInstitutionType(e.target.value as (typeof INSTITUTION_TYPES)[number])}
-                  className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 >
                   {INSTITUTION_TYPES.map((t) => (
                     <option key={t} value={t}>
-                      {humanize(t)}
+                      {t === "ngo" ? "NGO" : humanize(t)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             )}
             <div>

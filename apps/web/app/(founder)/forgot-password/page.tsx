@@ -11,7 +11,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
-import { Alert, AuthSplitLayout, Button, IconMark, Input } from "@birr/ui";
+import { Alert, Button, IconMark, Input } from "@birr/ui";
+import { FounderAuthLayout } from "../_components/FounderAuthLayout";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -37,8 +38,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <AuthSplitLayout
-      tone="founder"
+    <FounderAuthLayout
       eyebrow="Waqf Trustee Platform"
       headline="A digital trustee for Islamic waqf."
       subcopy="Establish your own Foundation and Waqf Fund, self-service — Birr becomes Mutawalli (trustee) over what you establish, as you agree, no approval gate."
@@ -50,7 +50,7 @@ export default function ForgotPasswordPage() {
 
       {sent ? (
         <>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Check your email</h1>
+          <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Check your email</h1>
           <p className="mt-2 text-sm text-slate-500">
             If an account exists for <span className="font-medium text-slate-700">{email}</span>, we've sent a link
             to reset your password. It expires in 1 hour.
@@ -61,7 +61,7 @@ export default function ForgotPasswordPage() {
         </>
       ) : (
         <>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Forgot your password?</h1>
+          <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Forgot your password?</h1>
           <p className="mt-2 text-sm text-slate-500">
             Enter the email on your account and we'll send you a link to reset your password.
           </p>
@@ -85,7 +85,7 @@ export default function ForgotPasswordPage() {
                 required
               />
             </div>
-            <Button type="submit" variant="primary" disabled={submitting || email.trim().length === 0} className="w-full">
+            <Button type="submit" variant="primary" disabled={submitting || email.trim().length === 0} className="w-full rounded-lg py-2.5 font-semibold">
               {submitting ? "Sending…" : "Send reset link"}
             </Button>
           </form>
@@ -97,6 +97,6 @@ export default function ForgotPasswordPage() {
           </p>
         </>
       )}
-    </AuthSplitLayout>
+    </FounderAuthLayout>
   );
 }
