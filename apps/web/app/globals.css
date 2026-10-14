@@ -18,6 +18,21 @@
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Founder Portal (signed-in app only) — same scoping approach as
+   .ops-shell above: swaps `font-sans` for Inter and points
+   `font-display` at Fraunces, both loaded in app/(founder)/layout.tsx.
+   The @theme default is a plain serif stack; .founder-app redefines it
+   because --font-fraunces only exists below the layout's wrapper — a
+   var() referencing it at :root would resolve to nothing. */
+@theme {
+  --font-display: ui-serif, Georgia, serif;
+}
+.founder-app {
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
+}
+
 /* MarketingHome's hero orbs — referenced via Tailwind's arbitrary
    `animate-[float-slow_..]` utility, gated by the `motion-safe:` variant
    at each call site so this never runs under prefers-reduced-motion. */

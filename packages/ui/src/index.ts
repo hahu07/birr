@@ -64,5 +64,11 @@ export {
   IconBell,
   IconMessageCircle,
   IconKey,
+  IconChevronRight,
+  IconArrowRight,
+  IconMoreHorizontal,
+  IconPlus,
+  IconHeart,
+  IconShieldCheck,
 } from "./components/icons";
 export type { IconProps } from "./components/icons";

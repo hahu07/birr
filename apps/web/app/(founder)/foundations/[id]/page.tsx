@@ -16,8 +16,9 @@ import { apiFetchJson } from "../../../../lib/api";
 import { formatDate } from "../../../../lib/format";
 import { useFounderSession } from "../../../../lib/founder-session";
 import { markNotificationsReadForEntity } from "../../../../lib/notifications";
-import type { Foundation, FounderMembership, Invitation } from "../../../../lib/types";
-import { Alert, Badge, Button, EmptyState, IconLandmark, Skeleton } from "@birr/ui";
+import type { Foundation, FounderMembership, Invitation, Waqf } from "../../../../lib/types";
+import { Alert, Badge, Button, IconCheckCircle, IconFileText, IconPlus, IconUsers, Skeleton } from "@birr/ui";
+import { FundRow, linkButton, PageHeader, Panel, PanelHeader } from "../../_components/ui";
 import { InviteCoFounderForm } from "./InviteCoFounderForm";
 import { MessagesSection } from "./MessagesSection";
 
@@ -29,6 +30,7 @@ export default function FoundationDetailPage() {
   const [foundation, setFoundation] = useState<Foundation | null>(null);
   const [members, setMembers] = useState<FounderMembership[] | null>(null);
   const [invitations, setInvitations] = useState<Invitation[] | null>(null);
+  const [waqfs, setWaqfs] = useState<Waqf[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showInviteForm, setShowInviteForm] = useState(false);
 
@@ -37,11 +39,16 @@ export default function FoundationDetailPage() {
       apiFetchJson<Foundation>(`/foundations/${foundationId}`),
       apiFetchJson<FounderMembership[]>("/founders/me/members"),
       apiFetchJson<Invitation[]>("/invitations"),
+      apiFetchJson<Waqf[]>("/waqfs"),
     ])
-      .then(([foundationData, membersData, invitationsData]) => {
+      .then(([foundationData, membersData, invitationsData, waqfsData]) => {
         setFoundation(foundationData);
         setMembers(membersData);
         setInvitations(invitationsData);
+        // GET /waqfs is already founder-scoped; this page shows just the
+        // funds under this one Foundation (2026-10 redesign — they
+        // weren't listed here at all before).
+        setWaqfs(waqfsData.filter((w) => w.foundationId === foundationId));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, [foundationId]);
@@ -70,45 +77,26 @@ export default function FoundationDetailPage() {
 
   return (
     <div>
-      <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
-            <IconLandmark className="h-5 w-5" />
-          </span>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{foundation?.name ?? "Foundation"}</h1>
-            {foundation && (foundation.purpose || foundation.jurisdiction) && (
-              <p className="mt-0.5 text-sm text-slate-500">
-                {[foundation.purpose, foundation.jurisdiction].filter(Boolean).join(" · ")}
-              </p>
+      <PageHeader
+        back={{ href: "/portfolio", label: "Portfolio" }}
+        eyebrow="Foundation"
+        title={foundation?.name ?? "Foundation"}
+        description={foundation && (foundation.purpose || foundation.jurisdiction) ? [foundation.purpose, foundation.jurisdiction].filter(Boolean).join(" · ") : undefined}
+        actions={
+          <>
+            {isPrimaryContact && (
+              <button type="button" className={linkButton.secondary} onClick={() => setShowInviteForm((v) => !v)} aria-expanded={showInviteForm}>
+                <IconUsers className="h-4 w-4" />
+                {showInviteForm ? "Cancel invite" : "Invite a co-founder"}
+              </button>
             )}
-          </div>
-        </div>
-        {/* flex-wrap — "View signed deed" + "Invite a co-founder" side
-            by side are wider than a phone screen on their own. */}
-        <div className="flex flex-wrap items-center gap-2">
-          {foundation?.foundationDeed ? (
-            <Link href={`/foundations/${foundationId}/deed`}>
-              <Button variant="secondary">View signed deed</Button>
+            <Link href={`/foundations/${foundationId}/waqf-funds/new`} className={linkButton.primary}>
+              <IconPlus className="h-4 w-4" />
+              Add Waqf Fund
             </Link>
-          ) : (
-            // 2026-09-14 audit fix: this used to render nothing at all
-            // when unsigned — a Founder had no way to even discover that
-            // signing was possible for any Foundation past their first
-            // (the onboarding wizard only ever covers foundations[0]).
-            // Anyone can see the CTA; the deed page itself gates the
-            // actual form to the primary contact.
-            <Link href={`/foundations/${foundationId}/deed`}>
-              <Button variant="secondary">Sign deed</Button>
-            </Link>
-          )}
-          {isPrimaryContact && (
-            <Button variant="secondary" onClick={() => setShowInviteForm((v) => !v)}>
-              {showInviteForm ? "Cancel" : "Invite a co-founder"}
-            </Button>
-          )}
-        </div>
-      </header>
+          </>
+        }
+      />
 
       {error && (
         <Alert tone="danger" title="Couldn't load this Foundation" className="mb-6">
@@ -117,64 +105,133 @@ export default function FoundationDetailPage() {
       )}
 
       {isPrimaryContact && showInviteForm && (
-        <InviteCoFounderForm
-          foundationId={foundationId}
-          onInvited={() => {
-            setShowInviteForm(false);
-            load();
-          }}
-          onCancel={() => setShowInviteForm(false)}
-        />
+        <div className="mb-6">
+          <InviteCoFounderForm
+            foundationId={foundationId}
+            onInvited={() => {
+              setShowInviteForm(false);
+              load();
+            }}
+            onCancel={() => setShowInviteForm(false)}
+          />
+        </div>
       )}
 
       {!error && foundation === null && (
-        <div className="space-y-2">
-          <Skeleton className="h-14 w-full" />
-          <Skeleton className="h-14 w-full" />
+        <div className="grid gap-6 lg:grid-cols-3" aria-busy="true">
+          <Skeleton className="h-72 rounded-2xl lg:col-span-2" />
+          <Skeleton className="h-72 rounded-2xl" />
         </div>
       )}
 
       {!error && foundation !== null && (
-        <>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Co-founders</p>
-          <div className="space-y-1.5">
-            {(foundation.foundationFounders ?? []).map((ff) => (
-              <div
-                key={ff.founder.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-4 py-3"
-              >
-                <p className="text-sm font-medium text-slate-900">{ff.founder.name}</p>
-                <Badge tone="neutral">Co-founder</Badge>
-              </div>
-            ))}
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <Panel>
+              <PanelHeader
+                title="Waqf Funds"
+                aside={waqfs && <span className="text-xs text-slate-500">{waqfs.length} {waqfs.length === 1 ? "fund" : "funds"}</span>}
+              />
+              {waqfs === null ? (
+                <div className="space-y-3 p-5">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              ) : waqfs.length === 0 ? (
+                <div className="px-5 py-8 text-center">
+                  <p className="text-sm text-slate-600">No Waqf Fund under this Foundation yet.</p>
+                  <Link href={`/foundations/${foundationId}/waqf-funds/new`} className={`${linkButton.primary} mt-4`}>
+                    <IconPlus className="h-4 w-4" />
+                    Add the first Waqf Fund
+                  </Link>
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {waqfs.map((w) => (
+                    <li key={w.id}>
+                      <FundRow waqf={w} showFoundation={false} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+
+            <MessagesSection foundationId={foundationId} />
           </div>
 
-          {pendingCoFounderInvitations.length > 0 && (
-            <div className="mt-8">
-              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                Pending co-founder invitations
-              </p>
-              <div className="space-y-1.5">
-                {pendingCoFounderInvitations.map((inv) => (
-                  <PendingCoFounderInvitationRow
-                    key={inv.id}
-                    invitation={inv}
-                    canRevoke={Boolean(isPrimaryContact)}
-                    onRevoked={load}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="space-y-6">
+            <DeedPanel foundation={foundation} />
 
-          {(foundation.foundationFounders ?? []).length === 0 && (
-            <EmptyState title="No founders on record" description="This Foundation has no Founder attached yet." />
-          )}
-
-          <MessagesSection foundationId={foundationId} />
-        </>
+            <Panel>
+              <PanelHeader title="Co-founders" />
+              {(foundation.foundationFounders ?? []).length === 0 ? (
+                <p className="px-5 py-5 text-sm text-slate-500">This Foundation has no Founder attached yet.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {(foundation.foundationFounders ?? []).map((ff) => (
+                    <li key={ff.founder.id} className="flex items-center gap-3 px-5 py-3.5">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-bold text-primary-800">
+                        {ff.founder.name.trim().charAt(0).toUpperCase()}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{ff.founder.name}</span>
+                      <Badge tone="neutral">Co-founder</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {pendingCoFounderInvitations.length > 0 && (
+                <div className="border-t border-slate-100 px-5 py-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Pending invitations</p>
+                  <div className="space-y-2">
+                    {pendingCoFounderInvitations.map((inv) => (
+                      <PendingCoFounderInvitationRow key={inv.id} invitation={inv} canRevoke={Boolean(isPrimaryContact)} onRevoked={load} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Panel>
+          </div>
+        </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Deed status for this Foundation. Always shown, signed or not —
+ * 2026-09-14 audit fix: when unsigned, this used to render nothing at
+ * all, so a Founder had no way to discover signing was possible for any
+ * Foundation past their first (the onboarding wizard only covers
+ * foundations[0]). Anyone can see the CTA; the deed page itself gates the
+ * actual form to the primary contact.
+ */
+function DeedPanel({ foundation }: { foundation: Foundation }) {
+  const deed = foundation.foundationDeed;
+  return (
+    <Panel className={deed ? "" : "border-accent-200 bg-accent-50/40"}>
+      <div className="p-5">
+        <div className="flex items-center gap-3">
+          <span
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${deed ? "bg-primary-50 text-primary-700" : "bg-accent-100 text-accent-700"}`}
+          >
+            {deed ? <IconCheckCircle className="h-5 w-5" /> : <IconFileText className="h-5 w-5" />}
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Foundation Deed</p>
+            <p className="text-xs text-slate-500">{deed ? `Signed ${formatDate(deed.signedAt)} by ${deed.typedLegalName}` : "Not signed yet"}</p>
+          </div>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-slate-600">
+          One deed appoints Birr as Mutawalli (trustee) for this Foundation and every Waqf Fund under it, present and future.
+        </p>
+        <Link
+          href={`/foundations/${foundation.id}/deed`}
+          className={`${deed ? linkButton.secondary : linkButton.primary} mt-4 w-full px-3 py-2 text-xs`}
+        >
+          {deed ? "View signed deed" : "Review & sign the deed"}
+        </Link>
+      </div>
+    </Panel>
   );
 }
 
@@ -188,6 +245,7 @@ function PendingCoFounderInvitationRow({
   onRevoked: () => void;
 }) {
   const [revoking, setRevoking] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleRevoke() {
@@ -205,15 +263,24 @@ function PendingCoFounderInvitationRow({
   const link = `${typeof window !== "undefined" ? window.location.origin : ""}/ops/accept-invitation?token=${invitation.token}&kind=co_founder`;
 
   return (
-    <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
+    <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3.5 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-900">{invitation.email}</p>
           <p className="text-xs text-slate-500">Expires {formatDate(invitation.expiresAt)}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => navigator.clipboard.writeText(link)}>
-            Copy link
+          <Button
+            variant="secondary"
+            className="px-3 py-1.5 text-xs"
+            onClick={() =>
+              navigator.clipboard.writeText(link).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              })
+            }
+          >
+            {copied ? "Copied" : "Copy link"}
           </Button>
           {canRevoke && (
             <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={revoking} onClick={handleRevoke}>

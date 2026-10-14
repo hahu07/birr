@@ -12,13 +12,13 @@
 // This page is for post-onboarding use (2nd+ Waqf Fund) — the onboarding
 // wizard's step 3 renders WaqfFundForm directly (see
 // app/onboarding/waqf-fund/page.tsx).
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../../../lib/api";
 import type { Foundation } from "../../../../../../lib/types";
 import { Alert, Skeleton } from "@birr/ui";
 import { WaqfFundForm } from "./WaqfFundForm";
+import { PageHeader } from "../../../../_components/ui";
 
 export default function NewWaqfFundPage() {
   const params = useParams<{ id: string }>();
@@ -42,25 +42,26 @@ export default function NewWaqfFundPage() {
   }, [foundationId]);
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <header className="mb-8">
-        <Link href="/portfolio" className="text-sm font-medium text-primary-700 hover:text-primary-800">
-          ← Portfolio
-        </Link>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900">Establish a Waqf Fund</h1>
-        {loadError && (
-          <Alert tone="danger" title="Couldn't load the foundation" className="mt-4">
-            {loadError}
-          </Alert>
-        )}
-        {!loadError && !foundation && <Skeleton className="mt-1 h-4 w-64" />}
-        {foundation && (
-          <p className="mt-0.5 text-sm text-slate-500">
-            Under <span className="font-medium text-slate-700">{foundation.name}</span>. This takes effect
-            immediately — Birr becomes Mutawalli (trustee) over it as soon as it's created.
-          </p>
-        )}
-      </header>
+    <div className="mx-auto max-w-5xl">
+      <PageHeader
+        back={{ href: foundation ? `/foundations/${foundationId}` : "/portfolio", label: foundation ? foundation.name : "Portfolio" }}
+        eyebrow="New Waqf Fund"
+        title="Establish a Waqf Fund"
+        description={
+          foundation ? (
+            <>
+              Under <span className="font-medium text-slate-800">{foundation.name}</span>. This takes effect immediately —
+              Birr becomes Mutawalli (trustee) over it as soon as it's created.
+            </>
+          ) : undefined
+        }
+      />
+      {loadError && (
+        <Alert tone="danger" title="Couldn't load the foundation" className="mb-6">
+          {loadError}
+        </Alert>
+      )}
+      {!loadError && !foundation && <Skeleton className="-mt-4 mb-8 h-4 w-64" />}
 
       <WaqfFundForm foundationId={foundationId} cancelHref="/portfolio" />
     </div>

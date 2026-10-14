@@ -21,18 +21,19 @@
 // Each of the twelve section components below is completely unchanged;
 // the fix is purely which ones get mounted, and when.
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
-import { formatDate, humanize } from "../../../../lib/format";
-import { STATUS_BADGE_BG, STATUS_ICON, STATUS_TONE } from "../../../../lib/portfolio";
+import { formatDate, formatMoney, humanize } from "../../../../lib/format";
+import { STATUS_ICON, STATUS_TONE } from "../../../../lib/portfolio";
+import { GeometricPattern, Panel, ProgressBar } from "../../_components/ui";
 import { useMarkNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Waqf } from "../../../../lib/types";
 import {
   Alert,
   Badge,
-  Card,
-  DetailGrid,
+  IconArrowRight,
+  IconPlus,
   Skeleton,
   Tabs,
   IconHome,
@@ -107,12 +108,14 @@ export default function WaqfFundDetailPage() {
 
   const load = useCallback(() => {
     apiFetchJson<Waqf>(`/waqfs/${params.id}`)
-      .then(setWaqf)
+      .then((w) => {
+        setError(null);
+        setWaqf(w);
+      })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, [params.id]);
 
   useEffect(() => {
-    setError(null);
     load();
   }, [load]);
 
@@ -122,13 +125,14 @@ export default function WaqfFundDetailPage() {
   useMarkNotificationsReadForEntity("Waqf", waqf?.id);
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <Link href="/portfolio" className="text-sm font-medium text-primary-700 hover:text-primary-800">
-        ← Portfolio
+    <div className="mx-auto max-w-5xl">
+      <Link href="/portfolio" className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-primary-700">
+        <IconArrowRight className="h-3.5 w-3.5 rotate-180" />
+        Portfolio
       </Link>
 
       {error && (
-        <Alert tone="danger" title="Couldn't load this waqf fund" className="mt-6">
+        <Alert tone="danger" title="Couldn't load this waqf fund" className="mt-2">
           {error}
         </Alert>
       )}
@@ -137,78 +141,44 @@ export default function WaqfFundDetailPage() {
 
       {!error && waqf && (
         <>
-          <header className="mb-8 mt-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex min-w-0 items-start gap-3.5">
-                <span
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${STATUS_BADGE_BG[waqf.status]}`}
-                >
-                  {(() => {
-                    const StatusIcon = STATUS_ICON[waqf.status];
-                    return <StatusIcon className="h-5 w-5" />;
-                  })()}
-                </span>
-                <div className="min-w-0">
-                  <h1 className="break-words text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{waqf.name}</h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
-                    Part of{" "}
-                    <Link href="/portfolio" className="font-medium text-primary-700 hover:text-primary-800">
-                      {waqf.foundation.name}
-                    </Link>
-                  </p>
-                </div>
-              </div>
-              <Badge tone={STATUS_TONE[waqf.status]} className="shrink-0">
-                {humanize(waqf.status)}
-              </Badge>
-            </div>
-          </header>
+          <FundHero waqf={waqf} />
 
-          {/* Identity info stays outside the tabs — always relevant
-              regardless of which tab is open, same reasoning the header
-              above already follows. */}
-          <Card className="mb-6">
-            <DetailGrid
-              columns={2}
-              items={[
-                { label: "Type", value: humanize(waqf.type) },
-                { label: "Jurisdiction", value: waqf.jurisdiction },
-                { label: "Established", value: formatDate(waqf.createdAt) },
-                { label: "Status", value: humanize(waqf.status) },
-                // Deed-signing is Foundation-level, not per-Waqf — see
-                // FoundationDeed's own schema comment — so this reads
-                // waqf.foundation.foundationDeed, the deed covering this
-                // waqf's whole Foundation, not a per-fund one. 2026-09-14
-                // audit fix: this row used to be omitted entirely when
-                // unsigned, so a founder viewing a fund under an unsigned
-                // 2nd+ Foundation had no clue signing was even possible
-                // from here — now always shown, linking to the page that
-                // can actually sign it (foundations/[id]/deed).
-                {
-                  label: "Deed",
-                  value: waqf.foundation.foundationDeed ? (
-                    <Link href={`/foundations/${waqf.foundationId}/deed`} className="text-primary-700 hover:text-primary-800">
-                      Signed {formatDate(waqf.foundation.foundationDeed.signedAt)} — View →
-                    </Link>
-                  ) : (
-                    <Link href={`/foundations/${waqf.foundationId}/deed`} className="text-primary-700 hover:text-primary-800">
-                      Not signed yet — Sign →
-                    </Link>
-                  ),
-                },
-              ]}
-            />
+          {/* Identity facts stay outside the tabs — always relevant
+              regardless of which tab is open. */}
+          <Panel className="mb-6">
+            <dl className="grid grid-cols-2 divide-slate-100 sm:grid-cols-3 lg:grid-cols-5 lg:divide-x">
+              <Fact label="Type" value={`${humanize(waqf.type)} fund`} />
+              <Fact label="Jurisdiction" value={waqf.jurisdiction} />
+              <Fact label="Established" value={formatDate(waqf.createdAt)} />
+              <Fact label="Funding plan" value={humanize(waqf.fundingPlan)} />
+              {/* Deed-signing is Foundation-level, not per-Waqf — see
+                  FoundationDeed's own schema comment — so this reads
+                  waqf.foundation.foundationDeed, the deed covering this
+                  waqf's whole Foundation. Always shown (2026-09-14 audit
+                  fix), linking to the page that can actually sign it. */}
+              <Fact
+                label="Foundation Deed"
+                value={
+                  <Link
+                    href={`/foundations/${waqf.foundationId}/deed`}
+                    className={waqf.foundation.foundationDeed ? "text-primary-700 hover:text-primary-800" : "font-semibold text-accent-700 hover:text-accent-800"}
+                  >
+                    {waqf.foundation.foundationDeed ? `Signed ${formatDate(waqf.foundation.foundationDeed.signedAt)}` : "Not signed — sign now"}
+                  </Link>
+                }
+              />
+            </dl>
             {waqf.purpose && (
-              <div className="mt-5 border-t border-slate-100 pt-5">
-                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Purpose</p>
-                <p className="text-sm text-slate-700">{waqf.purpose}</p>
+              <div className="border-t border-slate-100 px-5 py-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Purpose</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{waqf.purpose}</p>
               </div>
             )}
-          </Card>
+          </Panel>
 
-          <Tabs items={[...TAB_ITEMS]} active={activeTab} onChange={selectTab} className="mb-0" />
-
-          <Card className="rounded-t-none border-t-0">
+          <Panel>
+            <Tabs items={[...TAB_ITEMS]} active={activeTab} onChange={selectTab} className="px-2 sm:px-4" />
+            <div className="p-5 sm:p-6">
             {openedTabs.has("overview") && (
               <div hidden={activeTab !== "overview"} className={PANEL_RESET_FIRST_CHILD}>
                 {waqf.type === "project" && <LifecycleSection waqfId={waqf.id} />}
@@ -257,33 +227,95 @@ export default function WaqfFundDetailPage() {
                 <FinancialReportSection waqfId={waqf.id} />
               </div>
             )}
-          </Card>
+            </div>
+          </Panel>
         </>
       )}
     </div>
   );
 }
 
+/**
+ * The fund's headline: name, where it sits, and what's been raised
+ * against its declared corpus (amountRaised — confirmed Contributions in
+ * the corpus currency, computed server-side).
+ */
+function FundHero({ waqf }: { waqf: Waqf }) {
+  const StatusIcon = STATUS_ICON[waqf.status];
+  const raised = Number(waqf.amountRaised ?? 0);
+  const target = waqf.corpusAmount ? Number(waqf.corpusAmount) : null;
+  const pct = target ? (raised / target) * 100 : null;
+  const canAddFunds = (waqf.status === "active" || waqf.status === "draft") && Boolean(waqf.corpusCurrency);
+  return (
+    <section className="relative mb-6 overflow-hidden rounded-2xl bg-gradient-to-br from-primary-950 via-primary-900 to-primary-700 text-white shadow-lg shadow-primary-950/20">
+      <GeometricPattern className="pointer-events-none absolute inset-y-0 right-0 h-full w-2/3 text-white/[0.06] [mask-image:linear-gradient(to_left,black,transparent)]" />
+      <div className="relative p-6 sm:p-8">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/10 text-accent-300 ring-1 ring-inset ring-white/15">
+              <StatusIcon className="h-6 w-6" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="break-words font-display text-2xl font-medium tracking-tight sm:text-3xl">{waqf.name}</h1>
+                <Badge tone={STATUS_TONE[waqf.status]}>{humanize(waqf.status)}</Badge>
+              </div>
+              <p className="mt-1 text-sm text-primary-100/80">
+                {humanize(waqf.type)} fund · Part of{" "}
+                <Link href={`/foundations/${waqf.foundationId}`} className="font-medium text-white underline-offset-2 hover:underline">
+                  {waqf.foundation.name}
+                </Link>
+              </p>
+            </div>
+          </div>
+          {canAddFunds && (
+            <Link
+              href={`/portfolio/${waqf.id}/top-up`}
+              className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-lg bg-accent-400 px-4 py-2.5 text-sm font-semibold text-accent-950 shadow-sm transition-colors hover:bg-accent-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-300"
+            >
+              <IconPlus className="h-4 w-4" />
+              Add funds
+            </Link>
+          )}
+        </div>
+
+        {waqf.corpusCurrency && (
+          <div className="mt-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent-300">Raised to date</p>
+            <p className="mt-2 font-display text-4xl font-medium tabular-nums tracking-tight">
+              {formatMoney(raised, waqf.corpusCurrency, { decimals: 0 })}
+            </p>
+            {target !== null && pct !== null && (
+              <>
+                <p className="mt-1.5 text-sm text-primary-100/80">
+                  of {formatMoney(target, waqf.corpusCurrency, { decimals: 0 })} declared corpus
+                  {raised >= target ? " — fully funded" : ` — ${formatMoney(target - raised, waqf.corpusCurrency, { decimals: 0 })} to go`}
+                </p>
+                <ProgressBar pct={pct} tone="gold" label={`${Math.round(pct)}% of declared corpus raised`} className="mt-4 max-w-xl" />
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="px-5 py-4">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="mt-1 text-sm font-medium text-slate-900">{value}</dd>
+    </div>
+  );
+}
+
 function DetailSkeleton() {
   return (
-    <div className="mt-4">
-      <div className="mb-8 flex items-center gap-3.5">
-        <Skeleton className="h-11 w-11 rounded-lg" />
-        <div className="space-y-2">
-          <Skeleton className="h-6 w-56" />
-          <Skeleton className="h-3.5 w-40" />
-        </div>
-      </div>
-      <Card>
-        <div className="grid grid-cols-2 gap-6">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="space-y-2">
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="h-4 w-24" />
-            </div>
-          ))}
-        </div>
-      </Card>
+    <div className="space-y-6" aria-busy="true" aria-label="Loading this waqf fund">
+      <Skeleton className="h-64 w-full rounded-2xl" />
+      <Skeleton className="h-20 w-full rounded-2xl" />
+      <Skeleton className="h-96 w-full rounded-2xl" />
     </div>
   );
 }

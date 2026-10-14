@@ -14,7 +14,7 @@
 // never returns raw before/after — see that route's own comment.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
-import { formatDate } from "../../../lib/format";
+import { describeAuditAction, formatDate } from "../../../lib/format";
 import type { FounderAuditLogEntry, FounderAuditLogPage } from "../../../lib/types";
 import { Alert, Button, EmptyState, IconClock, Skeleton } from "@birr/ui";
 
@@ -96,7 +96,7 @@ export default function ActivityPage() {
                 className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm"
               >
                 <div>
-                  <span className="font-medium text-slate-900">{entry.action}</span>
+                  <span className="font-medium text-slate-900">{describeAuditAction(entry.action)}</span>
                   {entry.actorUser && <span className="text-slate-500"> · {entry.actorUser.fullName}</span>}
                 </div>
                 <span className="whitespace-nowrap text-xs text-slate-500">{formatDate(entry.createdAt)}</span>

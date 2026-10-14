@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
-import { formatAmount, formatDate, humanize } from "../../../../lib/format";
+import { formatDate, formatMoney, humanize } from "../../../../lib/format";
 import { markNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Contribution, Waqf } from "../../../../lib/types";
 import {
@@ -68,9 +68,11 @@ export function ContributionsSection({ waqf, onCorpusIncreased }: { waqf: Waqf; 
           <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Funding</p>
           <p className="text-sm text-slate-500">
             {target
-              ? `${humanize(waqf.fundingPlan)} — ${waqf.corpusCurrency} ${raised.toLocaleString()} of ${
-                  waqf.corpusCurrency
-                } ${target.toLocaleString()} raised${raised >= target ? " (fully funded)" : ""}`
+              ? `${humanize(waqf.fundingPlan)} — ${formatMoney(raised, waqf.corpusCurrency ?? "", { decimals: 0 })} of ${formatMoney(
+                  target,
+                  waqf.corpusCurrency ?? "",
+                  { decimals: 0 },
+                )} raised${raised >= target ? " (fully funded)" : ""}`
               : "How this fund has been dedicated so far."}
           </p>
         </div>
@@ -143,7 +145,7 @@ export function ContributionsSection({ waqf, onCorpusIncreased }: { waqf: Waqf; 
             {contributions.map((contribution) => (
               <TableRow key={contribution.id}>
                 <TableCell className="font-medium text-slate-900">
-                  {contribution.currency} {formatAmount(contribution.amount)}
+                  {formatMoney(contribution.amount, contribution.currency)}
                 </TableCell>
                 <TableCell className="text-slate-500">{humanize(contribution.provider)}</TableCell>
                 <TableCell>
@@ -217,7 +219,7 @@ function IncreaseTargetForm({
         </Alert>
       )}
       <p className="text-sm text-slate-600">
-        Add to this fund's total endowment target — currently {currency} {currentAmount.toLocaleString()}. This only
+        Add to this fund's total endowment target — currently {formatMoney(currentAmount, currency, { decimals: 0 })}. This only
         changes what you're pledging toward — it isn't a payment; use "Top up" for that.
       </p>
       <div className="flex flex-wrap items-end gap-3">
@@ -240,7 +242,7 @@ function IncreaseTargetForm({
           )}
           {newTotal !== null && (
             <p className="text-xs text-slate-500">
-              New target: {currency} {newTotal.toLocaleString()}
+              New target: {formatMoney(newTotal, currency, { decimals: 0 })}
             </p>
           )}
         </div>

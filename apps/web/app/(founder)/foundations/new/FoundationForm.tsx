@@ -11,7 +11,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import type { Foundation } from "../../../../lib/types";
-import { Alert, Button, Card, Input } from "@birr/ui";
+import { Alert, Button } from "@birr/ui";
+import { Field, FormSection, inputClass } from "../../_components/form";
 
 export function FoundationForm({
   onSuccess,
@@ -58,51 +59,41 @@ export function FoundationForm({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Name
-              </label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
-            </div>
-            <div>
-              <label htmlFor="purpose" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Purpose
-              </label>
+        <FormSection title="Foundation details" description="The umbrella your Waqf Funds sit under — you can add funds to it right away.">
+          <div className="space-y-5">
+            <Field label="Name" htmlFor="name">
+              <input id="name" value={name} onChange={(e) => setName(e.target.value)} required placeholder='e.g. "Bello Family Foundation"' className={inputClass} />
+            </Field>
+            <Field label="Purpose" htmlFor="purpose" hint="This becomes part of the dedication itself.">
               <textarea
                 id="purpose"
                 value={purpose}
                 onChange={(e) => setPurpose(e.target.value)}
                 rows={3}
                 required
-                placeholder="What this Foundation exists to support — this becomes part of the dedication itself."
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                placeholder="What this Foundation exists to support."
+                className={inputClass}
               />
-            </div>
-            <div>
-              <label htmlFor="jurisdiction" className="mb-1.5 block text-sm font-medium text-slate-700">
-                Jurisdiction <span className="font-normal text-slate-500">(optional)</span>
-              </label>
-              <Input
+            </Field>
+            <Field label="Jurisdiction" optional htmlFor="jurisdiction" hint="As a 2-letter country code — e.g. NG for Nigeria.">
+              <input
                 id="jurisdiction"
                 value={jurisdiction}
                 onChange={(e) => setJurisdiction(e.target.value)}
                 placeholder="e.g. NG"
+                className={`${inputClass} sm:max-w-[10rem]`}
               />
-            </div>
+            </Field>
           </div>
-        </Card>
+        </FormSection>
 
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-2.5">
           {cancelHref && (
-            <Link href={cancelHref}>
-              <Button type="button" variant="secondary">
-                Cancel
-              </Button>
+            <Link href={cancelHref} className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Cancel
             </Link>
           )}
-          <Button type="submit" variant="primary" disabled={!canSubmit}>
+          <Button type="submit" variant="primary" disabled={!canSubmit} className="rounded-lg px-5 py-2.5 font-semibold">
             {submitting ? "Creating…" : "Establish Foundation"}
           </Button>
         </div>

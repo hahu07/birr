@@ -97,3 +97,62 @@ const AGENT_NICKNAMES: Record<string, string> = {
 export function agentNickname(registryName: string): string {
   return AGENT_NICKNAMES[registryName] ?? registryName;
 }
+
+/**
+ * Money with its currency symbol — "₦1,500,000.00", "$2,000.00" — for
+ * the Founder Portal's redesigned surfaces. en-NG locale, so naira
+ * renders as "₦" (Birr's home currency), not "NGN". Non-ISO codes Intl
+ * rejects (USDC/USDT stablecoins) fall back to "USDC 2,000.00".
+ * `decimals: 0` for headline figures where kobo is noise.
+ */
+export function formatMoney(amount: string | number, currency: string, { decimals = 2 }: { decimals?: 0 | 2 } = {}): string {
+  const value = Number(amount);
+  try {
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency,
+      currencyDisplay: "narrowSymbol",
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(value);
+  } catch {
+    return `${currency} ${value.toLocaleString("en-NG", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
+  }
+}
+
+// Plain-English labels for the audit actions a Founder's own team can
+// trigger (GET /audit-logs/me is scoped to actorFounderId) — the raw
+// codes ("waqf_cause.allocation_set") were shown verbatim before. An
+// unknown code still renders, via the same humanizer permission keys use.
+const AUDIT_ACTION_LABEL: Record<string, string> = {
+  "user.signed_up": "Created an account",
+  "user.email_verified": "Verified email address",
+  "user.whatsapp_verified": "Verified WhatsApp number",
+  "user.password_reset": "Reset password",
+  "founder.created": "Registered as a Founder",
+  "founder.mfa_enabled": "Turned on two-factor authentication",
+  "founder.mfa_reset": "Reset two-factor authentication",
+  "foundation.created": "Established a Foundation",
+  "foundation_deed.signed": "Signed the Foundation Deed",
+  "waqf.created": "Established a Waqf Fund",
+  "waqf.activated": "Waqf Fund became active",
+  "waqf.corpus_target_increased": "Raised a fund's corpus target",
+  "contribution.initiated": "Started a contribution",
+  "contribution.confirmed": "Contribution confirmed",
+  "contribution.failed": "Contribution failed",
+  "waqf_cause.selected": "Selected a cause",
+  "waqf_cause.unselected": "Removed a cause",
+  "waqf_cause.created": "Added a cause",
+  "waqf_cause.allocated": "Allocated funds to a cause",
+  "waqf_cause.allocation_set": "Allocated funds to a cause",
+  "cause_category_suggestion.proposed": "Suggested a new cause category",
+  "beneficiary_nomination.proposed": "Nominated a beneficiary",
+  "founder_request.created": "Sent a request to Birr",
+  "invitation.sent": "Invited a team member",
+  "invitation.accepted": "Accepted an invitation",
+  "invitation.revoked": "Revoked an invitation",
+};
+
+export function describeAuditAction(action: string): string {
+  return AUDIT_ACTION_LABEL[action] ?? humanizePermissionKey(action);
+}

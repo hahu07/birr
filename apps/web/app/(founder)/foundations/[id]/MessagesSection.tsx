@@ -13,6 +13,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import { formatRelativeTime } from "../../../../lib/format";
 import type { Message } from "../../../../lib/types";
 import { Alert, MessageThread, Skeleton, type NotificationItem } from "@birr/ui";
+import { Panel, PanelHeader } from "../../_components/ui";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -70,9 +71,9 @@ export function MessagesSection({ foundationId }: { foundationId: string }) {
   }
 
   return (
-    <div className="mt-8 border-t border-slate-100 pt-8">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Messages</p>
-      <p className="mb-3 text-sm text-slate-500">Direct communication with Birr about this Foundation.</p>
+    <Panel>
+      <PanelHeader title="Messages with Birr" aside={<span className="text-xs text-slate-500">About this Foundation</span>} />
+      <div className="p-5">
 
       {error && (
         <Alert tone="danger" title="Couldn't load messages" className="mb-4">
@@ -96,6 +97,7 @@ export function MessagesSection({ foundationId }: { foundationId: string }) {
           formatTimestamp={formatRelativeTime}
         />
       )}
-    </div>
+      </div>
+    </Panel>
   );
 }
