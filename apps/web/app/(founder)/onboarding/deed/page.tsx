@@ -44,7 +44,7 @@ export default function OnboardingDeedPage() {
       >
         ← Back
       </Link>
-      <h1 className="text-xl font-semibold tracking-tight text-slate-900">Sign the waqf deed</h1>
+      <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Sign the waqf deed</h1>
       <p className="mt-1.5 text-sm text-slate-500">
         The last step — formally appointing Birr as Mutawalli (trustee) over your Foundation and every Waqf Fund
         established under it.

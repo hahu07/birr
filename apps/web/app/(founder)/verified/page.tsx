@@ -10,7 +10,8 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetchJson } from "../../../lib/api";
-import { Alert, Button, Card } from "@birr/ui";
+import { Alert, Button, IconCheckCircle, IconMark } from "@birr/ui";
+import { GeometricPattern } from "../_components/ui";
 
 export default function VerifiedPage() {
   return (
@@ -22,35 +23,38 @@ export default function VerifiedPage() {
 
 function VerifiedPageContent() {
   const params = useSearchParams();
-  const [redirecting, setRedirecting] = useState(false);
 
   const ok = params.get("ok") === "1";
 
   useEffect(() => {
-    if (ok) {
-      setRedirecting(true);
-      window.location.href = "/";
-    }
+    if (ok) window.location.href = "/";
   }, [ok]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-md">
-        <Card>
+    <div className="founder-app relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-primary-950 via-primary-900 to-primary-700 px-4">
+      <GeometricPattern className="pointer-events-none absolute inset-0 h-full w-full text-white/[0.05]" />
+      <div className="relative w-full max-w-md">
+        <div className="mb-6 flex items-center justify-center gap-2.5">
+          <IconMark className="h-10 w-10" />
+          <span className="text-lg font-semibold tracking-tight text-white">Birr</span>
+        </div>
+        <div className="rounded-2xl bg-white p-8 shadow-2xl shadow-primary-950/40">
           <div className="text-center">
-            <p className="text-lg font-semibold tracking-tight text-primary-800">Birr</p>
             {ok ? (
               <>
-                <h1 className="mt-3 text-xl font-semibold tracking-tight text-slate-900">Email verified</h1>
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-50 text-primary-700">
+                  <IconCheckCircle className="h-6 w-6" />
+                </span>
+                <h1 className="mt-4 font-display text-2xl font-medium tracking-tight text-slate-900">Email verified</h1>
                 <p className="mt-2 text-sm text-slate-500">
-                  {redirecting ? "Taking you to your Founder Portal…" : "Redirecting…"}
+                  Taking you to your Founder Portal…
                 </p>
               </>
             ) : (
               <VerificationFailed />
             )}
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   );
@@ -87,7 +91,7 @@ function VerificationFailed() {
 
   return (
     <>
-      <h1 className="mt-3 text-xl font-semibold tracking-tight text-slate-900">Couldn&apos;t verify this link</h1>
+      <h1 className="font-display text-2xl font-medium tracking-tight text-slate-900">Couldn&apos;t verify this link</h1>
       <p className="mt-2 text-sm text-slate-500">This link may have expired or already been used.</p>
 
       {status === "sent" ? (

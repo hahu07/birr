@@ -9,7 +9,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
-import { Alert, AuthSplitLayout, Button, IconMark, Input, PasswordInput } from "@birr/ui";
+import { Alert, Button, IconMark, Input, PasswordInput } from "@birr/ui";
+import { FounderAuthLayout } from "../_components/FounderAuthLayout";
 
 export default function SignInPage() {
   const [username, setUsername] = useState("");
@@ -60,8 +61,7 @@ export default function SignInPage() {
   const canSubmitPassword = username.trim().length > 0 && password.length > 0 && !submitting;
 
   return (
-    <AuthSplitLayout
-      tone="founder"
+    <FounderAuthLayout
       eyebrow="Waqf Trustee Platform"
       headline="A digital trustee for Islamic waqf."
       subcopy="Establish your own Foundation and Waqf Fund, self-service — Birr becomes Mutawalli (trustee) over what you establish, as you agree, no approval gate."
@@ -73,7 +73,7 @@ export default function SignInPage() {
 
       {step === "password" ? (
         <>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Welcome back</h1>
+          <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Welcome back</h1>
           <p className="mt-2 text-sm text-slate-500">
             First time?{" "}
             <Link href="/sign-up" className="font-medium text-primary-700 hover:text-primary-800">
@@ -115,14 +115,14 @@ export default function SignInPage() {
                 required
               />
             </div>
-            <Button type="submit" variant="primary" disabled={!canSubmitPassword} className="w-full">
+            <Button type="submit" variant="primary" disabled={!canSubmitPassword} className="w-full rounded-lg py-2.5 font-semibold">
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
         </>
       ) : (
         <>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Two-factor verification</h1>
+          <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Two-factor verification</h1>
           <p className="mt-2 text-sm text-slate-500">
             {useBackupCode
               ? "Enter one of your saved backup codes."
@@ -149,7 +149,7 @@ export default function SignInPage() {
                 onChange={(e) => setCode(e.target.value)}
               />
             </div>
-            <Button type="submit" variant="primary" disabled={submitting} className="w-full">
+            <Button type="submit" variant="primary" disabled={submitting} className="w-full rounded-lg py-2.5 font-semibold">
               {submitting ? "Verifying…" : "Verify"}
             </Button>
             <button
@@ -166,6 +166,6 @@ export default function SignInPage() {
           </form>
         </>
       )}
-    </AuthSplitLayout>
+    </FounderAuthLayout>
   );
 }

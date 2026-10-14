@@ -62,7 +62,7 @@ export default function OnboardingWaqfFundPage() {
       >
         ← Back
       </Link>
-      <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+      <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">
         {completedWaqfs ? "Your Waqf Fund is established" : existingWaqf ? "Complete your first contribution" : "Establish your first Waqf Fund"}
       </h1>
       <p className="mt-1.5 text-sm text-slate-500">

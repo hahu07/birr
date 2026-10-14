@@ -8,7 +8,8 @@ import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiFetchJson } from "../../../lib/api";
-import { Alert, AuthSplitLayout, Button, IconMark, PasswordInput } from "@birr/ui";
+import { Alert, Button, IconMark, PasswordInput } from "@birr/ui";
+import { FounderAuthLayout } from "../_components/FounderAuthLayout";
 
 export default function ResetPasswordPage() {
   return (
@@ -50,8 +51,7 @@ function ResetPasswordContent() {
   }
 
   return (
-    <AuthSplitLayout
-      tone="founder"
+    <FounderAuthLayout
       eyebrow="Waqf Trustee Platform"
       headline="A digital trustee for Islamic waqf."
       subcopy="Establish your own Foundation and Waqf Fund, self-service — Birr becomes Mutawalli (trustee) over what you establish, as you agree, no approval gate."
@@ -63,7 +63,7 @@ function ResetPasswordContent() {
 
       {!token ? (
         <>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Missing reset link</h1>
+          <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Missing reset link</h1>
           <p className="mt-2 text-sm text-slate-500">
             This page needs the link from your password reset email — request a new one below.
           </p>
@@ -76,7 +76,7 @@ function ResetPasswordContent() {
         </>
       ) : done ? (
         <>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Password reset</h1>
+          <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Password reset</h1>
           <p className="mt-2 text-sm text-slate-500">Your password has been changed. Sign in with your new password.</p>
           <Link href="/sign-in" className="mt-6 inline-block text-sm font-medium text-primary-700 hover:text-primary-800">
             Go to sign in →
@@ -84,7 +84,7 @@ function ResetPasswordContent() {
         </>
       ) : (
         <>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Choose a new password</h1>
+          <h1 className="font-display text-3xl font-medium tracking-tight text-slate-900">Choose a new password</h1>
           <p className="mt-2 text-sm text-slate-500">Enter and confirm your new password below.</p>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-4">
@@ -122,13 +122,13 @@ function ResetPasswordContent() {
               type="submit"
               variant="primary"
               disabled={submitting || newPassword.length === 0 || confirmPassword.length === 0}
-              className="w-full"
+              className="w-full rounded-lg py-2.5 font-semibold"
             >
               {submitting ? "Resetting…" : "Reset password"}
             </Button>
           </form>
         </>
       )}
-    </AuthSplitLayout>
+    </FounderAuthLayout>
   );
 }
