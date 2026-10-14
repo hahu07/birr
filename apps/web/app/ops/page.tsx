@@ -19,10 +19,13 @@
 // corpus (Waqf.corpusAmount) comes straight off the list response; the
 // two money totals needed their own routes since Waqf.amountRaised is
 // only computed on GET /waqfs/:id, not the list.
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { apiFetchJson } from "../../lib/api";
-import { humanize, formatAmount, WAQF_STATUS_CHART_COLOR } from "../../lib/format";
-import type { Foundation, Waqf } from "../../lib/ops-types";
+import { humanize, formatMoney, WAQF_STATUS_CHART_COLOR } from "../../lib/format";
+import { useNotifications } from "../../lib/notifications";
+import { useStaffSession } from "../../lib/staff-session";
+import type { Foundation, FounderRequest, GovernedAction, Waqf } from "../../lib/ops-types";
 import {
   Alert,
   Card,
@@ -32,8 +35,11 @@ import {
   IconCheckCircle,
   IconClipboardCheck,
   IconClock,
+  IconChevronRight,
   IconHome,
+  IconInbox,
   IconLandmark,
+  IconMessageCircle,
   IconXCircle,
   Skeleton,
   StatCard,
@@ -108,6 +114,31 @@ export default function OpsConsoleHome() {
     };
   }, []);
 
+  // "Your desk" — what's waiting on this officer, fetched apart from the
+  // platform figures so a failure here never blanks the page. Approvals
+  // exclude their own proposals (maker ≠ checker, so they could never
+  // decide those) — the same rule the sidebar's Approvals badge uses.
+  const { staff } = useStaffSession();
+  const { notifications } = useNotifications(true);
+  const [desk, setDesk] = useState<{ approvals: number; requests: number } | null>(null);
+  useEffect(() => {
+    if (!staff) return;
+    let cancelled = false;
+    Promise.all([apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"), apiFetchJson<FounderRequest[]>("/founder-requests")])
+      .then(([actions, requests]) => {
+        if (cancelled) return;
+        setDesk({
+          approvals: actions.filter((a) => a.makerUserId !== staff.userId).length,
+          requests: requests.filter((r) => r.status !== "actioned" && r.status !== "declined").length,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [staff]);
+  const unreadMessages = notifications.filter((n) => n.type === "message.received" && !n.readAt).length;
+
   const stats = useMemo(() => {
     if (!waqfs) return null;
     const byStatus = waqfs.reduce(
@@ -157,22 +188,48 @@ export default function OpsConsoleHome() {
     }));
   }, [stats]);
 
+  const firstName = staff?.user.fullName.trim().split(/\s+/)[0];
+
   return (
-    <div>
-      <header className="mb-8 flex items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
+    <div className="space-y-8">
+      <header className="flex items-start gap-3.5">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
           <IconHome className="h-5 w-5" />
         </span>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Overview</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Platform-wide statistics across every Foundation and Waqf Fund Birr manages.
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{firstName ? `Welcome back, ${firstName}` : "Overview"}</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {staff && <span className="font-medium text-slate-700">{humanize(staff.staffRole)}</span>}
+            {staff && " · "}
+            Platform-wide figures across every Foundation and Waqf Fund Birr manages.
           </p>
         </div>
       </header>
 
+      <section aria-label="Your desk">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Your desk</h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <DeskTile
+            href="/ops/governed-actions"
+            icon={<IconClipboardCheck className="h-5 w-5" />}
+            count={desk?.approvals ?? null}
+            label="Approvals awaiting your decision"
+            hint="Your own proposals excluded"
+            emphasis
+          />
+          <DeskTile
+            href="/ops/founder-requests"
+            icon={<IconInbox className="h-5 w-5" />}
+            count={desk?.requests ?? null}
+            label="Open Founder requests"
+            hint="Not yet actioned or declined"
+          />
+          <DeskTile href="/ops/messages" icon={<IconMessageCircle className="h-5 w-5" />} count={unreadMessages} label="Unread messages" hint="From Founders" />
+        </div>
+      </section>
+
       {error && (
-        <Alert tone="danger" title="Couldn't load platform overview" className="mb-8">
+        <Alert tone="danger" title="Couldn't load platform overview">
           {error}
         </Alert>
       )}
@@ -180,88 +237,73 @@ export default function OpsConsoleHome() {
       {!error && (!foundations || !waqfs || !stats || !raised || !distributed) && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-[74px] w-full rounded-lg" />
+            <Skeleton key={i} className="h-[74px] w-full rounded-xl" />
           ))}
         </div>
       )}
 
       {!error && foundations && waqfs && stats && raised && distributed && (
         <>
-          {/* auto-fit/minmax, not a fixed column count — this grid mixes
-              2 always-present tiles with a variable number of per-status
-              tiles, and a fixed grid-cols-2/4 split squeezed every tile
-              too narrow whenever the total was below 4 (same bug fixed
-              in the Founder Portal's DashboardOverview.tsx, 2026-09-29
-              codebase walkthrough — see that file's own comment). */}
-          <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
-            <StatCard
-              label="Foundations"
-              value={foundations.length}
-              tone="primary"
-              icon={<IconLandmark className="h-[18px] w-[18px]" />}
-            />
-            <StatCard
-              label="Waqf Funds"
-              value={waqfs.length}
-              tone="primary"
-              icon={<IconBriefcase className="h-[18px] w-[18px]" />}
-            />
-            {(Object.keys(stats.byStatus) as Waqf["status"][])
-              .filter((s) => stats.byStatus[s] > 0)
-              .map((status) => {
-                const Icon = WAQF_STATUS_ICON[status];
-                return (
-                  <StatCard
-                    key={status}
-                    label={`${humanize(status)} funds`}
-                    value={stats.byStatus[status]}
-                    tone={WAQF_STATUS_TONE[status]}
-                    icon={<Icon className="h-[18px] w-[18px]" />}
-                  />
-                );
-              })}
-          </div>
+          <section aria-label="Platform">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Platform</h2>
+            {/* auto-fit/minmax, not a fixed column count — this grid mixes
+                2 always-present tiles with a variable number of per-status
+                tiles, and a fixed split squeezed every tile too narrow
+                whenever the total was below 4 (2026-09-29 walkthrough). */}
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
+              <StatCard label="Foundations" value={foundations.length} tone="primary" icon={<IconLandmark className="h-[18px] w-[18px]" />} />
+              <StatCard label="Waqf Funds" value={waqfs.length} tone="primary" icon={<IconBriefcase className="h-[18px] w-[18px]" />} />
+              {(Object.keys(stats.byStatus) as Waqf["status"][])
+                .filter((st) => stats.byStatus[st] > 0)
+                .map((status) => {
+                  const Icon = WAQF_STATUS_ICON[status];
+                  return (
+                    <StatCard
+                      key={status}
+                      label={`${humanize(status)} funds`}
+                      value={stats.byStatus[status]}
+                      tone={WAQF_STATUS_TONE[status]}
+                      icon={<Icon className="h-[18px] w-[18px]" />}
+                    />
+                  );
+                })}
+            </div>
+          </section>
 
           {(stats.corpusByTypeAndCurrency.size > 0 || raised.length > 0 || distributed.length > 0) && (
-            // Wider minmax floor than the counts grid above — these
-            // values are formatted currency amounts ("1,500,000.00"), a
-            // single unbroken token roughly twice as wide as a plain
-            // integer count, so it needs more room before wrapping.
-            <div className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
-              {[...stats.corpusByTypeAndCurrency.entries()].map(([key, amount]) => {
-                const [type, currency] = key.split(":") as [Waqf["type"], string];
-                return (
-                  <StatCard
-                    key={`corpus-${key}`}
-                    label={`Declared corpus — ${humanize(type)} (${currency})`}
-                    value={formatAmount(amount)}
-                    tone="neutral"
-                    icon={<IconLandmark className="h-[18px] w-[18px]" />}
-                  />
-                );
-              })}
-              {raised.map((r) => (
-                <StatCard
-                  key={`raised-${r.currency}`}
-                  label={`Raised (${r.currency})`}
-                  value={formatAmount(r.totalAmount)}
-                  tone="success"
-                  icon={<IconCheckCircle className="h-[18px] w-[18px]" />}
+            <section aria-label="Money under trusteeship" className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-5 py-4">
+                <h2 className="text-sm font-semibold text-slate-900">Money under trusteeship</h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Per currency, never converted; declared corpus and distributions stay split by fund type.
+                </p>
+              </div>
+              <div className="grid divide-y divide-slate-100 md:grid-cols-3 md:divide-x md:divide-y-0">
+                <MoneyColumn
+                  title="Raised"
+                  rows={raised.map((r) => ({ key: r.currency, label: r.currency, amount: r.totalAmount, currency: r.currency }))}
                 />
-              ))}
-              {distributed.map((d) => (
-                <StatCard
-                  key={`distributed-${d.waqfType}-${d.currency}`}
-                  label={`Distributed via ${humanize(d.waqfType)} funds (${d.currency})`}
-                  value={formatAmount(d.totalAmount)}
-                  tone="primary"
-                  icon={<IconClipboardCheck className="h-[18px] w-[18px]" />}
+                <MoneyColumn
+                  title="Declared corpus"
+                  rows={[...stats.corpusByTypeAndCurrency.entries()].map(([key, amount]) => {
+                    const [type, currency] = key.split(":") as [Waqf["type"], string];
+                    return { key, label: `${humanize(type)} · ${currency}`, amount, currency };
+                  })}
                 />
-              ))}
-            </div>
+                <MoneyColumn
+                  title="Distributed"
+                  rows={distributed.map((d) => ({
+                    key: `${d.waqfType}-${d.currency}`,
+                    label: `${humanize(d.waqfType)} · ${d.currency}`,
+                    amount: d.totalAmount,
+                    currency: d.currency,
+                  }))}
+                />
+              </div>
+            </section>
           )}
 
-          <Card className="mt-2">
+          <Card>
             <h2 className="mb-4 text-sm font-semibold text-slate-900">Fund composition</h2>
             <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
               <div>
@@ -275,6 +317,62 @@ export default function OpsConsoleHome() {
             </div>
           </Card>
         </>
+      )}
+    </div>
+  );
+}
+
+function DeskTile({
+  href,
+  icon,
+  count,
+  label,
+  hint,
+  emphasis = false,
+}: {
+  href: string;
+  icon: ReactNode;
+  count: number | null;
+  label: string;
+  hint: string;
+  emphasis?: boolean;
+}) {
+  const active = emphasis && (count ?? 0) > 0;
+  return (
+    <Link
+      href={href}
+      className={`group flex items-center gap-4 rounded-2xl border p-4 shadow-sm transition-colors ${
+        active ? "border-primary-800 bg-primary-900 text-white hover:bg-primary-800" : "border-slate-200/80 bg-white hover:border-slate-300"
+      }`}
+    >
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${active ? "bg-white/10 text-accent-300" : "bg-primary-50 text-primary-700"}`}>
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block text-2xl font-semibold tabular-nums ${active ? "text-white" : "text-slate-900"}`}>{count ?? "—"}</span>
+        <span className={`block text-sm font-medium ${active ? "text-primary-50" : "text-slate-700"}`}>{label}</span>
+        <span className={`block text-xs ${active ? "text-primary-200" : "text-slate-500"}`}>{hint}</span>
+      </span>
+      <IconChevronRight className={`h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 ${active ? "text-primary-200" : "text-slate-300"}`} />
+    </Link>
+  );
+}
+
+function MoneyColumn({ title, rows }: { title: string; rows: { key: string; label: string; amount: string | number; currency: string }[] }) {
+  return (
+    <div className="px-5 py-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-400">None yet</p>
+      ) : (
+        <ul className="mt-2 space-y-2">
+          {rows.map((r) => (
+            <li key={r.key} className="flex items-baseline justify-between gap-3">
+              <span className="text-xs text-slate-500">{r.label}</span>
+              <span className="text-sm font-semibold tabular-nums text-slate-900">{formatMoney(r.amount, r.currency)}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

@@ -14,10 +14,11 @@ import { BirrStaff, useStaffSession } from "../../lib/staff-session";
 import { apiFetchJson } from "../../lib/api";
 import { humanize, formatRelativeTime } from "../../lib/format";
 import { useNotifications } from "../../lib/notifications";
-import type { WaqfCaseAssignment } from "../../lib/ops-types";
+import type { GovernedAction, WaqfCaseAssignment } from "../../lib/ops-types";
 import {
   IconArchive,
   IconBriefcase,
+  IconChevronDown,
   IconClipboardCheck,
   IconFileText,
   IconGlobe,
@@ -27,11 +28,13 @@ import {
   IconLandmark,
   IconLogOut,
   IconMark,
+  IconMenu,
   IconMessageCircle,
   IconSettings,
   IconShieldAlert,
   IconSparkle,
   IconUsers,
+  IconX,
   NotificationBell,
   type NotificationItem,
 } from "@birr/ui";
@@ -168,6 +171,30 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [staff]);
 
+  // Approvals nav badge: proposed governed actions this staff member can
+  // actually decide — their own proposals excluded, since maker ≠ checker
+  // (CLAUDE.md) means they could never approve those. Refreshed on every
+  // navigation so it falls as decisions are made; a failed fetch just
+  // hides the badge (it's a hint, never the source of truth — the queue
+  // page itself is).
+  const [pendingApprovals, setPendingApprovals] = useState<number | null>(null);
+  useEffect(() => {
+    if (!staff) return;
+    let cancelled = false;
+    apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed")
+      .then((actions) => {
+        if (!cancelled) setPendingApprovals(actions.filter((a) => a.makerUserId !== staff.userId).length);
+      })
+      .catch(() => {
+        if (!cancelled) setPendingApprovals(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [staff, pathname]);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
   useEffect(() => {
     if (!loading && !staff && !isPublicRoute) {
       router.replace(SIGN_IN_ROUTE);
@@ -206,17 +233,36 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (notification.linkUrl) router.push(notification.linkUrl);
   }
 
+  const navProps = {
+    staff,
+    pathname,
+    hasCaseload,
+    pendingApprovals,
+    unreadMessageCount: notifications.filter((n) => n.type === "message.received" && !n.readAt).length,
+    onSignOut: handleSignOut,
+  };
+
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <Sidebar
-        staff={staff}
-        pathname={pathname}
-        hasCaseload={hasCaseload}
-        unreadMessageCount={notifications.filter((n) => n.type === "message.received" && !n.readAt).length}
-        onSignOut={handleSignOut}
-      />
-      <div className="min-w-0 flex-1">
-        <header className="flex items-center justify-end border-b border-slate-200 bg-white px-4 py-2.5 sm:px-8">
+      <Sidebar {...navProps} />
+      <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} {...navProps} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-4 border-b border-slate-200/80 bg-white/85 px-4 backdrop-blur-md supports-[backdrop-filter]:bg-white/70 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open navigation"
+              className="-ml-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"
+            >
+              <IconMenu className="h-5 w-5" />
+            </button>
+            <p className="truncate text-sm text-slate-500">
+              <span className="hidden text-slate-400 sm:inline">Ops Console</span>
+              <span className="mx-2 hidden text-slate-300 sm:inline">/</span>
+              <span className="font-medium text-slate-800">{sectionTitle(pathname)}</span>
+            </p>
+          </div>
           <NotificationBell
             notifications={notifications}
             unreadCount={unreadCount}
@@ -227,7 +273,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             formatTimestamp={formatRelativeTime}
           />
         </header>
-        <main className="px-4 py-8 sm:px-8 sm:py-10">
+        <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
@@ -242,107 +288,146 @@ function initials(fullName: string): string {
   return (parts[0]!.charAt(0) + parts[parts.length - 1]!.charAt(0)).toUpperCase();
 }
 
-function Sidebar({
-  staff,
-  pathname,
-  hasCaseload,
-  unreadMessageCount,
-  onSignOut,
-}: {
+function isActivePath(pathname: string, href: string): boolean {
+  return href === HOME_ROUTE ? pathname === HOME_ROUTE : pathname.startsWith(href);
+}
+
+/** The top bar's "Ops Console / {section}" label — the nav item the current route sits under. */
+function sectionTitle(pathname: string): string {
+  if (pathname.startsWith("/ops/profile")) return "My Profile";
+  const items = NAV_GROUPS.flatMap((g) => g.items).filter((i) => isActivePath(pathname, i.href));
+  // Longest match wins (/ops/waqf-ledger-accounts over /ops/waqfs's sibling prefixes).
+  return items.sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "Overview";
+}
+
+interface NavProps {
   staff: BirrStaff;
   pathname: string;
   hasCaseload: boolean;
+  pendingApprovals: number | null;
   unreadMessageCount: number;
   onSignOut: () => void;
-}) {
-  return (
-    // Collapses to an icon-only rail below `sm` (pure CSS, no added
-    // interactive state) rather than the fixed 256px rail overflowing a
-    // phone-width viewport — the nav stays reachable, just compact.
-    //
-    // A deep, deliberately colorful rail (primary-950 → primary-900,
-    // gold-tinted at the very top) rather than a flat white one — this is
-    // the single most-visible, always-on-screen element of the internal
-    // product, so it's the highest-leverage place to make the palette
-    // register immediately. Text/icon colors below are chosen for this
-    // dark ground specifically (not the light-mode slate scale used
-    // elsewhere), each checked against primary-900/950 for AA.
-    <aside className="flex w-16 shrink-0 flex-col bg-gradient-to-b from-primary-950 via-primary-900 to-primary-900 sm:w-64">
-      <div className="flex items-center justify-center gap-2.5 border-b border-white/10 bg-gradient-to-br from-accent-900/40 to-transparent px-2 py-5 sm:justify-start sm:px-5">
-        <IconMark className="h-9 w-9 shrink-0" />
-        <div className="hidden sm:block">
-          <p className="text-base font-semibold leading-tight tracking-tight text-white">Birr</p>
-          <p className="text-[11px] font-semibold leading-tight uppercase tracking-wider text-accent-400">
-            Ops Console
-          </p>
-        </div>
-      </div>
+}
 
-      <nav className="flex-1 space-y-5 overflow-y-auto px-2 py-4 sm:px-3">
-        {NAV_GROUPS.map((group) => {
-          const items = group.items.filter(
-            (item) =>
-              (!item.requiresRole || [item.requiresRole].flat().includes(staff.staffRole)) &&
-              (!item.requiresCaseload || hasCaseload),
-          );
-          if (items.length === 0) return null;
-          return (
-            <div key={group.label}>
-              <p className="hidden px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent-300 sm:block">
-                {group.label}
-              </p>
-              <div className="space-y-1">
+const COLLAPSED_GROUPS_KEY = "birr.ops.collapsedNavGroups";
+
+/**
+ * The nav itself — shared by the desktop Sidebar (labels from lg, icon
+ * rail at md) and the phone MobileDrawer (always labelled). Groups can be
+ * collapsed (remembered per browser; storage failures just mean nothing
+ * is remembered); the group holding the current page is always open.
+ */
+function NavList({ staff, pathname, hasCaseload, pendingApprovals, unreadMessageCount, labelled, onNavigate }: NavProps & { labelled: "always" | "lg"; onNavigate?: () => void }) {
+  const [collapsed, setCollapsed] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(COLLAPSED_GROUPS_KEY) ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  });
+  function toggle(label: string) {
+    setCollapsed((prev) => {
+      const next = prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label];
+      try {
+        localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(next));
+      } catch {
+        // Private mode / blocked storage — collapsing still works for this page view.
+      }
+      return next;
+    });
+  }
+  const showLabel = labelled === "always" ? "" : "hidden lg:inline";
+  const showBlock = labelled === "always" ? "flex" : "hidden lg:flex";
+
+  return (
+    <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4" aria-label="Ops Console">
+      {NAV_GROUPS.map((group) => {
+        const items = group.items.filter(
+          (item) =>
+            (!item.requiresRole || [item.requiresRole].flat().includes(staff.staffRole)) &&
+            (!item.requiresCaseload || hasCaseload),
+        );
+        if (items.length === 0) return null;
+        const holdsActive = items.some((i) => isActivePath(pathname, i.href));
+        const open = holdsActive || !collapsed.includes(group.label);
+        return (
+          <div key={group.label}>
+            <button
+              type="button"
+              onClick={() => toggle(group.label)}
+              disabled={holdsActive}
+              aria-expanded={open}
+              className={`${showBlock} w-full items-center justify-between rounded px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-300/90 hover:text-accent-200 disabled:cursor-default disabled:hover:text-accent-300/90`}
+            >
+              {group.label}
+              {!holdsActive && <IconChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />}
+            </button>
+            {open && (
+              <ul className="space-y-0.5">
                 {items.map((item) => {
-                  const isActive = item.href === HOME_ROUTE ? pathname === HOME_ROUTE : pathname.startsWith(item.href);
+                  const isActive = isActivePath(pathname, item.href);
                   const Icon = item.icon;
+                  const count =
+                    item.href === "/ops/messages" ? unreadMessageCount : item.href === "/ops/governed-actions" ? (pendingApprovals ?? 0) : 0;
                   return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      aria-current={isActive ? "page" : undefined}
-                      title={item.label}
-                      className={`flex items-center justify-center gap-2.5 rounded-md px-2 py-2.5 text-sm font-medium transition-colors sm:justify-start sm:px-3 ${
-                        isActive
-                          ? // primary-500→600 measured at 4.26:1 for white text at the
-                            // gradient's lighter (left) end — below the 4.5:1 AA floor,
-                            // and exactly where the icon and first letters sit. One step
-                            // darker clears AA across the whole pill (5.7:1 → 7.2:1)
-                            // while staying visibly brighter than the primary-900 rail.
-                            "bg-gradient-to-r from-primary-600 to-primary-700 text-white shadow-sm shadow-primary-950/50"
-                          : "text-primary-200 hover:bg-white/10 hover:text-white"
-                      }`}
-                    >
-                      <Icon
-                        className={`h-[18px] w-[18px] shrink-0 ${isActive ? "text-white" : "text-primary-300"}`}
-                      />
-                      <span className="hidden sm:inline">{item.label}</span>
-                      {item.href === "/ops/messages" && unreadMessageCount > 0 && (
-                        <span className="ml-auto hidden h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white sm:flex">
-                          {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
-                        </span>
-                      )}
-                    </Link>
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={onNavigate}
+                        aria-current={isActive ? "page" : undefined}
+                        title={item.label}
+                        className={`group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                          labelled === "always" ? "" : "justify-center lg:justify-start"
+                        } ${isActive ? "bg-white/10 text-white" : "text-primary-100/75 hover:bg-white/5 hover:text-white"}`}
+                      >
+                        {isActive && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-accent-400" aria-hidden="true" />}
+                        <Icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? "text-accent-300" : "text-primary-300 group-hover:text-primary-100"}`} />
+                        <span className={`truncate ${showLabel}`}>{item.label}</span>
+                        {count > 0 && (
+                          <>
+                            <span
+                              className={`ml-auto h-5 min-w-[20px] items-center justify-center rounded-full bg-accent-400 px-1.5 text-[10px] font-bold leading-none text-accent-950 ${showBlock}`}
+                              title={item.href === "/ops/governed-actions" ? "Awaiting a decision you can make (excludes your own proposals)" : "Unread"}
+                            >
+                              {count > 99 ? "99+" : count}
+                            </span>
+                            {labelled === "lg" && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent-400 lg:hidden" aria-hidden="true" />}
+                          </>
+                        )}
+                      </Link>
+                    </li>
                   );
                 })}
-              </div>
-            </div>
-          );
-        })}
-      </nav>
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
 
-      <div className="border-t border-white/10 p-2 sm:p-3">
-        <Link
-          href="/ops/profile"
-          title="My Profile"
-          className="flex items-center justify-center gap-3 rounded-md px-1 py-2 transition-colors hover:bg-white/10 sm:justify-start sm:px-2"
-        >
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-300 to-accent-500 text-xs font-semibold text-primary-950"
-            title={staff.user.fullName}
-          >
+function Brand({ labelled }: { labelled: "always" | "lg" }) {
+  return (
+    <div className={`flex h-14 shrink-0 items-center gap-2.5 border-b border-white/10 px-4 ${labelled === "always" ? "" : "justify-center lg:justify-start lg:px-5"}`}>
+      <IconMark className="h-8 w-8 shrink-0" />
+      <div className={labelled === "always" ? "" : "hidden lg:block"}>
+        <p className="text-[15px] font-semibold leading-tight tracking-tight text-white">Birr</p>
+        <p className="text-[10px] font-semibold uppercase leading-tight tracking-[0.14em] text-accent-400">Ops Console</p>
+      </div>
+    </div>
+  );
+}
+
+function ProfileFooter({ staff, onSignOut, labelled, onNavigate }: Pick<NavProps, "staff" | "onSignOut"> & { labelled: "always" | "lg"; onNavigate?: () => void }) {
+  return (
+    <div className="shrink-0 border-t border-white/10 p-3">
+      <div className={`flex items-center gap-2 ${labelled === "always" ? "" : "flex-col lg:flex-row"}`}>
+        <Link href="/ops/profile" onClick={onNavigate} title="My Profile" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1.5 transition-colors hover:bg-white/5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-300 to-accent-500 text-xs font-bold text-primary-950 ring-2 ring-white/10">
             {initials(staff.user.fullName)}
           </div>
-          <div className="hidden min-w-0 flex-1 sm:block">
+          <div className={`min-w-0 flex-1 ${labelled === "always" ? "" : "hidden lg:block"}`}>
             <p className="truncate text-sm font-medium text-white">{staff.user.fullName}</p>
             <p className="truncate text-xs text-primary-300">{humanize(staff.staffRole)}</p>
           </div>
@@ -352,20 +437,65 @@ function Sidebar({
           onClick={onSignOut}
           title="Sign out"
           aria-label="Sign out"
-          className="mt-1 hidden h-8 w-8 shrink-0 items-center justify-center rounded-md text-primary-300 transition-colors hover:bg-white/10 hover:text-white sm:flex"
-        >
-          <IconLogOut className="h-[18px] w-[18px]" />
-        </button>
-        <button
-          type="button"
-          onClick={onSignOut}
-          title="Sign out"
-          aria-label="Sign out"
-          className="mt-1 flex h-8 w-8 items-center justify-center rounded-md text-primary-300 transition-colors hover:bg-white/10 hover:text-white sm:hidden"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-primary-300 transition-colors hover:bg-white/10 hover:text-white"
         >
           <IconLogOut className="h-[18px] w-[18px]" />
         </button>
       </div>
+    </div>
+  );
+}
+
+function Sidebar(props: NavProps) {
+  return (
+    // Hidden below md (MobileDrawer instead — a 64px rail for 20+ nav
+    // items left a phone-width page ~250px wide). Icon rail from md,
+    // labelled from lg; sticky so the nav stays put while a page scrolls.
+    //
+    // A deep, deliberately colorful rail (primary-950 → primary-900) —
+    // the most-visible, always-on-screen element of the internal product.
+    // Text/icon colors are chosen for this dark ground (checked against
+    // primary-900/950 for AA); the active item is white text on white/10
+    // with a gold marker, same as the Founder Portal's sidebar.
+    <aside className="sticky top-0 hidden h-screen w-[76px] shrink-0 flex-col bg-gradient-to-b from-primary-950 via-primary-900 to-primary-950 md:flex lg:w-64">
+      <Brand labelled="lg" />
+      <NavList {...props} labelled="lg" />
+      <ProfileFooter staff={props.staff} onSignOut={props.onSignOut} labelled="lg" />
     </aside>
+  );
+}
+
+function MobileDrawer({ open, onClose, ...props }: NavProps & { open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="md:hidden">
+      <button type="button" aria-label="Close navigation" className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px]" onClick={onClose} />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation"
+        className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-gradient-to-b from-primary-950 via-primary-900 to-primary-950 shadow-2xl"
+      >
+        <div className="relative">
+          <Brand labelled="always" />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation"
+            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-primary-200 hover:bg-white/10 hover:text-white"
+          >
+            <IconX className="h-5 w-5" />
+          </button>
+        </div>
+        <NavList {...props} labelled="always" onNavigate={onClose} />
+        <ProfileFooter staff={props.staff} onSignOut={props.onSignOut} labelled="always" onNavigate={onClose} />
+      </aside>
+    </div>
   );
 }

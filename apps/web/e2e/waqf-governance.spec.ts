@@ -80,7 +80,8 @@ test.describe("Ops Console asset disposal", () => {
         const checkerPage = await checkerContext.newPage();
         checkerPage.on("dialog", (dialog) => dialog.accept());
         await checkerPage.goto("/ops/governed-actions");
-        const queueRow = checkerPage.locator("tr", { hasText: fixture.assetName });
+        // The approval queue is a list of review cards (<li>), not a table.
+        const queueRow = checkerPage.locator('ul[aria-label="Approval queue"] > li', { hasText: fixture.assetName });
         await expect(queueRow).toBeVisible();
         await queueRow.getByRole("button", { name: /Dispose/ }).click();
         await queueRow.getByRole("button", { name: "Approve" }).click();
