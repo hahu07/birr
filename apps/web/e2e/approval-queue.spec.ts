@@ -69,7 +69,8 @@ test.describe("governed-action approval queue", () => {
         // this" — Approve/Reject never appear for them, regardless of role.
         const makerPage = await makerContext.newPage();
         await makerPage.goto("/ops/governed-actions");
-        const makerRow = makerPage.locator("tr", { hasText: vault.name });
+        // The approval queue is a list of review cards (<li>), not a table.
+        const makerRow = makerPage.locator('ul[aria-label="Approval queue"] > li', { hasText: vault.name });
         await expect(makerRow).toBeVisible();
         await expect(makerRow.getByText("You proposed this")).toBeVisible();
         await expect(makerRow.getByRole("button", { name: "Approve" })).toHaveCount(0);
@@ -82,7 +83,7 @@ test.describe("governed-action approval queue", () => {
         const checkerPage = await checkerContext.newPage();
         checkerPage.on("dialog", (dialog) => dialog.accept());
         await checkerPage.goto("/ops/governed-actions");
-        const checkerRow = checkerPage.locator("tr", { hasText: vault.name });
+        const checkerRow = checkerPage.locator('ul[aria-label="Approval queue"] > li', { hasText: vault.name });
         await expect(checkerRow).toBeVisible();
         await checkerRow.getByRole("button", { name: /Publish/ }).click();
         await checkerRow.getByRole("button", { name: "Approve" }).click();

@@ -70,5 +70,7 @@ export {
   IconPlus,
   IconHeart,
   IconShieldCheck,
+  IconMenu,
+  IconX,
 } from "./components/icons";
 export type { IconProps } from "./components/icons";

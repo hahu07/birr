@@ -117,7 +117,8 @@ test.describe("Counterparty onboarding", () => {
       // individual, not the role).
       shariahPage.on("dialog", (dialog) => dialog.accept());
       await shariahPage.goto("/ops/governed-actions");
-      const queueRow = shariahPage.locator("tr", { hasText: counterpartyName });
+      // The approval queue is a list of review cards (<li>), not a table.
+      const queueRow = shariahPage.locator('ul[aria-label="Approval queue"] > li', { hasText: counterpartyName });
       // First visit to this route in this session, fetching a queue
       // that accumulates rows across every spec file in a full-suite
       // run — the same class of cold-load delay ops-vault-curation.spec.ts's

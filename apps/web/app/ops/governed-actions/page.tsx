@@ -25,12 +25,6 @@ import {
   Input,
   Skeleton,
   StatCard,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
 } from "@birr/ui";
 
 // Renders a governed action's payload as plain label/value pairs — not a
@@ -206,17 +200,34 @@ export default function GovernedActionsPage() {
     }
   }
 
+  function toggleExpanded(action: GovernedAction) {
+    const nowExpanded = expandedId !== action.id;
+    setExpandedId(nowExpanded ? action.id : null);
+    setViewedIds((prev) => (prev.has(action.id) ? prev : new Set(prev).add(action.id)));
+    if (nowExpanded && !(action.id in currentStates)) {
+      apiFetchJson<GovernedAction>(`/governed-actions/${action.id}`)
+        .then((full) => {
+          setCurrentStates((prev) => ({ ...prev, [action.id]: full.currentState ?? null }));
+        })
+        .catch(() => {
+          // Diff is a nice-to-have on top of the payload, which
+          // already rendered — a failed fetch just means the
+          // row falls back to payload-only, not a page error.
+        });
+    }
+  }
+
   return (
     <div>
-      <header className="mb-8 flex items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
+      <header className="mb-8 flex items-start gap-3.5">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
           <IconClipboardCheck className="h-5 w-5" />
         </span>
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Approvals</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">
             Governed actions currently awaiting a decision. Approving or rejecting is final and recorded to the
-            audit trail.
+            audit trail. Open each one to review what it changes before deciding.
           </p>
         </div>
       </header>
@@ -260,26 +271,23 @@ export default function GovernedActionsPage() {
           </div>
 
           <Input
+            type="search"
             placeholder="Search by permission, waqf, or proposer…"
+            aria-label="Search the approval queue"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="mb-4 max-w-xs"
+            className="mb-4 sm:max-w-sm"
           />
 
           {visibleActions.length === 0 ? (
             <p className="text-sm text-slate-500">No pending actions match "{search.trim()}".</p>
           ) : (
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableHeaderCell>Permission</TableHeaderCell>
-                <TableHeaderCell>Waqf</TableHeaderCell>
-                <TableHeaderCell>Proposed by</TableHeaderCell>
-                <TableHeaderCell className="whitespace-nowrap">Proposed</TableHeaderCell>
-                <TableHeaderCell className="whitespace-nowrap text-right">Actions</TableHeaderCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+            // One review card per action rather than a five-column table:
+            // the table scrolled sideways on a phone with Approve/Reject
+            // off-screen, and a checker's real job here is "read what this
+            // changes, then decide" — the card puts the payload directly
+            // under the summary and the decision under that.
+            <ul className="space-y-3" aria-label="Approval queue">
               {visibleActions.map((action) => {
                 const rowState = rowStates[action.id] ?? IDLE;
                 const isPending = rowState.status === "pending";
@@ -294,153 +302,127 @@ export default function GovernedActionsPage() {
                 // can never be a checker at all, by anyone.
                 const isOwnProposal =
                   action.makerType === "human" && Boolean(staff) && action.makerUserId === staff?.userId;
+                const permissionLabel = humanizePermissionKey(action.permission.key);
+                const isAgent = action.makerType === "ai_agent";
                 return (
-                  <Fragment key={action.id}>
-                    <TableRow>
-                      <TableCell className="max-w-xs">
+                  <li
+                    key={action.id}
+                    className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-colors ${
+                      isExpanded ? "border-primary-300 ring-1 ring-primary-200" : "border-slate-200/80"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
                         <button
                           type="button"
-                          onClick={() => {
-                            const nowExpanded = !isExpanded;
-                            setExpandedId(nowExpanded ? action.id : null);
-                            setViewedIds((prev) => (prev.has(action.id) ? prev : new Set(prev).add(action.id)));
-                            if (nowExpanded && !(action.id in currentStates)) {
-                              apiFetchJson<GovernedAction>(`/governed-actions/${action.id}`)
-                                .then((full) => {
-                                  setCurrentStates((prev) => ({ ...prev, [action.id]: full.currentState ?? null }));
-                                })
-                                .catch(() => {
-                                  // Diff is a nice-to-have on top of the payload, which
-                                  // already rendered — a failed fetch just means the
-                                  // row falls back to payload-only, not a page error.
-                                });
-                            }
-                          }}
-                          className="flex w-full flex-col items-start gap-0.5 text-left"
+                          onClick={() => toggleExpanded(action)}
+                          className="flex w-full min-w-0 items-start gap-3 text-left"
                           aria-expanded={isExpanded}
                         >
-                          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <IconChevronDown
-                              className={`h-3.5 w-3.5 shrink-0 self-center text-slate-500 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                            />
-                            <span className="break-words font-medium text-slate-900">
-                              {humanizePermissionKey(action.permission.key)}
-                            </span>
-                            {action.permission.category && (
-                              <span className="inline-block shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                                {action.permission.category}
-                              </span>
-                            )}
+                          <span
+                            className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isAgent ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-600"}`}
+                          >
+                            {isAgent ? <IconSparkle className="h-[18px] w-[18px]" /> : <IconUser className="h-[18px] w-[18px]" />}
                           </span>
-                          {/* The one thing that actually tells two same-
-                              permission, same-waqf, same-day proposals
-                              apart at a glance — without this, an officer
-                              can only distinguish them by expanding each
-                              and comparing raw entity ids. */}
-                          {action.summary && (
-                            <span className="break-words pl-5 text-xs text-slate-500">{action.summary}</span>
-                          )}
-                        </button>
-                      </TableCell>
-                      <TableCell
-                        className="max-w-[10rem] truncate"
-                        title={action.waqf?.name ?? action.proposedFoundation?.name}
-                      >
-                        {action.waqf?.name ??
-                          (action.proposedFoundation ? (
-                            <span className="text-slate-500">
-                              <span className="text-slate-500">Foundation:</span> {action.proposedFoundation.name}
+                          <span className="min-w-0 flex-1">
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="break-words text-sm font-semibold text-slate-900">{permissionLabel}</span>
+                              {action.permission.category && (
+                                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                  {action.permission.category}
+                                </span>
+                              )}
                             </span>
-                          ) : (
-                            <span className="italic text-slate-500">Not yet created</span>
-                          ))}
-                      </TableCell>
-                      <TableCell className="max-w-[10rem] truncate">
-                        <span className="inline-flex items-center gap-1.5" title={
-                          action.makerType === "ai_agent"
-                            ? (action.makerAgent ? agentNickname(action.makerAgent.name) : undefined)
-                            : action.makerUser?.email
-                        }>
-                          {action.makerType === "ai_agent" ? (
-                            <IconSparkle className="h-3.5 w-3.5 shrink-0 text-violet-500" />
-                          ) : (
-                            <IconUser className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                          )}
-                          {action.makerType === "ai_agent"
-                            ? (action.makerAgent ? agentNickname(action.makerAgent.name) : "Unregistered agent")
-                            : (action.makerUser?.fullName ?? "—")}
-                        </span>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-slate-500">
-                        {formatDate(action.createdAt)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right">
+                            {/* The one thing that actually tells two same-
+                                permission, same-waqf, same-day proposals
+                                apart at a glance — without this, an officer
+                                can only distinguish them by expanding each
+                                and comparing raw entity ids. */}
+                            {action.summary && <span className="mt-0.5 block break-words text-sm text-slate-600">{action.summary}</span>}
+                            <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                              <span title={isAgent ? undefined : action.makerUser?.email}>
+                                {isAgent ? "Agent: " : "By "}
+                                <span className="font-medium text-slate-700">
+                                  {isAgent
+                                    ? (action.makerAgent ? agentNickname(action.makerAgent.name) : "Unregistered agent")
+                                    : (action.makerUser?.fullName ?? "—")}
+                                </span>
+                              </span>
+                              <span>
+                                {action.waqf?.name ??
+                                  (action.proposedFoundation ? `Foundation: ${action.proposedFoundation.name}` : <span className="italic">Waqf not yet created</span>)}
+                              </span>
+                              <span>{formatDate(action.createdAt)}</span>
+                            </span>
+                            <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary-700">
+                              <IconChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                              {isExpanded ? "Hide details" : "Review details"}
+                            </span>
+                          </span>
+                        </button>
+                        {/* Inside the summary column, not a full-width strip
+                            after the card: on a phone the decision buttons
+                            (next column, stacked below) then come after what
+                            the action changes, never before it. */}
+                        {isExpanded && (
+                          <div className="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3.5 sm:ml-12">
+                            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">What this changes</p>
+                            <PayloadDetails payload={action.payload} currentState={currentStates[action.id]} />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 border-t border-slate-100 pt-3 lg:border-0 lg:pt-0">
                         {isSuccess ? (
                           <span
-                            className={`inline-flex items-center justify-end gap-1.5 text-sm font-medium ${
+                            className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
                               rowState.approved ? "text-primary-700" : "text-red-600"
                             }`}
                           >
-                            {rowState.approved ? (
-                              <IconCheckCircle className="h-4 w-4" />
-                            ) : (
-                              <IconXCircle className="h-4 w-4" />
-                            )}
+                            {rowState.approved ? <IconCheckCircle className="h-4 w-4" /> : <IconXCircle className="h-4 w-4" />}
                             {rowState.approved ? "Approved" : "Rejected"}
                           </span>
                         ) : isOwnProposal ? (
                           <span className="text-xs italic text-slate-500" title="Maker-checker: you proposed this, so someone else must decide it.">
-                            You proposed this
+                            You proposed this — another officer must decide it
                           </span>
                         ) : (
-                          <div className="flex flex-col items-end gap-1">
-                            <div className="flex justify-end gap-2">
+                          <div className="flex flex-col gap-1.5 lg:items-end">
+                            <div className="flex gap-2">
                               <Button
                                 variant="primary"
-                                className="px-3 py-1.5 text-xs"
+                                className="flex-1 px-4 py-2 lg:flex-none"
                                 disabled={isPending || !hasBeenViewed}
                                 title={!hasBeenViewed ? "Expand this row to review the payload before deciding." : undefined}
-                                onClick={() => decide(action.id, true, humanizePermissionKey(action.permission.key))}
+                                onClick={() => decide(action.id, true, permissionLabel)}
                               >
                                 Approve
                               </Button>
                               <Button
                                 variant="danger"
-                                className="px-3 py-1.5 text-xs"
+                                className="flex-1 px-4 py-2 lg:flex-none"
                                 disabled={isPending || !hasBeenViewed}
                                 title={!hasBeenViewed ? "Expand this row to review the payload before deciding." : undefined}
-                                onClick={() => decide(action.id, false, humanizePermissionKey(action.permission.key))}
+                                onClick={() => decide(action.id, false, permissionLabel)}
                               >
                                 Reject
                               </Button>
                             </div>
-                            {!hasBeenViewed && (
-                              <span className="text-[11px] italic text-slate-500">Expand to review before deciding</span>
-                            )}
+                            {!hasBeenViewed && <span className="text-[11px] italic text-slate-500">Expand to review before deciding</span>}
                           </div>
                         )}
-                      </TableCell>
-                    </TableRow>
-                    {isExpanded && (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={5} className="bg-slate-50 py-3">
-                          <PayloadDetails payload={action.payload} currentState={currentStates[action.id]} />
-                        </TableCell>
-                      </TableRow>
-                    )}
+                      </div>
+                    </div>
+
                     {rowState.status === "error" && (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={5} className="bg-red-50 py-2.5 text-xs text-red-700">
-                          Couldn&apos;t record decision for &ldquo;{humanizePermissionKey(action.permission.key)}
-                          &rdquo;: {rowState.message}
-                        </TableCell>
-                      </TableRow>
+                      <div className="border-t border-red-100 bg-red-50 px-4 py-2.5 text-xs text-red-700 sm:px-5">
+                        Couldn&apos;t record decision for &ldquo;{permissionLabel}&rdquo;: {rowState.message}
+                      </div>
                     )}
-                  </Fragment>
+                  </li>
                 );
               })}
-            </TableBody>
-          </Table>
+            </ul>
           )}
         </>
       )}
@@ -450,30 +432,16 @@ export default function GovernedActionsPage() {
 
 function QueueSkeleton() {
   return (
-    <div>
+    <div aria-busy="true" aria-label="Loading the approval queue">
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="flex items-center gap-3.5 rounded-lg border border-slate-200 bg-white px-4 py-3.5">
-            <Skeleton className="h-9 w-9 rounded-md" />
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-8" />
-              <Skeleton className="h-3 w-20" />
-            </div>
-          </div>
+          <Skeleton key={i} className="h-[70px] rounded-xl" />
         ))}
       </div>
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="divide-y divide-slate-100">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="flex items-center gap-8 px-5 py-3.5">
-              <Skeleton className="h-4 w-56" />
-              <Skeleton className="h-4 w-28" />
-              <Skeleton className="h-4 w-28" />
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-7 w-32" />
-            </div>
-          ))}
-        </div>
+      <div className="space-y-3">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} className="h-28 rounded-2xl" />
+        ))}
       </div>
     </div>
   );

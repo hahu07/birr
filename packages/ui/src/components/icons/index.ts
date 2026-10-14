@@ -30,3 +30,5 @@ export { IconMoreHorizontal } from "./IconMoreHorizontal";
 export { IconPlus } from "./IconPlus";
 export { IconHeart } from "./IconHeart";
 export { IconShieldCheck } from "./IconShieldCheck";
+export { IconMenu } from "./IconMenu";
+export { IconX } from "./IconX";
