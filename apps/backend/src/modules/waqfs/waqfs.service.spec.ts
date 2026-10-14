@@ -119,6 +119,36 @@ describe("WaqfsService", () => {
     expect(resultsForB.map((w) => w.id)).toEqual([waqfBId]);
   });
 
+  test("list(founderId) carries each fund's amountRaised — confirmed, same-currency Contributions only, matching findById's own rule", async () => {
+    const waqf = await prisma.waqf.create({
+      data: {
+        name: "Waqfs List Raised Fixture",
+        type: "project",
+        jurisdiction: "NG",
+        foundationId: foundationAId,
+        corpusAmount: "500000",
+        corpusCurrency: "NGN",
+      },
+    });
+    waqfIds.push(waqf.id);
+    const contribution = (amount: string, currency: string, status: "confirmed" | "pending") =>
+      prisma.contribution.create({
+        data: { waqfId: waqf.id, amount, currency, provider: "paystack", providerReference: `waqfs-list-raised-${randomUUID()}`, status },
+      });
+    await contribution("150000", "NGN", "confirmed");
+    await contribution("50000", "NGN", "confirmed");
+    await contribution("90000", "NGN", "pending"); // not yet confirmed — never counted
+    await contribution("700", "USD", "confirmed"); // off-currency — never blended in
+
+    // list()'s return type unions the Ops branch (no amountRaised) with
+    // the founder-scoped one — read the field the founder branch adds.
+    const raisedOf = (w: object | undefined) => (w as { amountRaised?: string } | undefined)?.amountRaised;
+    const listed = await service.list(founderAId);
+    expect(raisedOf(listed.find((w) => w.id === waqf.id))).toBe("200000");
+    expect(raisedOf(listed.find((w) => w.id === waqf.id))).toBe((await service.findById(waqf.id))!.amountRaised);
+    expect(raisedOf(listed.find((w) => w.id === waqfAId))).toBe("0");
+  });
+
   test("list() with no founderId is unrestricted (internal/ops-console path unchanged)", async () => {
     const all = await service.list();
     const ids = all.map((w) => w.id);
