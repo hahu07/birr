@@ -14,9 +14,10 @@
 // never returns raw before/after — see that route's own comment.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
-import { describeAuditAction, formatDate } from "../../../lib/format";
+import { describeAuditAction } from "../../../lib/format";
 import type { FounderAuditLogEntry, FounderAuditLogPage } from "../../../lib/types";
-import { Alert, Button, EmptyState, IconClock, Skeleton } from "@birr/ui";
+import { Alert, Button, IconClock, Skeleton } from "@birr/ui";
+import { PageHeader, Panel } from "../_components/ui";
 
 export default function ActivityPage() {
   const [entries, setEntries] = useState<FounderAuditLogEntry[] | null>(null);
@@ -55,19 +56,12 @@ export default function ActivityPage() {
   }, [nextCursor]);
 
   return (
-    <div>
-      <header className="mb-8 flex items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
-          <IconClock className="h-5 w-5" />
-        </span>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Your activity</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Every action your team has taken — allocations, cause selection, deed signings, invitations — newest
-            first.
-          </p>
-        </div>
-      </header>
+    <div className="mx-auto max-w-3xl">
+      <PageHeader
+        eyebrow="Activity"
+        title="Your team's activity"
+        description="Every action your team has taken — allocations, cause selection, deed signings, invitations — newest first. Each one is also recorded in Birr's immutable audit trail."
+      />
 
       {error && (
         <Alert tone="danger" title="Couldn't load your activity" className="mb-6">
@@ -75,44 +69,76 @@ export default function ActivityPage() {
         </Alert>
       )}
 
-      {!error && entries === null && (
-        <div className="space-y-2">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-        </div>
-      )}
+      {!error && entries === null && <Skeleton className="h-64 w-full rounded-2xl" />}
 
       {!error && entries !== null && entries.length === 0 && (
-        <EmptyState title="No activity yet" description="Actions you and your team take will show up here." />
+        <Panel className="px-5 py-10 text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
+            <IconClock className="h-6 w-6" />
+          </span>
+          <p className="mt-4 text-sm font-medium text-slate-900">No activity yet</p>
+          <p className="mt-1 text-sm text-slate-500">Actions you and your team take will show up here.</p>
+        </Panel>
       )}
 
       {!error && entries !== null && entries.length > 0 && (
-        <>
-          <div className="space-y-1.5">
-            {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm"
-              >
-                <div>
-                  <span className="font-medium text-slate-900">{describeAuditAction(entry.action)}</span>
-                  {entry.actorUser && <span className="text-slate-500"> · {entry.actorUser.fullName}</span>}
-                </div>
-                <span className="whitespace-nowrap text-xs text-slate-500">{formatDate(entry.createdAt)}</span>
-              </div>
-            ))}
-          </div>
+        <div className="space-y-6">
+          {groupByDay(entries).map(({ label, items }) => (
+            <section key={label}>
+              <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</h2>
+              <Panel>
+                <ol className="px-5 py-4">
+                  {items.map((entry, i) => (
+                    <li key={entry.id} className="relative flex gap-3.5 pb-5 last:pb-0">
+                      {i < items.length - 1 && <span className="absolute left-[5px] top-4 h-full w-px bg-slate-200" aria-hidden="true" />}
+                      <span className="relative mt-1.5 h-[11px] w-[11px] shrink-0 rounded-full border-2 border-primary-500 bg-white" aria-hidden="true" />
+                      <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+                        <p className="text-sm text-slate-900">
+                          <span className="font-medium">{describeAuditAction(entry.action)}</span>
+                          {entry.actorUser && <span className="text-slate-500"> · {entry.actorUser.fullName}</span>}
+                        </p>
+                        <time dateTime={entry.createdAt} className="whitespace-nowrap text-xs tabular-nums text-slate-500">
+                          {new Date(entry.createdAt).toLocaleTimeString("en-NG", { hour: "numeric", minute: "2-digit" })}
+                        </time>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </Panel>
+            </section>
+          ))}
 
           {nextCursor && (
-            <div className="mt-4 flex justify-center">
-              <Button variant="secondary" disabled={loadingMore} onClick={loadMore}>
-                {loadingMore ? "Loading…" : "Load more"}
+            <div className="flex justify-center">
+              <Button variant="secondary" disabled={loadingMore} onClick={loadMore} className="rounded-lg">
+                {loadingMore ? "Loading…" : "Load older activity"}
               </Button>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
+}
+
+/** "Today" / "Yesterday" / "Monday, 12 October 2026" buckets, preserving the API's newest-first order. */
+function groupByDay(entries: FounderAuditLogEntry[]): { label: string; items: FounderAuditLogEntry[] }[] {
+  const dayKey = (d: Date) => d.toDateString();
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const groups: { label: string; items: FounderAuditLogEntry[] }[] = [];
+  for (const entry of entries) {
+    const d = new Date(entry.createdAt);
+    const label =
+      dayKey(d) === dayKey(today)
+        ? "Today"
+        : dayKey(d) === dayKey(yesterday)
+          ? "Yesterday"
+          : d.toLocaleDateString("en-NG", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(entry);
+    else groups.push({ label, items: [entry] });
+  }
+  return groups;
 }

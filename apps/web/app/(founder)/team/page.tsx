@@ -12,7 +12,9 @@ import { formatDate, humanize } from "../../../lib/format";
 import { useFounderSession } from "../../../lib/founder-session";
 import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import type { FounderMembership, Invitation } from "../../../lib/types";
-import { Alert, Badge, Button, EmptyState, IconUsers, Input, Skeleton } from "@birr/ui";
+import { Alert, Badge, Button, IconPlus, Select, Skeleton } from "@birr/ui";
+import { linkButton, PageHeader, Panel, PanelHeader } from "../_components/ui";
+import { Field, inputClass } from "../_components/form";
 
 const ROLE_OPTIONS: FounderMembership["permissionLevel"][] = ["viewer", "requester", "primary_contact"];
 
@@ -53,22 +55,25 @@ export default function TeamPage() {
 
   return (
     <div>
-      <header className="mb-8 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
-            <IconUsers className="h-5 w-5" />
-          </span>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Team</h1>
-            <p className="mt-0.5 text-sm text-slate-500">Who has access to your Foundation's account.</p>
-          </div>
-        </div>
-        {isPrimaryContact && (
-          <Button variant="secondary" onClick={() => setShowInviteForm((v) => !v)}>
-            {showInviteForm ? "Cancel" : "Invite someone"}
-          </Button>
-        )}
-      </header>
+      <PageHeader
+        eyebrow="Team"
+        title="Who has access"
+        description="People who can sign in to your Founder account, and what each of them can do."
+        actions={
+          isPrimaryContact && (
+            <button type="button" className={showInviteForm ? linkButton.secondary : linkButton.primary} onClick={() => setShowInviteForm((v) => !v)} aria-expanded={showInviteForm}>
+              {showInviteForm ? (
+                "Cancel"
+              ) : (
+                <>
+                  <IconPlus className="h-4 w-4" />
+                  Invite someone
+                </>
+              )}
+            </button>
+          )
+        }
+      />
 
       {error && (
         <Alert tone="danger" title="Couldn't load your team" className="mb-6">
@@ -86,51 +91,83 @@ export default function TeamPage() {
         />
       )}
 
-      {!error && members === null && (
-        <div className="space-y-2">
-          <Skeleton className="h-14 w-full" />
-          <Skeleton className="h-14 w-full" />
-        </div>
-      )}
-
-      {!error && members !== null && members.length > 0 && (
-        <div className="space-y-1.5">
-          {members.map((m) => (
-            <div
-              key={m.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-4 py-3"
-            >
-              <div>
-                <p className="text-sm font-medium text-slate-900">
-                  {m.user.fullName} {m.user.id === user?.id && <span className="font-normal text-slate-500">(you)</span>}
-                </p>
-                <p className="text-xs text-slate-500">{m.user.email}</p>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Panel>
+            <PanelHeader title="Members" aside={members && <span className="text-xs text-slate-500">{members.length}</span>} />
+            {!error && members === null && (
+              <div className="space-y-3 p-5">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
               </div>
-              <div className="flex items-center gap-2">
-                <Badge tone="neutral">{humanize(m.permissionLevel)}</Badge>
-                <Badge tone={m.status === "active" ? "success" : "neutral"}>{humanize(m.status)}</Badge>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+            )}
+            {!error && members !== null && members.length === 0 && (
+              <p className="px-5 py-6 text-sm text-slate-500">No team members yet — invite a colleague to give them access.</p>
+            )}
+            {!error && members !== null && members.length > 0 && (
+              <ul className="divide-y divide-slate-100">
+                {members.map((m) => (
+                  <li key={m.id} className="flex flex-wrap items-center gap-3 px-5 py-4">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-300 to-accent-500 text-xs font-bold text-accent-950">
+                      {initialsOf(m.user.fullName)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">
+                        {m.user.fullName} {m.user.id === user?.id && <span className="font-normal text-slate-500">(you)</span>}
+                      </p>
+                      <p className="truncate text-xs text-slate-500">{m.user.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={m.permissionLevel === "primary_contact" ? "success" : "neutral"}>{humanize(m.permissionLevel)}</Badge>
+                      {m.status !== "active" && <Badge tone="neutral">{humanize(m.status)}</Badge>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
 
-      {!error && pendingInvitations.length > 0 && (
-        <div className="mt-8">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Pending invitations</p>
-          <div className="space-y-1.5">
-            {pendingInvitations.map((inv) => (
-              <PendingInvitationRow key={inv.id} invitation={inv} canRevoke={Boolean(isPrimaryContact)} onRevoked={load} />
+          {!error && pendingInvitations.length > 0 && (
+            <Panel>
+              <PanelHeader title="Pending invitations" aside={<span className="text-xs text-slate-500">{pendingInvitations.length}</span>} />
+              <div className="space-y-2 p-4">
+                {pendingInvitations.map((inv) => (
+                  <PendingInvitationRow key={inv.id} invitation={inv} canRevoke={Boolean(isPrimaryContact)} onRevoked={load} />
+                ))}
+              </div>
+            </Panel>
+          )}
+        </div>
+
+        <Panel className="h-fit">
+          <PanelHeader title="Roles" />
+          <dl className="divide-y divide-slate-100">
+            {ROLE_OPTIONS.map((role) => (
+              <div key={role} className="px-5 py-3.5">
+                <dt className="text-sm font-semibold text-slate-900">{humanize(role)}</dt>
+                <dd className="mt-0.5 text-xs leading-relaxed text-slate-500">{ROLE_DESCRIPTION[role]}</dd>
+              </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {!error && members !== null && members.length === 0 && (
-        <EmptyState title="No team members yet" description="Invite a colleague to give them access to this account." />
-      )}
+          </dl>
+        </Panel>
+      </div>
     </div>
   );
+}
+
+// Same wording the invite form always showed, now in the Roles panel
+// beside the member list so it's visible without opening the form.
+const ROLE_DESCRIPTION: Record<FounderMembership["permissionLevel"], string> = {
+  viewer: "Can see your portfolio.",
+  requester: "Can also suggest causes and select or unselect them.",
+  primary_contact: "Full access, including inviting others.",
+};
+
+function initialsOf(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]!.charAt(0) + parts[parts.length - 1]!.charAt(0)).toUpperCase();
 }
 
 function InviteForm({ onInvited, onCancel }: { onInvited: () => void; onCancel: () => void }) {
@@ -160,7 +197,7 @@ function InviteForm({ onInvited, onCancel }: { onInvited: () => void; onCancel: 
   if (sent) {
     const link = `${typeof window !== "undefined" ? window.location.origin : ""}/ops/accept-invitation?token=${sent.token}`;
     return (
-      <div className="mb-6 rounded-lg border border-primary-200 bg-primary-50 p-4">
+      <div className="mb-6 rounded-2xl border border-primary-200 bg-primary-50 p-5">
         {sent.emailSent ? (
           <p className="text-sm font-medium text-primary-900">Invitation emailed to {sent.email}.</p>
         ) : (
@@ -192,51 +229,46 @@ function InviteForm({ onInvited, onCancel }: { onInvited: () => void; onCancel: 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mb-6 space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+    <form onSubmit={handleSubmit} className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
+      <h2 className="text-base font-semibold text-slate-900">Invite someone</h2>
+      <p className="mt-0.5 text-sm text-slate-500">They'll get an email with a link to create their sign-in.</p>
       {error && (
-        <Alert tone="danger" title="Couldn't send invitation">
+        <Alert tone="danger" title="Couldn't send invitation" className="mt-4">
           {error}
         </Alert>
       )}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[14rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Email</label>
-          <Input
+      <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_12rem]">
+        <Field label="Email" htmlFor="invite-email">
+          <input
+            id="invite-email"
             type="email"
             required
             autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="colleague@example.com"
+            className={inputClass}
           />
-        </div>
-        <div className="min-w-[10rem] space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Role</label>
-          <select
-            value={roleKey}
-            onChange={(e) => setRoleKey(e.target.value as FounderMembership["permissionLevel"])}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
+        </Field>
+        <Field label="Role" htmlFor="invite-role">
+          <Select id="invite-role" value={roleKey} onChange={(e) => setRoleKey(e.target.value as FounderMembership["permissionLevel"])}>
             {ROLE_OPTIONS.map((role) => (
               <option key={role} value={role}>
                 {humanize(role)}
               </option>
             ))}
-          </select>
-        </div>
-        <div className="flex gap-2">
-          <Button type="submit" disabled={submitting}>
-            {submitting ? "Sending…" : "Send invite"}
-          </Button>
-          <Button type="button" variant="secondary" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
+          </Select>
+        </Field>
       </div>
-      <p className="text-xs text-slate-500">
-        Viewer can see your portfolio; Requester can also suggest causes and select/unselect them; Primary contact has
-        full access, including inviting others.
-      </p>
+      <p className="mt-2 text-xs text-slate-500">{ROLE_DESCRIPTION[roleKey]}</p>
+      <div className="mt-5 flex justify-end gap-2.5">
+        <Button type="button" variant="secondary" onClick={onCancel} className="rounded-lg">
+          Cancel
+        </Button>
+        <Button type="submit" disabled={submitting} className="rounded-lg font-semibold">
+          {submitting ? "Sending…" : "Send invite"}
+        </Button>
+      </div>
     </form>
   );
 }
@@ -251,6 +283,7 @@ function PendingInvitationRow({
   onRevoked: () => void;
 }) {
   const [revoking, setRevoking] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleRevoke() {
@@ -268,7 +301,7 @@ function PendingInvitationRow({
   const link = `${typeof window !== "undefined" ? window.location.origin : ""}/ops/accept-invitation?token=${invitation.token}`;
 
   return (
-    <div className="rounded-md border border-slate-200 bg-white px-4 py-3">
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-900">{invitation.email}</p>
@@ -280,9 +313,14 @@ function PendingInvitationRow({
           <Button
             variant="secondary"
             className="px-3 py-1.5 text-xs"
-            onClick={() => navigator.clipboard.writeText(link)}
+            onClick={() =>
+              navigator.clipboard.writeText(link).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              })
+            }
           >
-            Copy link
+            {copied ? "Copied" : "Copy link"}
           </Button>
           {canRevoke && (
             <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={revoking} onClick={handleRevoke}>
