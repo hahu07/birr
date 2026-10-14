@@ -18,7 +18,8 @@ import type {
   NotificationPreferenceCategory,
   NotificationPreferences,
 } from "../../../lib/types";
-import { Alert, Badge, Button, Card, Input, Skeleton } from "@birr/ui";
+import { Alert, Badge, Button, IconShieldCheck, Input, Skeleton } from "@birr/ui";
+import { PageHeader, Panel } from "../_components/ui";
 
 type EnrollStep = "idle" | "starting" | "scan" | "backup-codes";
 
@@ -26,51 +27,79 @@ export default function AccountPage() {
   const { user, loading } = useFounderSession();
 
   if (loading || !user) {
-    return <Skeleton className="h-48 w-full" />;
+    return <Skeleton className="h-64 w-full rounded-2xl" />;
   }
 
-  return (
-    <div className="max-w-xl">
-      <h1 className="text-xl font-semibold tracking-tight text-slate-900">Account & security</h1>
-      <p className="mt-1.5 text-sm text-slate-500">
-        {user.fullName} · {user.email}
-      </p>
+  const initials = user.fullName
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p.charAt(0))
+    .filter((_, i, all) => i === 0 || i === all.length - 1)
+    .join("")
+    .toUpperCase();
 
-      <div className="mt-6">
-        <Card>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-slate-800">Two-factor authentication</p>
-              <p className="mt-1 text-sm text-slate-500">
+  return (
+    <div className="mx-auto max-w-3xl">
+      <PageHeader eyebrow="Account" title="Account & security" />
+
+      <Panel className="mb-6">
+        <div className="flex items-center gap-4 p-5">
+          <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-300 to-accent-500 text-lg font-bold text-accent-950">
+            {initials}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold text-slate-900">{user.fullName}</p>
+            <p className="truncate text-sm text-slate-500">{user.email}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              WhatsApp {user.whatsappVerifiedAt ? <span className="font-medium text-primary-700">verified</span> : "not verified"}
+            </p>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="mb-6">
+        <div className="flex items-start justify-between gap-4 p-5">
+          <div className="flex min-w-0 gap-3">
+            <span
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${user.mfaEnabled ? "bg-primary-50 text-primary-700" : "bg-slate-100 text-slate-500"}`}
+            >
+              <IconShieldCheck className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-slate-900">Two-factor authentication</h2>
+              <p className="mt-1 text-sm leading-relaxed text-slate-500">
                 {user.mfaEnabled
                   ? "Enabled — signing in also asks for a code from your authenticator app."
-                  : "Add an extra step at sign-in using an authenticator app (Google Authenticator, 1Password, Authy, or similar)."}
+                  : "Add an extra step at sign-in using an authenticator app (Google Authenticator, 1Password, Authy, or similar). Recommended for anyone who can move money."}
               </p>
             </div>
-            <Badge tone={user.mfaEnabled ? "success" : "neutral"}>{user.mfaEnabled ? "Enabled" : "Not enabled"}</Badge>
           </div>
+          <Badge tone={user.mfaEnabled ? "success" : "neutral"} className="shrink-0 whitespace-nowrap">
+            {user.mfaEnabled ? "Enabled" : "Off"}
+          </Badge>
+        </div>
+        <div className="border-t border-slate-100 px-5 py-4">
           {user.mfaEnabled ? (
-            <p className="mt-3 text-xs text-slate-500">
+            <p className="text-xs text-slate-500">
               Lost your device and your backup codes? Contact Birr — only a platform admin can reset this for you.
             </p>
           ) : (
-            <div className="mt-4">
-              <EnrollFlow />
-            </div>
+            <EnrollFlow />
           )}
-        </Card>
-      </div>
+        </div>
+      </Panel>
 
-      <div className="mt-6">
-        <Card>
-          <p className="text-sm font-medium text-slate-800">Notifications</p>
+      <Panel>
+        <div className="p-5 pb-0">
+          <h2 className="text-sm font-semibold text-slate-900">Notifications</h2>
           <p className="mt-1 text-sm text-slate-500">
             You always see these in the bell — choose which ones also email or WhatsApp you
             {user.whatsappVerifiedAt ? "" : " (WhatsApp needs a verified number first)"}.
           </p>
-          <NotificationPreferencesForm whatsappVerified={Boolean(user.whatsappVerifiedAt)} />
-        </Card>
-      </div>
+        </div>
+        <NotificationPreferencesForm whatsappVerified={Boolean(user.whatsappVerifiedAt)} />
+      </Panel>
     </div>
   );
 }
@@ -124,62 +153,78 @@ function NotificationPreferencesForm({ whatsappVerified }: { whatsappVerified: b
 
   if (error && !preferences) {
     return (
-      <Alert tone="danger" title="Couldn't load notification preferences" className="mt-4">
-        {error}
-      </Alert>
+      <div className="p-5">
+        <Alert tone="danger" title="Couldn't load notification preferences">
+          {error}
+        </Alert>
+      </div>
     );
   }
 
   if (!preferences) {
-    return <Skeleton className="mt-4 h-40 w-full" />;
+    return <Skeleton className="m-5 h-40" />;
   }
 
+  // One grid for every row, with a header row naming the two channel
+  // columns — the toggles used to sit in a flex-wrap row that wrapped
+  // under the description on some rows and not others, so the Email and
+  // WhatsApp checkboxes never lined up down the page.
   return (
     <div className="mt-4">
       {error && (
-        <Alert tone="danger" title="Couldn't save" className="mb-3">
-          {error}
-        </Alert>
+        <div className="px-5 pb-3">
+          <Alert tone="danger" title="Couldn't save">
+            {error}
+          </Alert>
+        </div>
       )}
+      <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 border-b border-slate-100 bg-slate-50/70 px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:gap-x-8">
+        <span>Notify me about</span>
+        <span className="w-[4.5rem] text-center">Email</span>
+        <span className={`w-[4.5rem] text-center ${whatsappVerified ? "" : "text-slate-300"}`}>WhatsApp</span>
+      </div>
       <div className="divide-y divide-slate-100">
         {(Object.keys(CATEGORY_LABELS) as NotificationPreferenceCategory[]).map((category) => {
           const { title, description } = CATEGORY_LABELS[category];
           const value = preferences[category];
           return (
-            <div key={category} className="flex flex-wrap items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+            <div key={category} className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 px-5 py-4 sm:gap-x-8">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-slate-800">{title}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+                <p className="text-sm font-medium text-slate-900">{title}</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>
               </div>
-              <div className="flex shrink-0 items-center gap-4">
-                <label className="flex items-center gap-1.5 text-xs text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={value.emailEnabled}
-                    disabled={savingCategory === category}
-                    onChange={() => handleToggle(category, "emailEnabled")}
-                    className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  Email
-                </label>
-                <label
-                  className={`flex items-center gap-1.5 text-xs ${whatsappVerified ? "text-slate-600" : "text-slate-300"}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={value.whatsappEnabled}
-                    disabled={savingCategory === category || !whatsappVerified}
-                    onChange={() => handleToggle(category, "whatsappEnabled")}
-                    className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed"
-                  />
-                  WhatsApp
-                </label>
+              <div className="flex w-[4.5rem] justify-center">
+                <Toggle
+                  label={`Email — ${title}`}
+                  checked={value.emailEnabled}
+                  disabled={savingCategory === category}
+                  onChange={() => handleToggle(category, "emailEnabled")}
+                />
+              </div>
+              <div className="flex w-[4.5rem] justify-center">
+                <Toggle
+                  label={`WhatsApp — ${title}`}
+                  checked={value.whatsappEnabled}
+                  disabled={savingCategory === category || !whatsappVerified}
+                  onChange={() => handleToggle(category, "whatsappEnabled")}
+                />
               </div>
             </div>
           );
         })}
       </div>
     </div>
+  );
+}
+
+/** A checkbox styled as an on/off switch — still a real <input type="checkbox"> for keyboard and screen readers. */
+function Toggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: () => void }) {
+  return (
+    <label className={`relative inline-flex ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
+      <input type="checkbox" className="peer sr-only" checked={checked} disabled={disabled} onChange={onChange} aria-label={label} />
+      <span className="h-6 w-11 rounded-full bg-slate-200 transition-colors peer-checked:bg-primary-600 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-500 peer-focus-visible:ring-offset-2" />
+      <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
+    </label>
   );
 }
 
