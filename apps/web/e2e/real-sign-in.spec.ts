@@ -77,7 +77,12 @@ test.describe("Founder Portal sign-in", () => {
 
     await Promise.all([page.waitForURL("/", { timeout: 10_000 }), page.getByRole("button", { name: "Sign in" }).click()]);
 
-    await expect(page.getByText("E2E Fixture Founder")).toBeVisible({ timeout: 10_000 });
+    // seedEstablishedFounder() has a Foundation but no Waqf Fund yet, so a
+    // real sign-in lands on onboarding step 3 — assert that, not the
+    // founder's name: "E2E Fixture Founder" only ever matched a hidden,
+    // transient element mid-redirect, so this used to pass or fail on
+    // timing alone (it failed when run after the Ops suites, 2026-10-14).
+    await expect(page.getByRole("heading", { name: "Establish your first Waqf Fund" })).toBeVisible({ timeout: 10_000 });
   });
 
   test("a wrong password shows a real error and never signs in", async ({ page }) => {
