@@ -177,7 +177,7 @@ export default function DashboardOverview() {
         </>
       )}
 
-      <Card tone="primary" className="mb-8 p-5 shadow-none">
+      <Card tone="primary" padded={false} className="mb-8 p-5 shadow-none">
         <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">About {founder.name}</p>
         <DetailGrid
           columns={2}
@@ -209,7 +209,7 @@ export default function DashboardOverview() {
       )}
 
       {!error && waqfs !== null && waqfs.length > 0 && (
-        <Card tone="accent" className="p-0">
+        <Card tone="accent" padded={false}>
           <div className="flex items-center justify-between gap-4 border-b border-accent-100 px-5 py-4">
             <p className="text-sm font-medium text-slate-700">
               {foundationCount} {foundationCount === 1 ? "foundation" : "foundations"}
@@ -297,7 +297,7 @@ function Hero({
         <div className="mt-3">
           <Skeleton className="h-12 w-20" />
         </div>
-        <Skeleton className="mt-3 h-4 w-72" />
+        <Skeleton className="mt-3 h-4 w-72 max-w-full" />
       </header>
     );
   }

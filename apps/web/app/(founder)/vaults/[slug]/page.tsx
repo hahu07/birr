@@ -627,11 +627,14 @@ function CauseCard({
             <span className="block h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
               <span className="block h-full rounded-full bg-primary-600" style={{ width: `${pct}%` }} />
             </span>
-            <span className="mt-1 flex items-baseline justify-between gap-2 text-xs text-slate-500">
-              <span>
+            {/* flex-wrap + nowrap pieces — on a phone each figure keeps
+                to one line and the goal drops below, instead of both
+                breaking mid-amount ("NGN / 1,240,000 / raised"). */}
+            <span className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 text-xs text-slate-500">
+              <span className="whitespace-nowrap">
                 {vaultCurrency} {raisedInVaultCurrency.toLocaleString()} raised
               </span>
-              <span>of {vaultCurrency} {target!.toLocaleString()} goal</span>
+              <span className="whitespace-nowrap">of {vaultCurrency} {target!.toLocaleString()} goal</span>
             </span>
             {given.length > 1 && (
               <span className="mt-0.5 block text-xs text-slate-500">

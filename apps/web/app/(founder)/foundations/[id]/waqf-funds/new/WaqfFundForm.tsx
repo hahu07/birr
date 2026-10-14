@@ -363,7 +363,9 @@ export function WaqfFundForm({
                 </div>
                 <div>
                   <p className="mb-1.5 text-sm font-medium text-slate-700">Funding plan</p>
-                  <div className="flex gap-4">
+                  {/* Stacked below sm — side by side, each option wrapped to
+                      one or two words per line on a phone. */}
+                  <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
                     <label className="flex items-center gap-2 text-sm text-slate-700">
                       <input
                         type="radio"
@@ -413,7 +415,9 @@ export function WaqfFundForm({
               {waqfAlreadyExists ? `Add funds to "${resolvedName}"` : "Declare and pay the first contribution"}
             </p>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              {/* One column below sm — the amount's helper text was squeezed
+                  into a half-width column on a phone. */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor="amount" className="mb-1.5 block text-sm font-medium text-slate-700">
                     Amount

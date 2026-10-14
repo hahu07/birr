@@ -84,7 +84,9 @@ export default function FoundationDetailPage() {
             )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        {/* flex-wrap — "View signed deed" + "Invite a co-founder" side
+            by side are wider than a phone screen on their own. */}
+        <div className="flex flex-wrap items-center gap-2">
           {foundation?.foundationDeed ? (
             <Link href={`/foundations/${foundationId}/deed`}>
               <Button variant="secondary">View signed deed</Button>

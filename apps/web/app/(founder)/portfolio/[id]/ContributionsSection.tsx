@@ -61,7 +61,9 @@ export function ContributionsSection({ waqf, onCorpusIncreased }: { waqf: Waqf; 
 
   return (
     <div className="mt-5 border-t border-slate-100 pt-5">
-      <div className="mb-3 flex items-center justify-between gap-3">
+      {/* flex-col below sm — the two buttons beside the funding summary
+          squeezed it to one or two words per line on a phone. */}
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Funding</p>
           <p className="text-sm text-slate-500">

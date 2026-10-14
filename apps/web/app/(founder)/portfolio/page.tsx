@@ -50,7 +50,10 @@ export default function PortfolioPage() {
 
   return (
     <div>
-      <header className="mb-8 flex items-start justify-between gap-4">
+      {/* flex-col below sm — the "+ Foundation" button beside the title
+          and description squeezed both into a few words per line on a
+          360px phone (found in a 2026-10-14 mobile layout pass). */}
+      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
             <IconBriefcase className="h-5 w-5" />
@@ -104,7 +107,9 @@ export default function PortfolioPage() {
         <div className="space-y-10">
           {groupByFoundation(filteredWaqfs).map(({ foundation, waqfs: foundationWaqfs }) => (
             <section key={foundation.id}>
-              <div className="mb-4 flex items-start justify-between gap-4">
+              {/* flex-col below sm — "View Foundation" + "+ Add Waqf Fund"
+                  side by side ran past the right edge of a phone screen. */}
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div>
                   <Link href={`/foundations/${foundation.id}`} className="hover:underline">
                     <h2 className="text-base font-semibold text-slate-900">{foundation.name}</h2>
@@ -137,7 +142,8 @@ export default function PortfolioPage() {
                     <Card
                       key={waqf.id}
                       tone="primary"
-                      className="cursor-pointer p-0 transition-shadow hover:shadow-md"
+                      padded={false}
+                      className="cursor-pointer transition-shadow hover:shadow-md"
                       onClick={() => router.push(`/portfolio/${waqf.id}`)}
                     >
                       <div className="flex items-center justify-between gap-4 px-5 py-4">
@@ -148,7 +154,7 @@ export default function PortfolioPage() {
                             <StatusIcon className="h-4 w-4" />
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-primary-800">{waqf.name}</p>
+                            <p className="break-words text-sm font-medium text-primary-800 sm:truncate">{waqf.name}</p>
                             <p className="text-xs text-slate-500">{humanize(waqf.type)}</p>
                           </div>
                         </div>
