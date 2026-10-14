@@ -13,7 +13,7 @@ const TYPE_GUIDE: Record<WaqfType, { label: string; description: string; example
     label: "Investment",
     description:
       "The corpus is invested (e.g. Shariah-compliant equities, sukuk, a managed portfolio) — the returns fund your cause over time, while the principal stays intact.",
-    example: "A family endows $50,000 into a diversified halal portfolio; the yearly returns fund scholarships indefinitely.",
+    example: "A family endows ₦50 million into a diversified halal portfolio; the yearly returns fund scholarships indefinitely.",
   },
   asset: {
     label: "Asset",
