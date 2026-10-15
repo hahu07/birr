@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { useStaffSession } from "../../../lib/staff-session";
-import { Alert, Button, Card, Input, Skeleton } from "@birr/ui";
+import { Alert, Button, Card, IconSettings, Input, Skeleton } from "@birr/ui";
 
 interface CorpusMinimum {
   id: string;
@@ -54,13 +54,18 @@ export default function WaqfFundingPage() {
 
   return (
     <div>
-      <header className="mb-8">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Waqf Funding</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Corpus &amp; installment rules</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          The minimum total endowment a founder may declare per currency, the minimum for a single payment toward
-          it, and the minimum share of the corpus an installment plan's first payment must cover.
-        </p>
+      <header className="mb-8 flex items-start gap-3.5">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
+          <IconSettings className="h-5 w-5" />
+        </span>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Waqf Funding</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Corpus &amp; installment rules</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            The minimum total endowment a founder may declare per currency, the minimum for a single payment toward
+            it, and the minimum share of the corpus an installment plan's first payment must cover.
+          </p>
+        </div>
       </header>
 
       {!isAdmin && staff && (

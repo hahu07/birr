@@ -12,7 +12,7 @@ import { apiFetchJson } from "../../../lib/api";
 import { useStaffSession } from "../../../lib/staff-session";
 import { formatDate } from "../../../lib/format";
 import type { PlatformSettingField, PlatformSettings } from "../../../lib/ops-types";
-import { Alert, Button, Card, Input, PasswordInput, Skeleton } from "@birr/ui";
+import { Alert, Button, Card, IconSettings, Input, PasswordInput, Skeleton } from "@birr/ui";
 
 const PROVIDER_LABELS: Record<string, string> = {
   stripe: "Stripe",
@@ -48,13 +48,18 @@ export default function PlatformSettingsPage() {
 
   return (
     <div>
-      <header className="mb-8">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Platform Settings</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Provider credentials</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Stripe, Paystack, the stablecoin gateway, Resend, and Twilio credentials — configured here take effect
-          immediately, no redeploy needed. A value not set here falls back to this environment's own configuration.
-        </p>
+      <header className="mb-8 flex items-start gap-3.5">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
+          <IconSettings className="h-5 w-5" />
+        </span>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Platform Settings</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">Provider credentials</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Stripe, Paystack, the stablecoin gateway, Resend, and Twilio credentials — configured here take effect
+            immediately, no redeploy needed. A value not set here falls back to this environment's own configuration.
+          </p>
+        </div>
       </header>
 
       {!isAdmin && staff && (

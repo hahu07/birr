@@ -12,7 +12,7 @@
 import { useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { useStaffSession } from "../../../lib/staff-session";
-import { Alert, Button, Card, Input, Skeleton } from "@birr/ui";
+import { Alert, Button, Card, IconUser, Input, Skeleton } from "@birr/ui";
 
 export default function ProfilePage() {
   const { staff, loading } = useStaffSession();
@@ -23,8 +23,15 @@ export default function ProfilePage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold tracking-tight text-slate-900">My Profile</h1>
-      <p className="mt-1.5 text-sm text-slate-500">{staff.user.fullName} · {staff.user.email}</p>
+      <header className="flex items-start gap-3.5">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
+          <IconUser className="h-5 w-5" />
+        </span>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">My Profile</h1>
+          <p className="mt-1 text-sm text-slate-500">{staff.user.fullName} · {staff.user.email}</p>
+        </div>
+      </header>
 
       <div className="mt-6">
         {staff.user.whatsappVerifiedAt ? (

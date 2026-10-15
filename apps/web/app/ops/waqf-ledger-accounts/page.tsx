@@ -13,7 +13,7 @@ import { apiFetchJson } from "../../../lib/api";
 import { humanize } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { WaqfLedgerAccount } from "../../../lib/ops-types";
-import { Alert, Badge, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { Alert, Badge, Button, EmptyState, IconFileText, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../_components/SectionChrome";
 
 const ACCOUNT_TYPES: WaqfLedgerAccount["type"][] = ["asset", "liability", "equity", "revenue", "expense"];
@@ -42,12 +42,17 @@ export default function WaqfLedgerAccountsPage() {
 
   return (
     <div>
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Waqf Ledger Accounts</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
-          Waqf's chart of accounts — every confirmed contribution, paid distribution, and recorded expense posts
-          to these.
-        </p>
+      <header className="mb-8 flex items-start gap-3.5">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
+          <IconFileText className="h-5 w-5" />
+        </span>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Waqf Ledger Accounts</h1>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Waqf's chart of accounts — every confirmed contribution, paid distribution, and recorded expense posts
+            to these.
+          </p>
+        </div>
       </header>
 
       {!isAdmin && staff && (
