@@ -288,144 +288,158 @@ export default function GovernedActionsPage() {
             // changes, then decide" — the card puts the payload directly
             // under the summary and the decision under that.
             <ul className="space-y-3" aria-label="Approval queue">
-              {visibleActions.map((action) => {
-                const rowState = rowStates[action.id] ?? IDLE;
-                const isPending = rowState.status === "pending";
-                const isSuccess = rowState.status === "success";
-                const isExpanded = expandedId === action.id;
-                const hasBeenViewed = viewedIds.has(action.id);
-                // A human maker can never also be this row's checker — the
-                // DB constraint is the real enforcement, but making that
-                // impossible to attempt in the first place (rather than
-                // surfacing as an error after a click) is the point of
-                // this guard. Irrelevant for an ai_agent maker: an agent
-                // can never be a checker at all, by anyone.
-                const isOwnProposal =
-                  action.makerType === "human" && Boolean(staff) && action.makerUserId === staff?.userId;
-                const permissionLabel = humanizePermissionKey(action.permission.key);
-                const isAgent = action.makerType === "ai_agent";
-                return (
-                  <li
-                    key={action.id}
-                    className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-colors ${
-                      isExpanded ? "border-primary-300 ring-1 ring-primary-200" : "border-slate-200/80"
-                    }`}
-                  >
-                    <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(action)}
-                          className="flex w-full min-w-0 items-start gap-3 text-left"
-                          aria-expanded={isExpanded}
-                        >
-                          <span
-                            className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isAgent ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-600"}`}
-                          >
-                            {isAgent ? <IconSparkle className="h-[18px] w-[18px]" /> : <IconUser className="h-[18px] w-[18px]" />}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <span className="break-words text-sm font-semibold text-slate-900">{permissionLabel}</span>
-                              {action.permission.category && (
-                                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                                  {action.permission.category}
-                                </span>
-                              )}
-                            </span>
-                            {/* The one thing that actually tells two same-
-                                permission, same-waqf, same-day proposals
-                                apart at a glance — without this, an officer
-                                can only distinguish them by expanding each
-                                and comparing raw entity ids. */}
-                            {action.summary && <span className="mt-0.5 block break-words text-sm text-slate-600">{action.summary}</span>}
-                            <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
-                              <span title={isAgent ? undefined : action.makerUser?.email}>
-                                {isAgent ? "Agent: " : "By "}
-                                <span className="font-medium text-slate-700">
-                                  {isAgent
-                                    ? (action.makerAgent ? agentNickname(action.makerAgent.name) : "Unregistered agent")
-                                    : (action.makerUser?.fullName ?? "—")}
-                                </span>
-                              </span>
-                              <span>
-                                {action.waqf?.name ??
-                                  (action.proposedFoundation ? `Foundation: ${action.proposedFoundation.name}` : <span className="italic">Waqf not yet created</span>)}
-                              </span>
-                              <span>{formatDate(action.createdAt)}</span>
-                            </span>
-                            <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary-700">
-                              <IconChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                              {isExpanded ? "Hide details" : "Review details"}
-                            </span>
-                          </span>
-                        </button>
-                        {/* Inside the summary column, not a full-width strip
-                            after the card: on a phone the decision buttons
-                            (next column, stacked below) then come after what
-                            the action changes, never before it. */}
-                        {isExpanded && (
-                          <div className="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3.5 sm:ml-12">
-                            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">What this changes</p>
-                            <PayloadDetails payload={action.payload} currentState={currentStates[action.id]} />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="shrink-0 border-t border-slate-100 pt-3 lg:border-0 lg:pt-0">
-                        {isSuccess ? (
-                          <span
-                            className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
-                              rowState.approved ? "text-primary-700" : "text-red-600"
-                            }`}
-                          >
-                            {rowState.approved ? <IconCheckCircle className="h-4 w-4" /> : <IconXCircle className="h-4 w-4" />}
-                            {rowState.approved ? "Approved" : "Rejected"}
-                          </span>
-                        ) : isOwnProposal ? (
-                          <span className="text-xs italic text-slate-500" title="Maker-checker: you proposed this, so someone else must decide it.">
-                            You proposed this — another officer must decide it
-                          </span>
-                        ) : (
-                          <div className="flex flex-col gap-1.5 lg:items-end">
-                            <div className="flex gap-2">
-                              <Button
-                                variant="primary"
-                                className="flex-1 px-4 py-2 lg:flex-none"
-                                disabled={isPending || !hasBeenViewed}
-                                title={!hasBeenViewed ? "Expand this row to review the payload before deciding." : undefined}
-                                onClick={() => decide(action.id, true, permissionLabel)}
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                variant="danger"
-                                className="flex-1 px-4 py-2 lg:flex-none"
-                                disabled={isPending || !hasBeenViewed}
-                                title={!hasBeenViewed ? "Expand this row to review the payload before deciding." : undefined}
-                                onClick={() => decide(action.id, false, permissionLabel)}
-                              >
-                                Reject
-                              </Button>
-                            </div>
-                            {!hasBeenViewed && <span className="text-[11px] italic text-slate-500">Expand to review before deciding</span>}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {rowState.status === "error" && (
-                      <div className="border-t border-red-100 bg-red-50 px-4 py-2.5 text-xs text-red-700 sm:px-5">
-                        Couldn&apos;t record decision for &ldquo;{permissionLabel}&rdquo;: {rowState.message}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
+              {visibleActions.map((action) => (
+                <ApprovalCard
+                  key={action.id}
+                  action={action}
+                  rowState={rowStates[action.id] ?? IDLE}
+                  isExpanded={expandedId === action.id}
+                  hasBeenViewed={viewedIds.has(action.id)}
+                  // A human maker can never also be this row's checker — the
+                  // DB constraint is the real enforcement, but making that
+                  // impossible to attempt in the first place (rather than
+                  // surfacing as an error after a click) is the point of
+                  // this guard. Irrelevant for an ai_agent maker: an agent
+                  // can never be a checker at all, by anyone.
+                  isOwnProposal={action.makerType === "human" && Boolean(staff) && action.makerUserId === staff?.userId}
+                  currentState={currentStates[action.id]}
+                  onToggle={() => toggleExpanded(action)}
+                  onDecide={(approve) => decide(action.id, approve, humanizePermissionKey(action.permission.key))}
+                />
+              ))}
             </ul>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+interface ApprovalCardProps {
+  action: GovernedAction;
+  rowState: RowState;
+  isExpanded: boolean;
+  hasBeenViewed: boolean;
+  isOwnProposal: boolean;
+  currentState: Record<string, unknown> | null | undefined;
+  onToggle: () => void;
+  onDecide: (approve: boolean) => void;
+}
+
+/** One governed action in the queue: summary (toggles the details), what it changes, and the decision. */
+function ApprovalCard({ action, rowState, isExpanded, hasBeenViewed, isOwnProposal, currentState, onToggle, onDecide }: ApprovalCardProps) {
+  return (
+    <li
+      className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-colors ${
+        isExpanded ? "border-primary-300 ring-1 ring-primary-200" : "border-slate-200/80"
+      }`}
+    >
+      <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <button type="button" onClick={onToggle} className="flex w-full min-w-0 items-start gap-3 text-left" aria-expanded={isExpanded}>
+            <ApprovalSummary action={action} isExpanded={isExpanded} />
+          </button>
+          {/* Inside the summary column, not a full-width strip after the
+              card: on a phone the decision buttons (next column, stacked
+              below) then come after what the action changes, never
+              before it. */}
+          {isExpanded && (
+            <div className="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3.5 sm:ml-12">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">What this changes</p>
+              <PayloadDetails payload={action.payload} currentState={currentState} />
+            </div>
+          )}
+        </div>
+        <div className="shrink-0 border-t border-slate-100 pt-3 lg:border-0 lg:pt-0">
+          <DecisionArea rowState={rowState} hasBeenViewed={hasBeenViewed} isOwnProposal={isOwnProposal} onDecide={onDecide} />
+        </div>
+      </div>
+      {rowState.status === "error" && (
+        <div className="border-t border-red-100 bg-red-50 px-4 py-2.5 text-xs text-red-700 sm:px-5">
+          Couldn&apos;t record decision for &ldquo;{humanizePermissionKey(action.permission.key)}&rdquo;: {rowState.message}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function ApprovalSummary({ action, isExpanded }: { action: GovernedAction; isExpanded: boolean }) {
+  const isAgent = action.makerType === "ai_agent";
+  return (
+    <>
+      <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isAgent ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-600"}`}>
+        {isAgent ? <IconSparkle className="h-[18px] w-[18px]" /> : <IconUser className="h-[18px] w-[18px]" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="break-words text-sm font-semibold text-slate-900">{humanizePermissionKey(action.permission.key)}</span>
+          {action.permission.category && (
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              {action.permission.category}
+            </span>
+          )}
+        </span>
+        {/* The one thing that actually tells two same-permission,
+            same-waqf, same-day proposals apart at a glance — without
+            this, an officer can only distinguish them by expanding each
+            and comparing raw entity ids. */}
+        {action.summary && <span className="mt-0.5 block break-words text-sm text-slate-600">{action.summary}</span>}
+        <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
+          <span title={isAgent ? undefined : action.makerUser?.email}>
+            {isAgent ? "Agent: " : "By "}
+            <span className="font-medium text-slate-700">
+              {isAgent ? (action.makerAgent ? agentNickname(action.makerAgent.name) : "Unregistered agent") : (action.makerUser?.fullName ?? "—")}
+            </span>
+          </span>
+          <span>
+            {action.waqf?.name ??
+              (action.proposedFoundation ? `Foundation: ${action.proposedFoundation.name}` : <span className="italic">Waqf not yet created</span>)}
+          </span>
+          <span>{formatDate(action.createdAt)}</span>
+        </span>
+        <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary-700">
+          <IconChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+          {isExpanded ? "Hide details" : "Review details"}
+        </span>
+      </span>
+    </>
+  );
+}
+
+function DecisionArea({
+  rowState,
+  hasBeenViewed,
+  isOwnProposal,
+  onDecide,
+}: Pick<ApprovalCardProps, "rowState" | "hasBeenViewed" | "isOwnProposal" | "onDecide">) {
+  if (rowState.status === "success") {
+    return (
+      <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${rowState.approved ? "text-primary-700" : "text-red-600"}`}>
+        {rowState.approved ? <IconCheckCircle className="h-4 w-4" /> : <IconXCircle className="h-4 w-4" />}
+        {rowState.approved ? "Approved" : "Rejected"}
+      </span>
+    );
+  }
+  if (isOwnProposal) {
+    return (
+      <span className="text-xs italic text-slate-500" title="Maker-checker: you proposed this, so someone else must decide it.">
+        You proposed this — another officer must decide it
+      </span>
+    );
+  }
+  const disabled = rowState.status === "pending" || !hasBeenViewed;
+  const hint = !hasBeenViewed ? "Expand this row to review the payload before deciding." : undefined;
+  return (
+    <div className="flex flex-col gap-1.5 lg:items-end">
+      <div className="flex gap-2">
+        <Button variant="primary" className="flex-1 px-4 py-2 lg:flex-none" disabled={disabled} title={hint} onClick={() => onDecide(true)}>
+          Approve
+        </Button>
+        <Button variant="danger" className="flex-1 px-4 py-2 lg:flex-none" disabled={disabled} title={hint} onClick={() => onDecide(false)}>
+          Reject
+        </Button>
+      </div>
+      {!hasBeenViewed && <span className="text-[11px] italic text-slate-500">Expand to review before deciding</span>}
     </div>
   );
 }

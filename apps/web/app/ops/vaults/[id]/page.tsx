@@ -144,9 +144,11 @@ export default function VaultDetailPage() {
       <EntityHeader
         back={{ href: "/ops/vaults", label: "Vaults" }}
         icon={<CoverImageControl vault={vault} onChanged={load} />}
-        title={vault.name}
-        badge={<Badge tone={STATUS_TONE[vault.status]}>{humanize(vault.status)}</Badge>}
-        subtitle={vault.description ? <span className="block max-w-2xl text-slate-600">{vault.description}</span> : undefined}
+        heading={{
+          title: vault.name,
+          badge: <Badge tone={STATUS_TONE[vault.status]}>{humanize(vault.status)}</Badge>,
+          subtitle: vault.description ? <span className="block max-w-2xl text-slate-600">{vault.description}</span> : undefined,
+        }}
         actions={<StatusActions vault={vault} onChanged={load} />}
         facts={[
           { label: "Type", value: humanize(vault.type) },
