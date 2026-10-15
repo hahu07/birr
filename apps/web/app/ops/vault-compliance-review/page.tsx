@@ -15,7 +15,7 @@ import { apiFetchJson } from "../../../lib/api";
 import { formatAmount, formatDate } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { IpCluster, StructuringReviewGroup } from "../../../lib/ops-types";
-import { Alert, Badge, EmptyState, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { Alert, Badge, EmptyState, IconShieldAlert, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../_components/SectionChrome";
 
 const REVIEW_ROLES = new Set(["platform_admin", "compliance_officer", "audit_committee", "board_of_trustees"]);
@@ -40,14 +40,19 @@ export default function VaultComplianceReviewPage() {
 
   return (
     <div>
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Vault Giving — Compliance Review</h1>
-        <p className="mt-0.5 max-w-2xl text-sm text-slate-500">
-          Two independent, purely observational signals for a compliance review to judge for themselves — neither
-          ever blocks a donor's own gift. The in-app AML check only recognizes a donor by email, so this page
-          surfaces what it can't catch on its own: gifts clustering near a currency's threshold from more than one
-          donor, and separately, different declared donors giving from the same network.
-        </p>
+      <header className="mb-8 flex items-start gap-3.5">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
+          <IconShieldAlert className="h-5 w-5" />
+        </span>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Vault Giving — Compliance Review</h1>
+          <p className="mt-0.5 max-w-2xl text-sm text-slate-500">
+            Two independent, purely observational signals for a compliance review to judge for themselves — neither
+            ever blocks a donor's own gift. The in-app AML check only recognizes a donor by email, so this page
+            surfaces what it can't catch on its own: gifts clustering near a currency's threshold from more than one
+            donor, and separately, different declared donors giving from the same network.
+          </p>
+        </div>
       </header>
 
       {!canView && (

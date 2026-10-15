@@ -53,7 +53,7 @@ export default function CounterpartiesPage() {
   return (
     <div>
       <header className="mb-8 flex items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
           <IconLandmark className="h-5 w-5" />
         </span>
         <div>

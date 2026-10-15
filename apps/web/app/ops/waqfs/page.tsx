@@ -111,7 +111,7 @@ function WaqfsPageContent() {
   return (
     <div>
       <header className="mb-8 flex items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
           <IconBriefcase className="h-5 w-5" />
         </span>
         <div>
@@ -168,42 +168,43 @@ function WaqfsPageContent() {
 }
 
 function FoundationGroupCard({ group }: { group: FoundationGroup }) {
-  // tone="primary": a soft teal-tinted shell per Foundation grouping,
-  // not a plain white card — this is the structural color the earlier
-  // pass intended (className-based tint classes were written here but
-  // silently discarded by Card's old hardcoded bg-white; see Card.tsx).
+  // One white panel per Foundation, with a tinted header strip — the
+  // 2026-10 redesign's shape for every grouped list (the Founder
+  // Portfolio's own Foundation cards match). This used to be a fully
+  // teal-tinted Card, which read as the one odd page out once the rest
+  // of the Ops Console moved to white panels.
   return (
-    <Card tone="primary">
-      <div className="mb-4 flex items-center gap-2.5 border-b border-primary-200/70 pb-3">
-        <IconLandmark className="h-4 w-4 shrink-0 text-primary-600" />
-        <h2 className="text-sm font-semibold text-slate-900">{group.foundation.name}</h2>
-        <span className="text-xs text-primary-700/70">
+    <Card padded={false} className="overflow-hidden">
+      <div className="flex items-center gap-2.5 border-b border-slate-100 bg-slate-50/80 px-5 py-3.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-900 text-accent-300">
+          <IconLandmark className="h-3.5 w-3.5" />
+        </span>
+        <h2 className="min-w-0 truncate text-sm font-semibold text-slate-900">{group.foundation.name}</h2>
+        <span className="shrink-0 text-xs text-slate-500">
           {group.waqfs.length} {group.waqfs.length === 1 ? "waqf fund" : "waqf funds"}
         </span>
       </div>
 
-      <div className="divide-y divide-primary-100">
+      <ul className="divide-y divide-slate-100">
         {group.waqfs.map((waqf) => (
-          <Link
-            key={waqf.id}
-            href={`/ops/waqfs/${waqf.id}`}
-            className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0 hover:bg-primary-100/50"
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-primary-700">{waqf.name}</p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {humanize(waqf.type)} · {waqf.jurisdiction}
-                {typeof waqf.causesCount === "number" && (
-                  <> · {waqf.causesCount} {waqf.causesCount === 1 ? "cause" : "causes"}</>
-                )}
-              </p>
-            </div>
-            <Badge tone={STATUS_TONE[waqf.status]} className="shrink-0">
-              {humanize(waqf.status)}
-            </Badge>
-          </Link>
+          <li key={waqf.id}>
+            <Link href={`/ops/waqfs/${waqf.id}`} className="group flex items-center justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-slate-50/80">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900 group-hover:text-primary-700">{waqf.name}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {humanize(waqf.type)} · {waqf.jurisdiction}
+                  {typeof waqf.causesCount === "number" && (
+                    <> · {waqf.causesCount} {waqf.causesCount === 1 ? "cause" : "causes"}</>
+                  )}
+                </p>
+              </div>
+              <Badge tone={STATUS_TONE[waqf.status]} className="shrink-0">
+                {humanize(waqf.status)}
+              </Badge>
+            </Link>
+          </li>
         ))}
-      </div>
+      </ul>
     </Card>
   );
 }
