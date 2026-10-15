@@ -166,14 +166,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [isPublicRoute, user, onboarding, onboardingLoading, pathname, router]);
 
+  // Public pages (marketing home, Vault giving, blog, legal, auth) get
+  // the Founder Portal's type too — .founder-app only scopes the fonts,
+  // it adds no chrome (2026-10 redesign, public-site phase).
   if (isPublicRoute) {
-    return <>{children}</>;
+    return <div className="founder-app">{children}</div>;
   }
 
   // No session at "/" — let page.tsx render the marketing page, no
   // chrome, no redirect (unlike every other private route below).
   if (isHomeRoute && !loading && !user) {
-    return <>{children}</>;
+    return <div className="founder-app">{children}</div>;
   }
 
   if (loading || !user) {

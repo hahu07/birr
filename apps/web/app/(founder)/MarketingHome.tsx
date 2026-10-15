@@ -315,7 +315,7 @@ export default function MarketingHome({
             </p>
           </Reveal>
           <Reveal delayMs={90}>
-            <h1 className="text-balance text-4xl font-semibold tracking-tight text-white sm:text-6xl">
+            <h1 className="font-display text-balance text-4xl font-medium tracking-tight text-white sm:text-6xl">
               A gift that outlives you.
               <br className="hidden sm:block" />
               {/* Explicit space — without it, JSX collapses the
@@ -364,7 +364,7 @@ export default function MarketingHome({
       <section id="waqf-types" className="px-6 pb-20 pt-24 sm:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary-600">What Birr manages</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+          <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
             Two products, one trustee.
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-600">
@@ -455,7 +455,7 @@ export default function MarketingHome({
       <section id="how-it-works" className="bg-gradient-to-b from-primary-50/60 to-white px-6 py-20 sm:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary-600">How it works</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+          <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
             Two paths, one trustee.
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-600">
@@ -539,7 +539,7 @@ export default function MarketingHome({
       <section id="vaults" className="px-6 py-20 sm:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-accent-600">Support a cause</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+          <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
             Open vaults, right now.
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-600">
@@ -596,7 +596,7 @@ export default function MarketingHome({
             <Reveal className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="max-w-xl">
                 <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">Learn</p>
-                <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+                <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
                   Featured articles.
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-slate-600">
@@ -621,7 +621,7 @@ export default function MarketingHome({
       <section id="governance" className="px-6 py-20 sm:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary-600">Governance</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+          <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
             Built for a fiduciary, not a feature race.
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-600">
@@ -677,7 +677,7 @@ export default function MarketingHome({
         <div className="mx-auto max-w-3xl">
           <Reveal>
             <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">Questions</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+            <h2 className="font-display mt-2 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
               Frequently asked questions
             </h2>
           </Reveal>
@@ -704,7 +704,7 @@ export default function MarketingHome({
               className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl"
               aria-hidden="true"
             />
-            <h2 className="relative text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+            <h2 className="font-display relative text-2xl font-medium tracking-tight text-white sm:text-3xl">
               Ready to establish your Waqf Fund?
             </h2>
             <p className="relative mx-auto mt-3 max-w-md text-sm leading-relaxed text-white/80">

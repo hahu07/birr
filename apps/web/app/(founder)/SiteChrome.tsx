@@ -9,17 +9,16 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button, IconArchive, IconMark } from "@birr/ui";
-import { humanize } from "../../lib/format";
+import { formatMoney, humanize } from "../../lib/format";
 import type { Vault, VaultCause } from "../../lib/types";
 
-// Four stops, not two-color interpolation across the full distance: a
-// straight primary-900 → violet-700 sRGB ramp passes through a
-// desaturated gray-navy dead zone in its middle third (measured live).
-// Holding primary-700 as a mid-ramp waypoint keeps the teal saturated
-// most of the way across before violet takes over near the edge, so the
-// panel never dips into mud.
+// The public site's hero/CTA ground — the same deep emerald ramp as the
+// Founder Portal's headline cards and auth pages (2026-10 redesign; it
+// was a teal→violet ramp before, which no longer matched anything else).
+// Gold stays the accent on top of it, never part of the gradient itself.
+// Interpolated in oklch so the ramp stays saturated end to end.
 export const GRADIENT =
-  "linear-gradient(135deg in oklch, var(--color-primary-900) 0%, var(--color-primary-700) 40%, var(--color-violet-800) 75%, var(--color-violet-600) 100%)";
+  "linear-gradient(135deg in oklch, var(--color-primary-950) 0%, var(--color-primary-900) 45%, var(--color-primary-700) 100%)";
 
 // Reveals a section as it scrolls into view — a fade + slight rise,
 // disabled outright under prefers-reduced-motion rather than merely
@@ -290,25 +289,23 @@ export function VaultCard({ vault, showType = false }: { vault: Vault; showType?
                 </div>
                 <div className="mt-2 flex items-baseline justify-between gap-2 text-xs">
                   <span className="font-semibold text-slate-900">
-                    {vault.currency} {raised.toLocaleString()} <span className="font-normal text-slate-500">raised</span>
+                    {formatMoney(raised, vault.currency, { decimals: 0 })} <span className="font-normal text-slate-500">raised</span>
                   </span>
                   <span className="shrink-0 text-slate-500">
-                    of {vault.currency} {target!.toLocaleString()}
+                    of {formatMoney(target!, vault.currency, { decimals: 0 })}
                   </span>
                 </div>
               </>
             )}
             {pct === null && raised > 0 && (
               <p className="text-xs text-slate-500">
-                <span className="font-semibold text-slate-900">
-                  {vault.currency} {raised.toLocaleString()}
-                </span>{" "}
+                <span className="font-semibold text-slate-900">{formatMoney(raised, vault.currency, { decimals: 0 })}</span>{" "}
                 raised so far
               </p>
             )}
             {otherRaised.length > 0 && (
               <p className={`text-xs text-slate-500 ${pct !== null || raised > 0 ? "mt-1.5" : ""}`}>
-                Also raised: {otherRaised.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")}
+                Also raised: {otherRaised.map((r) => formatMoney(r.amount, r.currency, { decimals: 0 })).join(" · ")}
               </p>
             )}
           </div>
@@ -356,16 +353,14 @@ function CauseProgressRow({ cause, vaultCurrency }: { cause: VaultCause; vaultCu
             <div className="h-full rounded-full bg-primary-500" style={{ width: `${pct}%` }} />
           </div>
           <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[11px] text-slate-500">
-            <span>
-              {vaultCurrency} {raised.toLocaleString()}
-            </span>
-            <span className="shrink-0">of {vaultCurrency} {target!.toLocaleString()}</span>
+            <span>{formatMoney(raised, vaultCurrency, { decimals: 0 })}</span>
+            <span className="shrink-0">of {formatMoney(target!, vaultCurrency, { decimals: 0 })}</span>
           </div>
         </>
       ) : (
         raised > 0 && (
           <p className="mt-0.5 text-[11px] text-slate-500">
-            {vaultCurrency} {raised.toLocaleString()} given so far
+            {formatMoney(raised, vaultCurrency, { decimals: 0 })} given so far
           </p>
         )
       )}
