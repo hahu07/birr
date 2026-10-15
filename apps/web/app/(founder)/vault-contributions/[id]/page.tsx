@@ -21,27 +21,44 @@ import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
 import type { VaultContribution } from "../../../../lib/types";
-import { Alert, Card, IconCheckCircle, IconClock, IconXCircle, Skeleton } from "@birr/ui";
+import { Alert, Button, Card, IconCheckCircle, IconClock, IconXCircle, Skeleton } from "@birr/ui";
 
 const POLL_INTERVAL_MS = 2000;
 // An abandoned or cancelled checkout never sends a webhook, so polling
 // can't run forever — past this, show a "still waiting" message instead.
 const POLL_GIVE_UP_AFTER_MS = 10 * 60 * 1000;
+// Every Nth poll asks the provider directly (POST
+// /vault-contributions/:id/verify) instead of only re-reading our own row
+// — so a gift isn't stuck on a delayed or lost webhook. The backend
+// rate-limits this per contribution regardless.
+const VERIFY_EVERY_N_POLLS = 5;
+// Past this, still polling, but say plainly that it's slower than usual.
+const STALL_AFTER_MS = 120_000;
 
 export default function VaultContributionStatusPage() {
   const params = useParams<{ id: string }>();
   const [contribution, setContribution] = useState<VaultContribution | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [gaveUp, setGaveUp] = useState(false);
+  const [stalled, setStalled] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
+    let polls = 0;
     const startedAt = Date.now();
 
     async function poll() {
       try {
-        const data = await apiFetchJson<VaultContribution>(`/vault-contributions/${params.id}`);
+        // A failed provider check isn't the donor's problem — fall back
+        // to plain polling and keep going.
+        const verified =
+          polls % VERIFY_EVERY_N_POLLS === 0
+            ? await apiFetchJson<VaultContribution>(`/vault-contributions/${params.id}/verify`, { method: "POST" }).catch(() => null)
+            : null;
+        const data = verified ?? (await apiFetchJson<VaultContribution>(`/vault-contributions/${params.id}`));
+        polls += 1;
         if (cancelled) return;
         setContribution(data);
         if (data.status === "pending") {
@@ -49,6 +66,7 @@ export default function VaultContributionStatusPage() {
             setGaveUp(true);
             return;
           }
+          if (Date.now() - startedAt > STALL_AFTER_MS) setStalled(true);
           timer = setTimeout(poll, POLL_INTERVAL_MS);
         }
       } catch (err) {
@@ -62,6 +80,23 @@ export default function VaultContributionStatusPage() {
       clearTimeout(timer);
     };
   }, [params.id]);
+
+  async function checkAgain() {
+    setChecking(true);
+    try {
+      setContribution(await apiFetchJson<VaultContribution>(`/vault-contributions/${params.id}/verify`, { method: "POST" }));
+    } catch {
+      // Nothing to show — the gift's state is unchanged either way.
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  const checkAgainButton = (
+    <Button type="button" variant="secondary" className="mt-4" disabled={checking} onClick={checkAgain}>
+      {checking ? "Checking…" : "Check again"}
+    </Button>
+  );
 
   return (
     <div className="mx-auto max-w-md text-center">
@@ -83,11 +118,25 @@ export default function VaultContributionStatusPage() {
           <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-500">
             <IconClock className="h-5 w-5" />
           </span>
-          <p className="mt-4 text-sm font-medium text-slate-900">Waiting for payment confirmation…</p>
-          <p className="mt-1 text-sm text-slate-500">
-            This updates automatically — no need to refresh. Bank/stablecoin confirmations can take a little
-            longer than card payments.
-          </p>
+          {stalled ? (
+            <>
+              <p className="mt-4 text-sm font-medium text-slate-900">This is taking longer than usual</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Your gift is safe — we&apos;re still waiting for the payment provider to confirm it. You can check again
+                now; this page also keeps checking on its own.
+              </p>
+              {checkAgainButton}
+              <ContributionReference id={contribution.id} />
+            </>
+          ) : (
+            <>
+              <p className="mt-4 text-sm font-medium text-slate-900">Waiting for payment confirmation…</p>
+              <p className="mt-1 text-sm text-slate-500">
+                This updates automatically — no need to refresh. Bank/stablecoin confirmations can take a little
+                longer than card payments.
+              </p>
+            </>
+          )}
         </Card>
       )}
 
@@ -98,9 +147,10 @@ export default function VaultContributionStatusPage() {
           </span>
           <p className="mt-4 text-sm font-medium text-slate-900">We haven&apos;t received confirmation yet</p>
           <p className="mt-1 text-sm text-slate-500">
-            If you completed payment, it may still be processing — refresh this page later. If you cancelled at
-            checkout, no money was taken.
+            If you completed payment, it may still be processing — check again, or come back to this page later.
+            If you cancelled at checkout, no money was taken.
           </p>
+          {checkAgainButton}
           <ContributionReference id={contribution.id} />
         </Card>
       )}

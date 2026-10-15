@@ -138,6 +138,19 @@ export class ContributionsController {
     return contribution;
   }
 
+  // Called by the waiting page when the founder returns from checkout:
+  // asks the provider directly whether this payment settled, rather than
+  // waiting only on the webhook (see reconcileForFounder's own comment).
+  // Founder session only — a founder can only ever trigger a check of
+  // their own contribution; anything else is the same 404 as findById.
+  @Post("contributions/:id/verify")
+  async verify(@Param("id") id: string, @Req() request: Request) {
+    const founder = await resolveFounderFromSession(request);
+    const contribution = await this.service.reconcileForFounder(id, founder.id);
+    if (!contribution) throw new NotFoundException(`Contribution "${id}" not found.`);
+    return contribution;
+  }
+
   // Never founder-session-authenticated — called by the provider, not a
   // logged-in donor. Security is entirely the signature check inside
   // ContributionsService.handleWebhook(); req.body here is the raw
