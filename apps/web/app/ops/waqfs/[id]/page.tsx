@@ -169,13 +169,15 @@ export default function WaqfDetailPage() {
             <IconBriefcase className="h-6 w-6" />
           </span>
         }
-        title={waqf.name}
-        badge={<Badge tone={STATUS_TONE[waqf.status]}>{humanize(waqf.status)}</Badge>}
-        subtitle={
-          <>
-            {humanize(waqf.type)} fund · Part of <span className="font-medium text-slate-700">{waqf.foundation.name}</span>
-          </>
-        }
+        heading={{
+          title: waqf.name,
+          badge: <Badge tone={STATUS_TONE[waqf.status]}>{humanize(waqf.status)}</Badge>,
+          subtitle: (
+            <>
+              {humanize(waqf.type)} fund · Part of <span className="font-medium text-slate-700">{waqf.foundation.name}</span>
+            </>
+          ),
+        }}
         progress={
           target && waqf.corpusCurrency
             ? {
