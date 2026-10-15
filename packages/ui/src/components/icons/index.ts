@@ -32,3 +32,4 @@ export { IconHeart } from "./IconHeart";
 export { IconShieldCheck } from "./IconShieldCheck";
 export { IconMenu } from "./IconMenu";
 export { IconX } from "./IconX";
+export { IconImage } from "./IconImage";

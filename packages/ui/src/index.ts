@@ -72,5 +72,6 @@ export {
   IconShieldCheck,
   IconMenu,
   IconX,
+  IconImage,
 } from "./components/icons";
 export type { IconProps } from "./components/icons";

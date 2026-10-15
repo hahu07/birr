@@ -8,13 +8,12 @@
 // decided on the Approval Queue page, never here — same posture as the
 // Waqf Fund detail page this mirrors.
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
-import { humanize } from "../../../../lib/format";
+import { formatDate, formatMoney, humanize } from "../../../../lib/format";
 import { useMarkNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Vault, VaultMilestone, VaultStatus } from "../../../../lib/ops-types";
-import { Alert, Badge, Button, IconArchive, Skeleton } from "@birr/ui";
+import { Alert, Badge, Button, IconArchive, IconClipboardCheck, IconFileText, IconHome, IconImage, Skeleton, Tabs } from "@birr/ui";
 import { VaultCausesSection } from "./VaultCausesSection";
 import { VaultInvestmentsSection } from "./VaultInvestmentsSection";
 import { VaultInvestmentTargetsSection } from "./VaultInvestmentTargetsSection";
@@ -28,6 +27,7 @@ import { VaultFeasibilityReportSection } from "./VaultFeasibilityReportSection";
 import { VaultFieldPhotosSection } from "./VaultFieldPhotosSection";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 import { useLoadedResource } from "../../_components/SectionChrome";
+import { EntityHeader } from "../../_components/EntityHeader";
 
 const STATUS_TONE: Record<VaultStatus, "success" | "warning" | "neutral" | "danger"> = {
   draft: "neutral",
@@ -49,6 +49,21 @@ const NEXT_STATUSES: Record<VaultStatus, VaultStatus[]> = {
   archived: [],
 };
 
+// 2026-10 redesign: every section used to render in one continuous
+// scroll (feasibility, causes, investments or milestones/expenses,
+// distributions, field photos, contributions, ledger), each fetching on
+// mount — the same problem the Waqf Fund detail page's tabs already
+// solved. Grouped by what a curator comes here to do, with the same
+// mount-once-then-keep pattern (see that page's own comment). Causes
+// stays on the first tab: it's where a draft vault gets set up.
+const TAB_ITEMS = [
+  { key: "overview", label: "Causes", icon: IconHome },
+  { key: "money", label: "Money", icon: IconClipboardCheck },
+  { key: "field", label: "Field updates", icon: IconImage },
+  { key: "ledger", label: "Ledger", icon: IconFileText },
+] as const;
+type TabKey = (typeof TAB_ITEMS)[number]["key"];
+
 export default function VaultDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [vault, setVault] = useState<Vault | null>(null);
@@ -60,6 +75,13 @@ export default function VaultDetailPage() {
   // journal entry it auto-posts is exactly what VaultLedgerSection's
   // own reports read, so those need to refetch too, not just Milestones.
   const [ledgerVersion, setLedgerVersion] = useState(0);
+  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  const [openedTabs, setOpenedTabs] = useState<ReadonlySet<TabKey>>(new Set(["overview"]));
+  const selectTab = useCallback((key: string) => {
+    const tabKey = key as TabKey;
+    setActiveTab(tabKey);
+    setOpenedTabs((prev) => (prev.has(tabKey) ? prev : new Set(prev).add(tabKey)));
+  }, []);
 
   const load = useCallback(() => {
     apiFetchJson<Vault>(`/vaults/${id}`)
@@ -119,76 +141,102 @@ export default function VaultDetailPage() {
 
   return (
     <div>
-      <header className="mb-8">
-        <Link href="/ops/vaults" className="text-sm text-slate-500 hover:text-primary-700">
-          ← Vaults
-        </Link>
-        <div className="mt-2 flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <CoverImageControl vault={vault} onChanged={load} />
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{vault.name}</h1>
-                <Badge tone={STATUS_TONE[vault.status]}>{humanize(vault.status)}</Badge>
-              </div>
-              <p className="mt-0.5 text-sm text-slate-500">
-                {humanize(vault.type)} · {vault.currency} · {vault.jurisdiction} · /vaults/{vault.slug}
-              </p>
-              {vault.description && <p className="mt-1 max-w-2xl text-sm text-slate-600">{vault.description}</p>}
-            </div>
-          </div>
-          <StatusActions vault={vault} onChanged={load} />
-        </div>
-      </header>
+      <EntityHeader
+        back={{ href: "/ops/vaults", label: "Vaults" }}
+        icon={<CoverImageControl vault={vault} onChanged={load} />}
+        title={vault.name}
+        badge={<Badge tone={STATUS_TONE[vault.status]}>{humanize(vault.status)}</Badge>}
+        subtitle={vault.description ? <span className="block max-w-2xl text-slate-600">{vault.description}</span> : undefined}
+        actions={<StatusActions vault={vault} onChanged={load} />}
+        facts={[
+          { label: "Type", value: humanize(vault.type) },
+          { label: "Currencies", value: [vault.currency, ...vault.additionalCurrencies].join(", ") },
+          { label: "Jurisdiction", value: vault.jurisdiction },
+          { label: "Target", value: vault.targetAmount ? formatMoney(vault.targetAmount, vault.currency) : "—" },
+          {
+            label: "Public page",
+            value:
+              vault.status === "draft" ? (
+                <span className="font-mono text-xs text-slate-500">/vaults/{vault.slug}</span>
+              ) : (
+                <a href={`/vaults/${vault.slug}`} target="_blank" rel="noreferrer" className="break-all font-mono text-xs text-primary-700 hover:underline">
+                  /vaults/{vault.slug} ↗
+                </a>
+              ),
+          },
+          { label: "Opened", value: vault.openedAt ? formatDate(vault.openedAt) : "Not yet" },
+        ]}
+      />
 
-      <div className="space-y-10">
-        <VaultFeasibilityReportSection vault={vault} onChanged={load} />
-        <VaultCausesSection
-          vaultId={id}
-          vaultType={vault.type}
-          currency={vault.currency}
-          additionalCurrencies={vault.additionalCurrencies}
-          onChanged={load}
-        />
-        {vault.type === "investment" && (
-          <>
-            <VaultInvestmentsSection vaultId={id} currency={vault.currency} />
-            <VaultInvestmentTargetsSection vaultId={id} />
-            <VaultProceedsSection vaultId={id} currency={vault.currency} />
-          </>
-        )}
-        {vault.type === "project" && (
-          <>
-            <VaultMilestonesSection
-              vaultId={id}
-              currency={vault.currency}
-              milestones={milestones}
-              error={milestonesError}
-              onChanged={reloadMilestones}
-            />
-            <VaultExpensesSection
-              vaultId={id}
-              currency={vault.currency}
-              additionalCurrencies={vault.additionalCurrencies}
-              milestones={milestones ?? []}
-              onChanged={() => {
-                reloadMilestones();
-                setLedgerVersion((v) => v + 1);
-              }}
-            />
-          </>
-        )}
-        <VaultDistributionsSection
-          vaultId={id}
-          currency={vault.currency}
-          additionalCurrencies={vault.additionalCurrencies}
-          causes={causes}
-          milestones={milestones ?? []}
-        />
-        <VaultFieldPhotosSection vaultId={id} causes={causes} milestones={milestones ?? []} />
-        <VaultContributionsSection vaultId={id} />
-        <VaultLedgerSection vaultId={id} currency={vault.currency} additionalCurrencies={vault.additionalCurrencies} refreshKey={ledgerVersion} />
+      <div className="sticky top-14 z-20 -mx-4 mb-8 bg-slate-50/90 px-4 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <Tabs items={[...TAB_ITEMS]} active={activeTab} onChange={selectTab} />
       </div>
+
+      {openedTabs.has("overview") && (
+        <div hidden={activeTab !== "overview"} className="space-y-10">
+          <VaultFeasibilityReportSection vault={vault} onChanged={load} />
+          <VaultCausesSection
+            vaultId={id}
+            vaultType={vault.type}
+            currency={vault.currency}
+            additionalCurrencies={vault.additionalCurrencies}
+            onChanged={load}
+          />
+        </div>
+      )}
+
+      {openedTabs.has("money") && (
+        <div hidden={activeTab !== "money"} className="space-y-10">
+          {vault.type === "investment" && (
+            <>
+              <VaultInvestmentsSection vaultId={id} currency={vault.currency} />
+              <VaultInvestmentTargetsSection vaultId={id} />
+              <VaultProceedsSection vaultId={id} currency={vault.currency} />
+            </>
+          )}
+          {vault.type === "project" && (
+            <>
+              <VaultMilestonesSection
+                vaultId={id}
+                currency={vault.currency}
+                milestones={milestones}
+                error={milestonesError}
+                onChanged={reloadMilestones}
+              />
+              <VaultExpensesSection
+                vaultId={id}
+                currency={vault.currency}
+                additionalCurrencies={vault.additionalCurrencies}
+                milestones={milestones ?? []}
+                onChanged={() => {
+                  reloadMilestones();
+                  setLedgerVersion((v) => v + 1);
+                }}
+              />
+            </>
+          )}
+          <VaultDistributionsSection
+            vaultId={id}
+            currency={vault.currency}
+            additionalCurrencies={vault.additionalCurrencies}
+            causes={causes}
+            milestones={milestones ?? []}
+          />
+          <VaultContributionsSection vaultId={id} />
+        </div>
+      )}
+
+      {openedTabs.has("field") && (
+        <div hidden={activeTab !== "field"} className="space-y-10">
+          <VaultFieldPhotosSection vaultId={id} causes={causes} milestones={milestones ?? []} />
+        </div>
+      )}
+
+      {openedTabs.has("ledger") && (
+        <div hidden={activeTab !== "ledger"} className="space-y-10">
+          <VaultLedgerSection vaultId={id} currency={vault.currency} additionalCurrencies={vault.additionalCurrencies} refreshKey={ledgerVersion} />
+        </div>
+      )}
     </div>
   );
 }
@@ -230,12 +278,12 @@ function CoverImageControl({ vault, onChanged }: { vault: Vault; onChanged: () =
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
         title={vault.coverImageUrl ? "Change cover image" : "Upload a cover image"}
-        className="group relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25"
+        className="group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary-900 text-accent-300 shadow-sm"
       >
         {vault.coverImageUrl ? (
           <img src={vault.coverImageUrl} alt="" className="h-full w-full object-cover" />
         ) : (
-          <IconArchive className="h-5 w-5" />
+          <IconArchive className="h-6 w-6" />
         )}
         <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-[10px] font-medium opacity-0 transition-opacity group-hover:opacity-100">
           {uploading ? "…" : vault.coverImageUrl ? "Change" : "Upload"}
