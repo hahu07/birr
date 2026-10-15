@@ -50,7 +50,7 @@ export default async function BlogArticlePage({ params }: { params: Promise<{ sl
         <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">
           {BLOG_CATEGORIES[article.category]}
         </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{article.title}</h1>
+        <h1 className="font-display mt-2 text-3xl font-medium tracking-tight text-slate-900 sm:text-4xl">{article.title}</h1>
         <p className="mt-3 text-sm text-slate-500">
           By {article.authorName} · {formatArticleDate(article.publishedAt)} · Reviewed by {article.reviewedByName}
         </p>

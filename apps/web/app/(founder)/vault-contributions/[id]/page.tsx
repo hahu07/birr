@@ -19,6 +19,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
+import { formatMoney } from "../../../../lib/format";
 import type { VaultContribution } from "../../../../lib/types";
 import { Alert, Card, IconCheckCircle, IconClock, IconXCircle, Skeleton } from "@birr/ui";
 
@@ -111,7 +112,7 @@ export default function VaultContributionStatusPage() {
           </span>
           <p className="mt-4 text-sm font-medium text-slate-900">Thank you — your gift is confirmed</p>
           <p className="mt-1 text-sm text-slate-500">
-            {contribution.currency} {Number(contribution.amount).toLocaleString()} to {contribution.vault.name} has
+            {formatMoney(contribution.amount, contribution.currency)} to {contribution.vault.name} has
             been received.
           </p>
           <ContributionReference id={contribution.id} />

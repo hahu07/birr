@@ -23,7 +23,7 @@ export default async function BlogIndexPage() {
       <SiteHeader />
       <div className="mx-auto max-w-5xl px-6 py-16 sm:px-8">
         <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">Learn</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+        <h1 className="font-display mt-2 text-3xl font-medium tracking-tight text-slate-900 sm:text-4xl">
           Understanding waqf, in plain English
         </h1>
         <p className="mt-3 text-lg text-slate-600">

@@ -200,7 +200,7 @@ export function ImpactSection({ impact, photos }: { impact: ImpactSummary | null
 
       <Reveal className="mx-auto max-w-3xl px-6 text-center sm:px-8">
         <p className="text-xs font-semibold uppercase tracking-widest text-accent-300">Our impact</p>
-        <h2 className="mt-4 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+        <h2 className="font-display mt-4 text-4xl font-medium leading-tight tracking-tight sm:text-5xl">
           Giving you can <span className="text-accent-300">verify.</span>
         </h2>
         <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-primary-100/85">

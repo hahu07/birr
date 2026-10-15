@@ -15,10 +15,12 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ApiError, apiFetchJson } from "../../../../lib/api";
 import { trackFunnelEvent } from "../../../../lib/funnel-tracking";
-import { humanize } from "../../../../lib/format";
+import { formatMoney, humanize } from "../../../../lib/format";
 import type { Vault, VaultCause } from "../../../../lib/types";
-import { Alert, Button, Card, IconArchive, IconFileText, Input, Select, Skeleton } from "@birr/ui";
-import { GRADIENT, SiteFooter, SiteHeader } from "../../SiteChrome";
+import { Alert, Button, IconArchive, IconCheckCircle, IconFileText, IconShieldCheck, Input, Select, Skeleton } from "@birr/ui";
+import { SiteFooter, SiteHeader } from "../../SiteChrome";
+import { GeometricPattern } from "../../_components/ui";
+import { MoneyInput } from "../../_components/form";
 
 // Same rail/currency map as WaqfFundForm's own PROVIDERS — a vault's
 // currency is fixed (not user-editable, unlike the Founder flow's own
@@ -136,140 +138,167 @@ export default function VaultDonationPage() {
   const spent = Number(vault.spentSoFar?.find((s) => s.currency === vault.currency)?.amount ?? "0");
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-slate-50">
       <SiteHeader />
 
-      <div className="relative overflow-hidden" style={vault.coverImageUrl ? undefined : { backgroundImage: GRADIENT }}>
-        {vault.coverImageUrl && <img src={vault.coverImageUrl} alt="" className="h-56 w-full object-cover" />}
-        {!vault.coverImageUrl && (
-          <div className="flex h-40 items-center justify-center">
-            <IconArchive className="h-12 w-12 text-white/70" />
-          </div>
-        )}
-      </div>
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+        <Link href="/vaults" className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-primary-700">
+          ← All open vaults
+        </Link>
 
-      <div className="mx-auto max-w-3xl px-6 py-10 sm:px-8">
-        <p className="text-xs font-semibold uppercase tracking-widest text-accent-600">{humanize(vault.type)} vault</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{vault.name}</h1>
-        {vault.description && <p className="mt-3 text-sm leading-relaxed text-slate-600">{vault.description}</p>}
-
-        {causes.length > 0 && (
-          <div className="mt-5 flex flex-wrap gap-1.5">
-            {causes.map((c) => (
-              <span key={c.id} className="rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">
-                {c.icon && (
-                  <span aria-hidden="true" className="mr-1">
-                    {c.icon}
-                  </span>
-                )}
-                {c.name}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {vault.feasibilityReportUrl && (
-          <a
-            href={vault.feasibilityReportUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-5 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm transition-colors hover:border-primary-300 hover:bg-primary-50"
-          >
-            <IconFileText className="h-5 w-5 shrink-0 text-primary-700" aria-hidden="true" />
-            <span className="flex-1 font-medium text-slate-900">{vault.feasibilityReportTitle ?? "Feasibility report"}</span>
-            <span className="shrink-0 text-xs font-semibold text-primary-700">View →</span>
-          </a>
-        )}
-
-        {(pct !== null || raised > 0 || otherRaised.length > 0) && (
-          <div className="mt-6">
-            {pct !== null && (
-              <>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-primary-600 transition-[width] duration-500 ease-out"
-                    style={{ width: `${pct}%` }}
-                  />
+        {/* Story on the left, a sticky giving panel on the right (stacked
+            on a phone, story first) — the donor can read the whole case
+            without the "give" box scrolling out of reach. */}
+        <div className="grid gap-8 lg:grid-cols-[1fr_400px] lg:items-start">
+          <article className="min-w-0">
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-950 via-primary-900 to-primary-700 shadow-sm">
+              {vault.coverImageUrl ? (
+                <img src={vault.coverImageUrl} alt="" className="aspect-[16/9] w-full object-cover" />
+              ) : (
+                <div className="flex aspect-[16/9] items-center justify-center">
+                  <GeometricPattern className="pointer-events-none absolute inset-0 h-full w-full text-white/[0.06]" />
+                  <IconArchive className="relative h-14 w-14 text-accent-300/80" />
                 </div>
-                <div className="mt-2 flex items-baseline justify-between gap-2 text-sm">
-                  <span className="font-semibold text-slate-900">
-                    {vault.currency} {raised.toLocaleString()} <span className="font-normal text-slate-500">raised</span>
-                  </span>
-                  <span className="text-slate-500">
-                    of {vault.currency} {target!.toLocaleString()} goal
-                  </span>
-                </div>
-              </>
-            )}
-            {pct === null && raised > 0 && (
-              <p className="text-sm text-slate-500">
-                <span className="font-semibold text-slate-900">
-                  {vault.currency} {raised.toLocaleString()}
-                </span>{" "}
-                raised so far
-              </p>
-            )}
-            {otherRaised.length > 0 && (
-              <p className={`text-sm text-slate-500 ${pct !== null || raised > 0 ? "mt-1.5" : ""}`}>
-                Also raised: {otherRaised.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")}
-              </p>
-            )}
-            {spent > 0 && (
-              <p className="mt-1.5 text-sm text-slate-500">
-                {vault.currency} {spent.toLocaleString()} already spent on the ground
-              </p>
-            )}
-          </div>
-        )}
+              )}
+            </div>
 
-        {milestones.length > 0 && (
-          <div className="mt-6">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Project progress</p>
-            <ol className="space-y-2.5">
-              {milestones.map((m) => (
-                <li key={m.id} className="text-sm">
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                        m.status === "completed"
-                          ? "bg-primary-600 text-white"
-                          : m.status === "in_progress"
-                            ? "bg-accent-100 text-accent-700 ring-1 ring-inset ring-accent-300"
-                            : "bg-slate-100 text-slate-400 ring-1 ring-inset ring-slate-200"
-                      }`}
-                      aria-hidden="true"
-                    >
-                      {m.status === "completed" ? "✓" : m.sequence}
-                    </span>
-                    <span className={m.status === "completed" ? "text-slate-900" : "text-slate-600"}>{m.name}</span>
-                    <span className="text-xs text-slate-400">
-                      ({m.status === "completed" ? "Done" : m.status === "in_progress" ? "In progress" : "Upcoming"})
-                    </span>
-                  </div>
-                  {(m.evidenceNotes || m.evidenceFileUrl) && (
-                    <div className="ml-[30px] mt-1.5">
-                      {m.evidenceNotes && <p className="text-xs leading-relaxed text-slate-500">{m.evidenceNotes}</p>}
-                      {m.evidenceFileUrl && (
-                        <a
-                          href={m.evidenceFileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 hover:text-primary-800"
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.14em] text-accent-700">{humanize(vault.type)} vault</p>
+            <h1 className="mt-2 font-display text-3xl font-medium tracking-tight text-slate-900 sm:text-4xl">{vault.name}</h1>
+            {vault.description && <p className="mt-4 text-base leading-relaxed text-slate-700">{vault.description}</p>}
+
+            {causes.length > 0 && (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {causes.map((c) => (
+                  <span key={c.id} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-primary-800 ring-1 ring-inset ring-primary-200">
+                    {c.icon && (
+                      <span aria-hidden="true" className="mr-1">
+                        {c.icon}
+                      </span>
+                    )}
+                    {c.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {vault.feasibilityReportUrl && (
+              <a
+                href={vault.feasibilityReportUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-6 flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3.5 text-sm shadow-sm transition-colors hover:border-primary-300"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-700">
+                  <IconFileText className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-slate-900">{vault.feasibilityReportTitle ?? "Feasibility report"}</span>
+                  <span className="block text-xs text-slate-500">Read the study behind this campaign before you give</span>
+                </span>
+                <span className="shrink-0 text-xs font-semibold text-primary-700">View →</span>
+              </a>
+            )}
+
+            {milestones.length > 0 && (
+              <section className="mt-8 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="text-sm font-semibold text-slate-900">Project progress</h2>
+                <ol className="mt-4 space-y-4">
+                  {milestones.map((m) => (
+                    <li key={m.id} className="text-sm">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                            m.status === "completed"
+                              ? "bg-primary-600 text-white"
+                              : m.status === "in_progress"
+                                ? "bg-accent-100 text-accent-700 ring-1 ring-inset ring-accent-300"
+                                : "bg-slate-100 text-slate-400 ring-1 ring-inset ring-slate-200"
+                          }`}
+                          aria-hidden="true"
                         >
-                          <IconFileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                          View evidence →
-                        </a>
+                          {m.status === "completed" ? "✓" : m.sequence}
+                        </span>
+                        <span className={`font-medium ${m.status === "completed" ? "text-slate-900" : "text-slate-700"}`}>{m.name}</span>
+                        <span className="text-xs text-slate-400">
+                          ({m.status === "completed" ? "Done" : m.status === "in_progress" ? "In progress" : "Upcoming"})
+                        </span>
+                      </div>
+                      {(m.evidenceNotes || m.evidenceFileUrl) && (
+                        <div className="ml-9 mt-1.5">
+                          {m.evidenceNotes && <p className="text-xs leading-relaxed text-slate-500">{m.evidenceNotes}</p>}
+                          {m.evidenceFileUrl && (
+                            <a
+                              href={m.evidenceFileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 hover:text-primary-800"
+                            >
+                              <IconFileText className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                              View evidence →
+                            </a>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+          </article>
 
-        <div className="mt-8">
-          <ContributionForm vault={vault} causes={causes} minimums={minimums} />
+          <aside className="lg:sticky lg:top-6">
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-lg shadow-slate-900/5">
+              {(pct !== null || raised > 0 || otherRaised.length > 0) && (
+                <div className="border-b border-slate-100 p-5 sm:p-6">
+                  {pct !== null && (
+                    <>
+                      <p className="font-display text-3xl font-medium tabular-nums tracking-tight text-slate-900">
+                        {formatMoney(raised, vault.currency, { decimals: 0 })}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        raised of {formatMoney(target!, vault.currency, { decimals: 0 })} goal
+                      </p>
+                      <div className="mt-4 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-primary-600 to-primary-500 transition-[width] duration-500 ease-out"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <p className="mt-2 text-xs font-medium text-slate-500">{pct}% of the goal</p>
+                    </>
+                  )}
+                  {pct === null && raised > 0 && (
+                    <p className="text-sm text-slate-500">
+                      <span className="font-display text-3xl font-medium tabular-nums text-slate-900">
+                        {formatMoney(raised, vault.currency, { decimals: 0 })}
+                      </span>{" "}
+                      raised so far
+                    </p>
+                  )}
+                  {otherRaised.length > 0 && (
+                    <p className={`text-sm text-slate-500 ${pct !== null || raised > 0 ? "mt-2" : ""}`}>
+                      Also raised: {otherRaised.map((r) => formatMoney(r.amount, r.currency, { decimals: 0 })).join(" · ")}
+                    </p>
+                  )}
+                  {spent > 0 && (
+                    <p className="mt-2 flex items-center gap-1.5 text-sm text-primary-800">
+                      <IconCheckCircle className="h-4 w-4 shrink-0" />
+                      {formatMoney(spent, vault.currency, { decimals: 0 })} already spent on the ground
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className="p-5 sm:p-6">
+                <h2 className="mb-4 text-base font-semibold text-slate-900">Give to this vault</h2>
+                <ContributionForm vault={vault} causes={causes} minimums={minimums} />
+              </div>
+            </div>
+            <p className="mt-3 flex items-start gap-2 px-1 text-xs leading-relaxed text-slate-500">
+              <IconShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" />
+              Birr is the trustee for this vault. Every payout to a delivery partner needs approval from two different Birr
+              officers.
+            </p>
+          </aside>
         </div>
       </div>
 
@@ -296,6 +325,9 @@ function ContributionForm({
   const [currency, setCurrency] = useState(vault.currency);
   const availableProviders = PROVIDERS.filter((p) => (p.currencies as readonly string[]).includes(currency));
   const minimumAmount = minimums.find((m) => m.currency === currency)?.minAmount;
+  // One-tap amounts built from the real configured minimum (1×, 2×, 5×),
+  // so a suggestion can never fall below what the backend will accept.
+  const quickAmounts = minimumAmount && Number(minimumAmount) > 0 ? [1, 2, 5].map((k) => k * Number(minimumAmount)) : [];
 
   const [amount, setAmount] = useState("");
   const [vaultCauseId, setVaultCauseId] = useState("");
@@ -352,8 +384,7 @@ function ContributionForm({
   }
 
   return (
-    <Card tone="neutral">
-      <form onSubmit={handleSubmit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-5">
         {error && (
           <Alert tone="danger" title="Couldn't process your contribution">
             {error}
@@ -393,46 +424,57 @@ function ContributionForm({
           <label htmlFor="contribution-amount" className="mb-1.5 block text-sm font-medium text-slate-700">
             Amount ({currency})
           </label>
-          <Input
-            id="contribution-amount"
-            type="number"
-            min="0"
-            step="0.01"
-            required
-            autoFocus
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
-          {minimumAmount && (
-            <p className="mt-1 text-xs text-slate-500">
-              Minimum contribution: {currency} {formatMinimum(minimumAmount)}
-            </p>
+          {quickAmounts.length > 0 && (
+            <div className="mb-2.5 grid grid-cols-3 gap-2">
+              {quickAmounts.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setAmount(String(q))}
+                  aria-pressed={Number(amount) === q}
+                  className={`rounded-lg border px-2 py-2 text-sm font-semibold tabular-nums transition-colors ${
+                    Number(amount) === q ? "border-primary-600 bg-primary-50 text-primary-800" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                  }`}
+                >
+                  {formatMoney(q, currency, { decimals: 0 })}
+                </button>
+              ))}
+            </div>
           )}
+          <MoneyInput id="contribution-amount" currency={currency} required autoFocus value={amount} onChange={(e) => setAmount(e.target.value)} />
+          {minimumAmount && <p className="mt-1 text-xs text-slate-500">Minimum contribution: {formatMoney(minimumAmount, currency, { decimals: 0 })}</p>}
         </div>
 
         {causes.length > 0 && (
           <CauseChoice causes={causes} vaultCurrency={vault.currency} selectedId={vaultCauseId} onSelect={setVaultCauseId} />
         )}
 
-        <div>
-          <label htmlFor="contribution-provider" className="mb-1.5 block text-sm font-medium text-slate-700">
-            Payment method
-          </label>
-          <Select
-            id="contribution-provider"
-            className="w-full"
-            value={provider}
-            onChange={(e) => setProvider(e.target.value as (typeof PROVIDERS)[number]["value"])}
-          >
-            {availableProviders.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </Select>
-        </div>
+        {availableProviders.length === 1 ? (
+          <p className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
+            <IconShieldCheck className="h-4 w-4 shrink-0 text-primary-700" />
+            Paid with {availableProviders[0]!.value === "paystack" ? "card or bank transfer via Paystack" : "stablecoin"}
+          </p>
+        ) : (
+          <div>
+            <label htmlFor="contribution-provider" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Payment method
+            </label>
+            <Select
+              id="contribution-provider"
+              className="w-full"
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as (typeof PROVIDERS)[number]["value"])}
+            >
+              {availableProviders.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4">
           <div>
             <label htmlFor="contribution-donor-email" className="mb-1.5 block text-sm font-medium text-slate-700">
               Email (optional)
@@ -465,7 +507,7 @@ function ContributionForm({
         )}
 
         {showIdentity && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="mb-3 text-xs text-slate-500">
               Required for larger contributions, for compliance — your ID details are encrypted and never shown publicly.
             </p>
@@ -497,16 +539,12 @@ function ContributionForm({
           </div>
         )}
 
-        <Button type="submit" disabled={submitting} className="w-full">
+        <Button type="submit" disabled={submitting} className="w-full py-3 text-base">
           {submitting ? "Processing…" : "Continue to payment"}
         </Button>
+        <p className="text-center text-xs text-slate-500">You'll finish on a secure checkout page, then come back here.</p>
       </form>
-    </Card>
   );
-}
-
-function formatMinimum(amount: string) {
-  return Number(amount).toLocaleString();
 }
 
 // Selectable cause cards, not the plain <select> this used to be: a
@@ -605,8 +643,8 @@ function CauseCard({
 
   return (
     <label
-      className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
-        selected ? "border-primary-400 bg-primary-50/60" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+      className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3.5 py-3 transition-colors ${
+        selected ? "border-primary-500 bg-primary-50/60 ring-1 ring-primary-500" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
       }`}
     >
       <input
@@ -632,20 +670,20 @@ function CauseCard({
                 breaking mid-amount ("NGN / 1,240,000 / raised"). */}
             <span className="mt-1 flex flex-wrap items-baseline justify-between gap-x-2 text-xs text-slate-500">
               <span className="whitespace-nowrap">
-                {vaultCurrency} {raisedInVaultCurrency.toLocaleString()} raised
+                {formatMoney(raisedInVaultCurrency, vaultCurrency, { decimals: 0 })} raised
               </span>
-              <span className="whitespace-nowrap">of {vaultCurrency} {target!.toLocaleString()} goal</span>
+              <span className="whitespace-nowrap">of {formatMoney(target!, vaultCurrency, { decimals: 0 })} goal</span>
             </span>
             {given.length > 1 && (
               <span className="mt-0.5 block text-xs text-slate-500">
-                Also given: {given.filter((r) => r.currency !== vaultCurrency).map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")}
+                Also given: {given.filter((r) => r.currency !== vaultCurrency).map((r) => formatMoney(r.amount, r.currency, { decimals: 0 })).join(" · ")}
               </span>
             )}
           </span>
         ) : (
           given.length > 0 && (
             <span className="mt-1 block text-xs text-slate-500">
-              {given.map((r) => `${r.currency} ${Number(r.amount).toLocaleString()}`).join(" · ")} given so far
+              {given.map((r) => formatMoney(r.amount, r.currency, { decimals: 0 })).join(" · ")} given so far
             </span>
           )
         )}

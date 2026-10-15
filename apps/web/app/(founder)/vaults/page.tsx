@@ -49,7 +49,7 @@ export default function VaultsIndexPage() {
       <section className="px-6 pb-16 pt-16 sm:px-8">
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-accent-600">Support a cause</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+          <h1 className="font-display mt-3 text-3xl font-medium tracking-tight text-slate-900 sm:text-4xl">
             Every open vault, in one place.
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-slate-600">

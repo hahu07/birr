@@ -26,7 +26,7 @@ export default function WaqfTypeDetailPage() {
       <div className="min-h-screen bg-white">
         <SiteHeader />
         <div className="mx-auto max-w-2xl px-6 py-24 text-center sm:px-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">No such Waqf Fund type.</h1>
+          <h1 className="font-display text-2xl font-medium tracking-tight text-slate-900">No such Waqf Fund type.</h1>
           <p className="mt-3 text-sm text-slate-600">
             There's no "{slug}" type — Birr supports Investment, Asset, and Project Waqf Funds.
           </p>
@@ -61,7 +61,7 @@ export default function WaqfTypeDetailPage() {
                 <content.icon className="h-6 w-6" />
               </span>
               <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">Waqf Fund type</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{content.label}</h1>
+              <h1 className="font-display mt-2 text-3xl font-medium tracking-tight text-slate-900 sm:text-4xl">{content.label}</h1>
               <p className="mt-3 text-lg leading-relaxed text-slate-700">{content.tagline}</p>
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
                 <Link href="/sign-up" className="w-full sm:w-auto">
@@ -151,7 +151,7 @@ export default function WaqfTypeDetailPage() {
               className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl"
               aria-hidden="true"
             />
-            <h2 className="relative text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+            <h2 className="font-display relative text-2xl font-medium tracking-tight text-white sm:text-3xl">
               Ready to establish your {content.label} Fund?
             </h2>
             <p className="relative mx-auto mt-3 max-w-md text-sm leading-relaxed text-white/80">

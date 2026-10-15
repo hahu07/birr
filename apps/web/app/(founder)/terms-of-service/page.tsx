@@ -19,7 +19,7 @@ export default function TermsOfServicePage() {
         <Link href="/" className="text-sm font-medium text-primary-700 hover:text-primary-800">
           ← Back to Birr
         </Link>
-        <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-900">Terms of Service</h1>
+        <h1 className="font-display mt-6 text-3xl font-medium tracking-tight text-slate-900">Terms of Service</h1>
         <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           This page is a placeholder. Birr's real terms of service are being drafted with legal counsel and will
           replace this notice before the platform is used in production.
