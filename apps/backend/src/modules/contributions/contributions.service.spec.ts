@@ -8,6 +8,7 @@ import {
   CreatePaymentInput,
   CreatePaymentResult,
   PaymentProviderAdapter,
+  VerifiedPayment,
   WebhookResult,
 } from "./providers/payment-provider.interface";
 
@@ -27,6 +28,15 @@ class FakeAdapter implements PaymentProviderAdapter {
 
   async verifyAndParseWebhook(): Promise<WebhookResult | null> {
     return this.nextWebhookResult;
+  }
+
+  // Provider-pull side (reconcileForFounder) — what the provider reports
+  // when asked directly, plus how many times it was asked.
+  nextVerifyResult: VerifiedPayment | null = null;
+  verifyCalls = 0;
+  async verifyPayment(): Promise<VerifiedPayment | null> {
+    this.verifyCalls += 1;
+    return this.nextVerifyResult;
   }
 }
 
@@ -561,6 +571,119 @@ describe("ContributionsService", () => {
     ).toBe(1);
     expect(await prisma.auditLog.count({ where: { entityId: freshWaqf.id, entityType: "Waqf", action: "waqf.activated" } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { entityId: initiated.contribution.id, action: "contribution.confirmed" } })).toBe(1);
+  });
+
+  describe("reconcileForFounder() — asking the provider directly when the founder returns from checkout", () => {
+    // A fresh waqf + pending contribution per case, so each starts from
+    // "draft, nothing confirmed yet" and its own verify rate-limit slot.
+    async function pendingContribution(amount = "300.00") {
+      const waqf = await prisma.waqf.create({
+        data: { name: "Contributions Spec Reconcile Waqf", type: "asset", jurisdiction: "AE", foundationId, corpusCurrency: "USD" },
+      });
+      waqfIds.push(waqf.id);
+      const initiated = await service.initiate({ waqfId: waqf.id, amount, currency: "USD", provider: "stripe", founderId });
+      contributionIds.push(initiated.contribution.id);
+      return { waqfId: waqf.id, contributionId: initiated.contribution.id };
+    }
+
+    test("provider reports success for the exact amount/currency → confirmed through the same path as a webhook (Asset, activation, ledger, audit)", async () => {
+      const { waqfId: wId, contributionId } = await pendingContribution("300.00");
+      stripeFake.nextVerifyResult = { status: "confirmed", amountMinorUnits: 30000, currency: "USD" };
+
+      const result = await service.reconcileForFounder(contributionId, founderId);
+
+      expect(result?.status).toBe("confirmed");
+      if (result?.assetId) assetIds.push(result.assetId);
+      expect(await prisma.asset.count({ where: { waqfId: wId } })).toBe(1);
+      expect((await prisma.waqf.findUniqueOrThrow({ where: { id: wId } })).status).toBe("active");
+      expect(await prisma.waqfJournalEntry.count({ where: { source: "contribution", sourceId: contributionId } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: contributionId, action: "contribution.confirmed" } })).toBe(1);
+    });
+
+    test("an amount mismatch never confirms — the contribution stays pending with no Asset or ledger entry", async () => {
+      const { waqfId: wId, contributionId } = await pendingContribution("300.00");
+      stripeFake.nextVerifyResult = { status: "confirmed", amountMinorUnits: 3000, currency: "USD" };
+
+      const result = await service.reconcileForFounder(contributionId, founderId);
+
+      expect(result?.status).toBe("pending");
+      expect(await prisma.asset.count({ where: { waqfId: wId } })).toBe(0);
+      expect(await prisma.waqfJournalEntry.count({ where: { source: "contribution", sourceId: contributionId } })).toBe(0);
+    });
+
+    test("a currency mismatch never confirms either", async () => {
+      const { contributionId } = await pendingContribution("300.00");
+      stripeFake.nextVerifyResult = { status: "confirmed", amountMinorUnits: 30000, currency: "NGN" };
+      expect((await service.reconcileForFounder(contributionId, founderId))?.status).toBe("pending");
+    });
+
+    test("provider still reports the checkout as unsettled → left pending, untouched", async () => {
+      const { contributionId } = await pendingContribution();
+      stripeFake.nextVerifyResult = { status: "pending", amountMinorUnits: 30000, currency: "USD" };
+      expect((await service.reconcileForFounder(contributionId, founderId))?.status).toBe("pending");
+    });
+
+    test("provider reports failure → failed and audit-logged, Waqf stays draft", async () => {
+      const { waqfId: wId, contributionId } = await pendingContribution();
+      stripeFake.nextVerifyResult = { status: "failed", amountMinorUnits: 30000, currency: "USD" };
+
+      const result = await service.reconcileForFounder(contributionId, founderId);
+
+      expect(result?.status).toBe("failed");
+      expect((await prisma.waqf.findUniqueOrThrow({ where: { id: wId } })).status).toBe("draft");
+      expect(await prisma.auditLog.count({ where: { entityId: contributionId, action: "contribution.failed" } })).toBe(1);
+    });
+
+    test("another founder can't trigger a check of someone else's contribution — null, and the provider is never asked", async () => {
+      const { contributionId } = await pendingContribution();
+      stripeFake.nextVerifyResult = { status: "confirmed", amountMinorUnits: 30000, currency: "USD" };
+      const callsBefore = stripeFake.verifyCalls;
+
+      expect(await service.reconcileForFounder(contributionId, otherFounderId)).toBeNull();
+      expect(stripeFake.verifyCalls).toBe(callsBefore);
+      expect((await prisma.contribution.findUniqueOrThrow({ where: { id: contributionId } })).status).toBe("pending");
+    });
+
+    test("a second check within the rate-limit window doesn't ask the provider again", async () => {
+      const { contributionId } = await pendingContribution();
+      stripeFake.nextVerifyResult = { status: "pending", amountMinorUnits: 30000, currency: "USD" };
+      const callsBefore = stripeFake.verifyCalls;
+
+      await service.reconcileForFounder(contributionId, founderId);
+      await service.reconcileForFounder(contributionId, founderId);
+
+      expect(stripeFake.verifyCalls).toBe(callsBefore + 1);
+    });
+
+    test("an already-settled contribution is returned as-is without asking the provider", async () => {
+      const { contributionId } = await pendingContribution();
+      stripeFake.nextWebhookResult = { providerReference: contributionId, status: "confirmed" };
+      const confirmed = await service.handleWebhook("stripe", Buffer.from("{}"), {});
+      if (confirmed?.assetId) assetIds.push(confirmed.assetId);
+      const callsBefore = stripeFake.verifyCalls;
+
+      expect((await service.reconcileForFounder(contributionId, founderId))?.status).toBe("confirmed");
+      expect(stripeFake.verifyCalls).toBe(callsBefore);
+    });
+
+    test("a webhook and a verify racing on the same payment confirm it exactly once", async () => {
+      const { waqfId: wId, contributionId } = await pendingContribution("300.00");
+      stripeFake.nextWebhookResult = { providerReference: contributionId, status: "confirmed" };
+      stripeFake.nextVerifyResult = { status: "confirmed", amountMinorUnits: 30000, currency: "USD" };
+
+      const outcomes = await Promise.all([
+        service.handleWebhook("stripe", Buffer.from("{}"), {}),
+        service.reconcileForFounder(contributionId, founderId),
+      ]);
+      expect(outcomes.every((o) => o?.status === "confirmed")).toBe(true);
+      const assetId = outcomes.find((o) => o?.assetId)?.assetId;
+      if (assetId) assetIds.push(assetId);
+
+      expect(await prisma.asset.count({ where: { waqfId: wId } })).toBe(1);
+      expect(await prisma.waqfJournalEntry.count({ where: { source: "contribution", sourceId: contributionId } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: contributionId, action: "contribution.confirmed" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: wId, entityType: "Waqf", action: "waqf.activated" } })).toBe(1);
+    });
   });
 
   test("platformSummary() sums confirmed contributions by currency, across every waqf, excluding pending/failed", async () => {

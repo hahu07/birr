@@ -5,6 +5,7 @@ import {
   PaymentProviderAdapter,
   RefundInput,
   RefundResult,
+  VerifiedPayment,
   WebhookResult,
 } from "./payment-provider.interface";
 import { SettingsService } from "../../../common/settings/settings.service";
@@ -19,6 +20,12 @@ interface PaystackInitializeResponse {
 interface PaystackRefundResponse {
   status: boolean;
   data?: { id: number; transaction: { reference: string } };
+  message?: string;
+}
+
+interface PaystackVerifyResponse {
+  status: boolean;
+  data?: { id: number; status: string; reference: string; amount: number; currency: string };
   message?: string;
 }
 
@@ -99,6 +106,32 @@ export class PaystackAdapter implements PaymentProviderAdapter {
       return { providerReference: event.data.reference, status: "failed" };
     }
     return null;
+  }
+
+  // GET /transaction/verify/:reference — Paystack's own recommended way
+  // to confirm a transaction server-side, alongside webhooks. Only
+  // "success" confirms; "failed"/"reversed" fail; anything else
+  // (abandoned, ongoing, pending, queued) is not settled yet.
+  async verifyPayment(providerReference: string): Promise<VerifiedPayment | null> {
+    const secretKey = await this.settings.get("paystack", "SECRET_KEY");
+    if (!secretKey) {
+      throw new ServiceUnavailableException("Card payments via Nigeria aren't available right now.");
+    }
+    const res = await fetch(`${this.baseUrl}/transaction/verify/${encodeURIComponent(providerReference)}`, {
+      headers: { Authorization: `Bearer ${secretKey}` },
+    });
+    if (res.status === 404) return null;
+    const body = (await res.json()) as PaystackVerifyResponse;
+    if (!res.ok || !body.status || !body.data) {
+      throw new Error(`Paystack transaction verify failed: ${body.message ?? res.statusText}`);
+    }
+    const status = body.data.status === "success" ? "confirmed" : body.data.status === "failed" || body.data.status === "reversed" ? "failed" : "pending";
+    return {
+      status,
+      amountMinorUnits: body.data.amount,
+      currency: body.data.currency.toUpperCase(),
+      providerPaymentId: String(body.data.id),
+    };
   }
 
   // Unlike Stripe, Paystack's refund endpoint accepts the original
