@@ -22,10 +22,9 @@
 // opened for the first time mounts fresh with whatever the current
 // version values already are — see selectTab's own comment.
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
-import { formatAmount, humanize, formatDate } from "../../../../lib/format";
+import { formatMoney, humanize, formatDate } from "../../../../lib/format";
 import { useMarkNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Waqf, WaqfMilestone } from "../../../../lib/ops-types";
 import { Alert, Badge, IconArchive, IconBriefcase, IconClipboardCheck, IconFileText, IconHome, Skeleton, Tabs } from "@birr/ui";
@@ -47,6 +46,7 @@ import { WaqfMilestonesSection } from "./WaqfMilestonesSection";
 import { WaqfExpensesSection } from "./WaqfExpensesSection";
 import { WaqfLedgerSection } from "./WaqfLedgerSection";
 import { useLoadedResource } from "../../_components/SectionChrome";
+import { EntityHeader } from "../../_components/EntityHeader";
 
 const STATUS_TONE: Record<Waqf["status"], "success" | "warning" | "neutral" | "danger"> = {
   active: "success",
@@ -157,41 +157,61 @@ export default function WaqfDetailPage() {
     );
   }
 
+  const raised = Number(waqf.amountRaised ?? 0);
+  const target = waqf.corpusAmount ? Number(waqf.corpusAmount) : null;
+
   return (
     <div>
-      <header className="mb-8">
-        <Link href="/ops/waqfs" className="text-sm text-slate-500 hover:text-primary-700">
-          ← Waqf Funds
-        </Link>
-        <div className="mt-2 flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
-            <IconBriefcase className="h-5 w-5" />
+      <EntityHeader
+        back={{ href: "/ops/waqfs", label: "Waqf Funds" }}
+        icon={
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
+            <IconBriefcase className="h-6 w-6" />
           </span>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{waqf.name}</h1>
-              <Badge tone={STATUS_TONE[waqf.status]}>{humanize(waqf.status)}</Badge>
-            </div>
-            <p className="mt-0.5 text-sm text-slate-500">
-              {humanize(waqf.type)} · {waqf.jurisdiction} · Part of{" "}
-              <span className="font-medium text-slate-700">{waqf.foundation.name}</span>
-              {/* Deed-signing is Foundation-level, not per-Waqf — see
-                  FoundationDeed's own schema comment. */}
-              {waqf.foundation.foundationDeed && <> · Deed signed {formatDate(waqf.foundation.foundationDeed.signedAt)}</>}
-            </p>
-            {waqf.corpusAmount && (
-              <p className="mt-0.5 text-sm text-slate-500">
-                {humanize(waqf.fundingPlan)} corpus of {waqf.corpusCurrency} {formatAmount(waqf.corpusAmount)} —{" "}
-                {waqf.corpusCurrency} {formatAmount(waqf.amountRaised ?? "0")} raised
-              </p>
-            )}
-          </div>
-        </div>
-      </header>
+        }
+        title={waqf.name}
+        badge={<Badge tone={STATUS_TONE[waqf.status]}>{humanize(waqf.status)}</Badge>}
+        subtitle={
+          <>
+            {humanize(waqf.type)} fund · Part of <span className="font-medium text-slate-700">{waqf.foundation.name}</span>
+          </>
+        }
+        progress={
+          target && waqf.corpusCurrency
+            ? {
+                pct: (raised / target) * 100,
+                caption: (
+                  <>
+                    <span className="font-semibold tabular-nums text-slate-900">{formatMoney(raised, waqf.corpusCurrency)}</span> raised of{" "}
+                    {formatMoney(target, waqf.corpusCurrency)} declared corpus
+                  </>
+                ),
+              }
+            : undefined
+        }
+        facts={[
+          { label: "Type", value: humanize(waqf.type) },
+          { label: "Jurisdiction", value: waqf.jurisdiction },
+          { label: "Funding plan", value: humanize(waqf.fundingPlan) },
+          { label: "Established", value: formatDate(waqf.createdAt) },
+          // Deed-signing is Foundation-level, not per-Waqf — see
+          // FoundationDeed's own schema comment.
+          {
+            label: "Foundation Deed",
+            value: waqf.foundation.foundationDeed ? (
+              `Signed ${formatDate(waqf.foundation.foundationDeed.signedAt)}`
+            ) : (
+              <span className="text-accent-700">Not signed</span>
+            ),
+          },
+        ]}
+      />
 
       <LicenseStatusBanner status={waqf.trusteeLicenseStatus} jurisdiction={waqf.jurisdiction} />
 
-      <Tabs items={[...TAB_ITEMS]} active={activeTab} onChange={selectTab} className="mb-8" />
+      <div className="sticky top-14 z-20 -mx-4 mb-8 bg-slate-50/90 px-4 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <Tabs items={[...TAB_ITEMS]} active={activeTab} onChange={selectTab} />
+      </div>
 
       {openedTabs.has("overview") && (
         <div hidden={activeTab !== "overview"} className="space-y-10">
