@@ -105,7 +105,7 @@ export interface PaymentProviderAdapter {
    * idempotent confirmation path. Returns null when the provider has no
    * record of the reference. Omitted by rails with no such lookup.
    */
-  verifyPayment?(providerReference: string): Promise<VerifiedPayment | null>;
+  verifyPayment?: (providerReference: string) => Promise<VerifiedPayment | null>;
   /**
    * Optional — not every rail can reverse a payment automatically.
    * Omitted entirely by StablecoinAdapter (see that adapter's own
