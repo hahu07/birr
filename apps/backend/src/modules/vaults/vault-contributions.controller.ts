@@ -60,6 +60,19 @@ export class VaultContributionsController {
     return contribution;
   }
 
+  // Called by the public thank-you page when a donor returns from
+  // checkout — asks the provider directly whether the gift settled
+  // (see VaultContributionsService.reconcile). Public like findById above:
+  // it can only move a gift to whatever the provider itself reports, and
+  // it's rate-limited per contribution server-side.
+  @Public()
+  @Post(":id/verify")
+  async verify(@Param("id") id: string) {
+    const contribution = await this.service.reconcile(id);
+    if (!contribution) throw new NotFoundException(`VaultContribution "${id}" not found.`);
+    return contribution;
+  }
+
   // Compliance-gated, not a plain-staff action — flagging a confirmed
   // payment for review is a fraud/AML judgment call, same role tier as
   // CounterpartiesController's own compliance-sensitive routes.

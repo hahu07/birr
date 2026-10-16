@@ -48,6 +48,23 @@ export type WebhookResult = {
   providerPaymentId?: string;
 };
 
+/**
+ * What a provider reports when asked directly about one payment (see
+ * PaymentProviderAdapter.verifyPayment) — the pull-side counterpart to
+ * WebhookResult. "pending" means the provider doesn't consider it
+ * settled either way yet (abandoned/ongoing checkout), so the caller
+ * must leave the payment untouched.
+ */
+export interface VerifiedPayment {
+  status: "confirmed" | "failed" | "pending";
+  /** What the provider actually charged, in the currency's smallest
+   * unit (kobo for NGN) — checked against our own record before anything
+   * is confirmed. */
+  amountMinorUnits: number;
+  currency: string;
+  providerPaymentId?: string;
+}
+
 export interface RefundInput {
   /** Always present — our own reference, which is what Paystack's
    * refund endpoint accepts directly. */
@@ -78,6 +95,17 @@ export interface PaymentProviderAdapter {
    * routes, which are never founder-session-authenticated.
    */
   verifyAndParseWebhook(rawBody: Buffer, headers: Record<string, string | undefined>): Promise<WebhookResult | null>;
+  /**
+   * Optional — asks the provider directly for one payment's current
+   * state, by our own reference. Used when a payer returns from checkout
+   * (ContributionsService/VaultContributionsService.reconcile) so a
+   * payment isn't stuck "pending" just because its webhook was delayed,
+   * lost, or — in local development — could never reach this server at
+   * all. Never a substitute for the webhook; both feed the same
+   * idempotent confirmation path. Returns null when the provider has no
+   * record of the reference. Omitted by rails with no such lookup.
+   */
+  verifyPayment?: (providerReference: string) => Promise<VerifiedPayment | null>;
   /**
    * Optional — not every rail can reverse a payment automatically.
    * Omitted entirely by StablecoinAdapter (see that adapter's own

@@ -11,6 +11,7 @@ import {
   PaymentProviderAdapter,
   RefundInput,
   RefundResult,
+  VerifiedPayment,
   WebhookResult,
 } from "../contributions/providers/payment-provider.interface";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
@@ -29,6 +30,15 @@ class FakeAdapter implements PaymentProviderAdapter {
 
   async verifyAndParseWebhook(): Promise<WebhookResult | null> {
     return this.nextWebhookResult;
+  }
+
+  // Provider-pull side (reconcile) — what the provider reports when asked
+  // directly, plus how many times it was asked.
+  nextVerifyResult: VerifiedPayment | null = null;
+  verifyCalls = 0;
+  verifyPayment(): Promise<VerifiedPayment | null> {
+    this.verifyCalls += 1;
+    return Promise.resolve(this.nextVerifyResult);
   }
 
   async refund(input: RefundInput): Promise<RefundResult> {
@@ -659,6 +669,87 @@ describe("VaultContributionsService", () => {
     test("returns null (not mine — lets the dispatch chain end) for a valid signature with an unrecognized reference", async () => {
       stripeFake.nextWebhookResult = { providerReference: "not-a-real-reference", status: "confirmed" };
       expect(await service.handleWebhook("stripe", Buffer.from("{}"), {})).toBeNull();
+    });
+  });
+
+  describe("reconcile() — asking the provider directly when the donor returns from checkout", () => {
+    afterEach(() => {
+      stripeFake.nextVerifyResult = null;
+      stripeFake.nextWebhookResult = null;
+    });
+
+    async function pendingGift(label: string, amount = "150.00") {
+      const result = await service.initiate({
+        vaultId: openVaultId,
+        vaultCauseId: openVaultCauseId,
+        amount,
+        currency: "USD",
+        provider: "stripe",
+        donorEmail: uniqueEmail(label),
+      });
+      vaultContributionIds.push(result.contribution.id);
+      return result.contribution.id;
+    }
+
+    test("provider reports success for the exact amount/currency → confirmed with audit, ledger and receipt, same as a webhook", async () => {
+      const id = await pendingGift("reconcile-confirm");
+      stripeFake.nextVerifyResult = { status: "confirmed", amountMinorUnits: 15000, currency: "USD" };
+
+      const result = await service.reconcile(id);
+
+      expect(result?.status).toBe("confirmed");
+      expect(await prisma.auditLog.count({ where: { entityId: id, action: "vault_contribution.confirmed" } })).toBe(1);
+      expect(await prisma.vaultJournalEntry.count({ where: { source: "contribution", sourceId: id } })).toBe(1);
+      expect(receiptEmail.sent.some((r) => r.contributionId === id)).toBe(true);
+    });
+
+    test("an amount mismatch never confirms — stays pending, nothing posted", async () => {
+      const id = await pendingGift("reconcile-mismatch");
+      stripeFake.nextVerifyResult = { status: "confirmed", amountMinorUnits: 1500, currency: "USD" };
+
+      expect((await service.reconcile(id))?.status).toBe("pending");
+      expect(await prisma.vaultJournalEntry.count({ where: { source: "contribution", sourceId: id } })).toBe(0);
+    });
+
+    test("provider reports failure → failed and audit-logged", async () => {
+      const id = await pendingGift("reconcile-failed");
+      stripeFake.nextVerifyResult = { status: "failed", amountMinorUnits: 15000, currency: "USD" };
+
+      expect((await service.reconcile(id))?.status).toBe("failed");
+      expect(await prisma.auditLog.count({ where: { entityId: id, action: "vault_contribution.failed" } })).toBe(1);
+    });
+
+    test("an unknown id is null and never asks the provider", async () => {
+      const callsBefore = stripeFake.verifyCalls;
+      expect(await service.reconcile("00000000-0000-0000-0000-000000000000")).toBeNull();
+      expect(stripeFake.verifyCalls).toBe(callsBefore);
+    });
+
+    test("a second check within the rate-limit window doesn't ask the provider again", async () => {
+      const id = await pendingGift("reconcile-ratelimit");
+      stripeFake.nextVerifyResult = { status: "pending", amountMinorUnits: 15000, currency: "USD" };
+      const callsBefore = stripeFake.verifyCalls;
+
+      await service.reconcile(id);
+      await service.reconcile(id);
+
+      expect(stripeFake.verifyCalls).toBe(callsBefore + 1);
+    });
+
+    test("a webhook and a verify racing on the same gift confirm it exactly once — one ledger entry, one audit row, one receipt", async () => {
+      const id = await pendingGift("reconcile-race");
+      const { providerReference } = await prisma.vaultContribution.findUniqueOrThrow({ where: { id } });
+      if (!providerReference) throw new Error("fixture contribution has no providerReference");
+      stripeFake.nextWebhookResult = { providerReference, status: "confirmed" };
+      stripeFake.nextVerifyResult = { status: "confirmed", amountMinorUnits: 15000, currency: "USD" };
+      const receiptsBefore = receiptEmail.sent.filter((r) => r.contributionId === id).length;
+
+      await Promise.all([service.handleWebhook("stripe", Buffer.from("{}"), {}), service.reconcile(id)]);
+
+      expect((await prisma.vaultContribution.findUniqueOrThrow({ where: { id } })).status).toBe("confirmed");
+      expect(await prisma.vaultJournalEntry.count({ where: { source: "contribution", sourceId: id } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: id, action: "vault_contribution.confirmed" } })).toBe(1);
+      expect(receiptEmail.sent.filter((r) => r.contributionId === id).length).toBe(receiptsBefore + 1);
     });
   });
 

@@ -90,10 +90,17 @@ function donorAuditSnapshot<T extends { idNumberEncrypted: string | null }>(dono
   return { ...rest, idNumberOnFile: idNumberEncrypted != null };
 }
 
+// Minimum gap between two provider verify calls for the same vault
+// contribution — reconcile is public and polled by the thank-you page,
+// so this keeps it from being used to hammer the provider.
+const VERIFY_MIN_INTERVAL_MS = 5_000;
+
 @Injectable()
 export class VaultContributionsService {
   private readonly logger = new Logger(VaultContributionsService.name);
   private readonly adapters: Map<ContributionProvider, PaymentProviderAdapter>;
+  // vaultContributionId -> last provider verify call (ms), for reconcile's own rate limit.
+  private readonly lastVerifiedAt = new Map<string, number>();
 
   constructor(
     private readonly encryption: EncryptionService,
@@ -453,9 +460,57 @@ export class VaultContributionsService {
     if (!result) {
       throw new UnauthorizedException("Invalid webhook signature.");
     }
+    return this.applyProviderOutcome(result.providerReference, result.status, result.providerPaymentId);
+  }
 
+  /**
+   * Asks the payment provider directly whether a pending vault
+   * contribution has settled — called by the public thank-you page when
+   * the donor returns from checkout (POST /vault-contributions/:id/verify),
+   * so a gift never stays stuck "pending" just because its webhook was
+   * delayed, lost, or (local development) could never reach this server.
+   * Same idempotent confirm/fail path as handleWebhook, so the two can
+   * race freely. Public by design (a donor has no account), which is safe:
+   * it can only ever move a gift to whatever the provider itself reports,
+   * never invent a state. A "success" only confirms when the provider's
+   * amount and currency match this record exactly; a mismatch is logged
+   * and left pending. Returns the same public shape as findPublicStatus.
+   */
+  async reconcile(id: string) {
+    const contribution = await prisma.vaultContribution.findUnique({ where: { id } });
+    if (!contribution) return null;
+    if (contribution.status === "pending" && contribution.providerReference) {
+      const adapter = this.adapters.get(contribution.provider);
+      const last = this.lastVerifiedAt.get(contribution.id) ?? 0;
+      if (adapter?.verifyPayment && Date.now() - last >= VERIFY_MIN_INTERVAL_MS) {
+        this.lastVerifiedAt.set(contribution.id, Date.now());
+        const verified = await adapter.verifyPayment(contribution.providerReference);
+        if (verified && verified.status !== "pending") {
+          const expectedMinor = Math.round(Number(contribution.amount) * 100);
+          const matches = verified.amountMinorUnits === expectedMinor && verified.currency === contribution.currency.toUpperCase();
+          if (verified.status === "confirmed" && !matches) {
+            this.logger.error(
+              `VaultContribution "${contribution.id}" verify mismatch: provider reports ${verified.amountMinorUnits} ${verified.currency}, ` +
+                `record is ${expectedMinor} ${contribution.currency} — left pending for review.`,
+            );
+          } else {
+            await this.applyProviderOutcome(contribution.providerReference, verified.status, verified.providerPaymentId);
+          }
+        }
+      }
+    }
+    return this.findPublicStatus(id);
+  }
+
+  /**
+   * The one place a pending vault contribution becomes confirmed or
+   * failed — shared by handleWebhook (provider push) and reconcile
+   * (provider pull), so both write exactly the same audit, ledger,
+   * funnel and receipt side effects, exactly once.
+   */
+  private async applyProviderOutcome(providerReference: string, status: "confirmed" | "failed", providerPaymentId?: string) {
     const contribution = await prisma.vaultContribution.findUnique({
-      where: { providerReference: result.providerReference },
+      where: { providerReference },
       include: { vault: true, vaultCause: true, donor: true },
     });
     if (!contribution) {
@@ -473,7 +528,7 @@ export class VaultContributionsService {
     // claim changes nothing and just returns the row as it now stands.
     const current = () => prisma.vaultContribution.findUniqueOrThrow({ where: { id: contribution.id } });
 
-    if (result.status === "failed") {
+    if (status === "failed") {
       const failed = await prisma.$transaction(async (tx) => {
         const claim = await tx.vaultContribution.updateMany({
           where: { id: contribution.id, status: "pending" },
@@ -504,7 +559,7 @@ export class VaultContributionsService {
         data: {
           status: "confirmed",
           confirmedAt: new Date(),
-          providerPaymentId: result.providerPaymentId ?? contribution.providerPaymentId,
+          providerPaymentId: providerPaymentId ?? contribution.providerPaymentId,
         },
       });
       if (claim.count !== 1) return null;

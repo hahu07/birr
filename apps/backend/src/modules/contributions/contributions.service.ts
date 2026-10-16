@@ -37,10 +37,17 @@ export interface InitiateContributionInput {
   payerEmail?: string;
 }
 
+// Minimum gap between two provider verify calls for the same
+// contribution — the waiting page polls, and the endpoint is callable by
+// the founder directly, so this keeps either from hammering Paystack.
+const VERIFY_MIN_INTERVAL_MS = 5_000;
+
 @Injectable()
 export class ContributionsService {
   private readonly logger = new Logger(ContributionsService.name);
   private readonly adapters: Map<ContributionProvider, PaymentProviderAdapter>;
+  // contributionId -> last provider verify call (ms), for reconcileForFounder's own rate limit.
+  private readonly lastVerifiedAt = new Map<string, number>();
 
   constructor(
     private readonly assetsService: AssetsService,
@@ -233,9 +240,62 @@ export class ContributionsService {
     if (!result) {
       throw new UnauthorizedException("Invalid webhook signature.");
     }
+    return this.applyProviderOutcome(result.providerReference, result.status);
+  }
 
+  /**
+   * Asks the payment provider directly whether a pending contribution has
+   * settled — called when the founder returns from checkout (POST
+   * /contributions/:id/verify), so a payment never stays stuck "pending"
+   * just because its webhook was delayed, lost, or (local development)
+   * could never reach this server. Feeds the exact same idempotent
+   * confirm/fail path as handleWebhook, so the two can race freely: only
+   * one ever claims the pending row.
+   *
+   * Stricter than the webhook path: a "success" only confirms when the
+   * provider's charged amount and currency match this contribution
+   * exactly; on a mismatch nothing changes and the discrepancy is logged
+   * for a human to look at. Returns null when the contribution isn't the
+   * caller's own (same indistinguishable-from-404 convention as
+   * findByIdForFounder).
+   */
+  async reconcileForFounder(id: string, founderId: string) {
+    const contribution = await this.findByIdForFounder(id, founderId);
+    if (!contribution) return null;
+    if (contribution.status !== "pending") return contribution;
+
+    const adapter = this.adapters.get(contribution.provider);
+    if (!adapter?.verifyPayment || !contribution.providerReference) return contribution;
+    // At most one provider round-trip per contribution every few
+    // seconds, however often the waiting page (or anyone) calls this.
+    const last = this.lastVerifiedAt.get(contribution.id) ?? 0;
+    if (Date.now() - last < VERIFY_MIN_INTERVAL_MS) return contribution;
+    this.lastVerifiedAt.set(contribution.id, Date.now());
+
+    const verified = await adapter.verifyPayment(contribution.providerReference);
+    if (!verified || verified.status === "pending") return contribution;
+    if (verified.status === "confirmed") {
+      const expectedMinor = Math.round(Number(contribution.amount) * 100);
+      if (verified.amountMinorUnits !== expectedMinor || verified.currency !== contribution.currency.toUpperCase()) {
+        this.logger.error(
+          `Contribution "${contribution.id}" verify mismatch: provider reports ${verified.amountMinorUnits} ${verified.currency}, ` +
+            `record is ${expectedMinor} ${contribution.currency} — left pending for review.`,
+        );
+        return contribution;
+      }
+    }
+    return (await this.applyProviderOutcome(contribution.providerReference, verified.status)) ?? contribution;
+  }
+
+  /**
+   * The one place a pending contribution becomes confirmed or failed —
+   * shared by handleWebhook (provider push) and reconcileForFounder
+   * (provider pull), so both write exactly the same audit, Asset, ledger
+   * and activation side effects, exactly once.
+   */
+  private async applyProviderOutcome(providerReference: string, status: "confirmed" | "failed") {
     const contribution = await prisma.contribution.findUnique({
-      where: { providerReference: result.providerReference },
+      where: { providerReference },
     });
     if (!contribution) {
       // A verified-but-unrecognized reference is odd but not a security
@@ -261,7 +321,7 @@ export class ContributionsService {
     // the row as it now stands.
     const current = () => prisma.contribution.findUniqueOrThrow({ where: { id: contribution.id } });
 
-    if (result.status === "failed") {
+    if (status === "failed") {
       // Transactional + audited, same as the confirmed path below — a
       // prior version of this left a declined/reversed payment with zero
       // audit trail of when or why it failed, so a disputed payment ("I
