@@ -34,9 +34,9 @@ class FakeAdapter implements PaymentProviderAdapter {
   // when asked directly, plus how many times it was asked.
   nextVerifyResult: VerifiedPayment | null = null;
   verifyCalls = 0;
-  async verifyPayment(): Promise<VerifiedPayment | null> {
+  verifyPayment(): Promise<VerifiedPayment | null> {
     this.verifyCalls += 1;
-    return this.nextVerifyResult;
+    return Promise.resolve(this.nextVerifyResult);
   }
 }
 

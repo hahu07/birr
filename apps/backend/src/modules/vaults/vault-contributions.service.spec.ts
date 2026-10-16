@@ -36,9 +36,9 @@ class FakeAdapter implements PaymentProviderAdapter {
   // directly, plus how many times it was asked.
   nextVerifyResult: VerifiedPayment | null = null;
   verifyCalls = 0;
-  async verifyPayment(): Promise<VerifiedPayment | null> {
+  verifyPayment(): Promise<VerifiedPayment | null> {
     this.verifyCalls += 1;
-    return this.nextVerifyResult;
+    return Promise.resolve(this.nextVerifyResult);
   }
 
   async refund(input: RefundInput): Promise<RefundResult> {
@@ -738,8 +738,9 @@ describe("VaultContributionsService", () => {
 
     test("a webhook and a verify racing on the same gift confirm it exactly once — one ledger entry, one audit row, one receipt", async () => {
       const id = await pendingGift("reconcile-race");
-      const contribution = await prisma.vaultContribution.findUniqueOrThrow({ where: { id } });
-      stripeFake.nextWebhookResult = { providerReference: contribution.providerReference!, status: "confirmed" };
+      const { providerReference } = await prisma.vaultContribution.findUniqueOrThrow({ where: { id } });
+      if (!providerReference) throw new Error("fixture contribution has no providerReference");
+      stripeFake.nextWebhookResult = { providerReference, status: "confirmed" };
       stripeFake.nextVerifyResult = { status: "confirmed", amountMinorUnits: 15000, currency: "USD" };
       const receiptsBefore = receiptEmail.sent.filter((r) => r.contributionId === id).length;
 
