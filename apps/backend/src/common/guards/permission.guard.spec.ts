@@ -45,12 +45,16 @@ describe("PermissionGuard — @RequiresAccess", () => {
       await prisma.birrStaff.create({ data: { userId: user.id, staffRole } });
       userIds[key] = user.id;
     };
-    await make("platform_admin", "platform_admin");
-    await make("compliance_officer", "compliance_officer");
-    await make("mutawalli_officer", "mutawalli_officer");
-    await make("external_auditor", "external_auditor");
-    await make("noMfaAdmin", "platform_admin", false);
-  });
+    await Promise.all([
+      make("platform_admin", "platform_admin"),
+      make("compliance_officer", "compliance_officer"),
+      make("mutawalli_officer", "mutawalli_officer"),
+      make("external_auditor", "external_auditor"),
+      make("noMfaAdmin", "platform_admin", false),
+    ]);
+    // Generous: under a full parallel suite run, fixture inserts queue
+    // behind every other spec's writes.
+  }, 30000);
 
   afterAll(() => prisma.$disconnect());
 
