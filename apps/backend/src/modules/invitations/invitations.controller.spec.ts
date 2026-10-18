@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { BadRequestException } from "@nestjs/common";
 import { Request } from "express";
 import { prisma } from "@birr/db";
@@ -68,7 +69,7 @@ describe("InvitationsController — birr_staff invitation authorization", () => 
   ])("rejects %s staff member sending a birr_staff invitation directly", async (_label, userId) => {
     const controller = realController();
     const request = requestWithStaffCookie(signSessionToken(userId()));
-    const email = `invitee-direct-${Date.now()}-${Math.floor(Math.random() * 10000)}@example.test`;
+    const email = `invitee-direct-${randomUUID().slice(0, 8)}@example.test`;
 
     await expect(
       controller.invite({ inviteeKind: "birr_staff", email, roleKey: "compliance_officer" }, request),

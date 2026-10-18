@@ -43,8 +43,9 @@ import { ResendInvitationEmailAdapter } from "../invitations/email/resend-invita
 class FakeInvitationEmailAdapter {
   sent: { to: string; link: string }[] = [];
 
-  async sendInvitationEmail(to: string, link: string): Promise<void> {
+  sendInvitationEmail(to: string, link: string): Promise<void> {
     this.sent.push({ to, link });
+    return Promise.resolve();
   }
 }
 
@@ -2225,7 +2226,7 @@ describe("GovernedActionsService", () => {
     });
 
     const address = (label: string) => {
-      const email = `sinv-${label}-${Date.now()}-${Math.floor(Math.random() * 10000)}@example.com`;
+      const email = `sinv-${label}-${randomUUID().slice(0, 8)}@example.com`;
       invitationEmailsSeen.push(email);
       return email;
     };

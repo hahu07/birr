@@ -150,9 +150,9 @@ describe("InvitationsService", () => {
     invitationIds.push(invitation.id);
 
     const log = (await auditLogsFor(invitation.id)).find((l) => l.action === "invitation.sent");
-    expect(log).toBeDefined();
-    expect((log!.after as { token: string }).token).toBe("[redacted]");
-    expect(JSON.stringify(log!.after)).not.toContain(invitation.token);
+    if (!log) throw new Error("expected an invitation.sent audit log");
+    expect((log.after as { token: string }).token).toBe("[redacted]");
+    expect(JSON.stringify(log.after)).not.toContain(invitation.token);
   });
 
   test("list() and findById() hide a staff invitation's token but keep a founder invitation's", async () => {

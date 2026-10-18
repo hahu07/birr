@@ -1193,9 +1193,11 @@ export class GovernedActionsService {
               );
             }
           },
-          describePayload: async (payload) => {
+          describePayload: (payload) => {
             const { email, staffRole } = parseStaffInvitePayload(payload);
-            return `Invite ${email} as ${staffRole.replace(/_/g, " ")}. Confirm through a separate channel (e.g. a phone call) that this is a real, new staff member before approving.`;
+            return Promise.resolve(
+              `Invite ${email} as ${staffRole.replace(/_/g, " ")}. Confirm through a separate channel (e.g. a phone call) that this is a real, new staff member before approving.`,
+            );
           },
           onApprove: async (payload, tx, ctx) => {
             const { email, staffRole } = parseStaffInvitePayload(payload);
@@ -1538,9 +1540,10 @@ export class GovernedActionsService {
     // that created it has committed. Never throws for a failed send — the
     // inviter can resend from the Staff page.
     if (input.approve && result.fulfillment?.entityType === "Invitation") {
-      this.invitationsService.deliverById(result.fulfillment.entityId).catch((err) => {
+      const invitationId = result.fulfillment.entityId;
+      this.invitationsService.deliverById(invitationId).catch((err: unknown) => {
         this.logger.error(
-          `Failed to deliver staff invitation "${result.fulfillment!.entityId}":`,
+          `Failed to deliver staff invitation "${invitationId}":`,
           err instanceof Error ? err.stack : String(err),
         );
       });

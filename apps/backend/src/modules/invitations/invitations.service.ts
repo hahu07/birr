@@ -42,7 +42,7 @@ export function invitationAuditSnapshot(invitation: Invitation) {
 // A new staff invitation (staff.invite approval, or the first-approver
 // bootstrap script) can't target an email that already has an account —
 // accept() would refuse it anyway — or a still-pending staff invitation.
-export async function assertStaffInvitable(email: string, db: Prisma.TransactionClient | typeof prisma) {
+export async function assertStaffInvitable(email: string, db: Prisma.TransactionClient) {
   const existingUser = await db.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } }, select: { id: true } });
   if (existingUser) {
     throw new ConflictException(`An account already exists for ${email}.`);
@@ -212,7 +212,7 @@ export class InvitationsService {
    * which also writes the audit record. Deliberately sends nothing: the
    * email goes out via deliverById() only after that transaction commits.
    */
-  async createStaffInvitationInTransaction(
+  createStaffInvitationInTransaction(
     input: { email: string; roleKey: string; invitedByUserId: string },
     tx: Prisma.TransactionClient,
   ) {
