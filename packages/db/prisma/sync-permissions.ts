@@ -27,6 +27,14 @@ import { roles, permissions, rolePermissions } from "./seed-data";
 // With `reset`, grants removed from seed-data.ts are switched off (both
 // flags false), not deleted — the row itself is harmless history.
 export async function syncPermissions(prisma: PrismaClient, { reset = false }: { reset?: boolean } = {}) {
+  const roleIdByKey = await syncRoles(prisma);
+  const permissionIdByKey = await syncPermissionRows(prisma);
+  const grants = await syncGrants(prisma, roleIdByKey, permissionIdByKey, reset);
+  const revoked = reset ? await switchOffRemovedGrants(prisma, roleIdByKey, permissionIdByKey) : 0;
+  return { roles: roles.length, permissions: permissions.length, grants, revoked };
+}
+
+async function syncRoles(prisma: PrismaClient) {
   const roleIdByKey = new Map<string, string>();
   for (const role of roles) {
     const row = await prisma.role.upsert({
@@ -36,7 +44,10 @@ export async function syncPermissions(prisma: PrismaClient, { reset = false }: {
     });
     roleIdByKey.set(role.key, row.id);
   }
+  return roleIdByKey;
+}
 
+async function syncPermissionRows(prisma: PrismaClient) {
   const permissionIdByKey = new Map<string, string>();
   for (const permission of permissions) {
     const row = await prisma.permission.upsert({
@@ -50,7 +61,18 @@ export async function syncPermissions(prisma: PrismaClient, { reset = false }: {
     });
     permissionIdByKey.set(permission.key, row.id);
   }
+  return permissionIdByKey;
+}
 
+// Default: add a grant row only where none exists — one that does was
+// either seeded earlier or decided in the Ops Console, so it's left
+// exactly as it is. With `reset`: overwrite every grant to seed-data.ts.
+async function syncGrants(
+  prisma: PrismaClient,
+  roleIdByKey: Map<string, string>,
+  permissionIdByKey: Map<string, string>,
+  reset: boolean,
+) {
   let grants = 0;
   for (const [roleKey, roleGrants] of Object.entries(rolePermissions)) {
     const roleId = roleIdByKey.get(roleKey);
@@ -68,8 +90,6 @@ export async function syncPermissions(prisma: PrismaClient, { reset = false }: {
         });
         grants++;
       } else {
-        // Add-only: a row that already exists was either seeded earlier or
-        // decided in the Ops Console — leave it exactly as it is.
         const created = await prisma.rolePermission.createMany({
           data: [{ roleId, permissionId, canMaker, canChecker }],
           skipDuplicates: true,
@@ -78,11 +98,16 @@ export async function syncPermissions(prisma: PrismaClient, { reset = false }: {
       }
     }
   }
+  return grants;
+}
 
-  // Reset only: switch off any grant that exists in the database but is no
-  // longer in seed-data.ts (only for roles/permissions this file defines).
-  let revoked = 0;
-  if (!reset) return { roles: roles.length, permissions: permissions.length, grants, revoked };
+// Reset only: switch off any grant that exists in the database but is no
+// longer in seed-data.ts (only for roles/permissions this file defines).
+async function switchOffRemovedGrants(
+  prisma: PrismaClient,
+  roleIdByKey: Map<string, string>,
+  permissionIdByKey: Map<string, string>,
+) {
   const existing = await prisma.rolePermission.findMany({
     where: {
       roleId: { in: [...roleIdByKey.values()] },
@@ -91,6 +116,7 @@ export async function syncPermissions(prisma: PrismaClient, { reset = false }: {
     },
     include: { role: { select: { key: true } }, permission: { select: { key: true } } },
   });
+  let revoked = 0;
   for (const row of existing) {
     if (rolePermissions[row.role.key]?.[row.permission.key]) continue;
     await prisma.rolePermission.update({
@@ -99,6 +125,5 @@ export async function syncPermissions(prisma: PrismaClient, { reset = false }: {
     });
     revoked++;
   }
-
-  return { roles: roles.length, permissions: permissions.length, grants, revoked };
+  return revoked;
 }

@@ -2465,9 +2465,19 @@ describe("GovernedActionsService", () => {
     });
     governedActionIds.push(stale.id);
 
-    const listed = await service.list({ status: "proposed" });
-    expect(listed.find((a) => a.id === stale.id)?.summary).toBeNull();
-    expect((await service.findById(stale.id))?.currentState).toBeNull();
+    // How a stale payload fails depends on the handler and the data, so
+    // make this one fail the way a stale payload can: by throwing.
+    const handler = (service as unknown as { handlers: Map<string, Record<string, unknown>> }).handlers.get("vault.cause_allocate")!;
+    const describeSpy = jest.spyOn(handler as { describePayload: () => Promise<string> }, "describePayload").mockRejectedValue(new Error("stale"));
+    const stateSpy = jest.spyOn(handler as { describeCurrentState: () => Promise<unknown> }, "describeCurrentState").mockRejectedValue(new Error("stale"));
+    try {
+      const listed = await service.list({ status: "proposed" });
+      expect(listed.find((a) => a.id === stale.id)?.summary).toBeNull();
+      expect((await service.findById(stale.id))?.currentState).toBeNull();
+    } finally {
+      describeSpy.mockRestore();
+      stateSpy.mockRestore();
+    }
   }, 30000);
 
   // role.permission_change (2026-10-18) — editing what a role may do from
