@@ -675,10 +675,11 @@ export interface Invitation {
   status: "pending" | "accepted" | "revoked" | "expired";
   expiresAt: string;
   createdAt: string;
-  // Always present — the UI uses it to build a copyable invite link as
-  // a fallback, regardless of whether the email below actually sent.
-  // See app/staff/page.tsx.
-  token: string;
+  // Founder-side invitations: present, so the Founder pages can offer a
+  // copyable invite link as a fallback. Birr staff invitations: always
+  // null — their link is emailed only, never shown (see
+  // redactStaffInvitationToken on the backend; "Resend email" instead).
+  token: string | null;
   // Only present on the POST /invitations (create) response, not on
   // GET /invitations list rows — whether ResendInvitationEmailAdapter
   // actually delivered the email. false doesn't mean the invitation

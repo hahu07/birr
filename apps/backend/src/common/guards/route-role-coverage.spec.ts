@@ -30,7 +30,7 @@ const UNGATED_WRITE_ROUTES: Record<string, string> = {
   "POST /conflict-of-interest-declarations": "any staff member may declare their own conflict; reviewing is compliance_officer-only",
   "PATCH /founder-requests/:id": "scoped by caseload instead — FounderRequestsService.assertStaffCanAccessWaqf",
   "POST /messages": "Founder/staff messaging, both sides; scoped inside MessagesController",
-  "POST /invitations": "dual Founder/staff route; birr_staff invites are platform_admin-only, asserted in the handler",
+  "POST /invitations": "dual Founder/staff route for founder-side invites; birr_staff invites are refused here (staff.invite governed action)",
   "POST /invitations/:id/revoke": "dual Founder/staff route; birr_staff invites are platform_admin-only, asserted in InvitationsService.revoke",
 
   "POST /ai-agents/:name/generate-image": AGENT_API_KEY,

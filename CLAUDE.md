@@ -474,6 +474,28 @@ its reason. Still open: merging
 `@RequiresStaffRole` and the `roles`/`permissions` tables into one
 permission-key model.
 
+**Update, 2026-10-18 — adding a staff member is a governed action
+(`staff.invite`).** Before this, one `platform_admin` could invite anyone
+into any role alone, including a second account of their own under a
+checker role. That let one person be both maker and checker on every
+governed action, because the `checker_not_maker` constraint compares user
+ids, not people. Owner's decisions: maker `platform_admin`; checkers
+`board_of_trustees` / `compliance_officer` (same as `staff.mfa_reset`). The
+invitation is only created on approval and emailed after the transaction
+commits. `InvitationsService.invite()` refuses the `birr_staff` kind, and the
+unused direct-create `POST /birr-staff` is gone. **Staff invitation links
+are email-only** (owner's choice over admin-only copy-link): the API returns
+`token: null` for staff invitations and audit snapshots store
+`"[redacted]"`. Previously any signed-in staff member could copy a pending
+staff link and take that seat. A failed email is retried via
+`POST /invitations/:id/resend-email`. A brand-new deployment with no
+Board/Compliance member gets its first approver from the server-only
+`bootstrap-first-approver` script (owner's choice over an in-app
+exception). It refuses once any active approver exists. Runbook:
+`docs/staff-onboarding.md`. Still true: nothing in the app can change an
+existing staff member's role or suspend them; if that's ever added, it
+needs the same two-person rule.
+
 ## Core entities (build in this order)
 1. `users` (global accounts), `founders`, `founder_memberships`
 2. `birr_staff`, `roles`, `permissions`, `role_permissions`

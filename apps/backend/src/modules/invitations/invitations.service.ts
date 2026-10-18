@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { IsEnum, IsOptional, IsString, MinLength } from "class-validator";
-import { prisma, InviteeKind, BirrStaffRole, FounderPermissionLevel, FounderKind, InstitutionType } from "@birr/db";
+import { prisma, Prisma, Invitation, InviteeKind, BirrStaffRole, FounderPermissionLevel, FounderKind, InstitutionType } from "@birr/db";
 import { hashPassword } from "../../common/auth/password-auth";
 import { ResendInvitationEmailAdapter } from "./email/resend-invitation.adapter";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -23,6 +23,49 @@ function humanizeRoleKey(key: string): string {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+export function newInvitationToken() {
+  return {
+    token: randomBytes(32).toString("hex"),
+    expiresAt: new Date(Date.now() + INVITATION_VALIDITY_DAYS * 24 * 60 * 60 * 1000),
+  };
+}
+
+// Whoever holds an invitation's token can accept it — choosing the
+// password for an account with the invitee's email and role — so it never
+// goes into audit_logs, which audit_committee/external_auditor can read.
+export function invitationAuditSnapshot(invitation: Invitation) {
+  return { ...invitation, token: "[redacted]" };
+}
+
+// A new staff invitation (staff.invite approval, or the first-approver
+// bootstrap script) can't target an email that already has an account —
+// accept() would refuse it anyway — or a still-pending staff invitation.
+export async function assertStaffInvitable(email: string, db: Prisma.TransactionClient | typeof prisma) {
+  const existingUser = await db.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } }, select: { id: true } });
+  if (existingUser) {
+    throw new ConflictException(`An account already exists for ${email}.`);
+  }
+  const pendingInvitation = await db.invitation.findFirst({
+    where: { inviteeKind: "birr_staff", status: "pending", expiresAt: { gt: new Date() }, email: { equals: email, mode: "insensitive" } },
+    select: { id: true },
+  });
+  if (pendingInvitation) {
+    throw new ConflictException(`${email} already has a pending staff invitation — revoke it first to invite them in a different role.`);
+  }
+}
+
+// Staff invitation links are delivered by email only (owner decision,
+// 2026-10-18). Returning the token to the Ops Console let any signed-in
+// staff member copy a pending link and take that seat — including a
+// Platform Admin taking a seat the staff.invite approval granted someone
+// else. Founder-side tokens are unchanged: those pages keep their
+// copy-link fallback.
+export function redactStaffInvitationToken<T extends { inviteeKind: InviteeKind; token: string }>(
+  invitation: T,
+): Omit<T, "token"> & { token: string | null } {
+  return invitation.inviteeKind === "birr_staff" ? { ...invitation, token: null } : invitation;
 }
 
 export interface InviteInput {
@@ -88,7 +131,22 @@ export class InvitationsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  /**
+   * Founder-side invitations only (founder_user, co_founder). A Birr staff
+   * invitation is never created here: since 2026-10-18 adding a staff
+   * member is the `staff.invite` governed action — proposed by a
+   * platform_admin, approved by a different board_of_trustees /
+   * compliance_officer member — which calls createStaffInvitationInTransaction()
+   * below on approval. Before that, one Platform Admin could invite anyone
+   * into any role alone, including a second account of their own under a
+   * checker role.
+   */
   async invite(input: InviteInput) {
+    if (input.inviteeKind === "birr_staff") {
+      throw new BadRequestException(
+        "Adding a Birr staff member needs a second person's approval — propose it (staff.invite) instead of sending an invitation directly.",
+      );
+    }
     if (input.inviteeKind === "founder_user") {
       if (!input.founderId) {
         throw new BadRequestException("founderId is required for a founder_user invitation.");
@@ -100,7 +158,7 @@ export class InvitationsService {
       if (!Object.values(FounderPermissionLevel).includes(input.roleKey as any)) {
         throw new BadRequestException(`"${input.roleKey}" is not a valid FounderPermissionLevel.`);
       }
-    } else if (input.inviteeKind === "co_founder") {
+    } else {
       if (input.founderId) {
         throw new BadRequestException("founderId must not be set for a co_founder invitation.");
       }
@@ -114,17 +172,7 @@ export class InvitationsService {
       // roleKey has no meaning here — the invitee always joins as
       // primary_contact of their own brand-new Founder, not with a
       // chosen FounderPermissionLevel or BirrStaffRole.
-    } else {
-      if (input.founderId) {
-        throw new BadRequestException("founderId must not be set for a birr_staff invitation.");
-      }
-      if (!Object.values(BirrStaffRole).includes(input.roleKey as any)) {
-        throw new BadRequestException(`"${input.roleKey}" is not a valid BirrStaffRole.`);
-      }
     }
-
-    const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + INVITATION_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
 
     const invitation = await prisma.$transaction(async (tx) => {
       const created = await tx.invitation.create({
@@ -135,8 +183,7 @@ export class InvitationsService {
           foundationId: input.foundationId,
           roleKey: input.roleKey,
           invitedBy: input.invitedByUserId,
-          token,
-          expiresAt,
+          ...newInvitationToken(),
         },
       });
 
@@ -148,58 +195,124 @@ export class InvitationsService {
           action: "invitation.sent",
           entityType: "Invitation",
           entityId: created.id,
-          after: created as any,
+          after: invitationAuditSnapshot(created),
         },
       });
 
       return created;
     });
 
-    // Best-effort, outside the transaction — a Resend outage or missing
-    // config shouldn't roll back a real invitation record, and the
-    // Ops/Founder Team pages both already have a copy-link fallback for
-    // exactly this case. emailSent tells the caller whether to lean on
-    // that fallback or not.
-    let emailSent = false;
+    const emailSent = await this.deliver(invitation, input.invitedByActorType ?? "birr_staff");
+    return { ...invitation, emailSent };
+  }
+
+  /**
+   * The `staff.invite` governed action's fulfillment — called only from
+   * GovernedActionsService.decide() on approval, inside its transaction,
+   * which also writes the audit record. Deliberately sends nothing: the
+   * email goes out via deliverById() only after that transaction commits.
+   */
+  async createStaffInvitationInTransaction(
+    input: { email: string; roleKey: string; invitedByUserId: string },
+    tx: Prisma.TransactionClient,
+  ) {
+    if (!Object.values(BirrStaffRole).includes(input.roleKey as BirrStaffRole)) {
+      throw new BadRequestException(`"${input.roleKey}" is not a valid BirrStaffRole.`);
+    }
+    return tx.invitation.create({
+      data: {
+        inviteeKind: "birr_staff",
+        email: input.email,
+        roleKey: input.roleKey,
+        invitedBy: input.invitedByUserId,
+        ...newInvitationToken(),
+      },
+    });
+  }
+
+  /** Post-commit delivery for an invitation created inside someone else's transaction. */
+  async deliverById(invitationId: string): Promise<boolean> {
+    const invitation = await prisma.invitation.findUniqueOrThrow({ where: { id: invitationId } });
+    return this.deliver(invitation, "birr_staff");
+  }
+
+  /**
+   * The only way a staff invitation's link reaches anyone after it's
+   * sent: its token is never returned by the API (see
+   * redactStaffInvitationToken), so if the first email failed, a
+   * platform_admin resends it to the same address — never a copy-able link.
+   */
+  async resendStaffInvitationEmail(id: string, actorUserId: string) {
+    const invitation = await prisma.invitation.findUnique({ where: { id } });
+    if (!invitation || invitation.inviteeKind !== "birr_staff") {
+      throw new NotFoundException(`Staff invitation "${id}" not found.`);
+    }
+    if (invitation.status !== "pending" || invitation.expiresAt < new Date()) {
+      throw new BadRequestException("Only a pending, unexpired invitation can be resent.");
+    }
+    const emailSent = await this.sendEmail(invitation);
+    await prisma.auditLog.create({
+      data: {
+        actorType: "birr_staff",
+        actorUserId,
+        action: "invitation.email_resent",
+        entityType: "Invitation",
+        entityId: invitation.id,
+        after: { email: invitation.email, emailSent },
+      },
+    });
+    return { emailSent };
+  }
+
+  // Best-effort, outside any transaction — a Resend outage or missing
+  // config shouldn't roll back a real invitation record. emailSent tells
+  // the caller whether it went out: founder-side pages fall back to a
+  // copy-link; staff invitations fall back to resendStaffInvitationEmail().
+  private async sendEmail(invitation: Invitation): Promise<boolean> {
     try {
-      const inviter = await prisma.user.findUnique({ where: { id: input.invitedByUserId } });
+      const inviter = await prisma.user.findUnique({ where: { id: invitation.invitedBy } });
       const portalUrl = process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000";
       // co_founder invitations carry the invitee kind on the link itself
       // (?kind=co_founder) — the accept page only ever has the token to
       // go on, and this is cheaper than a new lookup-by-token endpoint.
       const acceptUrl =
-        input.inviteeKind === "co_founder"
-          ? `${portalUrl}/ops/accept-invitation?token=${token}&kind=co_founder`
-          : `${portalUrl}/ops/accept-invitation?token=${token}`;
-      await this.emailAdapter.sendInvitationEmail(input.email, acceptUrl, {
-        inviteeKind: input.inviteeKind,
-        roleLabel: input.inviteeKind === "co_founder" ? "a co-founder" : humanizeRoleKey(input.roleKey),
+        invitation.inviteeKind === "co_founder"
+          ? `${portalUrl}/ops/accept-invitation?token=${invitation.token}&kind=co_founder`
+          : `${portalUrl}/ops/accept-invitation?token=${invitation.token}`;
+      await this.emailAdapter.sendInvitationEmail(invitation.email, acceptUrl, {
+        inviteeKind: invitation.inviteeKind,
+        roleLabel: invitation.inviteeKind === "co_founder" ? "a co-founder" : humanizeRoleKey(invitation.roleKey ?? ""),
         invitedByName: inviter?.fullName ?? "A Birr team member",
       });
-      emailSent = true;
+      return true;
     } catch (err) {
-      this.logger.error(`Couldn't send invitation email to ${input.email}:`, err instanceof Error ? err.message : err);
+      this.logger.error(`Couldn't send invitation email to ${invitation.email}:`, err instanceof Error ? err.message : err);
+      return false;
     }
+  }
 
-    // In-app confirmation to whoever just sent it — not the invitee
-    // (they have no account yet; the email above is their actual
-    // invitation) — see CHANNEL_PLAN: in-app only, no need to also email
-    // someone about an action they just took themselves.
+  private async deliver(invitation: Invitation, inviterType: "birr_staff" | "founder_user"): Promise<boolean> {
+    const emailSent = await this.sendEmail(invitation);
+
+    // In-app confirmation to whoever sent it — not the invitee (they have
+    // no account yet; the email above is their actual invitation) — see
+    // CHANNEL_PLAN: in-app only, no need to also email someone about an
+    // action they took themselves.
     this.notificationsService
       .notify({
-        recipientType: input.invitedByActorType ?? "birr_staff",
-        recipientUserId: input.invitedByUserId,
+        recipientType: inviterType,
+        recipientUserId: invitation.invitedBy,
         type: "invitation.sent",
         title: "Invitation sent",
         body:
-          input.inviteeKind === "co_founder"
-            ? `You invited ${input.email} to co-found your Foundation.`
-            : `You invited ${input.email} as ${humanizeRoleKey(input.roleKey)}.`,
+          invitation.inviteeKind === "co_founder"
+            ? `You invited ${invitation.email} to co-found your Foundation.`
+            : `You invited ${invitation.email} as ${humanizeRoleKey(invitation.roleKey ?? "")}.`,
         linkUrl:
-          input.inviteeKind === "founder_user"
+          invitation.inviteeKind === "founder_user"
             ? "/team"
-            : input.inviteeKind === "co_founder"
-              ? `/foundations/${input.foundationId}`
+            : invitation.inviteeKind === "co_founder"
+              ? `/foundations/${invitation.foundationId}`
               : "/ops/staff",
         relatedEntityType: "Invitation",
         relatedEntityId: invitation.id,
@@ -211,7 +324,7 @@ export class InvitationsService {
         );
       });
 
-    return { ...invitation, emailSent };
+    return emailSent;
   }
 
   /**
@@ -352,7 +465,7 @@ export class InvitationsService {
           action: "invitation.accepted",
           entityType: "Invitation",
           entityId: invitation.id,
-          after: accepted as any,
+          after: invitationAuditSnapshot(accepted),
         },
       });
 
@@ -484,8 +597,8 @@ export class InvitationsService {
           action: "invitation.revoked",
           entityType: "Invitation",
           entityId: id,
-          before: invitation as any,
-          after: revoked as any,
+          before: invitationAuditSnapshot(invitation),
+          after: invitationAuditSnapshot(revoked),
         },
       });
 
@@ -493,12 +606,14 @@ export class InvitationsService {
     });
   }
 
-  findById(id: string) {
-    return prisma.invitation.findUnique({ where: { id } });
+  async findById(id: string) {
+    const invitation = await prisma.invitation.findUnique({ where: { id } });
+    return invitation && redactStaffInvitationToken(invitation);
   }
 
-  list() {
-    return prisma.invitation.findMany({ orderBy: { createdAt: "desc" } });
+  async list() {
+    const invitations = await prisma.invitation.findMany({ orderBy: { createdAt: "desc" } });
+    return invitations.map(redactStaffInvitationToken);
   }
 
   // Founder-Portal — a primary contact's own view of who they've

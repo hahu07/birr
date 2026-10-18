@@ -24,6 +24,16 @@ describe("InvitationsService", () => {
 
   const foundationsService = new FoundationsService();
 
+  // A staff invitation the way the staff.invite approval creates one —
+  // invite() refuses the birr_staff kind outright.
+  async function staffInvitation(email: string, roleKey: string) {
+    const invitation = await prisma.$transaction((tx) =>
+      service.createStaffInvitationInTransaction({ email, roleKey, invitedByUserId: inviterUserId }, tx),
+    );
+    invitationIds.push(invitation.id);
+    return invitation;
+  }
+
   const invitationIds: string[] = [];
   const founderIds: string[] = [];
   const userIds: string[] = [];
@@ -111,31 +121,90 @@ describe("InvitationsService", () => {
     return prisma.auditLog.findMany({ where: { entityId } });
   }
 
-  test("invite() for birr_staff creates a pending invitation and an audit log", async () => {
+  test("invite() refuses a birr_staff invitation — adding staff is the staff.invite governed action", async () => {
+    const email = `invitee-staff-direct-${Date.now()}@example.com`;
+    await expect(
+      service.invite({ inviteeKind: "birr_staff", email, roleKey: "compliance_officer", invitedByUserId: inviterUserId }),
+    ).rejects.toThrow(BadRequestException);
+    expect(await prisma.invitation.count({ where: { email } })).toBe(0);
+  });
+
+  test("a staff invitation is created without an email, then delivered by deliverById() with its link", async () => {
+    const invitation = await staffInvitation(`invitee-staff-${Date.now()}@example.com`, "compliance_officer");
+    expect(invitation.status).toBe("pending");
+    expect(invitation.token).toHaveLength(64); // 32 bytes, hex-encoded
+    expect(emailAdapter.sent.some((s) => s.to === invitation.email)).toBe(false);
+
+    expect(await service.deliverById(invitation.id)).toBe(true);
+    expect(emailAdapter.sent.some((s) => s.to === invitation.email && s.link.includes(invitation.token))).toBe(true);
+  });
+
+  test("invite() audit-logs the invitation without its token", async () => {
     const invitation = await service.invite({
-      inviteeKind: "birr_staff",
-      email: `invitee-staff-${Date.now()}@example.com`,
-      roleKey: "compliance_officer",
+      inviteeKind: "founder_user",
+      email: `invitee-founder-audit-${Date.now()}@example.com`,
+      founderId: existingFounderId,
+      roleKey: "viewer",
       invitedByUserId: inviterUserId,
     });
     invitationIds.push(invitation.id);
 
-    expect(invitation.status).toBe("pending");
-    expect(invitation.token).toHaveLength(64); // 32 bytes, hex-encoded
-    expect(invitation.emailSent).toBe(true);
-    expect(emailAdapter.sent.some((s) => s.to === invitation.email && s.link.includes(invitation.token))).toBe(true);
+    const log = (await auditLogsFor(invitation.id)).find((l) => l.action === "invitation.sent");
+    expect(log).toBeDefined();
+    expect((log!.after as { token: string }).token).toBe("[redacted]");
+    expect(JSON.stringify(log!.after)).not.toContain(invitation.token);
+  });
 
-    const logs = await auditLogsFor(invitation.id);
-    expect(logs.some((l) => l.action === "invitation.sent")).toBe(true);
+  test("list() and findById() hide a staff invitation's token but keep a founder invitation's", async () => {
+    const staff = await staffInvitation(`list-staff-${Date.now()}@example.com`, "legal_adviser");
+    const founder = await service.invite({
+      inviteeKind: "founder_user",
+      email: `list-founder-${Date.now()}@example.com`,
+      founderId: existingFounderId,
+      roleKey: "viewer",
+      invitedByUserId: inviterUserId,
+    });
+    invitationIds.push(founder.id);
+
+    const listed = await service.list();
+    expect(listed.find((i) => i.id === staff.id)?.token).toBeNull();
+    expect(listed.find((i) => i.id === founder.id)?.token).toBe(founder.token);
+    expect((await service.findById(staff.id))?.token).toBeNull();
+    expect((await service.findById(founder.id))?.token).toBe(founder.token);
+  });
+
+  test("resendStaffInvitationEmail() re-sends a pending staff invitation and audit-logs it", async () => {
+    const invitation = await staffInvitation(`resend-${Date.now()}@example.com`, "audit_committee");
+
+    expect(await service.resendStaffInvitationEmail(invitation.id, inviterUserId)).toEqual({ emailSent: true });
+    expect(emailAdapter.sent.some((s) => s.to === invitation.email && s.link.includes(invitation.token))).toBe(true);
+    expect((await auditLogsFor(invitation.id)).some((l) => l.action === "invitation.email_resent")).toBe(true);
+  });
+
+  test("resendStaffInvitationEmail() refuses a founder invitation and a non-pending staff invitation", async () => {
+    const founder = await service.invite({
+      inviteeKind: "founder_user",
+      email: `resend-founder-${Date.now()}@example.com`,
+      founderId: existingFounderId,
+      roleKey: "viewer",
+      invitedByUserId: inviterUserId,
+    });
+    invitationIds.push(founder.id);
+    await expect(service.resendStaffInvitationEmail(founder.id, inviterUserId)).rejects.toThrow(NotFoundException);
+
+    const staff = await staffInvitation(`resend-revoked-${Date.now()}@example.com`, "audit_committee");
+    await service.revoke(staff.id, inviterUserId, { type: "birr_staff", staffRole: "platform_admin" });
+    await expect(service.resendStaffInvitationEmail(staff.id, inviterUserId)).rejects.toThrow(BadRequestException);
   });
 
   test("invite() still creates a real invitation when the email fails to send", async () => {
     emailAdapter.shouldFail = true;
     try {
       const invitation = await service.invite({
-        inviteeKind: "birr_staff",
-        email: `invitee-staff-emailfail-${Date.now()}@example.com`,
-        roleKey: "compliance_officer",
+        inviteeKind: "founder_user",
+        email: `invitee-founder-emailfail-${Date.now()}@example.com`,
+        founderId: existingFounderId,
+        roleKey: "viewer",
         invitedByUserId: inviterUserId,
       });
       invitationIds.push(invitation.id);
@@ -160,13 +229,7 @@ describe("InvitationsService", () => {
   });
 
   test("accept() for birr_staff creates a User + BirrStaff and flips status to accepted", async () => {
-    const invitation = await service.invite({
-      inviteeKind: "birr_staff",
-      email: `accept-staff-${Date.now()}@example.com`,
-      roleKey: "audit_committee",
-      invitedByUserId: inviterUserId,
-    });
-    invitationIds.push(invitation.id);
+    const invitation = await staffInvitation(`accept-staff-${Date.now()}@example.com`, "audit_committee");
 
     const result = await service.accept({ token: invitation.token, fullName: "New Staff Member", password: "correct-horse-battery" });
     userIds.push(result.user.id);
@@ -205,13 +268,7 @@ describe("InvitationsService", () => {
   });
 
   test("accept() rejects an expired invitation and flips its status to expired", async () => {
-    const invitation = await service.invite({
-      inviteeKind: "birr_staff",
-      email: `expired-${Date.now()}@example.com`,
-      roleKey: "legal_adviser",
-      invitedByUserId: inviterUserId,
-    });
-    invitationIds.push(invitation.id);
+    const invitation = await staffInvitation(`expired-${Date.now()}@example.com`, "legal_adviser");
     await prisma.invitation.update({
       where: { id: invitation.id },
       data: { expiresAt: new Date(Date.now() - 1000) },
@@ -226,13 +283,7 @@ describe("InvitationsService", () => {
   });
 
   test("accept() rejects reusing an already-accepted token", async () => {
-    const invitation = await service.invite({
-      inviteeKind: "birr_staff",
-      email: `reuse-${Date.now()}@example.com`,
-      roleKey: "platform_admin",
-      invitedByUserId: inviterUserId,
-    });
-    invitationIds.push(invitation.id);
+    const invitation = await staffInvitation(`reuse-${Date.now()}@example.com`, "platform_admin");
 
     const result = await service.accept({ token: invitation.token, fullName: "First Accept", password: "correct-horse-battery" });
     userIds.push(result.user.id);
@@ -253,13 +304,7 @@ describe("InvitationsService", () => {
     });
     userIds.push(existingUser.id);
 
-    const invitation = await service.invite({
-      inviteeKind: "birr_staff",
-      email,
-      roleKey: "legal_adviser",
-      invitedByUserId: inviterUserId,
-    });
-    invitationIds.push(invitation.id);
+    const invitation = await staffInvitation(email, "legal_adviser");
 
     await expect(
       service.accept({ token: invitation.token, fullName: "Collides With Existing", password: "correct-horse-battery" }),
@@ -272,13 +317,7 @@ describe("InvitationsService", () => {
   });
 
   test("revoke() transitions pending to revoked and rejects revoking a non-pending invitation", async () => {
-    const invitation = await service.invite({
-      inviteeKind: "birr_staff",
-      email: `revoke-${Date.now()}@example.com`,
-      roleKey: "shariah_board_member",
-      invitedByUserId: inviterUserId,
-    });
-    invitationIds.push(invitation.id);
+    const invitation = await staffInvitation(`revoke-${Date.now()}@example.com`, "shariah_board_member");
 
     const adminActor = { type: "birr_staff" as const, staffRole: "platform_admin" };
     const revoked = await service.revoke(invitation.id, inviterUserId, adminActor);
@@ -290,13 +329,7 @@ describe("InvitationsService", () => {
   });
 
   test("revoke() rejects a non-platform_admin staff member revoking a birr_staff invitation", async () => {
-    const invitation = await service.invite({
-      inviteeKind: "birr_staff",
-      email: `revoke-nonadmin-${Date.now()}@example.com`,
-      roleKey: "shariah_board_member",
-      invitedByUserId: inviterUserId,
-    });
-    invitationIds.push(invitation.id);
+    const invitation = await staffInvitation(`revoke-nonadmin-${Date.now()}@example.com`, "shariah_board_member");
 
     await expect(
       service.revoke(invitation.id, inviterUserId, { type: "birr_staff", staffRole: "mutawalli_officer" }),

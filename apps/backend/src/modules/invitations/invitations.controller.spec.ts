@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException } from "@nestjs/common";
 import { Request } from "express";
 import { prisma } from "@birr/db";
 import { InvitationsController } from "./invitations.controller";
@@ -15,12 +15,11 @@ function requestWithStaffCookie(token: string): Request {
   return { cookies: { [STAFF_SESSION_COOKIE_NAME]: token } } as unknown as Request;
 }
 
-// Regression coverage for a real privilege-escalation gap found in a
-// 2026-09-26 codebase review: POST /birr-staff (direct staff creation)
-// has always required @RequiresStaffRole("platform_admin"), but the
-// real onboarding path — a birr_staff Invitation — had no equivalent
-// check at all. Any authenticated staff member, any role, could invite
-// a new staff member with any role, including a fresh platform_admin.
+// Regression coverage for staff onboarding. 2026-09-26: any staff member
+// could invite a new staff member with any role, including a fresh
+// platform_admin. 2026-10-18: not even a platform_admin can send one
+// directly any more — adding staff is the staff.invite governed action,
+// approved by a second person (see governed-actions.service.spec.ts).
 describe("InvitationsController — birr_staff invitation authorization", () => {
   let nonAdminUserId: string;
   let adminUserId: string;
@@ -63,34 +62,21 @@ describe("InvitationsController — birr_staff invitation authorization", () => 
     return new InvitationsController(service);
   }
 
-  test("rejects a non-platform_admin staff member inviting a new birr_staff member", async () => {
-    // Rejects before ever touching the service — an unreachable instance
-    // is enough here, same pattern as founders.controller.spec.ts's own
-    // staff/founder isolation tests.
-    const controller = new InvitationsController(undefined as never);
-    const request = requestWithStaffCookie(signSessionToken(nonAdminUserId));
+  test.each([
+    ["a non-platform_admin", () => nonAdminUserId],
+    ["a platform_admin", () => adminUserId],
+  ])("rejects %s staff member sending a birr_staff invitation directly", async (_label, userId) => {
+    const controller = realController();
+    const request = requestWithStaffCookie(signSessionToken(userId()));
+    const email = `invitee-direct-${Date.now()}-${Math.floor(Math.random() * 10000)}@example.test`;
 
     await expect(
-      controller.invite(
-        { inviteeKind: "birr_staff", email: `invitee-rejected-${Date.now()}@example.test`, roleKey: "compliance_officer" },
-        request,
-      ),
-    ).rejects.toThrow(ForbiddenException);
+      controller.invite({ inviteeKind: "birr_staff", email, roleKey: "compliance_officer" }, request),
+    ).rejects.toThrow(BadRequestException);
+    expect(await prisma.invitation.count({ where: { email } })).toBe(0);
   });
 
-  test("allows a platform_admin to invite a new birr_staff member", async () => {
-    const controller = realController();
-    const request = requestWithStaffCookie(signSessionToken(adminUserId));
-
-    const result = await controller.invite(
-      { inviteeKind: "birr_staff", email: `invitee-admin-ok-${Date.now()}@example.test`, roleKey: "compliance_officer" },
-      request,
-    );
-    invitationIds.push(result.id);
-    expect(result.inviteeKind).toBe("birr_staff");
-  });
-
-  // Proves the fix is scoped to inviteeKind === "birr_staff" only — a
+  // Proves the restriction is scoped to inviteeKind === "birr_staff" only — a
   // non-admin staff member inviting a founder_user on a Founder's behalf
   // (a real, separate, pre-existing feature) must keep working exactly
   // as before.

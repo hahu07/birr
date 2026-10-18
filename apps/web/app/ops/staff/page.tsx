@@ -1,14 +1,12 @@
 "use client";
 
-// Staff Management — the BirrStaff roster plus pending Invitations. This
-// is the one page that lets Birr onboard more staff at all now that
-// auth is real (see common/auth/current-birr-staff.ts on the backend):
-// POST /birr-staff is platform_admin-only and meant for bootstrap/scripted
-// use, so every other staff member is meant to arrive via an Invitation.
-// The invite button itself is isAdmin-gated below (2026-09-26 fix) —
-// InvitationsController now actually enforces platform_admin-only for a
-// birr_staff-kind invite on the backend too (it didn't before), so a
-// non-admin seeing this button would just hit a 403.
+// Staff Management — the BirrStaff roster plus pending Invitations.
+// Adding a staff member is the `staff.invite` governed action (2026-10-18):
+// a platform_admin proposes it here, a Board member or the Compliance
+// Officer approves it on the Approvals page, and only then is the
+// invitation created and emailed. Staff invitation links are never shown
+// in the app — the API returns no token for them — so a failed email is
+// retried with "Resend email", not a copy-able link.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { humanize, formatDate } from "../../../lib/format";
@@ -235,18 +233,18 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
   const [roleKey, setRoleKey] = useState<BirrStaffRole>("mutawalli_officer");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState<Invitation | null>(null);
+  const [proposed, setProposed] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      const invitation = await apiFetchJson<Invitation>("/invitations", {
+      await apiFetchJson("/governed-actions", {
         method: "POST",
-        body: JSON.stringify({ inviteeKind: "birr_staff", email, roleKey }),
+        body: JSON.stringify({ permissionKey: "staff.invite", payload: { email, staffRole: roleKey } }),
       });
-      setSent(invitation);
+      setProposed(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -254,31 +252,14 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
     }
   }
 
-  if (sent) {
-    const inviteLink = `${window.location.origin}/ops/accept-invitation?token=${sent.token}`;
+  if (proposed) {
     return (
       <div className="mb-6 rounded-lg border border-primary-200 bg-primary-50 p-4">
-        {sent.emailSent ? (
-          <p className="text-sm font-medium text-primary-900">Invitation emailed to {email}.</p>
-        ) : (
-          <>
-            <p className="text-sm font-medium text-primary-900">
-              Couldn&apos;t send the email automatically — copy this link and send it to {email} yourself:
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <code className="flex-1 truncate rounded border border-primary-200 bg-white px-2.5 py-1.5 text-xs text-slate-700">
-                {inviteLink}
-              </code>
-              <Button
-                variant="secondary"
-                className="px-3 py-1.5 text-xs"
-                onClick={() => navigator.clipboard.writeText(inviteLink)}
-              >
-                Copy
-              </Button>
-            </div>
-          </>
-        )}
+        <p className="text-sm font-medium text-primary-900">Sent for approval.</p>
+        <p className="mt-1 text-sm text-primary-800">
+          A Board member or the Compliance Officer needs to approve adding {email} as {humanize(roleKey)} on the Approvals
+          page. The invitation is emailed to them once it&apos;s approved.
+        </p>
         <div className="mt-3">
           <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={onInvited}>
             Done
@@ -291,7 +272,7 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
   return (
     <form onSubmit={handleSubmit} className="mb-6 space-y-3 rounded-lg border border-slate-200 bg-white p-4">
       {error && (
-        <Alert tone="danger" title="Couldn't send invitation">
+        <Alert tone="danger" title="Couldn't send for approval">
           {error}
         </Alert>
       )}
@@ -327,17 +308,37 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
           </select>
         </div>
         <Button type="submit" disabled={submitting}>
-          {submitting ? "Sending…" : "Send invitation"}
+          {submitting ? "Sending…" : "Send for approval"}
         </Button>
       </div>
+      <p className="text-xs text-slate-500">
+        A second person (Board or Compliance) approves every new staff member before the invitation is emailed.
+      </p>
     </form>
   );
 }
 
 function InvitationRow({ invitation, isAdmin, onChanged }: { invitation: Invitation; isAdmin: boolean; onChanged: () => void }) {
   const [revoking, setRevoking] = useState(false);
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
-  const link = `${typeof window !== "undefined" ? window.location.origin : ""}/ops/accept-invitation?token=${invitation.token}`;
+  // Null for a staff invitation — its link is emailed only, never shown.
+  const link = invitation.token
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/ops/accept-invitation?token=${invitation.token}`
+    : null;
+
+  async function resend() {
+    setError(null);
+    setResendState("sending");
+    try {
+      const { emailSent } = await apiFetchJson<{ emailSent: boolean }>(`/invitations/${invitation.id}/resend-email`, { method: "POST" });
+      if (!emailSent) throw new Error("The email couldn't be sent — check the Resend settings and try again.");
+      setResendState("sent");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setResendState("idle");
+    }
+  }
 
   async function revoke() {
     setError(null);
@@ -359,13 +360,16 @@ function InvitationRow({ invitation, isAdmin, onChanged }: { invitation: Invitat
       <TableCell className="text-right">
         {error && <span className="mr-3 text-xs text-red-600">{error}</span>}
         <div className="inline-flex gap-2">
-          <Button
-            variant="secondary"
-            className="px-3 py-1.5 text-xs"
-            onClick={() => navigator.clipboard.writeText(link)}
-          >
-            Copy link
-          </Button>
+          {link && (
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => navigator.clipboard.writeText(link)}>
+              Copy link
+            </Button>
+          )}
+          {isAdmin && invitation.inviteeKind === "birr_staff" && (
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={resendState !== "idle"} onClick={resend}>
+              {resendState === "sending" ? "Sending…" : resendState === "sent" ? "Email sent" : "Resend email"}
+            </Button>
+          )}
           {/* A birr_staff invitation is platform_admin-only to revoke, same as to send — see InvitationsService.revoke. */}
           {(isAdmin || invitation.inviteeKind !== "birr_staff") && (
             <Button variant="danger" className="px-3 py-1.5 text-xs" disabled={revoking} onClick={revoke}>
