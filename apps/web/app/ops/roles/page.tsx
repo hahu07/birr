@@ -256,34 +256,97 @@ type GrantSetting = "none" | "maker" | "checker";
 // refuses a change that would leave an approval action with nobody able to
 // propose or approve it, give one role both sides, or give the External
 // Auditor either side.
-function ProposeGrantChange({ roles }: { roles: Role[] }) {
-  const permissions = [
+function uniquePermissions(roles: Role[]) {
+  return [
     ...new Map(roles.flatMap((r) => r.rolePermissions.map((rp) => [rp.permission.key, rp.permission] as const))).values(),
   ].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function ProposeGrantChange({ roles }: { roles: Role[] }) {
+  const permissions = uniquePermissions(roles);
   const [roleKey, setRoleKey] = useState("");
   const [permissionKey, setPermissionKey] = useState("");
   const [setting, setSetting] = useState<GrantSetting>("none");
+  const { submit, submitting, sent, error, reset } = useProposeGrantChange();
+
+  const permission = permissions.find((p) => p.key === permissionKey);
+  const role = roles.find((r) => r.key === roleKey);
+
+  if (sent) return <SentForApproval onAnother={reset} />;
+
+  return (
+    <Card className="mb-8">
+      <ProposeHeader error={error} />
+      <div className="flex flex-wrap items-end gap-3">
+        <LabelledSelect id="grant-role" label="Role" value={roleKey} onChange={setRoleKey} className="w-52">
+          <RoleOptions roles={roles} />
+        </LabelledSelect>
+        <LabelledSelect
+          id="grant-permission"
+          label="Permission"
+          value={permissionKey}
+          onChange={(key) => {
+            setPermissionKey(key);
+            setSetting("none");
+          }}
+          className="w-72"
+        >
+          <option value="">Choose a permission…</option>
+          {permissions.map((p) => (
+            <option key={p.key} value={p.key}>
+              {humanizePermissionKey(p.key)}
+              {p.requiresMakerChecker ? " (approval)" : ""}
+            </option>
+          ))}
+        </LabelledSelect>
+        <GrantSettingSelect permission={permission} value={setting} onChange={setSetting} />
+        <Button
+          disabled={!role || !permission || submitting}
+          onClick={() => role && permission && submit(role.key, permission.key, setting)}
+        >
+          {submitting ? "Sending…" : "Send for approval"}
+        </Button>
+      </div>
+      {role && permission && <CurrentGrant role={role} permission={permission} />}
+    </Card>
+  );
+}
+
+function RoleOptions({ roles }: { roles: Role[] }) {
+  return (
+    <>
+      <option value="">Choose a role…</option>
+      {roles.map((r) => (
+        <option key={r.key} value={r.key}>
+          {r.name}
+        </option>
+      ))}
+    </>
+  );
+}
+
+function ProposeHeader({ error }: { error: string | null }) {
+  return (
+    <>
+      <h2 className="text-sm font-semibold text-slate-900">Propose a change</h2>
+      <p className="mb-4 mt-0.5 text-xs text-slate-500">
+        Change what one role may do. A Board member approves every change before it takes effect.
+      </p>
+      {error && (
+        <Alert tone="danger" title="Couldn't send for approval" className="mb-4">
+          {error}
+        </Alert>
+      )}
+    </>
+  );
+}
+
+function useProposeGrantChange() {
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const permission = permissions.find((p) => p.key === permissionKey);
-  const role = roles.find((r) => r.key === roleKey);
-  const current = role && permission ? grantFor(role, permission.key) : undefined;
-  const currentLabel = !permission
-    ? null
-    : permission.requiresMakerChecker
-      ? current?.canMaker
-        ? "can propose"
-        : current?.canChecker
-          ? "can approve"
-          : "neither proposes nor approves"
-      : current?.canMaker
-        ? "allowed"
-        : "not allowed";
-
-  async function submit() {
-    if (!roleKey || !permission) return;
+  async function submit(roleKey: string, permissionKey: string, setting: GrantSetting) {
     setError(null);
     setSubmitting(true);
     try {
@@ -291,7 +354,7 @@ function ProposeGrantChange({ roles }: { roles: Role[] }) {
         method: "POST",
         body: JSON.stringify({
           permissionKey: "role.permission_change",
-          payload: { roleKey, permissionKey: permission.key, canMaker: setting === "maker", canChecker: setting === "checker" },
+          payload: { roleKey, permissionKey, canMaker: setting === "maker", canChecker: setting === "checker" },
         }),
       });
       setSent(true);
@@ -302,100 +365,104 @@ function ProposeGrantChange({ roles }: { roles: Role[] }) {
     }
   }
 
-  if (sent) {
-    return (
-      <Alert tone="success" title="Sent for approval" className="mb-8">
-        A Board member needs to approve this on the Approvals page before it takes effect.{" "}
-        <button type="button" className="font-medium underline" onClick={() => setSent(false)}>
-          Propose another
-        </button>
-      </Alert>
-    );
-  }
+  return { submit, submitting, sent, error, reset: () => setSent(false) };
+}
 
+function LabelledSelect({
+  id,
+  label,
+  value,
+  onChange,
+  className,
+  children,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  className: string;
+  children: React.ReactNode;
+}) {
   return (
-    <Card className="mb-8">
-      <h2 className="text-sm font-semibold text-slate-900">Propose a change</h2>
-      <p className="mb-4 mt-0.5 text-xs text-slate-500">
-        Change what one role may do. A Board member approves every change before it takes effect.
-      </p>
-      {error && (
-        <Alert tone="danger" title="Couldn't send for approval" className="mb-4">
-          {error}
-        </Alert>
-      )}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1.5">
-          <label htmlFor="grant-role" className="text-xs font-medium text-slate-700">
-            Role
-          </label>
-          <Select id="grant-role" value={roleKey} onChange={(e) => setRoleKey(e.target.value)} className="w-52">
-            <option value="">Choose a role…</option>
-            {roles.map((r) => (
-              <option key={r.key} value={r.key}>
-                {r.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="grant-permission" className="text-xs font-medium text-slate-700">
-            Permission
-          </label>
-          <Select
-            id="grant-permission"
-            value={permissionKey}
-            onChange={(e) => {
-              setPermissionKey(e.target.value);
-              setSetting("none");
-            }}
-            className="w-72"
-          >
-            <option value="">Choose a permission…</option>
-            {permissions.map((p) => (
-              <option key={p.key} value={p.key}>
-                {humanizePermissionKey(p.key)}
-                {p.requiresMakerChecker ? " (approval)" : ""}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="grant-setting" className="text-xs font-medium text-slate-700">
-            New setting
-          </label>
-          <Select
-            id="grant-setting"
-            value={setting}
-            onChange={(e) => setSetting(e.target.value as GrantSetting)}
-            className="w-52"
-            disabled={!permission}
-          >
-            {permission?.requiresMakerChecker ? (
-              <>
-                <option value="none">Neither</option>
-                <option value="maker">Can propose</option>
-                <option value="checker">Can approve</option>
-              </>
-            ) : (
-              <>
-                <option value="none">Not allowed</option>
-                <option value="maker">Allowed</option>
-              </>
-            )}
-          </Select>
-        </div>
-        <Button disabled={!roleKey || !permission || submitting} onClick={submit}>
-          {submitting ? "Sending…" : "Send for approval"}
-        </Button>
-      </div>
-      {role && permission && (
-        <p className="mt-3 text-xs text-slate-600">
-          {permission.description ?? humanizePermissionKey(permission.key)} — {humanize(role.key)} currently{" "}
-          <span className="font-medium">{currentLabel}</span>.
-          {role.key === "board_of_trustees" && " This would change the Board's own permissions."}
-        </p>
-      )}
-    </Card>
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-xs font-medium text-slate-700">
+        {label}
+      </label>
+      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} className={className}>
+        {children}
+      </Select>
+    </div>
+  );
+}
+
+function SentForApproval({ onAnother }: { onAnother: () => void }) {
+  return (
+    <Alert tone="success" title="Sent for approval" className="mb-8">
+      A Board member needs to approve this on the Approvals page before it takes effect.{" "}
+      <button type="button" className="font-medium underline" onClick={onAnother}>
+        Propose another
+      </button>
+    </Alert>
+  );
+}
+
+type PermissionInfo = Role["rolePermissions"][number]["permission"];
+
+function GrantSettingSelect({
+  permission,
+  value,
+  onChange,
+}: {
+  permission: PermissionInfo | undefined;
+  value: GrantSetting;
+  onChange: (setting: GrantSetting) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor="grant-setting" className="text-xs font-medium text-slate-700">
+        New setting
+      </label>
+      <Select
+        id="grant-setting"
+        value={value}
+        onChange={(e) => onChange(e.target.value as GrantSetting)}
+        className="w-52"
+        disabled={!permission}
+      >
+        {permission?.requiresMakerChecker ? (
+          <>
+            <option value="none">Neither</option>
+            <option value="maker">Can propose</option>
+            <option value="checker">Can approve</option>
+          </>
+        ) : (
+          <>
+            <option value="none">Not allowed</option>
+            <option value="maker">Allowed</option>
+          </>
+        )}
+      </Select>
+    </div>
+  );
+}
+
+// What the chosen role has on the chosen permission today.
+function CurrentGrant({ role, permission }: { role: Role; permission: PermissionInfo }) {
+  const grant = grantFor(role, permission.key);
+  const label = permission.requiresMakerChecker
+    ? grant?.canMaker
+      ? "can propose"
+      : grant?.canChecker
+        ? "can approve"
+        : "neither proposes nor approves"
+    : grant?.canMaker
+      ? "allowed"
+      : "not allowed";
+  return (
+    <p className="mt-3 text-xs text-slate-600">
+      {permission.description ?? humanizePermissionKey(permission.key)} — {humanize(role.key)} currently{" "}
+      <span className="font-medium">{label}</span>.
+      {role.key === "board_of_trustees" && " This would change the Board's own permissions."}
+    </p>
   );
 }
