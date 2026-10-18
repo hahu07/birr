@@ -20,22 +20,6 @@ import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 const MIN_PASSWORD_LENGTH = 8;
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/;
 
-export class CreateFounderInput {
-  @IsString()
-  name!: string;
-
-  @IsEnum(FounderKind)
-  kind!: FounderKind;
-
-  @IsOptional()
-  @IsEnum(InstitutionType)
-  institutionType?: InstitutionType;
-
-  @IsOptional()
-  @IsString()
-  homeJurisdiction?: string;
-}
-
 export class SignUpInput {
   @IsString()
   fullName!: string;
@@ -152,27 +136,6 @@ export class FoundersService {
     private readonly mfa: MfaService,
     private readonly funnelEvents: FunnelEventsService,
   ) {}
-
-  // Bootstrap-scope note: this route is intentionally unauthenticated in
-  // this slice (see PermissionGuard) — there's no BirrStaff to gate on yet
-  // when the first accounts are being created. Lock down once real auth
-  // (WorkOS/Auth0) exists. Used by seed data and tests; the real
-  // self-service path is signUp() + establishFounderAndFoundation() below.
-  async create(input: CreateFounderInput) {
-    return prisma.$transaction(async (tx) => {
-      const founder = await tx.founder.create({ data: input });
-      await tx.auditLog.create({
-        data: {
-          actorType: "system",
-          action: "founder.created",
-          entityType: "Founder",
-          entityId: founder.id,
-          after: founder as any,
-        },
-      });
-      return founder;
-    });
-  }
 
   findById(id: string) {
     return prisma.founder.findUnique({ where: { id } });

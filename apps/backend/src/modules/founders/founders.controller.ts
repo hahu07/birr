@@ -18,7 +18,6 @@ import { IsString } from "class-validator";
 import type { Request, Response } from "express";
 import {
   FoundersService,
-  CreateFounderInput,
   SignUpInput,
   LoginInput,
   RequestPasswordResetInput,
@@ -71,11 +70,6 @@ export class FoundersController {
     private readonly service: FoundersService,
     private readonly whatsAppVerification: WhatsAppVerificationService,
   ) {}
-
-  @Post()
-  create(@Body() body: CreateFounderInput) {
-    return this.service.create(body);
-  }
 
   // Registered before the "sign-up"-shadowing ":id" GET route isn't a
   // concern here (different HTTP method), but verify-email below does
