@@ -468,7 +468,9 @@ Vault is `mutawalli_officer` or `compliance_officer`; reviewing a COI
 declaration is `compliance_officer` only. `apps/backend/src/common
 /guards/route-role-coverage.spec.ts` now fails on any new non-GET route
 that has neither a role/permission decorator nor a reasoned entry in its
-allowlist — add one or the other, never neither. Still open: merging
+allowlist; a route that genuinely needs no staff gate (Founder
+self-service, webhooks, own-account actions) goes in that allowlist with
+its reason. Still open: merging
 `@RequiresStaffRole` and the `roles`/`permissions` tables into one
 permission-key model.
 
