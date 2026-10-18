@@ -236,10 +236,9 @@ describe("InvitationsService", () => {
 
     expect(result.invitation.status).toBe("accepted");
     expect(result.user.email).toBe(invitation.email);
-    expect(result.membershipOrStaff).toMatchObject({
-      userId: result.user.id,
-      staffRole: "audit_committee",
-    });
+    expect(result.membershipOrStaff).toMatchObject({ userId: result.user.id });
+    const grants = await prisma.birrStaffRoleGrant.findMany({ where: { birrStaffId: result.membershipOrStaff.id } });
+    expect(grants.map((g) => g.role)).toEqual(["audit_committee"]);
 
     const logs = await auditLogsFor(invitation.id);
     expect(

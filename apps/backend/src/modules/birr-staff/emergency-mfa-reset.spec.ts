@@ -57,7 +57,7 @@ describe("emergencyMfaReset", () => {
   });
 
   it("refuses approvers who aren't Board/Compliance (e.g. a Mutawalli Officer)", async () => {
-    await expect(run({ approverEmails: [users.board.email, users.officer.email] })).rejects.toThrow(/emergency approvers must be/);
+    await expect(run({ approverEmails: [users.board.email, users.officer.email] })).rejects.toThrow(/emergency approvers must hold one of/);
   });
 
   it("refuses a target with no MFA enrolled, and unknown accounts", async () => {
