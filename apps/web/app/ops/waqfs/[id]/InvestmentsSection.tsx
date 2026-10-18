@@ -53,6 +53,8 @@ export function InvestmentsSection({
   const [showForm, setShowForm] = useState(false);
   const { staff } = useStaffSession();
   const isShariahBoard = staff?.staffRole === "shariah_board_member";
+  // Hides controls the backend would 403 — creating an investment is investment_committee-only.
+  const canCreate = staff?.staffRole === "investment_committee";
 
   useEffect(() => {
     apiFetchJson<Counterparty[]>("/counterparties?status=active")
@@ -77,8 +79,8 @@ export function InvestmentsSection({
       <SectionHeader
         title="Investments"
         description="Amounts of this fund allocated to an investment instrument."
-        actionLabel={showForm ? "Cancel" : "Add investment"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canCreate ? (showForm ? "Cancel" : "Add investment") : undefined}
+        onAction={canCreate ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -87,7 +89,7 @@ export function InvestmentsSection({
         </Alert>
       )}
 
-      {showForm &&
+      {canCreate && showForm &&
         (activeCounterparties.length === 0 ? (
           <Alert tone="warning" title="No active counterparties yet" className="mb-4">
             Every investment needs an approved counterparty holding the money.{" "}

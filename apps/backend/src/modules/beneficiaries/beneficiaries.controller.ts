@@ -4,6 +4,7 @@ import { BeneficiariesService, CreateBeneficiaryInput, SetPayoutDetailsInput } f
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { Public } from "../../common/guards/public.decorator";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 @Controller("beneficiaries")
 export class BeneficiariesController {
@@ -15,6 +16,7 @@ export class BeneficiariesController {
   // GovernedActionsService.decide().
 
   @Post()
+  @RequiresStaffRole("mutawalli_officer")
   async create(@Body() body: CreateBeneficiaryInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.assertStaffCanAccessWaqf(body.waqfId, staff);
     return this.service.create(body, staff.userId);
@@ -27,6 +29,7 @@ export class BeneficiariesController {
   // payout-ready. Declared before ":id" for the same routing reason as
   // DistributionsController.summary().
   @Post(":id/payout-details")
+  @RequiresStaffRole("mutawalli_officer")
   async setPayoutDetails(
     @Param("id") id: string,
     @Body() body: SetPayoutDetailsInput,

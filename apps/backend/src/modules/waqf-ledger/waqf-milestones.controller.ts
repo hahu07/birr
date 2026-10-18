@@ -7,6 +7,7 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "..
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 // No complete/approve route here, deliberately — waqf.milestone_complete
 // is always a governed_actions action, invoked only internally from
@@ -19,6 +20,7 @@ export class WaqfMilestonesController {
   ) {}
 
   @Post()
+  @RequiresStaffRole("mutawalli_officer")
   create(@Body() body: CreateWaqfMilestoneInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
@@ -46,6 +48,7 @@ export class WaqfMilestonesController {
   // Plain staff action, not governed — see markInProgress()'s own
   // comment on why this doesn't need the same checkpoint complete() does.
   @Post(":id/start")
+  @RequiresStaffRole("mutawalli_officer")
   markInProgress(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.markInProgress(id, staff.userId);
   }
@@ -54,6 +57,7 @@ export class WaqfMilestonesController {
   // VaultMilestonesController.setEvidence, `evidence` optional so a
   // staff member can update just the notes without re-uploading a file.
   @Post(":id/evidence")
+  @RequiresStaffRole("mutawalli_officer")
   @UseInterceptors(FileInterceptor("evidence", { limits: { fileSize: MAX_EVIDENCE_SIZE_BYTES } }))
   async setEvidence(
     @Param("id") id: string,

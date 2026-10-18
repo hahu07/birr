@@ -28,6 +28,7 @@ import { VaultFieldPhotosSection } from "./VaultFieldPhotosSection";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 import { useLoadedResource } from "../../_components/SectionChrome";
 import { EntityHeader } from "../../_components/EntityHeader";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 const STATUS_TONE: Record<VaultStatus, "success" | "warning" | "neutral" | "danger"> = {
   draft: "neutral",
@@ -68,6 +69,10 @@ export default function VaultDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [vault, setVault] = useState<Vault | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — VaultsController's guards are the real gate.
+  const canCurate = staff?.staffRole === "mutawalli_officer";
+  const canChangeStatus = canCurate || staff?.staffRole === "compliance_officer";
   // Bumped by VaultCausesSection whenever a cause is added or an
   // allocation proposal is decided-in-place refreshed — Distributions
   // needs the fresh cause list to pick from.
@@ -143,13 +148,13 @@ export default function VaultDetailPage() {
     <div>
       <EntityHeader
         back={{ href: "/ops/vaults", label: "Vaults" }}
-        icon={<CoverImageControl vault={vault} onChanged={load} />}
+        icon={<CoverImageControl vault={vault} canEdit={canCurate} onChanged={load} />}
         heading={{
           title: vault.name,
           badge: <Badge tone={STATUS_TONE[vault.status]}>{humanize(vault.status)}</Badge>,
           subtitle: vault.description ? <span className="block max-w-2xl text-slate-600">{vault.description}</span> : undefined,
         }}
-        actions={<StatusActions vault={vault} onChanged={load} />}
+        actions={<StatusActions vault={vault} canChangeStatus={canChangeStatus} onChanged={load} />}
         facts={[
           { label: "Type", value: humanize(vault.type) },
           { label: "Currencies", value: [vault.currency, ...vault.additionalCurrencies].join(", ") },
@@ -250,7 +255,7 @@ export default function VaultDetailPage() {
 // the badge/thumbnail is what reveals the (re)upload control, so it
 // doesn't compete with the vault's name/status for attention on a page
 // that's mostly about causes and money, not branding.
-function CoverImageControl({ vault, onChanged }: { vault: Vault; onChanged: () => void }) {
+function CoverImageControl({ vault, canEdit, onChanged }: { vault: Vault; canEdit: boolean; onChanged: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -273,6 +278,20 @@ function CoverImageControl({ vault, onChanged }: { vault: Vault; onChanged: () =
     }
   }
 
+  const cover = vault.coverImageUrl ? (
+    <img src={vault.coverImageUrl} alt="" className="h-full w-full object-cover" />
+  ) : (
+    <IconArchive className="h-6 w-6" />
+  );
+
+  if (!canEdit) {
+    return (
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary-900 text-accent-300 shadow-sm">
+        {cover}
+      </div>
+    );
+  }
+
   return (
     <div>
       <button
@@ -282,11 +301,7 @@ function CoverImageControl({ vault, onChanged }: { vault: Vault; onChanged: () =
         title={vault.coverImageUrl ? "Change cover image" : "Upload a cover image"}
         className="group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary-900 text-accent-300 shadow-sm"
       >
-        {vault.coverImageUrl ? (
-          <img src={vault.coverImageUrl} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <IconArchive className="h-6 w-6" />
-        )}
+        {cover}
         <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-[10px] font-medium opacity-0 transition-opacity group-hover:opacity-100">
           {uploading ? "…" : vault.coverImageUrl ? "Change" : "Upload"}
         </span>
@@ -297,7 +312,7 @@ function CoverImageControl({ vault, onChanged }: { vault: Vault; onChanged: () =
   );
 }
 
-function StatusActions({ vault, onChanged }: { vault: Vault; onChanged: () => void }) {
+function StatusActions({ vault, canChangeStatus, onChanged }: { vault: Vault; canChangeStatus: boolean; onChanged: () => void }) {
   const [submitting, setSubmitting] = useState<VaultStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const next = NEXT_STATUSES[vault.status];
@@ -320,7 +335,7 @@ function StatusActions({ vault, onChanged }: { vault: Vault; onChanged: () => vo
     );
   }
 
-  if (next.length === 0) return null;
+  if (!canChangeStatus || next.length === 0) return null;
 
   async function moveTo(status: VaultStatus) {
     setError(null);

@@ -5,12 +5,14 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "..
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 @Controller("waqf-proceeds")
 export class WaqfProceedsController {
   constructor(private readonly service: WaqfProceedsService) {}
 
   @Post()
+  @RequiresStaffRole(["investment_committee", "mutawalli_officer"])
   record(@Body() body: RecordWaqfProceedsInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.record(body, staff.userId);
   }

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { IsEnum, IsOptional, IsString, MinLength } from "class-validator";
 import { prisma, InviteeKind, BirrStaffRole, FounderPermissionLevel, FounderKind, InstitutionType } from "@birr/db";
@@ -436,10 +436,16 @@ export class InvitationsService {
   async revoke(
     id: string,
     revokedByUserId: string,
-    actor: { type: "birr_staff" | "founder_user"; founderId?: string } = { type: "birr_staff" },
+    actor: { type: "birr_staff"; staffRole: string } | { type: "founder_user"; founderId: string },
   ) {
     const invitation = await prisma.invitation.findUnique({ where: { id } });
     if (!invitation) throw new NotFoundException(`Invitation "${id}" not found.`);
+    // Mirrors InvitationsController.invite()'s own platform_admin-only
+    // check on sending a birr_staff invitation — revoking one is the same
+    // authority, and was otherwise open to any staff role.
+    if (actor.type === "birr_staff" && invitation.inviteeKind === "birr_staff" && actor.staffRole !== "platform_admin") {
+      throw new ForbiddenException("Only a platform_admin can revoke a Birr staff invitation.");
+    }
     if (actor.type === "founder_user") {
       // co_founder invitations have no founderId (there's no existing
       // Founder to point at yet) — ownership for those is checked via

@@ -22,6 +22,7 @@ import type { VaultMilestone } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 const STATUS_TONE: Record<VaultMilestone["status"], "neutral" | "warning" | "success"> = {
   pending: "neutral",
@@ -43,6 +44,9 @@ export function VaultMilestonesSection({
   onChanged: () => void;
 }) {
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — VaultMilestonesController's write routes are the real gate.
+  const canManage = staff?.staffRole === "mutawalli_officer";
   const [expandedEvidenceId, setExpandedEvidenceId] = useState<string | null>(null);
 
   return (
@@ -50,8 +54,8 @@ export function VaultMilestonesSection({
       <SectionHeader
         title="Milestones"
         description="A project's real-world progress — a distribution can be that milestone's tranche only once it's marked completed, a maker-checker decision on the Approval Queue."
-        actionLabel={showForm ? "Cancel" : "Add milestone"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canManage ? (showForm ? "Cancel" : "Add milestone") : undefined}
+        onAction={canManage ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -60,7 +64,7 @@ export function VaultMilestonesSection({
         </Alert>
       )}
 
-      {showForm && (
+      {canManage && showForm && (
         <MilestoneForm
           vaultId={vaultId}
           nextSequence={(milestones?.length ?? 0) + 1}
@@ -107,7 +111,7 @@ export function VaultMilestonesSection({
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
-                      {m.status === "pending" && <StartButton milestoneId={m.id} onStarted={onChanged} />}
+                      {canManage && m.status === "pending" && <StartButton milestoneId={m.id} onStarted={onChanged} />}
                       {m.status !== "completed" && (
                         <ProposeGovernedActionButton
                           permissionKey="vault.milestone_complete"
@@ -116,20 +120,22 @@ export function VaultMilestonesSection({
                           onProposed={onChanged}
                         />
                       )}
-                      <Button
-                        variant="secondary"
-                        className="px-3 py-1.5 text-xs"
-                        onClick={() => setExpandedEvidenceId((current) => (current === m.id ? null : m.id))}
-                      >
-                        {m.evidenceFileUrl || m.evidenceNotes ? "Evidence ✓" : "Add evidence"}
-                      </Button>
+                      {(canManage || m.evidenceFileUrl || m.evidenceNotes) && (
+                        <Button
+                          variant="secondary"
+                          className="px-3 py-1.5 text-xs"
+                          onClick={() => setExpandedEvidenceId((current) => (current === m.id ? null : m.id))}
+                        >
+                          {m.evidenceFileUrl || m.evidenceNotes ? "Evidence ✓" : "Add evidence"}
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
                 {expandedEvidenceId === m.id && (
                   <TableRow>
                     <TableCell colSpan={5} className="bg-slate-50">
-                      <EvidencePanel milestone={m} onSaved={onChanged} />
+                      <EvidencePanel milestone={m} canEdit={canManage} onSaved={onChanged} />
                     </TableCell>
                   </TableRow>
                 )}
@@ -280,7 +286,7 @@ function MilestoneForm({ vaultId, nextSequence, onCreated }: { vaultId: string; 
 // picking a file uploads it immediately, since a staff member expects
 // "I chose a file" to mean "it's attached," not "attached once I also
 // remember to click a separate Save."
-function EvidencePanel({ milestone, onSaved }: { milestone: VaultMilestone; onSaved: () => void }) {
+function EvidencePanel({ milestone, canEdit, onSaved }: { milestone: VaultMilestone; canEdit: boolean; onSaved: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [notes, setNotes] = useState(milestone.evidenceNotes ?? "");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -332,12 +338,15 @@ function EvidencePanel({ milestone, onSaved }: { milestone: VaultMilestone; onSa
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
+            readOnly={!canEdit}
             placeholder="e.g. Drilled to 40m, water tested clean"
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={savingNotes} onClick={handleSaveNotes}>
-            {savingNotes ? "Saving…" : "Save notes"}
-          </Button>
+          {canEdit && (
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={savingNotes} onClick={handleSaveNotes}>
+              {savingNotes ? "Saving…" : "Save notes"}
+            </Button>
+          )}
         </div>
         <div className="space-y-1.5">
           <p className="text-sm font-medium text-slate-700">File</p>
@@ -351,16 +360,20 @@ function EvidencePanel({ milestone, onSaved }: { milestone: VaultMilestone; onSa
               View current file →
             </a>
           )}
-          <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="hidden" onChange={handleFileSelected} />
-          <Button
-            variant="secondary"
-            className="px-3 py-1.5 text-xs"
-            disabled={uploadingFile}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {uploadingFile ? "Uploading…" : milestone.evidenceFileUrl ? "Replace file" : "Upload file"}
-          </Button>
-          <p className="text-xs text-slate-400">PNG, JPEG, WebP, or PDF — 10MB max.</p>
+          {canEdit && (
+            <>
+              <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,application/pdf" className="hidden" onChange={handleFileSelected} />
+              <Button
+                variant="secondary"
+                className="px-3 py-1.5 text-xs"
+                disabled={uploadingFile}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploadingFile ? "Uploading…" : milestone.evidenceFileUrl ? "Replace file" : "Upload file"}
+              </Button>
+              <p className="text-xs text-slate-400">PNG, JPEG, WebP, or PDF — 10MB max.</p>
+            </>
+          )}
         </div>
       </div>
     </div>

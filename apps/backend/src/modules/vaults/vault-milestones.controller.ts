@@ -3,6 +3,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { VaultMilestonesService, CreateVaultMilestoneInput, UpdateVaultMilestoneEvidenceInput } from "./vault-milestones.service";
 import { VaultMilestoneEvidenceStorageService, MAX_SIZE_BYTES as MAX_EVIDENCE_SIZE_BYTES } from "./vault-milestone-evidence-storage.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 // No complete/approve route here, deliberately — vault.milestone_complete
 // is always a governed_actions action, invoked only internally from
@@ -16,6 +17,7 @@ export class VaultMilestonesController {
   ) {}
 
   @Post()
+  @RequiresStaffRole("mutawalli_officer")
   create(@Body() body: CreateVaultMilestoneInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
@@ -28,6 +30,7 @@ export class VaultMilestonesController {
   // Plain staff action, not governed — see markInProgress()'s own
   // comment on why this doesn't need the same checkpoint complete() does.
   @Post(":id/start")
+  @RequiresStaffRole("mutawalli_officer")
   markInProgress(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.markInProgress(id, staff.userId);
   }
@@ -38,6 +41,7 @@ export class VaultMilestonesController {
   // versa; setEvidence() only overwrites whichever field is actually
   // sent).
   @Post(":id/evidence")
+  @RequiresStaffRole("mutawalli_officer")
   @UseInterceptors(FileInterceptor("evidence", { limits: { fileSize: MAX_EVIDENCE_SIZE_BYTES } }))
   async setEvidence(
     @Param("id") id: string,

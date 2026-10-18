@@ -5,6 +5,7 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "..
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 @Controller("assets")
 export class AssetsController {
@@ -15,6 +16,7 @@ export class AssetsController {
   // only ever invoked internally, from GovernedActionsService.decide().
 
   @Post()
+  @RequiresStaffRole("mutawalli_officer")
   create(@Body() body: CreateAssetInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, { actorType: "birr_staff", actorUserId: staff.userId });
   }

@@ -15,12 +15,16 @@ import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import type { InvestmentPlacementDetail } from "../../../../lib/ops-types";
 import { Alert, Button, Card, Input, Skeleton, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export default function InvestmentPlacementDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [placement, setPlacement] = useState<InvestmentPlacementDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showProceedsForm, setShowProceedsForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — recording placement proceeds is investment_committee-only.
+  const canRecordProceeds = staff?.staffRole === "investment_committee";
 
   const load = useCallback(() => {
     apiFetchJson<InvestmentPlacementDetail>(`/investment-placements/${id}`)
@@ -86,12 +90,14 @@ export default function InvestmentPlacementDetailPage() {
             ))}{" "}
             across {activeInvestments.length} fund{activeInvestments.length === 1 ? "" : "s"}
           </p>
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setShowProceedsForm((v) => !v)}>
-            {showProceedsForm ? "Cancel" : "Record proceeds for this placement"}
-          </Button>
+          {canRecordProceeds && (
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setShowProceedsForm((v) => !v)}>
+              {showProceedsForm ? "Cancel" : "Record proceeds for this placement"}
+            </Button>
+          )}
         </div>
 
-        {showProceedsForm && (
+        {canRecordProceeds && showProceedsForm && (
           <RecordProceedsForm
             placementId={placement.id}
             investments={activeInvestments}

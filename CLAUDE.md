@@ -452,6 +452,26 @@ the stale note above.
   waqf-specific or general governance matters; store as structured data
   (`conflict_of_interest_declarations`), not free text.
 
+**Update, 2026-10-18 — every staff write route now declares who may call
+it.** An audit found ~35 staff write routes (recording proceeds,
+approving beneficiary nominations, creating vaults, recording expenses,
+...) open to any active staff member of any role, including
+`external_auditor`. Each is now gated with `@RequiresStaffRole`, per the
+owner's explicit decisions: `platform_admin` is kept **out** of
+fiduciary/operational work (it runs the platform, it doesn't handle the
+money); day-to-day waqf and Vault operations, including Vault curation,
+are `mutawalli_officer`; investments, placements and **proceeds
+allocation are `investment_committee` only** (deliberately separated
+from `mutawalli_officer`, who creates the distributions that allocation
+caps); recording proceeds is either of those two; pausing/closing a
+Vault is `mutawalli_officer` or `compliance_officer`; reviewing a COI
+declaration is `compliance_officer` only. `apps/backend/src/common
+/guards/route-role-coverage.spec.ts` now fails on any new non-GET route
+that has neither a role/permission decorator nor a reasoned entry in its
+allowlist — add one or the other, never neither. Still open: merging
+`@RequiresStaffRole` and the `roles`/`permissions` tables into one
+permission-key model.
+
 ## Core entities (build in this order)
 1. `users` (global accounts), `founders`, `founder_memberships`
 2. `birr_staff`, `roles`, `permissions`, `role_permissions`

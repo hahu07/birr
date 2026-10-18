@@ -13,6 +13,7 @@ import { markNotificationsReadForEntity } from "../../../../lib/notifications";
 import type { Beneficiary, BeneficiaryNomination, WaqfCause } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export function BeneficiariesSection({
   waqfId,
@@ -30,6 +31,9 @@ export function BeneficiariesSection({
   } = useLoadedResource(() => apiFetchJson<Beneficiary[]>(`/beneficiaries?waqfId=${waqfId}`), [waqfId]);
   const [causes, setCauses] = useState<WaqfCause[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — the backend guards on create, payout details and nomination approve/reject are the real gate.
+  const canManage = staff?.staffRole === "mutawalli_officer";
 
   useEffect(() => {
     // includeInactive=true — an existing beneficiary can already be pinned
@@ -48,6 +52,7 @@ export function BeneficiariesSection({
     <section>
       <NominationsQueue
         waqfId={waqfId}
+        canDecide={canManage}
         onDecided={() => {
           load();
           onChanged();
@@ -57,8 +62,8 @@ export function BeneficiariesSection({
       <SectionHeader
         title="Beneficiaries"
         description="People or groups eligible to receive distributions from this fund."
-        actionLabel={showForm ? "Cancel" : "Add beneficiary"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canManage ? (showForm ? "Cancel" : "Add beneficiary") : undefined}
+        onAction={canManage ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -67,7 +72,7 @@ export function BeneficiariesSection({
         </Alert>
       )}
 
-      {showForm && (
+      {canManage && showForm && (
         <BeneficiaryForm
           waqfId={waqfId}
           causes={activeCauses}
@@ -129,7 +134,7 @@ export function BeneficiariesSection({
                     <div className="flex flex-col items-start gap-1.5">
                       <StatusChangeAction beneficiary={b} onProposed={onChanged} />
                       <CriteriaUpdateAction beneficiary={b} onProposed={onChanged} />
-                      <PayoutDetailsAction beneficiary={b} onSaved={load} />
+                      {canManage && <PayoutDetailsAction beneficiary={b} onSaved={load} />}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -546,7 +551,7 @@ function PayoutDetailsAction({ beneficiary, onSaved }: { beneficiary: Beneficiar
  * viewing this waqf can decide (see BeneficiaryNominationsService
  * .approve's own comment on why).
  */
-function NominationsQueue({ waqfId, onDecided }: { waqfId: string; onDecided: () => void }) {
+function NominationsQueue({ waqfId, canDecide, onDecided }: { waqfId: string; canDecide: boolean; onDecided: () => void }) {
   const {
     data: nominations,
     error,
@@ -584,6 +589,7 @@ function NominationsQueue({ waqfId, onDecided }: { waqfId: string; onDecided: ()
             <NominationRow
               key={n.id}
               nomination={n}
+              canDecide={canDecide}
               onDecided={() => {
                 load();
                 onDecided();
@@ -596,7 +602,15 @@ function NominationsQueue({ waqfId, onDecided }: { waqfId: string; onDecided: ()
   );
 }
 
-function NominationRow({ nomination, onDecided }: { nomination: BeneficiaryNomination; onDecided: () => void }) {
+function NominationRow({
+  nomination,
+  canDecide,
+  onDecided,
+}: {
+  nomination: BeneficiaryNomination;
+  canDecide: boolean;
+  onDecided: () => void;
+}) {
   const [mode, setMode] = useState<"reject" | null>(null);
   const [reviewNotes, setReviewNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -658,7 +672,7 @@ function NominationRow({ nomination, onDecided }: { nomination: BeneficiaryNomin
             {nomination.cause && <> for {nomination.cause.name}</>} · {formatDate(nomination.createdAt)}
           </p>
         </div>
-        {mode === null && (
+        {canDecide && mode === null && (
           <div className="flex shrink-0 gap-2">
             <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={submitting} onClick={approve}>
               {submitting ? "Approving…" : "Approve"}

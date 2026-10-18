@@ -218,7 +218,7 @@ export default function StaffPage() {
                 </TableHead>
                 <TableBody>
                   {pendingInvitations.map((inv) => (
-                    <InvitationRow key={inv.id} invitation={inv} onChanged={load} />
+                    <InvitationRow key={inv.id} invitation={inv} isAdmin={isAdmin} onChanged={load} />
                   ))}
                 </TableBody>
               </Table>
@@ -334,7 +334,7 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
   );
 }
 
-function InvitationRow({ invitation, onChanged }: { invitation: Invitation; onChanged: () => void }) {
+function InvitationRow({ invitation, isAdmin, onChanged }: { invitation: Invitation; isAdmin: boolean; onChanged: () => void }) {
   const [revoking, setRevoking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const link = `${typeof window !== "undefined" ? window.location.origin : ""}/ops/accept-invitation?token=${invitation.token}`;
@@ -366,9 +366,12 @@ function InvitationRow({ invitation, onChanged }: { invitation: Invitation; onCh
           >
             Copy link
           </Button>
-          <Button variant="danger" className="px-3 py-1.5 text-xs" disabled={revoking} onClick={revoke}>
-            Revoke
-          </Button>
+          {/* A birr_staff invitation is platform_admin-only to revoke, same as to send — see InvitationsService.revoke. */}
+          {(isAdmin || invitation.inviteeKind !== "birr_staff") && (
+            <Button variant="danger" className="px-3 py-1.5 text-xs" disabled={revoking} onClick={revoke}>
+              Revoke
+            </Button>
+          )}
         </div>
       </TableCell>
     </TableRow>

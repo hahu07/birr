@@ -39,6 +39,8 @@ export function VaultInvestmentsSection({ vaultId, currency }: { vaultId: string
   const [showForm, setShowForm] = useState(false);
   const { staff } = useStaffSession();
   const isShariahBoard = staff?.staffRole === "shariah_board_member";
+  // Hides controls the backend would 403 — creating an investment is investment_committee-only.
+  const canCreate = staff?.staffRole === "investment_committee";
 
   useEffect(() => {
     apiFetchJson<Counterparty[]>("/counterparties?status=active")
@@ -54,8 +56,8 @@ export function VaultInvestmentsSection({ vaultId, currency }: { vaultId: string
       <SectionHeader
         title="Investments"
         description="Pooled contributions placed into an instrument through a Counterparty."
-        actionLabel={showForm ? "Cancel" : "Add investment"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canCreate ? (showForm ? "Cancel" : "Add investment") : undefined}
+        onAction={canCreate ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -64,7 +66,7 @@ export function VaultInvestmentsSection({ vaultId, currency }: { vaultId: string
         </Alert>
       )}
 
-      {showForm &&
+      {canCreate && showForm &&
         (activeCounterparties.length === 0 ? (
           <Alert tone="warning" title="No active counterparties yet" className="mb-4">
             Every investment needs an approved counterparty holding the money.{" "}

@@ -11,6 +11,7 @@ import type { Asset } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 const CATEGORIES: Asset["category"][] = [
   "real_estate",
@@ -24,14 +25,17 @@ const CATEGORIES: Asset["category"][] = [
 export function AssetsSection({ waqfId }: { waqfId: string }) {
   const { data: assets, error, reload: load } = useLoadedResource(() => apiFetchJson<Asset[]>(`/assets?waqfId=${waqfId}`), [waqfId]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — AssetsController.create is the real gate.
+  const canRegister = staff?.staffRole === "mutawalli_officer";
 
   return (
     <section>
       <SectionHeader
         title="Assets"
         description="Registered assets held by this fund."
-        actionLabel={showForm ? "Cancel" : "Add asset"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canRegister ? (showForm ? "Cancel" : "Add asset") : undefined}
+        onAction={canRegister ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -40,7 +44,7 @@ export function AssetsSection({ waqfId }: { waqfId: string }) {
         </Alert>
       )}
 
-      {showForm && (
+      {canRegister && showForm && (
         <AssetForm
           waqfId={waqfId}
           onCreated={() => {

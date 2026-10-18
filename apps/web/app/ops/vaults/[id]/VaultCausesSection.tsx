@@ -18,6 +18,7 @@ import { formatAmount, formatDate } from "../../../../lib/format";
 import type { CauseCategory, Vault, VaultCause } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export function VaultCausesSection({
   vaultId,
@@ -35,6 +36,9 @@ export function VaultCausesSection({
   const { data: causes, error, reload: load } = useLoadedResource(() => apiFetchJson<VaultCause[]>(`/vaults/${vaultId}/causes`), [vaultId]);
   const [categories, setCategories] = useState<CauseCategory[] | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — vault curation (causes, plans, goals) is mutawalli_officer-only.
+  const canCurate = staff?.staffRole === "mutawalli_officer";
 
   const showProceeds = vaultType === "investment";
 
@@ -49,8 +53,8 @@ export function VaultCausesSection({
       <SectionHeader
         title="Causes"
         description="What this vault's contributions support — allocation moves only via a governed approval, decided on the Approval Queue."
-        actionLabel={showForm ? "Cancel" : "Add causes"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canCurate ? (showForm ? "Cancel" : "Add causes") : undefined}
+        onAction={canCurate ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -59,7 +63,7 @@ export function VaultCausesSection({
         </Alert>
       )}
 
-      {showForm && (
+      {canCurate && showForm && (
         <CauseForm
           vaultId={vaultId}
           categories={categories ?? []}
@@ -104,10 +108,10 @@ export function VaultCausesSection({
                 </TableCell>
                 <TableCell className="text-slate-500">{c.description ?? "—"}</TableCell>
                 <TableCell className="text-slate-500">
-                  <ProjectPlanCell causeId={c.id} value={c.projectPlan} onSaved={load} />
+                  <ProjectPlanCell causeId={c.id} value={c.projectPlan} canEdit={canCurate} onSaved={load} />
                 </TableCell>
                 <TableCell className="text-slate-500">
-                  <TargetAmountCell causeId={c.id} value={c.targetAmount} onSaved={load} />
+                  <TargetAmountCell causeId={c.id} value={c.targetAmount} canEdit={canCurate} onSaved={load} />
                 </TableCell>
                 <TableCell className="text-slate-500">
                   <AllocationCell
@@ -479,7 +483,17 @@ function CustomCauseForm({ vaultId, onCreated }: { vaultId: string; onCreated: (
 // shape from AllocationCell above, which proposes a governed action.
 // Editing descriptive content isn't a fiduciary decision the way moving
 // an allocation ceiling is.
-function ProjectPlanCell({ causeId, value, onSaved }: { causeId: string; value: string | null; onSaved: () => void }) {
+function ProjectPlanCell({
+  causeId,
+  value,
+  canEdit,
+  onSaved,
+}: {
+  causeId: string;
+  value: string | null;
+  canEdit: boolean;
+  onSaved: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [submitting, setSubmitting] = useState(false);
@@ -489,17 +503,19 @@ function ProjectPlanCell({ causeId, value, onSaved }: { causeId: string; value: 
     return (
       <div className="flex items-start gap-2">
         <span className="max-w-xs truncate">{value || "—"}</span>
-        <button
-          type="button"
-          className="shrink-0 text-xs font-medium text-primary-700 hover:underline"
-          onClick={() => {
-            setDraft(value ?? "");
-            setError(null);
-            setEditing(true);
-          }}
-        >
-          {value ? "Edit" : "Add"}
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            className="shrink-0 text-xs font-medium text-primary-700 hover:underline"
+            onClick={() => {
+              setDraft(value ?? "");
+              setError(null);
+              setEditing(true);
+            }}
+          >
+            {value ? "Edit" : "Add"}
+          </button>
+        )}
       </div>
     );
   }
@@ -549,7 +565,17 @@ function ProjectPlanCell({ causeId, value, onSaved }: { causeId: string; value: 
 // fiduciary ceiling (that's AllocationCell's governed propose below).
 // Clearing the field back to empty sends null, removing the goal
 // (and the public progress bar) rather than leaving a stale number.
-function TargetAmountCell({ causeId, value, onSaved }: { causeId: string; value: string | null; onSaved: () => void }) {
+function TargetAmountCell({
+  causeId,
+  value,
+  canEdit,
+  onSaved,
+}: {
+  causeId: string;
+  value: string | null;
+  canEdit: boolean;
+  onSaved: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [submitting, setSubmitting] = useState(false);
@@ -559,17 +585,19 @@ function TargetAmountCell({ causeId, value, onSaved }: { causeId: string; value:
     return (
       <div className="flex items-center gap-2">
         <span>{value ? formatAmount(value) : "—"}</span>
-        <button
-          type="button"
-          className="shrink-0 text-xs font-medium text-primary-700 hover:underline"
-          onClick={() => {
-            setDraft(value ?? "");
-            setError(null);
-            setEditing(true);
-          }}
-        >
-          {value ? "Edit" : "Set"}
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            className="shrink-0 text-xs font-medium text-primary-700 hover:underline"
+            onClick={() => {
+              setDraft(value ?? "");
+              setError(null);
+              setEditing(true);
+            }}
+          >
+            {value ? "Edit" : "Set"}
+          </button>
+        )}
       </div>
     );
   }

@@ -13,6 +13,7 @@ import { formatAmount } from "../../../../lib/format";
 import type { WaqfExpense, WaqfLedgerAccount, WaqfMilestone } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export function WaqfExpensesSection({
   waqfId,
@@ -36,6 +37,9 @@ export function WaqfExpensesSection({
   } = useLoadedResource(() => apiFetchJson<WaqfExpense[]>(`/waqf-expenses?waqfId=${waqfId}`), [waqfId]);
   const [expenseAccounts, setExpenseAccounts] = useState<WaqfLedgerAccount[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — WaqfExpensesController.create is the real gate.
+  const canRecord = staff?.staffRole === "mutawalli_officer";
 
   useEffect(() => {
     apiFetchJson<WaqfLedgerAccount[]>("/waqf-ledger-accounts")
@@ -50,8 +54,8 @@ export function WaqfExpensesSection({
       <SectionHeader
         title="Expenses"
         description="Itemized project spend — each one posts a balanced entry to this waqf's ledger below."
-        actionLabel={showForm ? "Cancel" : "Add expense"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canRecord ? (showForm ? "Cancel" : "Add expense") : undefined}
+        onAction={canRecord ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -60,7 +64,7 @@ export function WaqfExpensesSection({
         </Alert>
       )}
 
-      {showForm &&
+      {canRecord && showForm &&
         (expenseAccounts.length === 0 ? (
           <Alert tone="warning" title="No expense accounts yet" className="mb-4">
             Add an expense account on the Waqf Ledger Accounts page first.
