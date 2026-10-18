@@ -502,9 +502,10 @@ needs the same two-person rule.
 for governed maker/checker ones. Grants live in `seed-data.ts`
 (`accessPermissions` alongside the governed list). `@RequiresStaffRole` and
 `StaffRoleGuard` are gone. In-service checks use `staffHasAccess(staff,
-key)`, e.g. `caseload.view_all`. The Ops Console never compares role names
-for access: `GET /birr-staff/me` returns `permissions` and components call
-`useStaffSession().can(key)`. Converting the 97 old role checks changed no
+key)`, e.g. `caseload.view_all`. The Ops Console decides access from
+permissions rather than role names: `GET /birr-staff/me` returns
+`permissions` and components call `useStaffSession().can(key)`. Showing a
+role name as a label is still fine. Converting the 97 old role checks changed no
 access; a per-route before/after comparison showed 0 differences. Owner's
 decisions for the next phases: **Phase 2**, a staff member may hold several
 roles, an External Auditor may hold no other role, and adding or removing a
@@ -514,8 +515,9 @@ Trustees only**, with **every permission editable**, including the
 staff-security ones. That was the owner's explicit choice over locking
 them, so the Board approval is the only safeguard on loosening the rules
 for changing the rules. Once Phase 3 ships, the database becomes the
-source of truth and `sync-permissions` must stop overwriting existing
-grants on deploy, only adding new permissions with their default grants.
+source of truth, so `sync-permissions` should only add new permissions
+with their default grants on deploy, not overwrite grants changed in the
+Ops Console (a deliberate reset, e.g. a full re-seed, remains possible).
 
 ## Core entities (build in this order)
 1. `users` (global accounts), `founders`, `founder_memberships`
