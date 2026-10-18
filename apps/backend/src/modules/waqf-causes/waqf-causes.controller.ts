@@ -12,7 +12,7 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "..
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 class AllocateProceedsProportionallyBody {
   @IsString()
@@ -24,7 +24,7 @@ export class WaqfCausesController {
   constructor(private readonly service: WaqfCausesService) {}
 
   @Post()
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("waqf.cause_manage")
   create(@Body() body: CreateWaqfCauseInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
@@ -67,7 +67,7 @@ export class WaqfCausesController {
   // allocate() above. No @Public() — staff session required by default,
   // matching create()'s posture, not the Founder-facing routes.
   @Post(":id/allocate-proceeds")
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("waqf.proceeds_allocate")
   allocateProceeds(
     @Param("id") id: string,
     @Body() body: AllocateCauseInput,
@@ -82,7 +82,7 @@ export class WaqfCausesController {
   // @Public() posture. See allocateProceedsProportionally's own comment
   // for why this stays staff-triggered, not automatic.
   @Post("allocate-proceeds-proportionally")
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("waqf.proceeds_allocate")
   allocateProceedsProportionally(
     @Body() body: AllocateProceedsProportionallyBody,
     @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
@@ -95,7 +95,7 @@ export class WaqfCausesController {
   // @Public() — staff session required by default, same posture as
   // create()/allocateProceeds() above.
   @Post(":id/project-plan")
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("waqf.cause_manage")
   updateProjectPlan(
     @Param("id") id: string,
     @Body() body: UpdateWaqfCauseProjectPlanInput,

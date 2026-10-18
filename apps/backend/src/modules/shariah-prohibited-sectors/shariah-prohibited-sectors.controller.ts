@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post, Put } from "@nestjs/common";
 import { ShariahProhibitedSectorsService, UpsertShariahProhibitedSectorInput } from "./shariah-prohibited-sectors.service";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 
 // Same posture as CompliancePolicySetsController: reads default to any
@@ -16,13 +16,13 @@ export class ShariahProhibitedSectorsController {
   }
 
   @Post()
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("shariah_sector.manage")
   create(@Body() body: UpsertShariahProhibitedSectorInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
 
   @Put(":id")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("shariah_sector.manage")
   update(
     @Param("id") id: string,
     @Body() body: UpsertShariahProhibitedSectorInput,
@@ -32,7 +32,7 @@ export class ShariahProhibitedSectorsController {
   }
 
   @Delete(":id")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("shariah_sector.manage")
   async remove(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.remove(id, staff.userId);
     return { ok: true };

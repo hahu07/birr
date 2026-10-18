@@ -8,7 +8,7 @@ import {
   SetPayoutDetailsInput,
 } from "./counterparties.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { CounterpartyStatus } from "@birr/db";
 
 class StatusChangeInput {
@@ -27,25 +27,25 @@ export class CounterpartiesController {
   constructor(private readonly service: CounterpartiesService) {}
 
   @Post()
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("counterparty.register")
   register(@Body() body: RegisterCounterpartyInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.register(body, staff.userId);
   }
 
   @Put(":id")
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("counterparty.register")
   update(@Param("id") id: string, @Body() body: UpdateCounterpartyInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.update(id, body, staff.userId);
   }
 
   @Post(":id/shariah-approval")
-  @RequiresStaffRole("shariah_board_member")
+  @RequiresAccess("counterparty.shariah_approve")
   recordShariahApproval(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.recordShariahApproval(id, staff.userId);
   }
 
   @Put(":id/concentration-limit")
-  @RequiresStaffRole("compliance_officer")
+  @RequiresAccess("counterparty.restrict")
   setConcentrationLimit(
     @Param("id") id: string,
     @Body() body: SetConcentrationLimitInput,
@@ -59,7 +59,7 @@ export class CounterpartiesController {
   // assertPayoutReady. mutawalli_officer, matching that role's general
   // case-carrying-operational-detail posture elsewhere in this codebase.
   @Put(":id/payout-details")
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("counterparty.payout_details")
   setPayoutDetails(
     @Param("id") id: string,
     @Body() body: SetPayoutDetailsInput,
@@ -69,13 +69,13 @@ export class CounterpartiesController {
   }
 
   @Post(":id/suspend")
-  @RequiresStaffRole("compliance_officer")
+  @RequiresAccess("counterparty.restrict")
   suspend(@Param("id") id: string, @Body() body: StatusChangeInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.suspend(id, body.reason, staff.userId);
   }
 
   @Post(":id/blacklist")
-  @RequiresStaffRole("compliance_officer")
+  @RequiresAccess("counterparty.restrict")
   blacklist(@Param("id") id: string, @Body() body: StatusChangeInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.blacklist(id, body.reason, staff.userId);
   }
@@ -84,7 +84,7 @@ export class CounterpartiesController {
   // same investment_committee gate as registering one in the first
   // place, blocked server-side if it was ever actually used.
   @Post(":id/deregister")
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("counterparty.register")
   deregister(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.deregister(id, staff.userId);
   }

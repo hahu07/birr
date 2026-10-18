@@ -4,13 +4,8 @@ import { BlogService, CreateBlogArticleInput, UpdateBlogArticleInput } from "./b
 import { BlogImageStorageService, MAX_BLOG_IMAGE_BYTES } from "./blog-image-storage.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
-// Who may author/edit/take down an article. Deliberately NOT everyone on
-// staff (unlike Vault's plain CRUD): this is public marketing for a
-// fiduciary service. Going *live* is separately gated by the governed
-// `blog.publish` action — see GovernedActionsService.
-const BLOG_AUTHOR_ROLES = ["mutawalli_officer", "legal_adviser", "compliance_officer", "platform_admin"] as const;
 
 @Controller("blog-articles")
 export class BlogController {
@@ -42,19 +37,19 @@ export class BlogController {
 
   // ---- Staff only ----
 
-  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @RequiresAccess("blog.manage")
   @Post()
   create(@Body() body: CreateBlogArticleInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
 
-  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @RequiresAccess("blog.manage")
   @Get()
   list() {
     return this.service.listForStaff();
   }
 
-  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @RequiresAccess("blog.manage")
   @Get(":id")
   async findById(@Param("id") id: string) {
     const article = await this.service.findById(id);
@@ -62,19 +57,19 @@ export class BlogController {
     return article;
   }
 
-  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @RequiresAccess("blog.manage")
   @Patch(":id")
   update(@Param("id") id: string, @Body() body: UpdateBlogArticleInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.update(id, body, staff.userId);
   }
 
-  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @RequiresAccess("blog.manage")
   @Post(":id/unpublish")
   unpublish(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.unpublish(id, staff.userId);
   }
 
-  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @RequiresAccess("blog.manage")
   @Post(":id/archive")
   archive(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.archive(id, staff.userId);
@@ -83,7 +78,7 @@ export class BlogController {
   // multipart/form-data, field "image". `limits.fileSize` stops multer buffering
   // an oversized upload before the app-layer check runs. Drafts only, checked
   // before the file is stored.
-  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @RequiresAccess("blog.manage")
   @Post(":id/cover")
   @UseInterceptors(FileInterceptor("image", { limits: { fileSize: MAX_BLOG_IMAGE_BYTES } }))
   async uploadCover(
@@ -97,7 +92,7 @@ export class BlogController {
     return this.service.setCover(id, url, staff.userId);
   }
 
-  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @RequiresAccess("blog.manage")
   @Post(":id/cover/remove")
   removeCover(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.setCover(id, null, staff.userId);
@@ -105,7 +100,7 @@ export class BlogController {
 
   // An image to place inside the article text. Returns only its URL — the
   // editor inserts it into the body as ![description](url).
-  @RequiresStaffRole([...BLOG_AUTHOR_ROLES])
+  @RequiresAccess("blog.manage")
   @Post(":id/images")
   @UseInterceptors(FileInterceptor("image", { limits: { fileSize: MAX_BLOG_IMAGE_BYTES } }))
   async uploadBodyImage(@Param("id") id: string, @UploadedFile() image: Express.Multer.File | undefined) {

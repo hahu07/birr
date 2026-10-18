@@ -5,7 +5,7 @@ import { ImageGenerationService } from "./image-generation.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { verifyAiAgentApiKey } from "../../common/auth/ai-agent-auth";
 import { Public } from "../../common/guards/public.decorator";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 
 class GenerateImageInput {
@@ -116,7 +116,7 @@ export class AiAgentsController {
   // specifically, not just any Birr staff member" — deliberately no
   // platform_admin override here, that would defeat the point.
   @Post(":name/drafts/:draftId/publish")
-  @RequiresStaffRole(["legal_adviser", "compliance_officer"])
+  @RequiresAccess("agent_draft.publish")
   async publishDraft(@Param("draftId") draftId: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.publishDraft(draftId, staff);
   }

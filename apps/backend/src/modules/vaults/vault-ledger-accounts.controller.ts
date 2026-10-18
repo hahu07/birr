@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { VaultLedgerAccountsService, CreateVaultLedgerAccountInput } from "./vault-ledger-accounts.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 // No @Public() — this is Vault's own chart of accounts, an internal
 // accounting concern, never something a donor or Founder needs to see.
@@ -18,13 +18,13 @@ export class VaultLedgerAccountsController {
   }
 
   @Post()
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("vault.ledger_account_manage")
   create(@Body() body: CreateVaultLedgerAccountInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
 
   @Post(":id/retire")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("vault.ledger_account_manage")
   async retire(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.retire(id, staff.userId);
     return { ok: true };

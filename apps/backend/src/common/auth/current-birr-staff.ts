@@ -36,7 +36,7 @@ export interface AuthenticatedBirrStaff {
  * resolveBirrStaffFromSession() directly in the handler body to branch
  * on or resolve the staff caller — with no @RequiresStaffRole/
  * @RequiresPermission on that specific handler to independently enforce
- * MFA the way StaffRoleGuard/PermissionGuard do. That meant a staff
+ * MFA the way PermissionGuard does. That meant a staff
  * session with mfaEnabled: false — which SessionAuthGuard's own doc
  * comment says should be rejected "on any route not marked
  * @MfaExempt()" — could still reach real staff reads/writes on those
@@ -74,7 +74,7 @@ export async function resolveBirrStaffFromSession(
   if (!birrStaff || birrStaff.status !== "active") {
     throw new UnauthorizedException("Unknown or inactive Birr staff.");
   }
-  // Same message SessionAuthGuard/StaffRoleGuard/PermissionGuard already
+  // Same message SessionAuthGuard/PermissionGuard already
   // throw via assertStaffMfa, so a caller can't tell which layer caught it.
   if (requireMfa && !birrStaff.user.mfaEnabled) {
     throw new ForbiddenException("Two-factor authentication setup is required before continuing.");
@@ -135,7 +135,7 @@ export async function isBirrStaffSession(request: Request): Promise<boolean> {
 // Stateless (just wraps Reflect.getMetadata) — constructed directly
 // rather than injected, since createParamDecorator's factory isn't a
 // class and has no constructor to inject into. Same instantiation
-// SessionAuthGuard/StaffRoleGuard/PermissionGuard get via DI, just
+// SessionAuthGuard/PermissionGuard get via DI, just
 // without DI available here.
 const reflector = new Reflector();
 

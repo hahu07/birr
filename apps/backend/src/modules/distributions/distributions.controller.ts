@@ -5,7 +5,7 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "..
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 @Controller("distributions")
 export class DistributionsController {
@@ -25,7 +25,7 @@ export class DistributionsController {
   // committed sum, so an ineligible role could exhaust a cause's headroom
   // (2026-09-29 codebase walkthrough finding).
   @Post()
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("distribution.create")
   create(@Body() body: CreateDistributionInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
@@ -75,7 +75,7 @@ export class DistributionsController {
   // restriction beyond an authenticated staff session, same posture as
   // create() above.
   @Post(":id/retry-disbursement")
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("distribution.create")
   async retryDisbursement(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.retryDisbursement(id, staff.userId);
     return { ok: true };

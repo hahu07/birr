@@ -50,7 +50,6 @@ import { BlogModule } from "./modules/blog/blog.module";
 import { ImpactModule } from "./modules/impact/impact.module";
 import { StorageModule } from "./common/storage/storage.module";
 import { PermissionGuard } from "./common/guards/permission.guard";
-import { StaffRoleGuard } from "./common/guards/staff-role.guard";
 import { SessionAuthGuard } from "./common/guards/session-auth.guard";
 
 @Module({
@@ -112,13 +111,12 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     // rethrows every exception unchanged either way.
     { provide: APP_FILTER, useClass: SentryGlobalFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    // Default-deny floor — must run before PermissionGuard/StaffRoleGuard
+    // Default-deny floor — must run before PermissionGuard
     // (Nest runs multiple APP_GUARDs in provider-registration order; all
     // must pass). See SessionAuthGuard's own comment for why this exists
     // as a separate guard rather than folded into the other two.
     { provide: APP_GUARD, useClass: SessionAuthGuard },
     { provide: APP_GUARD, useClass: PermissionGuard },
-    { provide: APP_GUARD, useClass: StaffRoleGuard },
   ],
 })
 export class AppModule {}

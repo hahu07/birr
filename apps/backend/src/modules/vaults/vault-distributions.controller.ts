@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Param, Body, NotFoundException, Query } from "@nestjs/common";
 import { VaultDistributionsService, CreateVaultDistributionInput } from "./vault-distributions.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 // No approve/reject route here, deliberately — vault.distribution_approve
 // is always a governed_actions action, invoked only internally from
@@ -15,7 +15,7 @@ export class VaultDistributionsController {
   // mirrored here since vault.distribution_approve's canMaker grant in
   // seed-data.ts is identically mutawalli_officer-only.
   @Post()
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("vault.distribution_create")
   create(@Body() body: CreateVaultDistributionInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
@@ -31,7 +31,7 @@ export class VaultDistributionsController {
   // restriction beyond an authenticated staff session — same posture as
   // DistributionsController.retryDisbursement.
   @Post(":id/retry-disbursement")
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("vault.distribution_create")
   async retryDisbursement(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.retryDisbursement(id, staff.userId);
     return { ok: true };

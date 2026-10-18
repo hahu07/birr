@@ -9,7 +9,7 @@ import {
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 // @Public() — reachable by a signed-in Founder proposing/listing their
 // own nominations (Founder-Portal self-service, same posture as
@@ -37,13 +37,13 @@ export class BeneficiaryNominationsController {
   }
 
   @Post(":id/approve")
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("beneficiary.nomination_review")
   approve(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.approve(id, staff.userId);
   }
 
   @Post(":id/reject")
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("beneficiary.nomination_review")
   reject(
     @Param("id") id: string,
     @Body() body: RejectBeneficiaryNominationInput,

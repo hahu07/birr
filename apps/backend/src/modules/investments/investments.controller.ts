@@ -5,7 +5,7 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "..
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 @Controller("investments")
 export class InvestmentsController {
@@ -17,7 +17,7 @@ export class InvestmentsController {
   // invoked internally, from GovernedActionsService.decide().
 
   @Post()
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("investment.create")
   create(@Body() body: CreateInvestmentInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
@@ -54,7 +54,7 @@ export class InvestmentsController {
   // Single shariah_board_member sign-off, not governed_actions — same
   // posture as counterparties.controller.ts's own shariah-approval
   // route.
-  @RequiresStaffRole("shariah_board_member")
+  @RequiresAccess("investment.shariah_screen")
   @Post(":id/shariah-screening/decide")
   decideShariahScreening(
     @Param("id") id: string,

@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Param, Body, NotFoundException, Query } from "@nestjs/common";
 import { VaultInvestmentsService, CreateVaultInvestmentInput, RecordVaultShariahScreeningInput } from "./vault-investments.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 // No change-allocation route here, deliberately — vault.investment_change
 // is always a governed_actions action, invoked only internally from
@@ -11,7 +11,7 @@ export class VaultInvestmentsController {
   constructor(private readonly service: VaultInvestmentsService) {}
 
   @Post()
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("vault.investment_create")
   create(@Body() body: CreateVaultInvestmentInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
@@ -30,7 +30,7 @@ export class VaultInvestmentsController {
 
   // Single shariah_board_member sign-off, not governed_actions — mirrors
   // InvestmentsController's own equivalent route exactly.
-  @RequiresStaffRole("shariah_board_member")
+  @RequiresAccess("vault.investment_shariah_screen")
   @Post(":id/shariah-screening/decide")
   decideShariahScreening(
     @Param("id") id: string,

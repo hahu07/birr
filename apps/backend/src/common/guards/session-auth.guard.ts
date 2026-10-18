@@ -8,7 +8,7 @@ import { assertStaffMfa } from "./mfa-exempt.decorator";
 /**
  * Default-deny floor for every route in the app: requires a valid
  * Birr-staff session unless the route (or its whole controller) is
- * marked @Public(). Runs before PermissionGuard/StaffRoleGuard (see
+ * marked @Public(). Runs before PermissionGuard (see
  * providers order in app.module.ts) — those two guards keep
  * independently resolving staff for their own eligibility checks; this
  * guard's job is only to make "no guard metadata at all" mean "still

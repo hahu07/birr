@@ -10,7 +10,7 @@ import {
 } from "./cause-category-suggestions.service";
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { Public } from "../../common/guards/public.decorator";
 
 // Mirrors CreateCauseCategoryInput's own icon/sortOrder/typicalWaqfTypes
@@ -55,13 +55,13 @@ export class CauseCategorySuggestionsController {
   }
 
   @Post(":id/approve")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("cause_category.manage")
   approve(@Param("id") id: string, @Body() body: ApproveBody, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.approve(id, body, staff.userId);
   }
 
   @Post(":id/reject")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("cause_category.manage")
   reject(
     @Param("id") id: string,
     @Body() body: RejectCauseSuggestionInput,

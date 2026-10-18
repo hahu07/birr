@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Put } from "@nestjs/common";
 import { VaultDonorThresholdsService, UpsertVaultDonorThresholdInput } from "./vault-donor-thresholds.service";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 
 // No @Public() here, deliberately — unlike WaqfFundingController's
@@ -17,7 +17,7 @@ export class VaultDonorThresholdsController {
   }
 
   @Put(":currency")
-  @RequiresStaffRole("compliance_officer")
+  @RequiresAccess("vault.donor_threshold_set")
   upsert(
     @Param("currency") currency: string,
     @Body() body: UpsertVaultDonorThresholdInput,

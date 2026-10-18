@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, Query } from "@nestjs/common";
 import { WaqfExpensesService, CreateWaqfExpenseInput } from "./waqf-expenses.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 // No approve/reject route — recording an expense is plain staff CRUD,
 // same trust tier as DistributionsController.create() (only
@@ -12,7 +12,7 @@ export class WaqfExpensesController {
   constructor(private readonly service: WaqfExpensesService) {}
 
   @Post()
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("waqf.expense_record")
   create(@Body() body: CreateWaqfExpenseInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }

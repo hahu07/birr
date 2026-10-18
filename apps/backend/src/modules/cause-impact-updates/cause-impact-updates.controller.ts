@@ -5,7 +5,7 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "..
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 // @Public() — also reachable read-only by the owning Founder (their own
 // waqf's cause only), same session-priority pattern as
@@ -16,7 +16,7 @@ export class CauseImpactUpdatesController {
   constructor(private readonly service: CauseImpactUpdatesService) {}
 
   @Post()
-  @RequiresStaffRole("mutawalli_officer")
+  @RequiresAccess("cause_impact.log")
   create(@Body() body: CreateCauseImpactUpdateInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }

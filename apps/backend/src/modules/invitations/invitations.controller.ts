@@ -3,7 +3,7 @@ import { IsEmail, IsEnum, IsOptional, IsString } from "class-validator";
 import type { Request, Response } from "express";
 import { InvitationsService, InviteInput, AcceptInput } from "./invitations.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { setSessionCookie, setStaffSessionCookie, signSessionToken, SESSION_COOKIE_NAME, hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
@@ -156,7 +156,7 @@ export class InvitationsController {
   // Staff invitation links are emailed only, never shown in the app (see
   // redactStaffInvitationToken) — this is how a failed email is retried.
   @Post(":id/resend-email")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("staff.invitation_manage")
   resendEmail(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.resendStaffInvitationEmail(id, staff.userId);
   }

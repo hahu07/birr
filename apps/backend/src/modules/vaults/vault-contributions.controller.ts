@@ -3,7 +3,7 @@ import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
 import { VaultContributionsService, HoldVaultContributionInput, InitiateVaultContributionInput } from "./vault-contributions.service";
 import { Public } from "../../common/guards/public.decorator";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 
 // No class-level @Public() — only initiate()/findById() below need it
@@ -44,7 +44,7 @@ export class VaultContributionsController {
   // AML review CLAUDE.md's own dated note points to (2026-09-15) —
   // same compliance-judgment tier as hold()/release() below.
   @Get("structuring-review")
-  @RequiresStaffRole(["compliance_officer", "audit_committee", "board_of_trustees", "platform_admin"])
+  @RequiresAccess("vault.structuring_review")
   structuringReview(@Query("minFraction") minFraction?: string) {
     const parsed = minFraction ? Number(minFraction) : undefined;
     return this.service.getStructuringReview(parsed && !Number.isNaN(parsed) ? parsed : undefined);
@@ -77,13 +77,13 @@ export class VaultContributionsController {
   // payment for review is a fraud/AML judgment call, same role tier as
   // CounterpartiesController's own compliance-sensitive routes.
   @Post(":id/hold")
-  @RequiresStaffRole("compliance_officer")
+  @RequiresAccess("vault.contribution_hold")
   hold(@Param("id") id: string, @Body() body: HoldVaultContributionInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.hold(id, body.reason, staff.userId);
   }
 
   @Post(":id/release")
-  @RequiresStaffRole("compliance_officer")
+  @RequiresAccess("vault.contribution_hold")
   release(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.release(id, staff.userId);
   }

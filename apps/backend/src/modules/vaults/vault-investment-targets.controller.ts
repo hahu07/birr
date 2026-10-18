@@ -2,13 +2,13 @@ import { Body, Controller, Delete, Get, Param, Post, Query } from "@nestjs/commo
 import { InvestmentInstrumentType } from "@birr/db";
 import { VaultInvestmentTargetsService, SetVaultInvestmentTargetInput } from "./vault-investment-targets.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 @Controller("vault-investment-targets")
 export class VaultInvestmentTargetsController {
   constructor(private readonly service: VaultInvestmentTargetsService) {}
 
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("vault.investment_target_set")
   @Post()
   setTarget(
     @Body() body: SetVaultInvestmentTargetInput & { vaultId: string },
@@ -22,7 +22,7 @@ export class VaultInvestmentTargetsController {
     return this.service.list(vaultId);
   }
 
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("vault.investment_target_set")
   @Delete(":vaultId/:instrumentType")
   remove(
     @Param("vaultId") vaultId: string,
