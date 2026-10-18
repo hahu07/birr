@@ -2163,7 +2163,11 @@ export class GovernedActionsService {
     if (!action) return null;
     const [withFoundation] = await this.attachProposedFoundations([action]);
     const handler = this.handlers.get(action.permission.key);
-    const currentState = (await handler?.describeCurrentState?.(action.payload)) ?? null;
+    // Same tolerance as attachSummaries: a stale payload shows no diff
+    // rather than failing the whole detail view.
+    const currentState = await Promise.resolve(handler?.describeCurrentState?.(action.payload))
+      .then((state) => state ?? null)
+      .catch(() => null);
     return { ...withFoundation, currentState };
   }
 
@@ -2227,7 +2231,17 @@ export class GovernedActionsService {
     return Promise.all(
       actions.map(async (action) => {
         const handler = this.handlers.get(action.permission.key);
-        const summary = (await handler?.describePayload?.(action.payload)) ?? null;
+        // One proposal whose payload no longer fits its handler (e.g. saved
+        // before a schema change) must not take the whole Approvals list
+        // down with it — it just shows without a summary.
+        const summary = await Promise.resolve(handler?.describePayload?.(action.payload))
+          .then((s) => s ?? null)
+          .catch((err: unknown) => {
+            this.logger.warn(
+              `Couldn't summarize governed action "${(action as { id?: string }).id}": ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return null;
+          });
         return { ...action, summary };
       }),
     );

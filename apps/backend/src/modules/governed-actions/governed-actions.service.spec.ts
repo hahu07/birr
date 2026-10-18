@@ -2446,6 +2446,30 @@ describe("GovernedActionsService", () => {
       await expect(assertRoleChangeAllowed("remove", target, "platform_admin", prisma)).resolves.toBeUndefined();
     });
   });
+  // A proposal saved before its handler's payload shape changed (found
+  // 2026-10-18: a vault.cause_allocate proposal from before allocations
+  // became per-currency) must not break the Approvals list for everyone.
+  test("list() still works when one pending proposal's payload no longer fits its handler", async () => {
+    const maker = await prisma.user.create({
+      data: { email: `stale-payload-${randomUUID().slice(0, 8)}@example.com`, fullName: "Stale Payload Maker" },
+    });
+    const permission = await prisma.permission.findUniqueOrThrow({ where: { key: "vault.cause_allocate" } });
+    const stale = await prisma.governedAction.create({
+      data: {
+        permissionId: permission.id,
+        makerType: "human",
+        makerUserId: maker.id,
+        status: "proposed",
+        payload: { vaultCauseId: randomUUID(), newAllocatedAmount: "100" }, // no currency
+      },
+    });
+    governedActionIds.push(stale.id);
+
+    const listed = await service.list({ status: "proposed" });
+    expect(listed.find((a) => a.id === stale.id)?.summary).toBeNull();
+    expect((await service.findById(stale.id))?.currentState).toBeNull();
+  }, 30000);
+
   // role.permission_change (2026-10-18) — editing what a role may do from
   // the Ops Console. Maker: platform_admin; checker: board_of_trustees
   // only. Guard rails: no lock-outs, no role both proposes and approves,
