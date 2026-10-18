@@ -18,9 +18,9 @@ export function CauseImpactSection({ waqfId, causesVersion }: { waqfId: string; 
   const [causes, setCauses] = useState<WaqfCause[]>([]);
   const [selectedCauseId, setSelectedCauseId] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — CauseImpactUpdatesController.create is the real gate.
-  const canLog = staff?.staffRole === "mutawalli_officer";
+  const canLog = can("cause_impact.log");
 
   useEffect(() => {
     apiFetchJson<WaqfCause[]>(`/waqf-causes?waqfId=${waqfId}`)

@@ -31,6 +31,27 @@ describe("BirrStaffService", () => {
     await prisma.$disconnect();
   });
 
+  test("getSessionSummary() reports exactly the permissions the person's role holds", async () => {
+    const user = await prisma.user.create({
+      data: { email: `birr-staff-summary-${Date.now()}@example.com`, fullName: "Summary Fixture Officer" },
+    });
+    await prisma.birrStaff.create({ data: { userId: user.id, staffRole: "mutawalli_officer" } });
+
+    const summary = await service.getSessionSummary(user.id);
+    // A plain access grant and a governed maker grant are both listed…
+    expect(summary.permissions).toEqual(expect.arrayContaining(["vault.curate", "distribution.approve"]));
+    // …another role's grants are not.
+    expect(summary.permissions).not.toContain("platform_settings.manage");
+
+    // Approving (checker) isn't "can do": the Board approves distributions
+    // but doesn't hold distribution.approve as a permission to act on.
+    const boardUser = await prisma.user.create({
+      data: { email: `birr-staff-summary-board-${Date.now()}@example.com`, fullName: "Summary Fixture Board" },
+    });
+    await prisma.birrStaff.create({ data: { userId: boardUser.id, staffRole: "board_of_trustees" } });
+    expect((await service.getSessionSummary(boardUser.id)).permissions).not.toContain("distribution.approve");
+  });
+
   describe("MFA", () => {
     let mfaUserId: string;
     let mfaStaffId: string;

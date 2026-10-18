@@ -69,10 +69,10 @@ export default function VaultDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [vault, setVault] = useState<Vault | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — VaultsController's guards are the real gate.
-  const canCurate = staff?.staffRole === "mutawalli_officer";
-  const canChangeStatus = canCurate || staff?.staffRole === "compliance_officer";
+  const canCurate = can("vault.curate");
+  const canChangeStatus = can("vault.status_change");
   // Bumped by VaultCausesSection whenever a cause is added or an
   // allocation proposal is decided-in-place refreshed — Distributions
   // needs the fresh cause list to pick from.

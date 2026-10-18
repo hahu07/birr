@@ -45,11 +45,11 @@ export function CausesSection({
     reload: load,
   } = useLoadedResource(() => apiFetchJson<WaqfCause[]>(`/waqf-causes?waqfId=${waqfId}`), [waqfId, proceedsVersion]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — WaqfCausesController's guards are the real gate.
   // Causes/project plans are mutawalli_officer; proceeds allocation is investment_committee only.
-  const canManageCauses = staff?.staffRole === "mutawalli_officer";
-  const canAllocateProceeds = staff?.staffRole === "investment_committee";
+  const canManageCauses = can("waqf.cause_manage");
+  const canAllocateProceeds = can("waqf.proceeds_allocate");
 
   // Only an Investment-type waqf can ever have recorded WaqfProceeds
   // (WaqfProceedsService.record rejects every other type) — the

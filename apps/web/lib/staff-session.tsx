@@ -10,12 +10,17 @@ interface StaffSessionValue {
   staff: BirrStaff | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  // Whether the signed-in staff member's role holds this permission (GET
+  // /birr-staff/me's `permissions`). For showing or hiding controls only —
+  // the backend's own guards are the real boundary.
+  can: (permissionKey: string) => boolean;
 }
 
 const StaffSessionContext = createContext<StaffSessionValue>({
   staff: null,
   loading: true,
   signOut: async () => {},
+  can: () => false,
 });
 
 // Real session — GET /birr-staff/me resolves identity from the httpOnly
@@ -47,8 +52,10 @@ export function StaffSessionProvider({ children }: { children: ReactNode }) {
     setStaff(null);
   }
 
+  const can = (permissionKey: string) => staff?.permissions?.includes(permissionKey) ?? false;
+
   return (
-    <StaffSessionContext.Provider value={{ staff, loading, signOut }}>
+    <StaffSessionContext.Provider value={{ staff, loading, signOut, can }}>
       {children}
     </StaffSessionContext.Provider>
   );

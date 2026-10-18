@@ -607,6 +607,9 @@ export interface BirrStaff {
   status: "active" | "suspended";
   createdAt: string;
   updatedAt: string;
+  // Only on GET /birr-staff/me (the signed-in person): every permission
+  // their role holds. Read it through useStaffSession().can().
+  permissions?: string[];
   user: {
     id: string;
     email: string;

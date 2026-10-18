@@ -44,9 +44,9 @@ export function VaultMilestonesSection({
   onChanged: () => void;
 }) {
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — VaultMilestonesController's write routes are the real gate.
-  const canManage = staff?.staffRole === "mutawalli_officer";
+  const canManage = can("vault.milestone_manage");
   const [expandedEvidenceId, setExpandedEvidenceId] = useState<string | null>(null);
 
   return (

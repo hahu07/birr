@@ -30,7 +30,6 @@ import {
 
 // Matches AUDIT_EXPORT_ROLES in AuditLogsController — the backend is the
 // real enforcement point, this only decides whether to show the buttons.
-const AUDIT_EXPORT_ROLES = new Set(["platform_admin", "audit_committee", "external_auditor"]);
 
 const ACTOR_TONE: Record<AuditLog["actorType"], "success" | "info" | "neutral"> = {
   birr_staff: "success",
@@ -47,8 +46,8 @@ function actorLabel(log: AuditLog): string {
 }
 
 export default function AuditLogsPage() {
-  const { staff } = useStaffSession();
-  const canExport = !!staff && AUDIT_EXPORT_ROLES.has(staff.staffRole);
+  const { can } = useStaffSession();
+  const canExport = can("audit_log.export");
 
   const [logs, setLogs] = useState<AuditLog[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);

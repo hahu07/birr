@@ -49,7 +49,7 @@ import {
 // for no benefit.
 const NAV_GROUPS: {
   label: string;
-  items: { href: string; label: string; icon: typeof IconInbox; requiresRole?: string | string[]; requiresCaseload?: boolean }[];
+  items: { href: string; label: string; icon: typeof IconInbox; requiresPermission?: string; requiresCaseload?: boolean }[];
 }[] = [
   {
     label: "Overview",
@@ -81,13 +81,13 @@ const NAV_GROUPS: {
       { href: "/ops/vaults", label: "Vaults", icon: IconArchive },
       { href: "/ops/counterparties", label: "Counterparties", icon: IconLandmark },
       { href: "/ops/cause-categories", label: "Cause Categories", icon: IconSparkle },
-      // Public blog articles — authoring is limited to the same roles the
-      // backend's BlogController allows (UX only; the backend enforces it).
+      // Public blog articles — shown to whoever holds blog.manage, the same
+      // permission BlogController requires (UX only; the backend enforces it).
       {
         href: "/ops/articles",
         label: "Articles",
         icon: IconFileText,
-        requiresRole: ["mutawalli_officer", "legal_adviser", "compliance_officer", "platform_admin"],
+        requiresPermission: "blog.manage",
       },
       { href: "/ops/vault-ledger-accounts", label: "Vault Ledger Accounts", icon: IconFileText },
       { href: "/ops/waqf-ledger-accounts", label: "Waqf Ledger Accounts", icon: IconFileText },
@@ -112,8 +112,8 @@ const NAV_GROUPS: {
       // Backend enforces platform_admin-only via StaffRoleGuard regardless
       // of this filtering — see Sidebar()'s own filter below, which is UX
       // only (no reason to show a nav item that 403s for everyone else).
-      { href: "/ops/platform-settings", label: "Settings", icon: IconSettings, requiresRole: "platform_admin" },
-      { href: "/ops/waqf-funding", label: "Waqf Funding", icon: IconSettings, requiresRole: "platform_admin" },
+      { href: "/ops/platform-settings", label: "Settings", icon: IconSettings, requiresPermission: "platform_settings.manage" },
+      { href: "/ops/waqf-funding", label: "Waqf Funding", icon: IconSettings, requiresPermission: "waqf_funding.configure" },
     ],
   },
 ];
@@ -317,7 +317,8 @@ const COLLAPSED_GROUPS_KEY = "birr.ops.collapsedNavGroups";
  * collapsed (remembered per browser; storage failures just mean nothing
  * is remembered); the group holding the current page is always open.
  */
-function NavList({ staff, pathname, hasCaseload, pendingApprovals, unreadMessageCount, labelled, onNavigate }: NavProps & { labelled: "always" | "lg"; onNavigate?: () => void }) {
+function NavList({ pathname, hasCaseload, pendingApprovals, unreadMessageCount, labelled, onNavigate }: NavProps & { labelled: "always" | "lg"; onNavigate?: () => void }) {
+  const { can } = useStaffSession();
   const [collapsed, setCollapsed] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem(COLLAPSED_GROUPS_KEY) ?? "[]") as string[];
@@ -344,7 +345,7 @@ function NavList({ staff, pathname, hasCaseload, pendingApprovals, unreadMessage
       {NAV_GROUPS.map((group) => {
         const items = group.items.filter(
           (item) =>
-            (!item.requiresRole || [item.requiresRole].flat().includes(staff.staffRole)) &&
+            (!item.requiresPermission || can(item.requiresPermission)) &&
             (!item.requiresCaseload || hasCaseload),
         );
         if (items.length === 0) return null;

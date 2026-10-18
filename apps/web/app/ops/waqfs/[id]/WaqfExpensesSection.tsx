@@ -37,9 +37,9 @@ export function WaqfExpensesSection({
   } = useLoadedResource(() => apiFetchJson<WaqfExpense[]>(`/waqf-expenses?waqfId=${waqfId}`), [waqfId]);
   const [expenseAccounts, setExpenseAccounts] = useState<WaqfLedgerAccount[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — WaqfExpensesController.create is the real gate.
-  const canRecord = staff?.staffRole === "mutawalli_officer";
+  const canRecord = can("waqf.expense_record");
 
   useEffect(() => {
     apiFetchJson<WaqfLedgerAccount[]>("/waqf-ledger-accounts")

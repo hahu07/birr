@@ -25,9 +25,9 @@ const CATEGORIES: Asset["category"][] = [
 export function AssetsSection({ waqfId }: { waqfId: string }) {
   const { data: assets, error, reload: load } = useLoadedResource(() => apiFetchJson<Asset[]>(`/assets?waqfId=${waqfId}`), [waqfId]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — AssetsController.create is the real gate.
-  const canRegister = staff?.staffRole === "mutawalli_officer";
+  const canRegister = can("asset.register");
 
   return (
     <section>

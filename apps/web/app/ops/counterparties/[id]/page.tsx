@@ -27,7 +27,7 @@ const STATUS_TONE: Record<Counterparty["status"], "success" | "warning" | "neutr
 
 export default function CounterpartyDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   const [counterparty, setCounterparty] = useState<Counterparty | null>(null);
   const [exposure, setExposure] = useState<CounterpartyExposure | null>(null);
   const [placements, setPlacements] = useState<InvestmentPlacementSummary[] | null>(null);
@@ -115,9 +115,11 @@ export default function CounterpartyDetailPage() {
     );
   }
 
-  const isShariahBoard = staff?.staffRole === "shariah_board_member";
-  const isComplianceOfficer = staff?.staffRole === "compliance_officer";
-  const isInvestmentCommittee = staff?.staffRole === "investment_committee";
+  const isShariahBoard = can("counterparty.shariah_approve");
+  const isComplianceOfficer = can("counterparty.restrict");
+  const canRegister = can("counterparty.register");
+  const canProposeOnboard = can("counterparty.onboard");
+  const canPlace = can("investment.place");
   // Includes "suspended"/"blacklisted" — reactivating either goes back
   // through this same onboarding gate (see CounterpartiesService.onboard's
   // own comment). A blacklisted one won't actually have shariahApprovedAt
@@ -172,7 +174,7 @@ export default function CounterpartyDetailPage() {
               { label: "Registered", value: formatDate(counterparty.createdAt) },
             ]}
           />
-          {isInvestmentCommittee && (
+          {canRegister && (
             <Button
               variant="secondary"
               className="shrink-0 px-3 py-1.5 text-xs"
@@ -183,7 +185,7 @@ export default function CounterpartyDetailPage() {
           )}
         </div>
 
-        {showEditForm && isInvestmentCommittee && (
+        {showEditForm && canRegister && (
           <div className="mt-5 border-t border-slate-100 pt-5">
             <EditProfileForm
               counterparty={counterparty}
@@ -244,7 +246,7 @@ export default function CounterpartyDetailPage() {
               Record Shariah approval
             </Button>
           )}
-          {canOnboard && counterparty.shariahApprovedAt && pendingProposal === null && isInvestmentCommittee && (
+          {canOnboard && counterparty.shariahApprovedAt && pendingProposal === null && canProposeOnboard && (
             <Button
               disabled={busy}
               onClick={() =>
@@ -272,7 +274,7 @@ export default function CounterpartyDetailPage() {
               .
             </p>
           )}
-          {canOnboard && counterparty.shariahApprovedAt && pendingProposal === null && !isInvestmentCommittee && (
+          {canOnboard && counterparty.shariahApprovedAt && pendingProposal === null && !canProposeOnboard && (
             <p className="self-center text-xs text-slate-500">
               Shariah approval is recorded — an investment_committee member still needs to propose onboarding
               (Approvals queue) before this counterparty can go active.
@@ -294,7 +296,7 @@ export default function CounterpartyDetailPage() {
               onSubmit={(reason) => runAction(() => apiFetchJson(`/counterparties/${counterparty.id}/blacklist`, { method: "POST", body: JSON.stringify({ reason }) }))}
             />
           )}
-          {isInvestmentCommittee && (
+          {canRegister && (
             <ConfirmButton
               label="Delete"
               confirmLabel="Confirm delete?"
@@ -330,7 +332,7 @@ export default function CounterpartyDetailPage() {
               <p className="text-sm font-medium text-slate-700">Placements</p>
               <p className="text-xs text-slate-500">Every bulk investment tranche placed with this counterparty.</p>
             </div>
-            {isInvestmentCommittee && (
+            {canPlace && (
               <Link href={`/ops/counterparties/${counterparty.id}/place`}>
                 <Button variant="secondary" className="px-3 py-1.5 text-xs">
                   Place investment across funds

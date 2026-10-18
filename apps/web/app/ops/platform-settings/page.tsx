@@ -26,7 +26,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 export default function PlatformSettingsPage() {
-  const { staff } = useStaffSession();
+  const { staff, can } = useStaffSession();
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +44,7 @@ export default function PlatformSettingsPage() {
     };
   }, []);
 
-  const isAdmin = staff?.staffRole === "platform_admin";
+  const canManage = can("platform_settings.manage");
 
   return (
     <div>
@@ -62,7 +62,7 @@ export default function PlatformSettingsPage() {
         </div>
       </header>
 
-      {!isAdmin && staff && (
+      {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only" className="mb-6">
           Your role ({staff.staffRole}) can't view or change these — reach out to a platform admin.
         </Alert>
@@ -82,7 +82,7 @@ export default function PlatformSettingsPage() {
         </div>
       )}
 
-      {!error && settings && isAdmin && (
+      {!error && settings && canManage && (
         <div className="space-y-6">
           {Object.entries(settings).map(([provider, { fields }]) => (
             <ProviderCard

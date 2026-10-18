@@ -34,7 +34,6 @@ import {
 // Matches AiAgentsController's own role gate on POST
 // /ai-agents/bashir/drafts/:draftId/publish — this only decides whether
 // to show the button, the backend is the real enforcement.
-const CAN_PUBLISH_ROLES = new Set(["legal_adviser", "compliance_officer"]);
 
 // Matches CLAUDE.md's Agentic AI graduation table exactly — static,
 // not derived, since no agent has actually graduated yet. The tooltip
@@ -207,8 +206,8 @@ export default function AiAgentsPage() {
 }
 
 function AgentDraftsRow({ agentId, agentName }: { agentId: string; agentName: string }) {
-  const { staff } = useStaffSession();
-  const canPublish = !!staff && CAN_PUBLISH_ROLES.has(staff.staffRole);
+  const { can } = useStaffSession();
+  const canPublish = can("agent_draft.publish");
 
   const [drafts, setDrafts] = useState<AiAgentDraft[] | null>(null);
   const [error, setError] = useState<string | null>(null);

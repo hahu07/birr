@@ -51,9 +51,9 @@ export default function VaultsPage() {
   const [vaults, setVaults] = useState<Vault[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — creating a vault is mutawalli_officer-only.
-  const canCreate = staff?.staffRole === "mutawalli_officer";
+  const canCreate = can("vault.curate");
 
   const load = useCallback(() => {
     apiFetchJson<Vault[]>("/vaults")
@@ -174,14 +174,14 @@ export default function VaultsPage() {
 // controller comment for why this one isn't); only compliance_officer
 // can change it, enforced server-side regardless of what this page hides.
 function VaultDonorThresholdsCard() {
-  const { staff } = useStaffSession();
+  const { staff, can } = useStaffSession();
   const [thresholds, setThresholds] = useState<VaultDonorThreshold[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newCurrency, setNewCurrency] = useState("");
   const [newAmount, setNewAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const canEdit = staff?.staffRole === "compliance_officer";
+  const canEdit = can("vault.donor_threshold_set");
 
   useEffect(() => {
     apiFetchJson<VaultDonorThreshold[]>("/vault-donor-thresholds")

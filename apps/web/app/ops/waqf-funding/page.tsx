@@ -22,7 +22,7 @@ interface FundingSettings {
 }
 
 export default function WaqfFundingPage() {
-  const { staff } = useStaffSession();
+  const { staff, can } = useStaffSession();
   const [corpusMinimums, setCorpusMinimums] = useState<CorpusMinimum[] | null>(null);
   const [contributionMinimums, setContributionMinimums] = useState<CorpusMinimum[] | null>(null);
   const [settings, setSettings] = useState<FundingSettings | null>(null);
@@ -49,7 +49,7 @@ export default function WaqfFundingPage() {
     };
   }, []);
 
-  const isAdmin = staff?.staffRole === "platform_admin";
+  const canManage = can("waqf_funding.configure");
   const loaded = corpusMinimums && contributionMinimums && settings;
 
   return (
@@ -68,7 +68,7 @@ export default function WaqfFundingPage() {
         </div>
       </header>
 
-      {!isAdmin && staff && (
+      {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only" className="mb-6">
           Your role ({staff.staffRole}) can't view or change these — reach out to a platform admin.
         </Alert>
@@ -88,7 +88,7 @@ export default function WaqfFundingPage() {
         </div>
       )}
 
-      {!error && loaded && isAdmin && (
+      {!error && loaded && canManage && (
         <div className="space-y-6">
           <MinimumsCard
             title="Minimum corpus per currency"

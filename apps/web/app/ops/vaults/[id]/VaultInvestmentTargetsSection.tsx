@@ -19,8 +19,8 @@ const INSTRUMENT_TYPES: Investment["instrumentType"][] = [
 ];
 
 export function VaultInvestmentTargetsSection({ vaultId }: { vaultId: string }) {
-  const { staff } = useStaffSession();
-  const canSetTargets = staff?.staffRole === "investment_committee";
+  const { can } = useStaffSession();
+  const canSetTargets = can("vault.investment_target_set");
   const [showForm, setShowForm] = useState(false);
 
   const {

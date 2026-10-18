@@ -496,6 +496,27 @@ exception). It refuses once any active approver exists. Runbook:
 existing staff member's role or suspend them; if that's ever added, it
 needs the same two-person rule.
 
+**Update, 2026-10-18: one named-permission model for all staff access
+(Phase 1 of 3).** Every staff route now declares a named permission:
+`@RequiresAccess("vault.curate")` for a plain action, `@RequiresPermission`
+for governed maker/checker ones. Grants live in `seed-data.ts`
+(`accessPermissions` alongside the governed list). `@RequiresStaffRole` and
+`StaffRoleGuard` are gone. In-service checks use `staffHasAccess(staff,
+key)`, e.g. `caseload.view_all`. The Ops Console never compares role names
+for access: `GET /birr-staff/me` returns `permissions` and components call
+`useStaffSession().can(key)`. Converting the 97 old role checks changed no
+access; a per-route before/after comparison showed 0 differences. Owner's
+decisions for the next phases: **Phase 2**, a staff member may hold several
+roles, an External Auditor may hold no other role, and adding or removing a
+role is a two-person governed action. **Phase 3**, grants become editable
+in the Ops Console as a governed action approved by the **Board of
+Trustees only**, with **every permission editable**, including the
+staff-security ones. That was the owner's explicit choice over locking
+them, so the Board approval is the only safeguard on loosening the rules
+for changing the rules. Once Phase 3 ships, the database becomes the
+source of truth and `sync-permissions` must stop overwriting existing
+grants on deploy, only adding new permissions with their default grants.
+
 ## Core entities (build in this order)
 1. `users` (global accounts), `founders`, `founder_memberships`
 2. `birr_staff`, `roles`, `permissions`, `role_permissions`

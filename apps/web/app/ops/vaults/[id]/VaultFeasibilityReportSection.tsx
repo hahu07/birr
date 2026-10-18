@@ -22,9 +22,9 @@ export function VaultFeasibilityReportSection({ vault, onChanged }: { vault: Vau
   const [savingTitle, setSavingTitle] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — vault curation is mutawalli_officer-only.
-  const canEdit = staff?.staffRole === "mutawalli_officer";
+  const canEdit = can("vault.curate");
 
   async function handleSaveTitle() {
     setSavingTitle(true);

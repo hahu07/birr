@@ -43,9 +43,9 @@ export function WaqfMilestonesSection({
   onChanged: () => void;
 }) {
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — WaqfMilestonesController's write routes are the real gate.
-  const canManage = staff?.staffRole === "mutawalli_officer";
+  const canManage = can("waqf.milestone_manage");
   const [expandedEvidenceId, setExpandedEvidenceId] = useState<string | null>(null);
 
   return (

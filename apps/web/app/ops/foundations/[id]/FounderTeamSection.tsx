@@ -24,8 +24,8 @@ export function FounderTeamSection({ founders }: { founders: { id: string; name:
 }
 
 function FounderTeam({ founderId, founderName }: { founderId: string; founderName: string }) {
-  const { staff } = useStaffSession();
-  const isAdmin = staff?.staffRole === "platform_admin";
+  const { can } = useStaffSession();
+  const canRequestMfaReset = can("founder.mfa_reset");
 
   const {
     data: members,
@@ -63,7 +63,7 @@ function FounderTeam({ founderId, founderName }: { founderId: string; founderNam
                       </Badge>
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      {isAdmin && member.user.mfaEnabled && (
+                      {canRequestMfaReset && member.user.mfaEnabled && (
                         // Not a direct reset — a Board member or Compliance
                         // officer has to approve it on the Approvals page, and
                         // the Founder is emailed once it's done.
