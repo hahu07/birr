@@ -48,8 +48,7 @@ export class FoundationsService {
    * lightweight organizational container ("a house for the portfolio of
    * waqf funds"), not itself a fiduciary/legal endowment, so it carries
    * none of the maker-checker weight that Waqf creation does. Still
-   * audited, mirroring FoundersService.create()'s existing precedent for
-   * non-governed org-hierarchy CRUD.
+   * audited, like every other non-governed org-hierarchy write.
    */
   async create(input: CreateFoundationInput, actor: CreationActor = { type: "system" }) {
     if (!input.purpose?.trim()) {

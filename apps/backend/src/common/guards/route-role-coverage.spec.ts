@@ -80,12 +80,6 @@ const UNGATED_WRITE_ROUTES: Record<string, string> = {
   "POST /webhooks/stripe": PROVIDER_WEBHOOK,
   "POST /webhooks/paystack": PROVIDER_WEBHOOK,
   "POST /webhooks/stablecoin": PROVIDER_WEBHOOK,
-
-  // Known gap, flagged 2026-10-18 and left for a separate decision:
-  // fully unauthenticated, no caller anywhere in apps/ or services/ (see
-  // FoundersService.create's own "bootstrap-scope" comment). Candidate
-  // for removal rather than a role gate.
-  "POST /founders": "KNOWN GAP — unauthenticated bootstrap route, unused; pending removal decision",
 };
 
 const MODULES_DIR = join(__dirname, "..", "..", "modules");
