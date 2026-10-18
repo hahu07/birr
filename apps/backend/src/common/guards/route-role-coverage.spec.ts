@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "fs";
+import { readFileSync } from "fs";
 import { join, relative } from "path";
 import * as ts from "typescript";
 
@@ -87,11 +87,7 @@ const UNGATED_WRITE_ROUTES: Record<string, string> = {
 const MODULES_DIR = join(__dirname, "..", "..", "modules");
 
 function controllerFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) return controllerFiles(full);
-    return name.endsWith(".controller.ts") ? [full] : [];
-  });
+  return ts.sys.readDirectory(dir, [".ts"]).filter((file) => file.endsWith(".controller.ts"));
 }
 
 const WRITE_DECORATORS: Record<string, string> = { Post: "POST", Put: "PUT", Patch: "PATCH", Delete: "DELETE" };
