@@ -12,7 +12,7 @@
 // with the blast radius visible, not blind.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
-import { formatDate, humanize } from "../../../lib/format";
+import { formatDate, humanize, humanizeRoles } from "../../../lib/format";
 import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { CauseCategory, CauseCategorySuggestion } from "../../../lib/ops-types";
@@ -140,7 +140,7 @@ export default function CauseCategoriesPage() {
 
       {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only to edit" className="mb-6">
-          Your role ({humanize(staff.staffRole)}) can view this page but not change it — reach out to a platform
+          Your role{staff.roles.length > 1 ? "s" : ""} ({humanizeRoles(staff.roles)}) can view this page but not change it — reach out to a platform
           admin.
         </Alert>
       )}

@@ -511,7 +511,7 @@ export interface ConflictOfInterestDeclaration {
   declaredAt: string;
   reviewedByUserId: string | null;
   reviewedAt: string | null;
-  birrStaff: { id: string; staffRole: string; user: { id: string; fullName: string } };
+  birrStaff: { id: string; roles: { role: BirrStaffRole }[]; user: { id: string; fullName: string } };
   waqf: { id: string; name: string } | null;
   reviewedByUser: { id: string; fullName: string } | null;
 }
@@ -603,7 +603,8 @@ export type BirrStaffRole =
 export interface BirrStaff {
   id: string;
   userId: string;
-  staffRole: BirrStaffRole;
+  // Every role this person holds (several are allowed since 2026-10-18).
+  roles: BirrStaffRole[];
   status: "active" | "suspended";
   createdAt: string;
   updatedAt: string;

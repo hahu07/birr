@@ -37,6 +37,18 @@ must only ever reach the invited person's inbox.
 **Wrong role?** Revoke the pending invitation on the **Team** page and propose
 it again with the right role.
 
+**Giving someone another role, or taking one away.** A staff member can hold
+several roles, such as Legal Adviser and Compliance Officer. On **Team**,
+the Platform Admin uses **+ Add role** or the **×** on a role in that person's
+row; a Board member or the Compliance Officer approves it on **Approvals**,
+just like an invitation. The person is notified when it takes effect. Some
+rules always apply:
+
+- Nobody can propose, or approve, a change to **their own** roles.
+- An **External Auditor** can't hold any other role, so they stay independent of what they audit.
+- Everyone keeps **at least one** role.
+- The **last active Platform Admin** can't lose that role.
+
 ---
 
 ## B. First approver — from the server

@@ -10,7 +10,7 @@
 // for them so that refusal isn't discovered only after clicking.
 import { useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
-import { humanize } from "../../../lib/format";
+import { humanize, humanizeRoles } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { VaultLedgerAccount } from "../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, IconFileText, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
@@ -57,7 +57,7 @@ export default function VaultLedgerAccountsPage() {
 
       {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only to edit" className="mb-6">
-          Your role ({humanize(staff.staffRole)}) can view this page but not change it — reach out to a platform
+          Your role{staff.roles.length > 1 ? "s" : ""} ({humanizeRoles(staff.roles)}) can view this page but not change it — reach out to a platform
           admin.
         </Alert>
       )}

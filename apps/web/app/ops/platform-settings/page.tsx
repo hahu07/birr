@@ -10,7 +10,7 @@
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { useStaffSession } from "../../../lib/staff-session";
-import { formatDate } from "../../../lib/format";
+import { formatDate, humanizeRoles } from "../../../lib/format";
 import type { PlatformSettingField, PlatformSettings } from "../../../lib/ops-types";
 import { Alert, Button, Card, IconSettings, Input, PasswordInput, Skeleton } from "@birr/ui";
 
@@ -64,7 +64,7 @@ export default function PlatformSettingsPage() {
 
       {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only" className="mb-6">
-          Your role ({staff.staffRole}) can't view or change these — reach out to a platform admin.
+          Your role{staff.roles.length > 1 ? "s" : ""} ({humanizeRoles(staff.roles)}) can't view or change these — reach out to a platform admin.
         </Alert>
       )}
 

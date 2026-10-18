@@ -22,7 +22,7 @@
 import Link from "next/link";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { apiFetchJson } from "../../lib/api";
-import { humanize, formatMoney, WAQF_STATUS_CHART_COLOR } from "../../lib/format";
+import { humanize, formatMoney, WAQF_STATUS_CHART_COLOR, humanizeRoles } from "../../lib/format";
 import { useNotifications } from "../../lib/notifications";
 import { useStaffSession } from "../../lib/staff-session";
 import type { Foundation, FounderRequest, GovernedAction, Waqf } from "../../lib/ops-types";
@@ -199,7 +199,7 @@ export default function OpsConsoleHome() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{firstName ? `Welcome back, ${firstName}` : "Overview"}</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {staff && <span className="font-medium text-slate-700">{humanize(staff.staffRole)}</span>}
+            {staff && <span className="font-medium text-slate-700">{humanizeRoles(staff.roles)}</span>}
             {staff && " · "}
             Platform-wide figures across every Foundation and Waqf Fund Birr manages.
           </p>
