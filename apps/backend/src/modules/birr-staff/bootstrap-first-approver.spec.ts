@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { prisma } from "@birr/db";
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { bootstrapFirstApprover } from "./bootstrap-first-approver";
@@ -27,7 +28,7 @@ describe("bootstrapFirstApprover", () => {
   afterAll(() => prisma.$disconnect());
 
   const input = (overrides: Partial<Parameters<typeof bootstrapFirstApprover>[0]> = {}) => ({
-    email: `bootstrap-new-${stamp}-${Math.floor(Math.random() * 10000)}@example.com`,
+    email: `bootstrap-new-${randomUUID().slice(0, 8)}@example.com`,
     staffRole: "board_of_trustees",
     invitedByEmail: adminEmail,
     reason: REASON,
