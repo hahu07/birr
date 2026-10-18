@@ -9,7 +9,7 @@
 // for admins only, no edit/delete UI in this first slice.
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
-import { formatDate, humanize } from "../../../lib/format";
+import { formatDate, humanizeRoles } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { ShariahProhibitedSector } from "../../../lib/ops-types";
 import { Alert, Button, EmptyState, IconShieldAlert, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
@@ -50,7 +50,7 @@ export default function ShariahProhibitedSectorsPage() {
 
       {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only to edit" className="mb-6">
-          Your role ({humanize(staff.staffRole)}) can view this page but not change it — reach out to a platform
+          Your role{staff.roles.length > 1 ? "s" : ""} ({humanizeRoles(staff.roles)}) can view this page but not change it — reach out to a platform
           admin.
         </Alert>
       )}

@@ -8,7 +8,7 @@
 // coi_reviewer_not_declarant).
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
-import { formatDate, humanize } from "../../../lib/format";
+import { formatDate, humanize, humanizeRoles } from "../../../lib/format";
 import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { ConflictOfInterestDeclaration } from "../../../lib/ops-types";
@@ -182,7 +182,7 @@ function DeclarationRow({
     <TableRow>
       <TableCell>
         <span className="font-medium text-slate-900">{declaration.birrStaff.user.fullName}</span>
-        <p className="text-xs text-slate-500">{humanize(declaration.birrStaff.staffRole)}</p>
+        <p className="text-xs text-slate-500">{humanizeRoles(declaration.birrStaff.roles.map((r) => r.role))}</p>
       </TableCell>
       <TableCell className="text-slate-500">{declaration.waqf?.name ?? "General"}</TableCell>
       <TableCell className="max-w-xs truncate text-slate-500" title={declaration.declarationText}>

@@ -21,6 +21,11 @@ export function humanize(value: string): string {
  * nicknames) and must never be shown to Birr staff — this derives a
  * presentable label from the stable `key` instead.
  */
+/** A staff member's roles as one label, e.g. "Legal Adviser, Compliance Officer". */
+export function humanizeRoles(roles: readonly string[]): string {
+  return roles.map(humanize).join(", ");
+}
+
 export function humanizePermissionKey(key: string): string {
   return key
     .split(".")

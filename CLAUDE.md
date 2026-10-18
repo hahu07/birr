@@ -507,9 +507,15 @@ permissions rather than role names: `GET /birr-staff/me` returns
 `permissions` and components call `useStaffSession().can(key)`. Showing a
 role name as a label is still fine. Converting the 97 old role checks changed no
 access; a per-route before/after comparison showed 0 differences. Owner's
-decisions for the next phases: **Phase 2**, a staff member may hold several
-roles, an External Auditor may hold no other role, and adding or removing a
-role is a two-person governed action. **Phase 3**, grants become editable
+decisions for the next phases: **Phase 2 (built 2026-10-18)**, a staff
+member may hold several roles (`birr_staff_roles`, replacing
+`BirrStaff.staffRole`; access is the union of their roles' permissions).
+An External Auditor may hold no other role, and everyone keeps at least one
+role; both are enforced by database triggers. Adding or removing a role is
+the governed `staff.role_add` / `staff.role_remove` (maker platform_admin;
+checkers board_of_trustees / compliance_officer). Nobody proposes or
+approves a change to their own roles, and the last active platform_admin
+keeps that role. **Phase 3**, grants become editable
 in the Ops Console as a governed action approved by the **Board of
 Trustees only**, with **every permission editable**, including the
 staff-security ones. That was the owner's explicit choice over locking

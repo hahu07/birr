@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { useStaffSession } from "../../../lib/staff-session";
 import { Alert, Button, Card, IconSettings, Input, Skeleton } from "@birr/ui";
+import { humanizeRoles } from "../../../lib/format";
 
 interface CorpusMinimum {
   id: string;
@@ -70,7 +71,7 @@ export default function WaqfFundingPage() {
 
       {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only" className="mb-6">
-          Your role ({staff.staffRole}) can't view or change these — reach out to a platform admin.
+          Your role{staff.roles.length > 1 ? "s" : ""} ({humanizeRoles(staff.roles)}) can't view or change these — reach out to a platform admin.
         </Alert>
       )}
 

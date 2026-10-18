@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetchJson } from "../../../lib/api";
-import { humanize } from "../../../lib/format";
+import { humanize, humanizeRoles } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { Vault, VaultType } from "../../../lib/ops-types";
 import {
@@ -268,7 +268,7 @@ function VaultDonorThresholdsCard() {
 
       {!canEdit && staff && (
         <p className="mt-4 text-xs text-slate-500">
-          Your role ({staff.staffRole}) can view these but not change them — reach out to a compliance officer.
+          Your role{staff.roles.length > 1 ? "s" : ""} ({humanizeRoles(staff.roles)}) can view these but not change them — reach out to a compliance officer.
         </p>
       )}
     </Card>

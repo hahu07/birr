@@ -10,7 +10,7 @@
 // own assignments but has never had anywhere to create one.
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
-import { formatDate, humanize } from "../../../../lib/format";
+import { formatDate, humanize, humanizeRoles } from "../../../../lib/format";
 import type { BirrStaff, WaqfCaseAssignment } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
@@ -171,7 +171,7 @@ function AssignForm({
           >
             {staff.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.user.fullName} ({humanize(s.staffRole)})
+                {s.user.fullName} ({humanizeRoles(s.roles)})
               </option>
             ))}
           </select>

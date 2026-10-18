@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetchJson } from "../../../lib/api";
-import { formatAmount, humanize } from "../../../lib/format";
+import { formatAmount, humanize, humanizeRoles } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
 import type { Counterparty } from "../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, IconLandmark, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
@@ -67,7 +67,7 @@ export default function CounterpartiesPage() {
 
       {!canRegister && staff && (
         <Alert tone="danger" title="investment_committee only to register" className="mb-6">
-          Your role ({humanize(staff.staffRole)}) can view this registry but not add to it.
+          Your role{staff.roles.length > 1 ? "s" : ""} ({humanizeRoles(staff.roles)}) can view this registry but not add to it.
         </Alert>
       )}
 

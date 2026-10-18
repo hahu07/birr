@@ -24,7 +24,7 @@ const mockedApiFetchJson = vi.mocked(apiFetchJson);
 const fakeStaff: BirrStaff = {
   id: "staff-1",
   userId: "user-checker",
-  staffRole: "compliance_officer",
+  roles: ["compliance_officer"],
   status: "active",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",

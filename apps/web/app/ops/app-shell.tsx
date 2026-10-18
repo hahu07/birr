@@ -12,7 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import { BirrStaff, useStaffSession } from "../../lib/staff-session";
 import { apiFetchJson } from "../../lib/api";
-import { humanize, formatRelativeTime } from "../../lib/format";
+import { formatRelativeTime, humanizeRoles } from "../../lib/format";
 import { useNotifications } from "../../lib/notifications";
 import type { GovernedAction, WaqfCaseAssignment } from "../../lib/ops-types";
 import {
@@ -430,7 +430,7 @@ function ProfileFooter({ staff, onSignOut, labelled, onNavigate }: Pick<NavProps
           </div>
           <div className={`min-w-0 flex-1 ${labelled === "always" ? "" : "hidden lg:block"}`}>
             <p className="truncate text-sm font-medium text-white">{staff.user.fullName}</p>
-            <p className="truncate text-xs text-primary-300">{humanize(staff.staffRole)}</p>
+            <p className="truncate text-xs text-primary-300">{humanizeRoles(staff.roles)}</p>
           </div>
         </Link>
         <button
