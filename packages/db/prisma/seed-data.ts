@@ -81,6 +81,13 @@ export const permissions = [
   // platform_admin; checkers: board_of_trustees / compliance_officer.
   { key: "founder.mfa_reset", category: "founder", requiresMakerChecker: true, description: "Reset a Founder Portal user's two-factor authentication, forcing them to re-enrol." },
   { key: "staff.mfa_reset", category: "staff", requiresMakerChecker: true, description: "Reset a Birr staff member's two-factor authentication, forcing them to re-enrol." },
+  // Adding a Birr staff member (2026-10-18). One Platform Admin used to be
+  // able to invite anyone, into any role, alone — including a second
+  // account of their own under a checker role, which would let one person
+  // be both maker and checker on every governed action. Same two-person
+  // rule as staff.mfa_reset: maker platform_admin; checkers
+  // board_of_trustees / compliance_officer.
+  { key: "staff.invite", category: "staff", requiresMakerChecker: true, description: "Invite a new Birr staff member into a given staff role." },
   { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
 ] as const;
 
@@ -127,6 +134,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "vault.milestone_complete": { canChecker: true },
     "founder.mfa_reset": { canChecker: true },
     "staff.mfa_reset": { canChecker: true },
+    "staff.invite": { canChecker: true },
   },
   investment_committee: {
     "asset.dispose": { canChecker: true },
@@ -177,6 +185,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "blog.publish": { canChecker: true },
     "founder.mfa_reset": { canChecker: true },
     "staff.mfa_reset": { canChecker: true },
+    "staff.invite": { canChecker: true },
   },
   legal_adviser: {
     "waqf.view": { canMaker: true },
@@ -195,6 +204,7 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "waqf.view": { canMaker: true },
     "founder.mfa_reset": { canMaker: true },
     "staff.mfa_reset": { canMaker: true },
+    "staff.invite": { canMaker: true },
   },
 };
 

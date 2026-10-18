@@ -1,20 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
-import { IsEmail, IsEnum, IsString } from "class-validator";
-import { prisma, Prisma, BirrStaffRole } from "@birr/db";
+import { IsEmail, IsString } from "class-validator";
+import { prisma, Prisma } from "@birr/db";
 import { verifyUserPassword } from "../../common/auth/password-auth";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MfaService } from "../../common/auth/mfa.service";
-
-export class CreateBirrStaffInput {
-  @IsEmail()
-  email!: string;
-
-  @IsString()
-  fullName!: string;
-
-  @IsEnum(BirrStaffRole)
-  staffRole!: BirrStaffRole;
-}
 
 export class BirrStaffLoginInput {
   @IsEmail()
@@ -51,40 +40,6 @@ export class BirrStaffService {
     private readonly encryption: EncryptionService,
     private readonly mfa: MfaService,
   ) {}
-
-  // Gated to platform_admin at the controller (@RequiresStaffRole) —
-  // real staff onboarding goes through InvitationsService.accept(),
-  // which sets a password and logs the invitee straight in. This method
-  // stays for admin/scripted bootstrap use (e.g. minting the very first
-  // platform_admin), so it deliberately doesn't set a password; a staff
-  // record created this way can't log in via /birr-staff/login until an
-  // Invitation-based flow or a future "set password" route covers it.
-  //
-  // No standalone Users module exists yet (CLAUDE.md lists `users` as
-  // entity #1, but nothing in apps/backend owns it directly) — creating a
-  // BirrStaff member inherently provisions the underlying User account in
-  // the same transaction, since BirrStaff.userId is a required unique FK.
-  async create(input: CreateBirrStaffInput, actorUserId: string) {
-    return prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: { email: input.email, fullName: input.fullName },
-      });
-      const staff = await tx.birrStaff.create({
-        data: { userId: user.id, staffRole: input.staffRole },
-      });
-      await tx.auditLog.create({
-        data: {
-          actorType: "birr_staff",
-          actorUserId,
-          action: "birr_staff.created",
-          entityType: "BirrStaff",
-          entityId: staff.id,
-          after: staff as any,
-        },
-      });
-      return staff;
-    });
-  }
 
   findById(id: string) {
     return prisma.birrStaff.findUnique({ where: { id }, include: { user: { select: SAFE_USER_SELECT } } });

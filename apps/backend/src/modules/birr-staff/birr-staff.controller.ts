@@ -2,7 +2,7 @@ import { Body, Controller, Get, NotFoundException, Param, Post, Req, Res, Unauth
 import { IsString } from "class-validator";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
-import { BirrStaffService, CreateBirrStaffInput, BirrStaffLoginInput } from "./birr-staff.service";
+import { BirrStaffService, BirrStaffLoginInput } from "./birr-staff.service";
 import { BirrStaffWhatsAppService } from "./whatsapp/birr-staff-whatsapp.service";
 import {
   AuthenticatedBirrStaff,
@@ -19,7 +19,6 @@ import {
   verifyMfaPendingToken,
   MFA_PENDING_COOKIE_NAME,
 } from "../../common/auth/session";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 import { Public } from "../../common/guards/public.decorator";
 import { MfaExempt } from "../../common/guards/mfa-exempt.decorator";
 import { loginThrottleLimit } from "../../common/auth/login-throttle";
@@ -50,15 +49,6 @@ export class BirrStaffController {
     private readonly service: BirrStaffService,
     private readonly whatsApp: BirrStaffWhatsAppService,
   ) {}
-
-  // Admin/scripted bootstrap only — see BirrStaffService.create's
-  // comment. Normal onboarding is an Invitation, which sets a real
-  // password and logs the invitee in directly.
-  @Post()
-  @RequiresStaffRole("platform_admin")
-  create(@Body() body: CreateBirrStaffInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
-    return this.service.create(body, staff.userId);
-  }
 
   // Brute-force protection on a real credential, same posture as
   // FoundersController.login. @Public() — must be reachable with no

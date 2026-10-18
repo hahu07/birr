@@ -1,8 +1,9 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { IsEmail, IsEnum, IsOptional, IsString } from "class-validator";
 import type { Request, Response } from "express";
 import { InvitationsService, InviteInput, AcceptInput } from "./invitations.service";
-import { isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
+import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { setSessionCookie, setStaffSessionCookie, signSessionToken, SESSION_COOKIE_NAME, hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
@@ -40,16 +41,13 @@ class InviteBody {
 // resolveBirrStaffFromSession still resolves who's acting, for the audit
 // trail, without gating eligibility on those two kinds.
 //
-// birr_staff invitations are the one exception (2026-09-26 fix): this
-// route can't just carry @RequiresStaffRole("platform_admin") the way
-// POST /birr-staff does, since it's also the founder_user/co_founder
-// entry point above — so the same restriction that route already
-// enforces is asserted manually, inside the staff branch below, only
-// for inviteeKind === "birr_staff". Found in a codebase review: any
-// authenticated staff member, any role, could otherwise invite a new
-// staff member with any role — including minting a new platform_admin
-// themselves, a real privilege-escalation gap this route's own
-// "no @RequiresPermission" posture was never meant to extend to.
+// birr_staff invitations can't be sent from here at all (2026-10-18):
+// adding a staff member is the `staff.invite` governed action, proposed by
+// a platform_admin and approved by a different board_of_trustees /
+// compliance_officer member. InvitationsService.invite() rejects the kind
+// outright; this route stays the founder_user/co_founder entry point.
+// Revoking a pending staff invitation is still platform_admin-only
+// (asserted in InvitationsService.revoke).
 //
 // invite()/revoke()/list() are @Public() so a Founder session can also
 // reach them (same "authenticated a different way" reasoning as every
@@ -116,13 +114,6 @@ export class InvitationsController {
       throw new BadRequestException("A Founder session can only invite a founder_user or co_founder.");
     }
     const staff = await resolveBirrStaffFromSession(request);
-    // Same restriction POST /birr-staff already enforces via
-    // @RequiresStaffRole("platform_admin") — see this class's own
-    // top comment for why it has to be asserted manually here instead
-    // of on the route itself.
-    if (body.inviteeKind === "birr_staff" && staff.staffRole !== "platform_admin") {
-      throw new ForbiddenException("Only a platform_admin can invite a new Birr staff member.");
-    }
     const input: InviteInput = { ...body, roleKey: body.roleKey ?? "", invitedByUserId: staff.userId, invitedByActorType: "birr_staff" };
     return this.service.invite(input);
   }
@@ -160,6 +151,14 @@ export class InvitationsController {
     }
     const staff = await resolveBirrStaffFromSession(request);
     return this.service.revoke(id, staff.userId, { type: "birr_staff", staffRole: staff.staffRole });
+  }
+
+  // Staff invitation links are emailed only, never shown in the app (see
+  // redactStaffInvitationToken) — this is how a failed email is retried.
+  @Post(":id/resend-email")
+  @RequiresStaffRole("platform_admin")
+  resendEmail(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.service.resendStaffInvitationEmail(id, staff.userId);
   }
 
   // A Founder session sees only invitations they've sent for their own

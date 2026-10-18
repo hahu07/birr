@@ -12,6 +12,7 @@ import { BlogModule } from "../blog/blog.module";
 import { BirrStaffModule } from "../birr-staff/birr-staff.module";
 import { FoundersModule } from "../founders/founders.module";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { InvitationsModule } from "../invitations/invitations.module";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { NotificationsModule } from "../notifications/notifications.module";
     FoundersModule,
     WaqfLedgerModule,
     NotificationsModule,
+    InvitationsModule,
   ],
   controllers: [GovernedActionsController],
   providers: [GovernedActionsService],

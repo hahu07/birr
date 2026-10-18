@@ -22,6 +22,7 @@ import { VaultContributionsService } from "../vaults/vault-contributions.service
 import { VaultMilestonesService } from "../vaults/vault-milestones.service";
 import { WaqfMilestonesService } from "../waqf-ledger/waqf-milestones.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { InvitationsService, assertStaffInvitable, invitationAuditSnapshot } from "../invitations/invitations.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
 
@@ -59,6 +60,23 @@ interface FulfillmentResult {
   before: unknown;
   after: unknown;
 }
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// staff.invite's payload — validated here because it comes straight from
+// the proposer's request body, not from an existing row.
+function parseStaffInvitePayload(payload: unknown): { email: string; staffRole: BirrStaffRole } {
+  const { email, staffRole } = (payload ?? {}) as { email?: unknown; staffRole?: unknown };
+  const normalized = typeof email === "string" ? email.trim().toLowerCase() : "";
+  if (!EMAIL_PATTERN.test(normalized)) {
+    throw new BadRequestException("A valid email address is required.");
+  }
+  if (typeof staffRole !== "string" || !Object.values(BirrStaffRole).includes(staffRole as BirrStaffRole)) {
+    throw new BadRequestException(`"${String(staffRole)}" is not a valid staff role.`);
+  }
+  return { email: normalized, staffRole: staffRole as BirrStaffRole };
+}
+
 
 /**
  * One handler per permission key that this backend can actually fulfill.
@@ -141,12 +159,14 @@ interface GovernedActionHandler {
    * carries who is approving — added (2026-10-01) for blog.publish,
    * which records its approving checker on the article itself as the
    * public "Reviewed by". Every earlier handler ignores it, which is
-   * why it's a trailing parameter they can simply omit.
+   * why it's a trailing parameter they can simply omit. `makerUserId`
+   * (2026-10-18, staff.invite) is who proposed it — null for an
+   * agent-proposed action.
    */
   onApprove(
     payload: unknown,
     tx: Prisma.TransactionClient,
-    ctx: { checkerUserId: string },
+    ctx: { checkerUserId: string; makerUserId: string | null },
   ): Promise<FulfillmentResult>;
   /**
    * decide()-time, on rejection, inside the same transaction. Optional
@@ -187,6 +207,7 @@ export class GovernedActionsService {
     private readonly blogService: BlogService,
     private readonly birrStaffService: BirrStaffService,
     private readonly foundersService: FoundersService,
+    private readonly invitationsService: InvitationsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1146,6 +1167,58 @@ export class GovernedActionsService {
           },
         },
       ],
+      // ---- Adding a staff member (2026-10-18). Used to be one Platform
+      // Admin's unilateral invitation — including, potentially, a second
+      // account of their own under a checker role, which would let one
+      // person be both maker and checker on every governed action. Same
+      // two-person rule as staff.mfa_reset above. The invitation only
+      // exists once approved, and is emailed after this transaction
+      // commits (see decide()); its link is never shown in the app. ----
+      [
+        "staff.invite",
+        {
+          validatePropose: async (payload) => {
+            await assertStaffInvitable(parseStaffInvitePayload(payload).email, prisma);
+          },
+          checkDuplicate: async (payload) => {
+            const { email } = parseStaffInvitePayload(payload);
+            const permission = await prisma.permission.findUnique({ where: { key: "staff.invite" } });
+            const pending = await prisma.governedAction.findMany({
+              where: { permissionId: permission?.id, status: "proposed" },
+              select: { payload: true },
+            });
+            if (pending.some((a) => (a.payload as { email?: string }).email?.trim().toLowerCase() === email)) {
+              throw new ConflictException(
+                "An invitation for this email is already awaiting approval — check the Approvals queue instead of proposing again.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { email, staffRole } = parseStaffInvitePayload(payload);
+            return `Invite ${email} as ${staffRole.replace(/_/g, " ")}. Confirm through a separate channel (e.g. a phone call) that this is a real, new staff member before approving.`;
+          },
+          onApprove: async (payload, tx, ctx) => {
+            const { email, staffRole } = parseStaffInvitePayload(payload);
+            if (!ctx.makerUserId) {
+              throw new BadRequestException("A staff invitation must be proposed by a person, not an agent.");
+            }
+            // Re-checked at approval: an account or another invitation for
+            // this email may have appeared since it was proposed.
+            await assertStaffInvitable(email, tx);
+            const invitation = await this.invitationsService.createStaffInvitationInTransaction(
+              { email, roleKey: staffRole, invitedByUserId: ctx.makerUserId },
+              tx,
+            );
+            return {
+              auditAction: "invitation.sent",
+              entityType: "Invitation",
+              entityId: invitation.id,
+              before: null,
+              after: { ...invitationAuditSnapshot(invitation), approvedByUserId: ctx.checkerUserId },
+            };
+          },
+        },
+      ],
       // ---- Founder Portal security. Same two-person rule as staff.mfa_reset
       // above, for a Founder user's own MFA. The Founder is emailed when it
       // takes effect (see notifyDecision). ----
@@ -1419,7 +1492,7 @@ export class GovernedActionsService {
         // required, so approval always has a handler to call once
         // `handler` itself resolved.
         if (input.approve) {
-          fulfillment = await handler.onApprove(action.payload, tx, { checkerUserId: input.checkerUserId });
+          fulfillment = await handler.onApprove(action.payload, tx, { checkerUserId: input.checkerUserId, makerUserId: action.makerUserId });
         } else if (handler.onReject) {
           fulfillment = await handler.onReject(action.payload, tx);
         }
@@ -1461,6 +1534,17 @@ export class GovernedActionsService {
     // past its own boundary (a real failure is caught and recorded as
     // payout_failed internally), so this .catch() only needs to log
     // genuinely unexpected errors.
+    // staff.invite: the invitation email goes out only once the approval
+    // that created it has committed. Never throws for a failed send — the
+    // inviter can resend from the Staff page.
+    if (input.approve && result.fulfillment?.entityType === "Invitation") {
+      this.invitationsService.deliverById(result.fulfillment.entityId).catch((err) => {
+        this.logger.error(
+          `Failed to deliver staff invitation "${result.fulfillment!.entityId}":`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      });
+    }
     if (input.approve && result.fulfillment?.entityType === "Distribution") {
       this.distributionsService.initiateDisbursement(result.fulfillment.entityId).catch((err) => {
         this.logger.error(

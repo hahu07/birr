@@ -28,6 +28,8 @@ import {
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
+import { InvitationsService } from "../invitations/invitations.service";
+import { ResendInvitationEmailAdapter } from "../invitations/email/resend-invitation.adapter";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
 // local FakeAdapter/FakeReceiptEmailAdapter — duplicated rather than
@@ -37,6 +39,15 @@ import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 // tests calls createPayment/verifyAndParseWebhook/refund for real —
 // requestRefund() (the only VaultContributionsService method exercised
 // here) never touches the adapter map at all.
+// staff.invite's post-commit email — records what would have been sent.
+class FakeInvitationEmailAdapter {
+  sent: { to: string; link: string }[] = [];
+
+  async sendInvitationEmail(to: string, link: string): Promise<void> {
+    this.sent.push({ to, link });
+  }
+}
+
 class FakeVaultPaymentAdapter {
   async createPayment() {
     return { providerReference: "fake", clientPayload: {} };
@@ -78,6 +89,7 @@ describe("GovernedActionsService", () => {
   // them at once, which is exactly what flooded the real Resend account
   // with tens of thousands of live API calls before this was caught.
   const notificationsService = createFakeNotificationsService();
+  const invitationEmails = new FakeInvitationEmailAdapter();
   const encryption = new EncryptionService();
   const beneficiariesService = new BeneficiariesService(encryption);
   const fakePaystackPayoutAdapter = new FakePaystackPayoutAdapter();
@@ -124,6 +136,7 @@ describe("GovernedActionsService", () => {
     new BlogService(),
     new BirrStaffService(new EncryptionService(), new MfaService()),
     new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService(), new FunnelEventsService()),
+    new InvitationsService(invitationEmails as unknown as ResendInvitationEmailAdapter, notificationsService),
   );
 
   const governedActionIds: string[] = [];
@@ -2183,6 +2196,118 @@ describe("GovernedActionsService", () => {
       await expect(
         service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId }),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+  // staff.invite (2026-10-18) — adding a staff member used to be one
+  // Platform Admin's unilateral invitation, which let one person add a
+  // second account of their own under a checker role. Maker:
+  // platform_admin; checkers: board_of_trustees / compliance_officer.
+  describe("staff.invite", () => {
+    let adminUserId: string;
+    let complianceUserId: string;
+    const invitationEmailsSeen: string[] = [];
+
+    beforeAll(async () => {
+      const admin = await prisma.user.create({
+        data: { email: `sinv-admin-${Date.now()}@example.com`, fullName: "Staff Invite Proposing Admin" },
+      });
+      adminUserId = admin.id;
+      await prisma.birrStaff.create({ data: { userId: admin.id, staffRole: "platform_admin" } });
+      const compliance = await prisma.user.create({
+        data: { email: `sinv-compliance-${Date.now()}@example.com`, fullName: "Staff Invite Approving Compliance" },
+      });
+      complianceUserId = compliance.id;
+      await prisma.birrStaff.create({ data: { userId: compliance.id, staffRole: "compliance_officer" } });
+    });
+
+    afterAll(async () => {
+      await prisma.invitation.deleteMany({ where: { email: { in: invitationEmailsSeen } } });
+    });
+
+    const address = (label: string) => {
+      const email = `sinv-${label}-${Date.now()}-${Math.floor(Math.random() * 10000)}@example.com`;
+      invitationEmailsSeen.push(email);
+      return email;
+    };
+    const propose = async (payload: Record<string, unknown>) => {
+      const action = await service.propose({ permissionKey: "staff.invite", payload, makerUserId: adminUserId });
+      governedActionIds.push(action.id);
+      return action;
+    };
+
+    test("approve → invitation for the proposer, audit-logged without its token, emailed after commit", async () => {
+      const email = address("approve");
+      const action = await propose({ email: email.toUpperCase(), staffRole: "board_of_trustees" });
+      expect(await prisma.invitation.count({ where: { email } })).toBe(0);
+
+      await service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: true });
+
+      const invitation = await prisma.invitation.findFirstOrThrow({ where: { email } });
+      expect(invitation).toMatchObject({
+        inviteeKind: "birr_staff",
+        roleKey: "board_of_trustees",
+        invitedBy: adminUserId,
+        status: "pending",
+      });
+      const log = await prisma.auditLog.findFirst({ where: { entityId: invitation.id, action: "invitation.sent" } });
+      expect(log?.actorUserId).toBe(complianceUserId);
+      expect(JSON.stringify(log?.after)).not.toContain(invitation.token);
+
+      // Delivery is fire-and-forget after the commit.
+      let delivered = false;
+      for (let i = 0; i < 20 && !delivered; i++) {
+        delivered = invitationEmails.sent.some((m) => m.to === email && m.link.includes(invitation.token));
+        if (!delivered) await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(delivered).toBe(true);
+    });
+
+    test("reject → no invitation is created", async () => {
+      const email = address("reject");
+      const action = await propose({ email, staffRole: "legal_adviser" });
+      await service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: false });
+      expect(await prisma.invitation.count({ where: { email } })).toBe(0);
+    });
+
+    test("the proposer cannot approve their own invitation, and the database refuses it too", async () => {
+      const action = await propose({ email: address("self"), staffRole: "board_of_trustees" });
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: adminUserId, approve: true }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: adminUserId } }),
+      ).rejects.toThrow();
+    });
+
+    test("propose() rejects a bad email, an unknown role, an existing account and a pending invitation", async () => {
+      await expect(propose({ email: "not-an-email", staffRole: "legal_adviser" })).rejects.toThrow(BadRequestException);
+      await expect(propose({ email: address("role"), staffRole: "superuser" })).rejects.toThrow(BadRequestException);
+
+      const existing = await prisma.user.create({ data: { email: address("existing"), fullName: "Already Has An Account" } });
+      await expect(propose({ email: existing.email, staffRole: "legal_adviser" })).rejects.toThrow(ConflictException);
+
+      const pendingEmail = address("pending");
+      const first = await propose({ email: pendingEmail, staffRole: "legal_adviser" });
+      await service.decide({ governedActionId: first.id, checkerUserId: complianceUserId, approve: true });
+      await expect(propose({ email: pendingEmail, staffRole: "audit_committee" })).rejects.toThrow(ConflictException);
+    });
+
+    test("a second pending proposal for the same email, in any letter case, is a duplicate", async () => {
+      const email = address("dup");
+      await propose({ email, staffRole: "legal_adviser" });
+      await expect(propose({ email: email.toUpperCase(), staffRole: "audit_committee" })).rejects.toThrow(ConflictException);
+    });
+
+    test("approval re-checks: an account created after proposing makes approval fail and creates nothing", async () => {
+      const email = address("race");
+      const action = await propose({ email, staffRole: "legal_adviser" });
+      await prisma.user.create({ data: { email, fullName: "Signed Up In The Meantime" } });
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: true }),
+      ).rejects.toThrow(ConflictException);
+      expect(await prisma.invitation.count({ where: { email } })).toBe(0);
+      expect((await prisma.governedAction.findUniqueOrThrow({ where: { id: action.id } })).status).toBe("proposed");
     });
   });
   // founder.mfa_reset (2026-10-01) — the Founder Portal counterpart of
