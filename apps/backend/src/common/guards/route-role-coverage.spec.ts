@@ -1,9 +1,6 @@
-import { readdirSync, statSync } from "fs";
-import { join } from "path";
-import { RequestMethod } from "@nestjs/common";
-import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
-import { REQUIRES_STAFF_ROLE_KEY } from "./staff-role.guard";
-import { REQUIRES_PERMISSION_KEY } from "./permission.guard";
+import { readFileSync, readdirSync, statSync } from "fs";
+import { join, relative } from "path";
+import * as ts from "typescript";
 
 /**
  * Deny-by-default check for write routes. Every non-GET route must either
@@ -16,6 +13,11 @@ import { REQUIRES_PERMISSION_KEY } from "./permission.guard";
  * through the same way without a deliberate entry here.
  *
  * Keys are "<METHOD> /<controller path>/<route path>".
+ *
+ * Reads the controllers' source with the TypeScript parser rather than
+ * require()-ing them: loading ~60 controllers and everything they import
+ * without exercising any of it dragged the global coverage figures well
+ * below jest.config.js's floor (85% -> 78% statements in CI).
  */
 const FOUNDER_SELF_SERVICE = "Founder Portal self-service — authenticated by the Founder session, not a staff role";
 const OWN_ACCOUNT = "acts only on the caller's own account/session";
@@ -92,41 +94,55 @@ function controllerFiles(dir: string): string[] {
   });
 }
 
-function joinPath(...parts: (string | string[] | undefined)[]): string {
-  const segments = parts
-    .map((p) => (Array.isArray(p) ? p[0] : p) ?? "")
-    .map((p) => p.replace(/^\/+|\/+$/g, ""))
-    .filter(Boolean);
-  return "/" + segments.join("/");
-}
+const WRITE_DECORATORS: Record<string, string> = { Post: "POST", Put: "PUT", Patch: "PATCH", Delete: "DELETE" };
+const GATE_DECORATORS = new Set(["RequiresStaffRole", "RequiresPermission"]);
 
 interface WriteRoute {
   key: string;
   gated: boolean;
 }
 
+function decoratorsOf(node: ts.Node): { name: string; args: readonly ts.Expression[] }[] {
+  if (!ts.canHaveDecorators(node)) return [];
+  return (ts.getDecorators(node) ?? []).flatMap((d) => {
+    const call = d.expression;
+    if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) return [];
+    return [{ name: call.expression.text, args: call.arguments }];
+  });
+}
+
+// A route/controller path is always a string literal (or omitted) in
+// this codebase; anything else fails loudly rather than being misread.
+function pathArg(args: readonly ts.Expression[], where: string): string {
+  if (args.length === 0) return "";
+  const [arg] = args;
+  if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) return arg.text;
+  throw new Error(`${where}: non-literal path argument — extend route-role-coverage.spec.ts to read it`);
+}
+
+function joinPath(...parts: string[]): string {
+  const segments = parts.map((p) => p.replace(/^\/+|\/+$/g, "")).filter(Boolean);
+  return "/" + segments.join("/");
+}
+
 function collectWriteRoutes(): WriteRoute[] {
   const routes: WriteRoute[] = [];
   for (const file of controllerFiles(MODULES_DIR)) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const exported = require(file) as Record<string, unknown>;
-    for (const value of Object.values(exported)) {
-      if (typeof value !== "function") continue;
-      const controllerPath = Reflect.getMetadata(PATH_METADATA, value) as string | string[] | undefined;
-      if (controllerPath === undefined) continue;
-      const proto = (value as { prototype: Record<string, unknown> }).prototype;
-      for (const name of Object.getOwnPropertyNames(proto)) {
-        if (name === "constructor") continue;
-        const handler = proto[name];
-        if (typeof handler !== "function") continue;
-        const method = Reflect.getMetadata(METHOD_METADATA, handler) as RequestMethod | undefined;
-        if (method === undefined || method === RequestMethod.GET) continue;
-        const routePath = Reflect.getMetadata(PATH_METADATA, handler) as string | string[] | undefined;
+    const where = relative(MODULES_DIR, file);
+    const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+    for (const statement of source.statements) {
+      if (!ts.isClassDeclaration(statement)) continue;
+      const controller = decoratorsOf(statement).find((d) => d.name === "Controller");
+      if (!controller) continue;
+      const controllerPath = pathArg(controller.args, where);
+      for (const member of statement.members) {
+        if (!ts.isMethodDeclaration(member)) continue;
+        const decorators = decoratorsOf(member);
+        const route = decorators.find((d) => d.name in WRITE_DECORATORS);
+        if (!route) continue;
         routes.push({
-          key: `${RequestMethod[method]} ${joinPath(controllerPath, routePath)}`,
-          gated:
-            Reflect.getMetadata(REQUIRES_STAFF_ROLE_KEY, handler) !== undefined ||
-            Reflect.getMetadata(REQUIRES_PERMISSION_KEY, handler) !== undefined,
+          key: `${WRITE_DECORATORS[route.name]} ${joinPath(controllerPath, pathArg(route.args, where))}`,
+          gated: decorators.some((d) => GATE_DECORATORS.has(d.name)),
         });
       }
     }
