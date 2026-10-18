@@ -16,8 +16,8 @@ import { Alert, Button, EmptyState, IconShieldAlert, Input, Table, TableBody, Ta
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 
 export default function ShariahProhibitedSectorsPage() {
-  const { staff } = useStaffSession();
-  const isAdmin = staff?.staffRole === "platform_admin";
+  const { staff, can } = useStaffSession();
+  const canManage = can("shariah_sector.manage");
 
   const [sectors, setSectors] = useState<ShariahProhibitedSector[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export default function ShariahProhibitedSectorsPage() {
         </div>
       </header>
 
-      {!isAdmin && staff && (
+      {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only to edit" className="mb-6">
           Your role ({humanize(staff.staffRole)}) can view this page but not change it — reach out to a platform
           admin.
@@ -59,11 +59,11 @@ export default function ShariahProhibitedSectorsPage() {
         <SectionHeader
           title="Prohibited Sectors"
           description="A sector referenced from a screening's flaggedSectorIds — removing one leaves any past screening that flagged it unaffected, just no longer selectable for new ones."
-          actionLabel={isAdmin ? (showForm ? "Cancel" : "Add sector") : undefined}
-          onAction={isAdmin ? () => setShowForm((v) => !v) : undefined}
+          actionLabel={canManage ? (showForm ? "Cancel" : "Add sector") : undefined}
+          onAction={canManage ? () => setShowForm((v) => !v) : undefined}
         />
 
-        {isAdmin && showForm && (
+        {canManage && showForm && (
           <SectorForm
             onCreated={() => {
               setShowForm(false);

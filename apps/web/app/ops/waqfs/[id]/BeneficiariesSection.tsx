@@ -31,9 +31,9 @@ export function BeneficiariesSection({
   } = useLoadedResource(() => apiFetchJson<Beneficiary[]>(`/beneficiaries?waqfId=${waqfId}`), [waqfId]);
   const [causes, setCauses] = useState<WaqfCause[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — the backend guards on create, payout details and nomination approve/reject are the real gate.
-  const canManage = staff?.staffRole === "mutawalli_officer";
+  const canManage = can("beneficiary.manage");
 
   useEffect(() => {
     // includeInactive=true — an existing beneficiary can already be pinned
@@ -52,7 +52,7 @@ export function BeneficiariesSection({
     <section>
       <NominationsQueue
         waqfId={waqfId}
-        canDecide={canManage}
+        canDecide={can("beneficiary.nomination_review")}
         onDecided={() => {
           load();
           onChanged();

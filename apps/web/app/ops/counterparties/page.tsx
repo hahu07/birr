@@ -33,8 +33,8 @@ const STATUS_TONE: Record<Counterparty["status"], "success" | "warning" | "neutr
 };
 
 export default function CounterpartiesPage() {
-  const { staff } = useStaffSession();
-  const canRegister = staff?.staffRole === "investment_committee";
+  const { staff, can } = useStaffSession();
+  const canRegister = can("counterparty.register");
 
   const [counterparties, setCounterparties] = useState<Counterparty[] | null>(null);
   const [error, setError] = useState<string | null>(null);

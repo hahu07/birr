@@ -18,11 +18,10 @@ import type { IpCluster, StructuringReviewGroup } from "../../../lib/ops-types";
 import { Alert, Badge, EmptyState, IconShieldAlert, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../_components/SectionChrome";
 
-const REVIEW_ROLES = new Set(["platform_admin", "compliance_officer", "audit_committee", "board_of_trustees"]);
 
 export default function VaultComplianceReviewPage() {
-  const { staff } = useStaffSession();
-  const canView = !!staff && REVIEW_ROLES.has(staff.staffRole);
+  const { can } = useStaffSession();
+  const canView = can("vault.structuring_review");
   const [minFraction, setMinFraction] = useState(0.5);
 
   const {

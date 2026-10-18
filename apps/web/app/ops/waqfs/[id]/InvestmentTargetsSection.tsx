@@ -26,8 +26,8 @@ const INSTRUMENT_TYPES: Investment["instrumentType"][] = [
 ];
 
 export function InvestmentTargetsSection({ waqfId }: { waqfId: string }) {
-  const { staff } = useStaffSession();
-  const canSetTargets = staff?.staffRole === "investment_committee";
+  const { can } = useStaffSession();
+  const canSetTargets = can("investment.target_set");
   const [showForm, setShowForm] = useState(false);
 
   const {

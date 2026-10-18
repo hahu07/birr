@@ -65,12 +65,12 @@ export function DistributionsSection({
   const [causes, setCauses] = useState<WaqfCause[]>([]);
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // mutawalli_officer only — matches DistributionsController.create's
   // own backend gate (the sole role seed-data.ts grants canMaker on
   // distribution.approve). Hides the control for a role that would just
   // get a 403; the backend guard, not this, is the real boundary.
-  const canCreate = staff?.staffRole === "mutawalli_officer";
+  const canCreate = can("distribution.create");
 
   useEffect(() => {
     // includeInactive=true — a past distribution can reference a cause the

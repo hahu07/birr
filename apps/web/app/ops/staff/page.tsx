@@ -42,13 +42,15 @@ const STAFF_ROLES: BirrStaffRole[] = [
 ];
 
 export default function StaffPage() {
-  const { staff: currentStaff } = useStaffSession();
+  const { staff: currentStaff, can } = useStaffSession();
   const [staff, setStaff] = useState<BirrStaff[] | null>(null);
   const [invitations, setInvitations] = useState<Invitation[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [search, setSearch] = useState("");
-  const isAdmin = currentStaff?.staffRole === "platform_admin";
+  const canInvite = can("staff.invite");
+  const canRequestMfaReset = can("staff.mfa_reset");
+  const canManageInvitations = can("staff.invitation_manage");
   const load = useCallback(() => {
     setError(null);
     Promise.all([apiFetchJson<BirrStaff[]>("/birr-staff"), apiFetchJson<Invitation[]>("/invitations")])
@@ -93,7 +95,7 @@ export default function StaffPage() {
             </p>
           </div>
         </div>
-        {isAdmin && (
+        {canInvite && (
           <Button onClick={() => setShowInviteForm((v) => !v)}>
             {showInviteForm ? "Cancel" : "Invite staff member"}
           </Button>
@@ -106,7 +108,7 @@ export default function StaffPage() {
         </Alert>
       )}
 
-      {isAdmin && staff !== null && activePlatformAdmins < 2 && (
+      {canRequestMfaReset && staff !== null && activePlatformAdmins < 2 && (
         <Alert tone="warning" title="Only one active Platform Admin" className="mb-6">
           If this account loses its authenticator and backup codes, nobody can request its MFA reset in the app — it
           would need the server-side emergency procedure. Invite a second Platform Admin. See
@@ -114,7 +116,7 @@ export default function StaffPage() {
         </Alert>
       )}
 
-      {isAdmin && (
+      {canRequestMfaReset && (
         <p className="mb-4 text-xs text-slate-500">
           "Request MFA reset" doesn't reset anything by itself — a Board member or Compliance officer has to approve it
           on the Approvals page, and the person is emailed once it's done.
@@ -158,7 +160,7 @@ export default function StaffPage() {
                       <TableHeaderCell>Role</TableHeaderCell>
                       <TableHeaderCell>Status</TableHeaderCell>
                       <TableHeaderCell>2FA</TableHeaderCell>
-                      {isAdmin && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
+                      {canRequestMfaReset && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -182,7 +184,7 @@ export default function StaffPage() {
                             {s.user.mfaEnabled ? "Enrolled" : "Not enrolled"}
                           </Badge>
                         </TableCell>
-                        {isAdmin && (
+                        {canRequestMfaReset && (
                           <TableCell className="text-right">
                             {s.user.mfaEnabled && (
                               <ProposeGovernedActionButton
@@ -216,7 +218,7 @@ export default function StaffPage() {
                 </TableHead>
                 <TableBody>
                   {pendingInvitations.map((inv) => (
-                    <InvitationRow key={inv.id} invitation={inv} isAdmin={isAdmin} onChanged={load} />
+                    <InvitationRow key={inv.id} invitation={inv} canManageInvitations={canManageInvitations} onChanged={load} />
                   ))}
                 </TableBody>
               </Table>
@@ -318,7 +320,7 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
   );
 }
 
-function InvitationRow({ invitation, isAdmin, onChanged }: { invitation: Invitation; isAdmin: boolean; onChanged: () => void }) {
+function InvitationRow({ invitation, canManageInvitations, onChanged }: { invitation: Invitation; canManageInvitations: boolean; onChanged: () => void }) {
   const [revoking, setRevoking] = useState(false);
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -365,13 +367,13 @@ function InvitationRow({ invitation, isAdmin, onChanged }: { invitation: Invitat
               Copy link
             </Button>
           )}
-          {isAdmin && invitation.inviteeKind === "birr_staff" && (
+          {canManageInvitations && invitation.inviteeKind === "birr_staff" && (
             <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={resendState !== "idle"} onClick={resend}>
               {resendState === "sending" ? "Sending…" : resendState === "sent" ? "Email sent" : "Resend email"}
             </Button>
           )}
           {/* A birr_staff invitation is platform_admin-only to revoke, same as to send — see InvitationsService.revoke. */}
-          {(isAdmin || invitation.inviteeKind !== "birr_staff") && (
+          {(canManageInvitations || invitation.inviteeKind !== "birr_staff") && (
             <Button variant="danger" className="px-3 py-1.5 text-xs" disabled={revoking} onClick={revoke}>
               Revoke
             </Button>

@@ -39,8 +39,8 @@ const LICENSE_TONE: Record<TrusteeLicenseStatus, "success" | "neutral" | "warnin
 };
 
 export default function JurisdictionsPage() {
-  const { staff } = useStaffSession();
-  const isAdmin = staff?.staffRole === "platform_admin";
+  const { staff, can } = useStaffSession();
+  const canManage = can("jurisdiction.manage");
 
   return (
     <div>
@@ -56,7 +56,7 @@ export default function JurisdictionsPage() {
         </div>
       </header>
 
-      {!isAdmin && staff && (
+      {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only to edit" className="mb-6">
           Your role ({humanize(staff.staffRole)}) can view this page but not change it — reach out to a platform
           admin.
@@ -64,14 +64,14 @@ export default function JurisdictionsPage() {
       )}
 
       <div className="space-y-10">
-        <TrusteeLicensesSection isAdmin={isAdmin} />
-        <CompliancePolicySetsSection isAdmin={isAdmin} />
+        <TrusteeLicensesSection canManage={canManage} />
+        <CompliancePolicySetsSection canManage={canManage} />
       </div>
     </div>
   );
 }
 
-function TrusteeLicensesSection({ isAdmin }: { isAdmin: boolean }) {
+function TrusteeLicensesSection({ canManage }: { canManage: boolean }) {
   const [licenses, setLicenses] = useState<TrusteeLicense[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -98,11 +98,11 @@ function TrusteeLicensesSection({ isAdmin }: { isAdmin: boolean }) {
       <SectionHeader
         title="Trustee Licenses"
         description="CLAUDE.md's regulatory posture, made concrete: acting as trustee is itself a regulated activity in most jurisdictions."
-        actionLabel={isAdmin ? (showForm ? "Cancel" : "Add license") : undefined}
-        onAction={isAdmin ? () => setShowForm((v) => !v) : undefined}
+        actionLabel={canManage ? (showForm ? "Cancel" : "Add license") : undefined}
+        onAction={canManage ? () => setShowForm((v) => !v) : undefined}
       />
 
-      {isAdmin && showForm && (
+      {canManage && showForm && (
         <TrusteeLicenseForm
           onCreated={() => {
             setShowForm(false);
@@ -241,7 +241,7 @@ function TrusteeLicenseForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function CompliancePolicySetsSection({ isAdmin }: { isAdmin: boolean }) {
+function CompliancePolicySetsSection({ canManage }: { canManage: boolean }) {
   const [policySets, setPolicySets] = useState<CompliancePolicySet[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -261,11 +261,11 @@ function CompliancePolicySetsSection({ isAdmin }: { isAdmin: boolean }) {
       <SectionHeader
         title="Compliance Policy Sets"
         description="Which named framework applies per jurisdiction (AAOIFI/IFSB/local regulator) — a pointer to where the real rules live, not the rules themselves. Populated by Legal/Compliance, not invented here."
-        actionLabel={isAdmin ? (showForm ? "Cancel" : "Add policy set") : undefined}
-        onAction={isAdmin ? () => setShowForm((v) => !v) : undefined}
+        actionLabel={canManage ? (showForm ? "Cancel" : "Add policy set") : undefined}
+        onAction={canManage ? () => setShowForm((v) => !v) : undefined}
       />
 
-      {isAdmin && showForm && (
+      {canManage && showForm && (
         <CompliancePolicySetForm
           onSaved={() => {
             setShowForm(false);

@@ -43,9 +43,9 @@ export function ProceedsSection({
   } = useLoadedResource(() => apiFetchJson<WaqfProceeds[]>(`/waqf-proceeds?waqfId=${waqfId}`), [waqfId]);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — WaqfProceedsController.record is the real gate.
-  const canRecord = staff?.staffRole === "investment_committee" || staff?.staffRole === "mutawalli_officer";
+  const canRecord = can("waqf.proceeds_record");
 
   useEffect(() => {
     apiFetchJson<Investment[]>(`/investments?waqfId=${waqfId}`).then(setInvestments).catch(() => setInvestments([]));

@@ -70,8 +70,8 @@ function flattenCategoryTree(categories: CauseCategory[]): { category: CauseCate
 }
 
 export default function CauseCategoriesPage() {
-  const { staff } = useStaffSession();
-  const isAdmin = staff?.staffRole === "platform_admin";
+  const { staff, can } = useStaffSession();
+  const canManage = can("cause_category.manage");
 
   const [categories, setCategories] = useState<CauseCategory[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -138,22 +138,22 @@ export default function CauseCategoriesPage() {
         </div>
       </header>
 
-      {!isAdmin && staff && (
+      {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only to edit" className="mb-6">
           Your role ({humanize(staff.staffRole)}) can view this page but not change it — reach out to a platform
           admin.
         </Alert>
       )}
 
-      <CauseSuggestionsQueue isAdmin={isAdmin} onApproved={load} />
+      <CauseSuggestionsQueue canManage={canManage} onApproved={load} />
 
       <section>
         <SectionHeader
           title="Catalog"
           description="Active entries, in display order, are what a Founder sees when picking causes for their fund."
-          actionLabel={isAdmin ? (showForm ? "Cancel" : "Add category") : undefined}
+          actionLabel={canManage ? (showForm ? "Cancel" : "Add category") : undefined}
           onAction={
-            isAdmin
+            canManage
               ? () => {
                   setEditing(null);
                   setShowForm((v) => !v);
@@ -162,7 +162,7 @@ export default function CauseCategoriesPage() {
           }
         />
 
-        {isAdmin && showForm && (
+        {canManage && showForm && (
           <CauseCategoryForm
             key={editing?.id ?? "new"}
             existing={editing}
@@ -205,7 +205,7 @@ export default function CauseCategoriesPage() {
                 <TableHeaderCell>Typical for</TableHeaderCell>
                 <TableHeaderCell>Used by</TableHeaderCell>
                 <TableHeaderCell>Status</TableHeaderCell>
-                {isAdmin && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
+                {canManage && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -241,7 +241,7 @@ export default function CauseCategoriesPage() {
                   <TableCell>
                     <Badge tone={c.deletedAt ? "neutral" : "success"}>{c.deletedAt ? "Retired" : "Active"}</Badge>
                   </TableCell>
-                  {isAdmin && (
+                  {canManage && (
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         {!c.deletedAt && (
@@ -633,7 +633,7 @@ function CauseCategoryForm({
  * clutter on a page most visits will find empty. Approve/reject are
  * platform_admin-only, same authority level as the catalog table below.
  */
-function CauseSuggestionsQueue({ isAdmin, onApproved }: { isAdmin: boolean; onApproved: () => void }) {
+function CauseSuggestionsQueue({ canManage, onApproved }: { canManage: boolean; onApproved: () => void }) {
   const [suggestions, setSuggestions] = useState<CauseCategorySuggestion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [decidingId, setDecidingId] = useState<string | null>(null);
@@ -678,7 +678,7 @@ function CauseSuggestionsQueue({ isAdmin, onApproved }: { isAdmin: boolean; onAp
             <SuggestionRow
               key={s.id}
               suggestion={s}
-              isAdmin={isAdmin}
+              canManage={canManage}
               deciding={decidingId === s.id}
               onDecidingChange={(deciding) => setDecidingId(deciding ? s.id : null)}
               onDecided={() => {
@@ -695,13 +695,13 @@ function CauseSuggestionsQueue({ isAdmin, onApproved }: { isAdmin: boolean; onAp
 
 function SuggestionRow({
   suggestion,
-  isAdmin,
+  canManage,
   deciding,
   onDecidingChange,
   onDecided,
 }: {
   suggestion: CauseCategorySuggestion;
-  isAdmin: boolean;
+  canManage: boolean;
   deciding: boolean;
   onDecidingChange: (deciding: boolean) => void;
   onDecided: () => void;
@@ -786,7 +786,7 @@ function SuggestionRow({
             {suggestion.waqf && <> for {suggestion.waqf.name}</>} · {formatDate(suggestion.createdAt)}
           </p>
         </div>
-        {isAdmin && !deciding && (
+        {canManage && !deciding && (
           <div className="flex shrink-0 gap-2">
             <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => startMode("approve")}>
               Approve

@@ -37,9 +37,9 @@ export function VaultExpensesSection({
   } = useLoadedResource(() => apiFetchJson<VaultExpense[]>(`/vault-expenses?vaultId=${vaultId}`), [vaultId]);
   const [expenseAccounts, setExpenseAccounts] = useState<VaultLedgerAccount[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — VaultExpensesController.create is the real gate.
-  const canRecord = staff?.staffRole === "mutawalli_officer";
+  const canRecord = can("vault.expense_record");
 
   useEffect(() => {
     apiFetchJson<VaultLedgerAccount[]>("/vault-ledger-accounts")

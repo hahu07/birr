@@ -19,8 +19,8 @@ import { RowsSkeleton, SectionHeader, useLoadedResource } from "../_components/S
 const ACCOUNT_TYPES: VaultLedgerAccount["type"][] = ["asset", "liability", "equity", "revenue", "expense"];
 
 export default function VaultLedgerAccountsPage() {
-  const { staff } = useStaffSession();
-  const isAdmin = staff?.staffRole === "platform_admin";
+  const { staff, can } = useStaffSession();
+  const canManage = can("vault.ledger_account_manage");
 
   const { data: accounts, error, reload: load } = useLoadedResource(() => apiFetchJson<VaultLedgerAccount[]>("/vault-ledger-accounts"), []);
   const [showForm, setShowForm] = useState(false);
@@ -55,7 +55,7 @@ export default function VaultLedgerAccountsPage() {
         </div>
       </header>
 
-      {!isAdmin && staff && (
+      {!canManage && staff && (
         <Alert tone="danger" title="platform_admin only to edit" className="mb-6">
           Your role ({humanize(staff.staffRole)}) can view this page but not change it — reach out to a platform
           admin.
@@ -66,11 +66,11 @@ export default function VaultLedgerAccountsPage() {
         <SectionHeader
           title="Accounts"
           description="Retiring an account only affects new activity — it stays visible on any journal entry already posted to it."
-          actionLabel={isAdmin ? (showForm ? "Cancel" : "Add account") : undefined}
-          onAction={isAdmin ? () => setShowForm((v) => !v) : undefined}
+          actionLabel={canManage ? (showForm ? "Cancel" : "Add account") : undefined}
+          onAction={canManage ? () => setShowForm((v) => !v) : undefined}
         />
 
-        {isAdmin && showForm && (
+        {canManage && showForm && (
           <AccountForm
             onSaved={() => {
               setShowForm(false);
@@ -104,7 +104,7 @@ export default function VaultLedgerAccountsPage() {
                 <TableHeaderCell>Code</TableHeaderCell>
                 <TableHeaderCell>Name</TableHeaderCell>
                 <TableHeaderCell>Type</TableHeaderCell>
-                {isAdmin && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
+                {canManage && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -120,7 +120,7 @@ export default function VaultLedgerAccountsPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-slate-500">{humanize(a.type)}</TableCell>
-                  {isAdmin && (
+                  {canManage && (
                     <TableCell className="text-right">
                       {!a.isSystemDefault && (
                         <Button

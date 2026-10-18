@@ -22,9 +22,9 @@ export default function InvestmentPlacementDetailPage() {
   const [placement, setPlacement] = useState<InvestmentPlacementDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showProceedsForm, setShowProceedsForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — recording placement proceeds is investment_committee-only.
-  const canRecordProceeds = staff?.staffRole === "investment_committee";
+  const canRecordProceeds = can("investment.place");
 
   const load = useCallback(() => {
     apiFetchJson<InvestmentPlacementDetail>(`/investment-placements/${id}`)

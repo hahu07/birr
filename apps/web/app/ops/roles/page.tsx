@@ -1,15 +1,11 @@
 "use client";
 
-// Roles & Access — a live read of the org's own maker/checker structure
-// (packages/db/prisma/seed-data.ts, via GET /roles), plus the additional
-// route-level access each role has that isn't a governed_actions
-// permission at all (e.g. Compliance Officer can suspend a counterparty
-// outright — no maker/checker involved, just a StaffRoleGuard check).
-// That second half genuinely can't be read from the database — it's
-// @RequiresStaffRole() decorators scattered across controllers — so it's
-// hand-maintained here, same posture as NAV_GROUPS in app-shell.tsx.
-// Keep ADDITIONAL_ACCESS in sync when a controller's @RequiresStaffRole
-// grants change.
+// Roles & Access — a live read of everything each staff role can do (GET
+// /roles): the governed actions it may propose (maker) or approve
+// (checker), and every plain access permission it holds. Since 2026-10-18
+// every route's gate is a named permission in these same tables (no more
+// role names scattered across controllers), so nothing here is
+// hand-maintained.
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { humanizePermissionKey } from "../../../lib/format";
@@ -42,45 +38,6 @@ const ROLE_ORDER = [
   "external_auditor",
   "platform_admin",
 ];
-
-// Only the five governed (requiresMakerChecker) permissions get a matrix
-// column — waqf.view/compliance.report_export are plain reads/exports,
-// not maker-checker gated, so they're covered under "Also has" instead.
-const GOVERNED_PERMISSION_ORDER = [
-  "asset.dispose",
-  "distribution.approve",
-  "investment.change",
-  "beneficiary.criteria_update",
-  "counterparty.onboard",
-];
-
-const ADDITIONAL_ACCESS: Record<string, string[]> = {
-  mutawalli_officer: ["View any waqf's details"],
-  board_of_trustees: ["View any waqf's details"],
-  investment_committee: ["Register, update, or deregister a counterparty", "View any waqf's details"],
-  shariah_board_member: [
-    "Record Shariah approval on a counterparty (a precondition counterparty.onboard checks for)",
-    "View any waqf's details",
-  ],
-  audit_committee: ["View any waqf's details"],
-  compliance_officer: [
-    "Set a counterparty's concentration limit",
-    "Suspend or blacklist a counterparty",
-    "View any waqf's details",
-  ],
-  legal_adviser: ["View any waqf's details"],
-  external_auditor: ["Export compliance reports", "View any waqf's details"],
-  platform_admin: [
-    "Create new Birr staff accounts",
-    "Set jurisdiction compliance policy sets",
-    "Manage Birr's trustee license status per jurisdiction",
-    "Set corpus & contribution minimums, installment terms",
-    "Maintain the standard cause category catalog",
-    "Approve or reject AI-suggested cause categories",
-    "Manage payment provider credentials",
-    "View any waqf's details",
-  ],
-};
 
 function grantFor(role: Role, permissionKey: string) {
   return role.rolePermissions.find((rp) => rp.permission.key === permissionKey);
@@ -118,6 +75,17 @@ export default function RolesPage() {
     };
   }, []);
 
+  // Every governed (maker-checker) permission any role holds, grouped by
+  // category so related actions sit together.
+  const governed = [
+    ...new Map(
+      (roles ?? [])
+        .flatMap((r) => r.rolePermissions.map((rp) => rp.permission))
+        .filter((p) => p.requiresMakerChecker)
+        .map((p) => [p.key, p]),
+    ).values(),
+  ].sort((a, b) => (a.category ?? "").localeCompare(b.category ?? "") || a.key.localeCompare(b.key));
+
   return (
     <div>
       <header className="mb-8 flex items-center gap-3">
@@ -146,7 +114,7 @@ export default function RolesPage() {
           <section className="mb-10">
             <h2 className="mb-1 text-sm font-semibold text-slate-900">Governed actions, at a glance</h2>
             <p className="mb-4 text-xs text-slate-500">
-              Every one of these five requires a maker <em>and</em> a different person as checker.
+              Every one of these requires a maker <em>and</em> a different person as checker.
             </p>
             <Table>
               <TableHead>
@@ -160,14 +128,14 @@ export default function RolesPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {GOVERNED_PERMISSION_ORDER.map((permissionKey) => (
-                  <TableRow key={permissionKey}>
-                    <TableCell className="font-medium text-slate-800">
-                      {humanizePermissionKey(permissionKey)}
+                {governed.map((permission) => (
+                  <TableRow key={permission.key}>
+                    <TableCell className="font-medium text-slate-800" title={permission.description ?? undefined}>
+                      {humanizePermissionKey(permission.key)}
                     </TableCell>
                     {roles.map((role) => (
                       <TableCell key={role.id} className="text-center">
-                        <GrantCell grant={grantFor(role, permissionKey)} />
+                        <GrantCell grant={grantFor(role, permission.key)} />
                       </TableCell>
                     ))}
                   </TableRow>
@@ -180,12 +148,11 @@ export default function RolesPage() {
             <h2 className="mb-4 text-sm font-semibold text-slate-900">Every role, in full</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {roles.map((role) => {
-                const makerOf = role.rolePermissions.filter(
-                  (rp) => rp.canMaker && GOVERNED_PERMISSION_ORDER.includes(rp.permission.key),
-                );
-                const checkerOf = role.rolePermissions.filter(
-                  (rp) => rp.canChecker && GOVERNED_PERMISSION_ORDER.includes(rp.permission.key),
-                );
+                const makerOf = role.rolePermissions.filter((rp) => rp.canMaker && rp.permission.requiresMakerChecker);
+                const checkerOf = role.rolePermissions.filter((rp) => rp.canChecker && rp.permission.requiresMakerChecker);
+                const canDo = role.rolePermissions
+                  .filter((rp) => rp.canMaker && !rp.permission.requiresMakerChecker)
+                  .sort((a, b) => a.permission.key.localeCompare(b.permission.key));
                 const isApex = role.key === "board_of_trustees";
                 const isReadOnly = role.key === "external_auditor";
 
@@ -244,13 +211,19 @@ export default function RolesPage() {
 
                     <div>
                       <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                        Also has
+                        Can also
                       </p>
-                      <ul className="list-disc space-y-0.5 pl-4 text-xs text-slate-600">
-                        {(ADDITIONAL_ACCESS[role.key] ?? []).map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
+                      {canDo.length === 0 ? (
+                        <p className="text-xs italic text-slate-500">Nothing else.</p>
+                      ) : (
+                        <ul className="list-disc space-y-0.5 pl-4 text-xs text-slate-600">
+                          {canDo.map((rp) => (
+                            <li key={rp.permission.id} title={rp.permission.key}>
+                              {rp.permission.description ?? humanizePermissionKey(rp.permission.key)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                   </Card>
                 );

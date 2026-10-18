@@ -36,9 +36,9 @@ export function VaultCausesSection({
   const { data: causes, error, reload: load } = useLoadedResource(() => apiFetchJson<VaultCause[]>(`/vaults/${vaultId}/causes`), [vaultId]);
   const [categories, setCategories] = useState<CauseCategory[] | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — vault curation (causes, plans, goals) is mutawalli_officer-only.
-  const canCurate = staff?.staffRole === "mutawalli_officer";
+  const canCurate = can("vault.curate");
 
   const showProceeds = vaultType === "investment";
 

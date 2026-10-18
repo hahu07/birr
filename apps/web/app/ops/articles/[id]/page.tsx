@@ -17,7 +17,7 @@ import { ARTICLE_STATUS_TONE } from "../status";
 
 export default function ArticleDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   const [article, setArticle] = useState<BlogArticle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export default function ArticleDetailPage() {
     );
   }
 
-  const canPropose = staff?.staffRole === "mutawalli_officer";
+  const canPropose = can("blog.publish");
   const Illustration = ILLUSTRATIONS[article.illustration as keyof typeof ILLUSTRATIONS];
 
   return (

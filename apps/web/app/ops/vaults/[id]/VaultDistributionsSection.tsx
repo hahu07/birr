@@ -46,12 +46,12 @@ export function VaultDistributionsSection({
   } = useLoadedResource(() => apiFetchJson<VaultDistribution[]>(`/vault-distributions?vaultId=${vaultId}`), [vaultId]);
   const [activeCounterparties, setActiveCounterparties] = useState<Counterparty[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // mutawalli_officer only — matches VaultDistributionsController.create's
   // own backend gate (the sole role seed-data.ts grants canMaker on
   // vault.distribution_approve). Hides the control for a role that would
   // just get a 403; the backend guard, not this, is the real boundary.
-  const canCreate = staff?.staffRole === "mutawalli_officer";
+  const canCreate = can("vault.distribution_create");
 
   useEffect(() => {
     apiFetchJson<Counterparty[]>("/counterparties?status=active")

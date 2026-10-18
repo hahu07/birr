@@ -36,7 +36,7 @@ const STATUS_TONE: Record<ConflictOfInterestDeclaration["status"], "warning" | "
 };
 
 export default function ConflictOfInterestPage() {
-  const { staff } = useStaffSession();
+  const { staff, can } = useStaffSession();
   const [declarations, setDeclarations] = useState<ConflictOfInterestDeclaration[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -135,7 +135,7 @@ export default function ConflictOfInterestPage() {
                     key={d.id}
                     declaration={d}
                     currentUserId={staff?.userId}
-                    isComplianceOfficer={staff?.staffRole === "compliance_officer"}
+                    isComplianceOfficer={can("coi.review")}
                     onChanged={load}
                   />
                 ))}

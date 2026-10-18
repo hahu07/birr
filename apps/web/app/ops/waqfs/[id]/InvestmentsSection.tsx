@@ -51,10 +51,10 @@ export function InvestmentsSection({
   const [activeCounterparties, setActiveCounterparties] = useState<Counterparty[]>([]);
   const [prohibitedSectors, setProhibitedSectors] = useState<ShariahProhibitedSector[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
-  const isShariahBoard = staff?.staffRole === "shariah_board_member";
+  const { can } = useStaffSession();
+  const isShariahBoard = can("investment.shariah_screen");
   // Hides controls the backend would 403 — creating an investment is investment_committee-only.
-  const canCreate = staff?.staffRole === "investment_committee";
+  const canCreate = can("investment.create");
 
   useEffect(() => {
     apiFetchJson<Counterparty[]>("/counterparties?status=active")

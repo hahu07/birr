@@ -22,9 +22,9 @@ export function VaultProceedsSection({ vaultId, currency }: { vaultId: string; c
   } = useLoadedResource(() => apiFetchJson<VaultProceeds[]>(`/vault-proceeds?vaultId=${vaultId}`), [vaultId]);
   const [investments, setInvestments] = useState<VaultInvestment[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const { staff } = useStaffSession();
+  const { can } = useStaffSession();
   // Hides controls the backend would 403 — VaultProceedsController.record is the real gate.
-  const canRecord = staff?.staffRole === "investment_committee" || staff?.staffRole === "mutawalli_officer";
+  const canRecord = can("vault.proceeds_record");
 
   useEffect(() => {
     apiFetchJson<VaultInvestment[]>(`/vault-investments?vaultId=${vaultId}`).then(setInvestments).catch(() => setInvestments([]));
