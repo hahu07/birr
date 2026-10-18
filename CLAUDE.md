@@ -515,15 +515,26 @@ role; both are enforced by database triggers. Adding or removing a role is
 the governed `staff.role_add` / `staff.role_remove` (maker platform_admin;
 checkers board_of_trustees / compliance_officer). Nobody proposes or
 approves a change to their own roles, and the last active platform_admin
-keeps that role. **Phase 3**, grants become editable
-in the Ops Console as a governed action approved by the **Board of
-Trustees only**, with **every permission editable**, including the
-staff-security ones. That was the owner's explicit choice over locking
-them, so the Board approval is the only safeguard on loosening the rules
-for changing the rules. Once Phase 3 ships, the database becomes the
-source of truth, so `sync-permissions` should only add new permissions
-with their default grants on deploy, not overwrite grants changed in the
-Ops Console (a deliberate reset, e.g. a full re-seed, remains possible).
+keeps that role. **Phase 3 (built 2026-10-18)**, grants are editable in
+the Ops Console (Roles & Access) through the governed
+`role.permission_change` action: proposed by `platform_admin`, approved by
+the **Board of Trustees only**, with **every permission editable**,
+including the staff-security ones and this editor itself. That was the
+owner's explicit choice over locking them. A Board member may approve a
+change to the Board's own permissions; the approval screen says so. Three
+guard rails always apply, the owner's choice, enforced at proposal and
+again at approval: (1) no lock-outs, so every governed action keeps at least
+one role able to propose it and one able to approve it, each held by an
+active person; (2) no role both proposes and approves the same governed
+action; (3) external_auditor never gets propose or approve on a governed
+action. The database is now the source of truth for grants:
+`sync-permissions` (every deploy, and the full seed) only adds new
+roles, permissions and missing grant rows, never changing or switching off
+an existing grant. A changed default in `seed-data.ts` for an existing
+permission therefore no longer reaches a running database by itself; change
+it in the Ops Console instead. `sync:permissions --reset` is the
+deliberate way back to exactly `seed-data.ts`, and discards Board-approved
+changes.
 
 ## Core entities (build in this order)
 1. `users` (global accounts), `founders`, `founder_memberships`
@@ -663,8 +674,9 @@ needed. This was a data-entry gap, not a modeling gap.
   directly. What's preserved despite the merge: each route group has its
   own session provider/layout and no shared client state between them,
   and the actual access-control boundary was never "which port" — it's
-  the backend guards (`SessionAuthGuard`, `PermissionGuard`,
-  `StaffRoleGuard`), untouched by this change. `/ops/sign-in` being
+  the backend guards (`SessionAuthGuard`, `PermissionGuard`; the former
+  `StaffRoleGuard` was folded into `PermissionGuard` on 2026-10-18),
+  untouched by this change. `/ops/sign-in` being
   unlinked is obscurity, not access control; don't treat it as a real
   security boundary when reasoning about this system's threat model.
 - **Backend — Node.js/TypeScript with NestJS**, standalone from both

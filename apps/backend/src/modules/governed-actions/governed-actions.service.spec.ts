@@ -2,6 +2,7 @@ import { prisma, Beneficiary, Investment, Distribution, BirrStaffRole } from "@b
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { GovernedActionsService, assertRoleChangeAllowed } from "./governed-actions.service";
+import { staffHasAccess } from "../../common/auth/staff-permissions";
 import { AssetsService } from "../assets/assets.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { InvestmentsService } from "../investments/investments.service";
@@ -2415,6 +2416,13 @@ describe("GovernedActionsService", () => {
       await expect(propose("add", staff.id, "board_of_trustees")).rejects.toThrow(ConflictException);
     });
 
+    test("removing platform_admin from one of several admins goes through the approval", async () => {
+      const { staff } = await staffWith("extra-admin", "platform_admin", "legal_adviser");
+      const action = await propose("remove", staff.id, "platform_admin");
+      await service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: true });
+      expect(await rolesOf(staff.id)).toEqual(["legal_adviser"]);
+    });
+
     test("the last active platform_admin keeps that role", async () => {
       const { staff } = await staffWith("last-admin", "platform_admin", "legal_adviser");
       const target = {
@@ -2437,6 +2445,104 @@ describe("GovernedActionsService", () => {
       // Outside that transaction other admins exist, so it's allowed.
       await expect(assertRoleChangeAllowed("remove", target, "platform_admin", prisma)).resolves.toBeUndefined();
     });
+  });
+  // role.permission_change (2026-10-18) — editing what a role may do from
+  // the Ops Console. Maker: platform_admin; checker: board_of_trustees
+  // only. Guard rails: no lock-outs, no role both proposes and approves,
+  // external_auditor stays read-only on approval actions.
+  describe("role.permission_change", () => {
+    let adminUserId: string;
+    let boardUserId: string;
+
+    beforeAll(async () => {
+      const make = async (label: string, role: BirrStaffRole) => {
+        const user = await prisma.user.create({
+          data: { email: `grants-${label}-${randomUUID().slice(0, 8)}@example.com`, fullName: `Grants ${label}` },
+        });
+        await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: { role } } } });
+        return user.id;
+      };
+      adminUserId = await make("admin", "platform_admin");
+      boardUserId = await make("board", "board_of_trustees");
+    }, 30000);
+
+    const propose = async (payload: Record<string, unknown>) => {
+      const action = await service.propose({ permissionKey: "role.permission_change", payload, makerUserId: adminUserId });
+      governedActionIds.push(action.id);
+      return action;
+    };
+    const change = (roleKey: string, permissionKey: string, canMaker: boolean, canChecker = false) => ({
+      roleKey,
+      permissionKey,
+      canMaker,
+      canChecker,
+    });
+
+    test("approve → the grant changes, takes effect at once, and is audit-logged with before/after", async () => {
+      const role = await prisma.role.findUniqueOrThrow({ where: { key: "legal_adviser" } });
+      const permission = await prisma.permission.findUniqueOrThrow({ where: { key: "vault.expense_record" } });
+      const where = { roleId_permissionId: { roleId: role.id, permissionId: permission.id } };
+      expect(await prisma.rolePermission.findUnique({ where })).toBeNull();
+      try {
+        const action = await propose(change("legal_adviser", "vault.expense_record", true));
+        await service.decide({ governedActionId: action.id, checkerUserId: boardUserId, approve: true });
+
+        expect(await prisma.rolePermission.findUniqueOrThrow({ where })).toMatchObject({ canMaker: true, canChecker: false });
+        expect(await staffHasAccess({ roles: ["legal_adviser"] }, "vault.expense_record")).toBe(true);
+        const log = await prisma.auditLog.findFirst({
+          where: { action: "role_permission.changed", entityId: permission.id },
+          orderBy: { createdAt: "desc" },
+        });
+        expect(log?.before).toMatchObject({ roleKey: "legal_adviser", canMaker: false });
+        expect(log?.after).toMatchObject({ roleKey: "legal_adviser", canMaker: true, approvedByUserId: boardUserId });
+      } finally {
+        // Shared test database — put the grant back as it was (no row).
+        await prisma.rolePermission.deleteMany({ where: { roleId: role.id, permissionId: permission.id } });
+      }
+    });
+
+    test("the proposer cannot approve it, and the database refuses it too", async () => {
+      const action = await propose(change("legal_adviser", "vault.milestone_manage", true));
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: adminUserId, approve: true }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: adminUserId } }),
+      ).rejects.toThrow();
+    });
+
+    test("no role may both propose and approve the same approval action", async () => {
+      await expect(propose(change("mutawalli_officer", "distribution.approve", true, true))).rejects.toThrow(BadRequestException);
+    });
+
+    test("the External Auditor stays read-only on approval actions", async () => {
+      await expect(propose(change("external_auditor", "asset.dispose", false, true))).rejects.toThrow(/External Auditor/);
+    });
+
+    test("a plain permission has no approve side, and a no-op change is refused", async () => {
+      await expect(propose(change("mutawalli_officer", "vault.curate", true, true))).rejects.toThrow(BadRequestException);
+      await expect(propose(change("mutawalli_officer", "vault.curate", true))).rejects.toThrow(/already has exactly that/);
+    });
+
+    test("no lock-outs: an approval action always keeps someone able to propose it and someone able to approve it", async () => {
+      // The Board is the only approver of this editor itself…
+      await expect(propose(change("board_of_trustees", "role.permission_change", false))).rejects.toThrow(/nobody active able to approve/);
+      // …and the Platform Admin the only proposer of adding staff.
+      await expect(propose(change("platform_admin", "staff.invite", false))).rejects.toThrow(/nobody active able to propose/);
+    });
+
+    test("a second pending change to the same role and permission is a duplicate", async () => {
+      await propose(change("audit_committee", "vault.structuring_review", false));
+      await expect(propose(change("audit_committee", "vault.structuring_review", false))).rejects.toThrow(ConflictException);
+    });
+
+    test("a change to the Board's own permissions says so plainly to the approver", async () => {
+      const action = await propose(change("board_of_trustees", "vault.structuring_review", false));
+      // list() summarizes every pending proposal in the shared test
+      // database, so give it room under a full parallel run.
+      const listed = (await service.list({ status: "proposed" })).find((a) => a.id === action.id);
+      expect(listed?.summary).toMatch(/Board of Trustees' own permissions/);
+    }, 30000);
   });
   // founder.mfa_reset (2026-10-01) — the Founder Portal counterpart of
   // staff.mfa_reset. Maker: platform_admin; checkers: board_of_trustees /

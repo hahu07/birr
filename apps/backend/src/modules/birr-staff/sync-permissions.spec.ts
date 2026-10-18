@@ -11,9 +11,9 @@ describe("syncPermissions", () => {
   const grantRow = (roleKey: string, permissionKey: string) =>
     prisma.rolePermission.findFirst({ where: { role: { key: roleKey }, permission: { key: permissionKey } } });
 
-  it("makes the database match seed-data.ts, and is idempotent", async () => {
-    const first = await syncPermissions(prisma);
-    const second = await syncPermissions(prisma);
+  it("with reset, makes the database match seed-data.ts, and is idempotent", async () => {
+    const first = await syncPermissions(prisma, { reset: true });
+    const second = await syncPermissions(prisma, { reset: true });
     expect(second.grants).toBe(first.grants);
     expect(second.revoked).toBe(0);
 
@@ -46,7 +46,22 @@ describe("syncPermissions", () => {
     expect((await grantRow("platform_admin", "founder.mfa_reset"))?.canMaker).toBe(true);
   }, 60000);
 
-  it("switches off a grant that's no longer in seed-data.ts, instead of leaving the old approval right in place", async () => {
+  // The Board can change grants in the Ops Console (role.permission_change),
+  // so an ordinary deploy must not undo that.
+  it("by default leaves a grant that was changed in the Ops Console exactly as it is", async () => {
+    const row = await grantRow("platform_admin", "founder.mfa_reset");
+    expect(row?.canMaker).toBe(true);
+    const where = { roleId_permissionId: { roleId: row!.roleId, permissionId: row!.permissionId } };
+    await prisma.rolePermission.update({ where, data: { canMaker: false } });
+    try {
+      await syncPermissions(prisma);
+      expect((await prisma.rolePermission.findUniqueOrThrow({ where })).canMaker).toBe(false);
+    } finally {
+      await prisma.rolePermission.update({ where, data: { canMaker: true } });
+    }
+  }, 60000);
+
+  it("with reset, switches off a grant that's no longer in seed-data.ts, instead of leaving the old approval right in place", async () => {
     const role = await prisma.role.findUniqueOrThrow({ where: { key: "legal_adviser" } });
     const permission = await prisma.permission.findUniqueOrThrow({ where: { key: "asset.dispose" } });
     expect(rolePermissions.legal_adviser?.["asset.dispose"]).toBeUndefined();
@@ -57,7 +72,7 @@ describe("syncPermissions", () => {
     });
 
     try {
-      const result = await syncPermissions(prisma);
+      const result = await syncPermissions(prisma, { reset: true });
       expect(result.revoked).toBeGreaterThanOrEqual(1);
       const after = await prisma.rolePermission.findUniqueOrThrow({
         where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
