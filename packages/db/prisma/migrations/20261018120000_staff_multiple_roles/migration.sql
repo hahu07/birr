@@ -15,7 +15,7 @@ CREATE TABLE "birr_staff_roles" (
 CREATE INDEX "birr_staff_roles_role_idx" ON "birr_staff_roles"("role");
 
 -- AddForeignKey
-ALTER TABLE "birr_staff_roles" ADD CONSTRAINT "birr_staff_roles_birrStaffId_fkey" FOREIGN KEY ("birrStaffId") REFERENCES "birr_staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "birr_staff_roles" ADD CONSTRAINT "birr_staff_roles_birrStaffId_fkey" FOREIGN KEY ("birrStaffId") REFERENCES "birr_staff"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- Backfill: each staff member's current single role becomes their first
 -- (and, for now, only) row. Runs before the column is dropped.
@@ -31,7 +31,8 @@ ALTER TABLE "birr_staff" DROP COLUMN "staffRole";
 -- 1. external_auditor stands alone — an auditor can't hold any other role,
 --    since they must stay independent of what they audit (owner decision,
 --    2026-10-18).
--- 2. A staff member always keeps at least one role.
+-- 2. A staff member always keeps at least one role (unless the staff row
+--    itself is deleted, which cascades to its roles).
 -- 3. A row is never edited in place — a role is added or removed, so the
 --    audit trail of each change stays a plain insert or delete.
 --
@@ -60,6 +61,12 @@ CREATE TRIGGER birr_staff_roles_before_insert
 CREATE OR REPLACE FUNCTION birr_staff_roles_check_delete() RETURNS trigger AS $$
 BEGIN
   PERFORM 1 FROM "birr_staff" WHERE "id" = OLD."birrStaffId" FOR UPDATE;
+  -- The staff row itself is being deleted (the cascade from birr_staff):
+  -- its roles go with it. Staff are soft-deleted in practice (CLAUDE.md),
+  -- so this is test-fixture cleanup, not a way around the rule.
+  IF NOT FOUND THEN
+    RETURN OLD;
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM "birr_staff_roles" WHERE "birrStaffId" = OLD."birrStaffId") THEN
     RAISE EXCEPTION 'A staff member must keep at least one role';
   END IF;

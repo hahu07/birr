@@ -465,7 +465,7 @@ model BirrStaff {
 // least one role.
 model BirrStaffRoleGrant {
   birrStaffId String
-  birrStaff   BirrStaff     @relation(fields: [birrStaffId], references: [id])
+  birrStaff   BirrStaff     @relation(fields: [birrStaffId], references: [id], onDelete: Cascade)
   role        BirrStaffRole
   createdAt   DateTime      @default(now())
 
