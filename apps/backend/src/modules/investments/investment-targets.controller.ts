@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Query } from "@nestjs/commo
 import { InvestmentInstrumentType } from "@birr/db";
 import { InvestmentTargetsService, SetInvestmentTargetInput } from "./investment-targets.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 @Controller("investment-targets")
 export class InvestmentTargetsController {
@@ -12,7 +12,7 @@ export class InvestmentTargetsController {
   // deliberate portfolio-policy decision, unlike registering an
   // Investment itself (POST /investments has no staff-role gate at
   // all today).
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("investment.target_set")
   @Post()
   setTarget(
     @Body() body: SetInvestmentTargetInput & { waqfId: string },
@@ -26,7 +26,7 @@ export class InvestmentTargetsController {
     return this.service.list(waqfId);
   }
 
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("investment.target_set")
   @Delete(":waqfId/:instrumentType")
   remove(
     @Param("waqfId") waqfId: string,

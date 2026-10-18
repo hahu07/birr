@@ -4,7 +4,7 @@ import {
   UpsertCorpusMinimumInput,
   UpdateWaqfFundingSettingsInput,
 } from "./waqf-funding.service";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
 
@@ -26,7 +26,7 @@ export class WaqfFundingController {
   }
 
   @Put("corpus-minimums/:currency")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("waqf_funding.configure")
   upsertCorpusMinimum(
     @Param("currency") currency: string,
     @Body() body: UpsertCorpusMinimumInput,
@@ -41,7 +41,7 @@ export class WaqfFundingController {
   }
 
   @Put("contribution-minimums/:currency")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("waqf_funding.configure")
   upsertContributionMinimum(
     @Param("currency") currency: string,
     @Body() body: UpsertCorpusMinimumInput,
@@ -56,7 +56,7 @@ export class WaqfFundingController {
   }
 
   @Put("settings")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("waqf_funding.configure")
   updateSettings(@Body() body: UpdateWaqfFundingSettingsInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.updateSettings(body, staff.userId);
   }

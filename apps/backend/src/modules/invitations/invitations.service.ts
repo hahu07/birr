@@ -10,6 +10,7 @@ import {
   resolveFounderRecipientUserIdsForFoundation,
 } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
+import { staffHasAccess } from "../../common/auth/staff-permissions";
 
 const INVITATION_VALIDITY_DAYS = 7;
 const MIN_PASSWORD_LENGTH = 8;
@@ -553,11 +554,14 @@ export class InvitationsService {
   ) {
     const invitation = await prisma.invitation.findUnique({ where: { id } });
     if (!invitation) throw new NotFoundException(`Invitation "${id}" not found.`);
-    // Mirrors InvitationsController.invite()'s own platform_admin-only
-    // check on sending a birr_staff invitation — revoking one is the same
-    // authority, and was otherwise open to any staff role.
-    if (actor.type === "birr_staff" && invitation.inviteeKind === "birr_staff" && actor.staffRole !== "platform_admin") {
-      throw new ForbiddenException("Only a platform_admin can revoke a Birr staff invitation.");
+    // Revoking a pending staff invitation is staff.invitation_manage
+    // (platform_admin) — it was otherwise open to any staff role.
+    if (
+      actor.type === "birr_staff" &&
+      invitation.inviteeKind === "birr_staff" &&
+      !(await staffHasAccess(actor, "staff.invitation_manage"))
+    ) {
+      throw new ForbiddenException("You don't have permission to revoke a Birr staff invitation.");
     }
     if (actor.type === "founder_user") {
       // co_founder invitations have no founderId (there's no existing

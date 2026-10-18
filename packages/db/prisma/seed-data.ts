@@ -24,7 +24,7 @@ export const roles = [
 // *establishment* is no longer one of these — it's donor self-service now
 // (see waqfs.controller.ts / foundations.controller.ts), not a
 // governed_actions permission.
-export const permissions = [
+const governedPermissions = [
   { key: "asset.dispose", category: "asset", requiresMakerChecker: true, description: "Dispose of a waqf-held asset." },
   { key: "distribution.approve", category: "distribution", requiresMakerChecker: true, description: "Approve a beneficiary distribution." },
   { key: "investment.change", category: "investment", requiresMakerChecker: true, description: "Change an investment or portfolio allocation." },
@@ -90,6 +90,78 @@ export const permissions = [
   { key: "staff.invite", category: "staff", requiresMakerChecker: true, description: "Invite a new Birr staff member into a given staff role." },
   { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
 ] as const;
+
+// Plain access permissions (2026-10-18): who may perform an ungoverned
+// staff action at all — record an expense, create a Vault, export the
+// audit log. These replaced 97 hard-coded role checks
+// (@RequiresStaffRole) with named permissions, granting exactly the roles
+// each route allowed before; no access changed. Unlike the maker-checker
+// permissions above there's no proposer/approver split: a grant is
+// stored as canMaker: true and means "may do this" (PermissionGuard's
+// @RequiresAccess). Each entry lists the roles that hold it.
+export const accessPermissions = [
+  // CLAUDE.md's Bashir rule: Legal/Compliance sign-off specifically, never
+  // just any staff member — and deliberately no platform_admin override.
+  { key: "agent_draft.publish", category: "content", description: "Publish an AI agent's (Bashir's) reviewed marketing draft.", roles: ["compliance_officer", "legal_adviser"] },
+  { key: "asset.register", category: "waqf", description: "Register a new asset on a waqf fund.", roles: ["mutawalli_officer"] },
+  // The roles CLAUDE.md's segregation of duties gives a compliance/audit
+  // mandate to — not every staff member should pull the whole trustee-wide
+  // compliance evidence export.
+  { key: "audit_log.export", category: "audit", description: "Export the audit log and verify its tamper-evident hash chain.", roles: ["audit_committee", "external_auditor", "platform_admin"] },
+  { key: "beneficiary.manage", category: "beneficiary", description: "Add beneficiaries to a waqf fund and set their payout details.", roles: ["mutawalli_officer"] },
+  { key: "beneficiary.nomination_review", category: "beneficiary", description: "Approve or reject a beneficiary a Founder nominated.", roles: ["mutawalli_officer"] },
+  // Deliberately not everyone on staff: this is public marketing for a
+  // fiduciary service. Going live is separately the governed blog.publish.
+  { key: "blog.manage", category: "content", description: "Write, edit, archive and unpublish blog articles (publishing itself is blog.publish).", roles: ["compliance_officer", "legal_adviser", "mutawalli_officer", "platform_admin"] },
+  { key: "case_assignment.manage", category: "staff", description: "Assign staff to a waqf fund's caseload, and close assignments.", roles: ["mutawalli_officer", "platform_admin"] },
+  { key: "caseload.view_all", category: "staff", description: "See every waqf fund's beneficiaries and Founder requests, not just assigned ones.", roles: ["platform_admin"] },
+  { key: "cause_category.manage", category: "catalog", description: "Maintain the cause category catalog, including Founder suggestions.", roles: ["platform_admin"] },
+  { key: "cause_impact.log", category: "waqf", description: "Log an impact update on a waqf fund's cause.", roles: ["mutawalli_officer"] },
+  { key: "coi.review", category: "staff", description: "Review another staff member's conflict-of-interest declaration.", roles: ["compliance_officer"] },
+  { key: "counterparty.payout_details", category: "counterparty", description: "Set a counterparty's payout bank details.", roles: ["mutawalli_officer"] },
+  { key: "counterparty.register", category: "counterparty", description: "Register, edit and deregister a counterparty (investment or relief partner).", roles: ["investment_committee"] },
+  { key: "counterparty.restrict", category: "counterparty", description: "Suspend or blacklist a counterparty, and set its concentration limit.", roles: ["compliance_officer"] },
+  { key: "counterparty.shariah_approve", category: "shariah", description: "Give Shariah sign-off on a counterparty.", roles: ["shariah_board_member"] },
+  { key: "distribution.create", category: "distribution", description: "Create a waqf distribution, and retry a failed payout.", roles: ["mutawalli_officer"] },
+  // Legal and Compliance are included on purpose: hiding a photo is their
+  // safeguarding lever.
+  { key: "impact_photo.manage", category: "content", description: "Upload and moderate field photos.", roles: ["compliance_officer", "legal_adviser", "mutawalli_officer", "platform_admin"] },
+  { key: "investment.create", category: "investment", description: "Add an investment to a waqf fund.", roles: ["investment_committee"] },
+  { key: "investment.place", category: "investment", description: "Place an investment tranche with a counterparty, and record its proceeds.", roles: ["investment_committee"] },
+  { key: "investment.shariah_screen", category: "shariah", description: "Decide the Shariah screening of a waqf investment.", roles: ["shariah_board_member"] },
+  { key: "investment.target_set", category: "investment", description: "Set or remove a waqf fund's target investment mix.", roles: ["investment_committee"] },
+  { key: "jurisdiction.manage", category: "compliance", description: "Maintain trustee licences and per-jurisdiction compliance policy sets.", roles: ["platform_admin"] },
+  { key: "platform_settings.manage", category: "platform", description: "Change platform settings and provider credentials.", roles: ["platform_admin"] },
+  { key: "shariah_sector.manage", category: "shariah", description: "Maintain the list of Shariah-prohibited sectors.", roles: ["platform_admin"] },
+  { key: "staff.invitation_manage", category: "staff", description: "Resend or revoke a pending staff invitation.", roles: ["platform_admin"] },
+  { key: "vault.contribution_hold", category: "vault", description: "Hold a Vault contribution for review, and release it.", roles: ["compliance_officer"] },
+  { key: "vault.curate", category: "vault", description: "Create a Vault and edit its causes, goals, cover image and feasibility report.", roles: ["mutawalli_officer"] },
+  { key: "vault.distribution_create", category: "vault", description: "Create a Vault distribution, and retry a failed payout.", roles: ["mutawalli_officer"] },
+  { key: "vault.donor_threshold_set", category: "vault", description: "Set the donor ID-capture (AML) threshold per currency.", roles: ["compliance_officer"] },
+  { key: "vault.expense_record", category: "vault", description: "Record a Vault programme expense.", roles: ["mutawalli_officer"] },
+  { key: "vault.investment_create", category: "vault", description: "Add an investment to a Vault.", roles: ["investment_committee"] },
+  { key: "vault.investment_shariah_screen", category: "shariah", description: "Decide the Shariah screening of a Vault investment.", roles: ["shariah_board_member"] },
+  { key: "vault.investment_target_set", category: "vault", description: "Set or remove a Vault's target investment mix.", roles: ["investment_committee"] },
+  { key: "vault.ledger_account_manage", category: "vault", description: "Add and retire Vault ledger accounts.", roles: ["platform_admin"] },
+  { key: "vault.milestone_manage", category: "vault", description: "Add Vault milestones, start them, and attach evidence (completion is vault.milestone_complete).", roles: ["mutawalli_officer"] },
+  { key: "vault.proceeds_record", category: "vault", description: "Record investment proceeds on a Vault.", roles: ["investment_committee", "mutawalli_officer"] },
+  { key: "vault.status_change", category: "vault", description: "Pause, close or archive a Vault (publishing is vault.publish).", roles: ["compliance_officer", "mutawalli_officer"] },
+  { key: "vault.structuring_review", category: "vault", description: "See the Vault anti-structuring (AML) review list.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "platform_admin"] },
+  { key: "waqf.cause_manage", category: "waqf", description: "Add a custom cause to a waqf fund and edit its project plan.", roles: ["mutawalli_officer"] },
+  { key: "waqf.expense_record", category: "waqf", description: "Record a waqf fund programme expense.", roles: ["mutawalli_officer"] },
+  { key: "waqf.ledger_account_manage", category: "waqf", description: "Add and retire waqf ledger accounts.", roles: ["platform_admin"] },
+  { key: "waqf.milestone_manage", category: "waqf", description: "Add waqf fund milestones, start them, and attach evidence (completion is waqf.milestone_complete).", roles: ["mutawalli_officer"] },
+  { key: "waqf.proceeds_allocate", category: "investment", description: "Allocate a waqf fund's investment proceeds across its causes.", roles: ["investment_committee"] },
+  { key: "waqf.proceeds_record", category: "investment", description: "Record investment proceeds on a waqf fund.", roles: ["investment_committee", "mutawalli_officer"] },
+  { key: "waqf_funding.configure", category: "platform", description: "Set contribution and corpus minimums and waqf funding settings.", roles: ["platform_admin"] },
+] as const satisfies readonly { key: string; category: string; description: string; roles: readonly string[] }[];
+
+
+export const permissions = [
+  ...governedPermissions,
+  ...accessPermissions.map(({ key, category, description }) => ({ key, category, requiresMakerChecker: false, description })),
+];
+
 
 // role key -> permission key -> { canMaker, canChecker }
 // No role is both the only maker and the only checker for any governed
@@ -207,6 +279,12 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
     "staff.invite": { canMaker: true },
   },
 };
+
+for (const { key, roles } of accessPermissions) {
+  for (const role of roles) {
+    rolePermissions[role] = { ...rolePermissions[role], [key]: { canMaker: true } };
+  }
+}
 
 // Enforced in ContributionsService.initiate() before a payment is ever
 // created. NGN is a placeholder FX approximation of the ~$100 USD-

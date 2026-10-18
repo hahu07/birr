@@ -4,6 +4,7 @@ import { prisma, Prisma } from "@birr/db";
 import { verifyUserPassword } from "../../common/auth/password-auth";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MfaService } from "../../common/auth/mfa.service";
+import { staffAccessKeys } from "../../common/auth/staff-permissions";
 
 export class BirrStaffLoginInput {
   @IsEmail()
@@ -182,6 +183,9 @@ export class BirrStaffService {
       where: { userId },
       include: { user: { select: SAFE_USER_SELECT } },
     });
-    return staff;
+    // Every permission this person's role holds, so the Ops Console can
+    // show or hide controls without hard-coding role names. The backend
+    // guards remain the real boundary.
+    return { ...staff, permissions: await staffAccessKeys(staff) };
   }
 }

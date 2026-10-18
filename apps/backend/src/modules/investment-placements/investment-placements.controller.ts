@@ -5,7 +5,7 @@ import {
   RecordPlacementProceedsInput,
 } from "./investment-placements.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 // Birr-staff only, same trust level as InvestmentsController/
 // WaqfProceedsController — placing waqf money with a counterparty (or
@@ -16,7 +16,7 @@ export class InvestmentPlacementsController {
   constructor(private readonly service: InvestmentPlacementsService) {}
 
   @Post()
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("investment.place")
   create(@Body() body: CreateInvestmentPlacementInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
@@ -32,7 +32,7 @@ export class InvestmentPlacementsController {
   }
 
   @Post(":id/proceeds")
-  @RequiresStaffRole("investment_committee")
+  @RequiresAccess("investment.place")
   recordProceeds(
     @Param("id") id: string,
     @Body() body: RecordPlacementProceedsInput,

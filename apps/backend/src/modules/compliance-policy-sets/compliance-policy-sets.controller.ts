@@ -3,7 +3,7 @@ import {
   CompliancePolicySetsService,
   UpsertCompliancePolicySetInput,
 } from "./compliance-policy-sets.service";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 
 // Same posture as TrusteeLicensesController: reads default to any
@@ -15,7 +15,7 @@ export class CompliancePolicySetsController {
   constructor(private readonly service: CompliancePolicySetsService) {}
 
   @Put(":jurisdiction")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("jurisdiction.manage")
   upsert(
     @Param("jurisdiction") jurisdiction: string,
     @Body() body: UpsertCompliancePolicySetInput,
@@ -25,7 +25,7 @@ export class CompliancePolicySetsController {
   }
 
   @Delete(":jurisdiction")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("jurisdiction.manage")
   async remove(@Param("jurisdiction") jurisdiction: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.remove(jurisdiction, staff.userId);
     return { ok: true };

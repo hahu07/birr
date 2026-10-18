@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { IsEnum, IsIn, IsObject, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma, FounderRequestType } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
+import { staffHasAccess } from "../../common/auth/staff-permissions";
 
 // One minimal required-key check per type, not full per-type DTOs —
 // `details` only ever needs to carry enough for staff to know what's
@@ -66,12 +67,12 @@ const FOUNDER_REQUEST_INCLUDE = {
  */
 @Injectable()
 export class FounderRequestsService {
-  // Same "requires an active caseload assignment, platform_admin exempt"
+  // Same "requires an active caseload assignment, caseload.view_all exempt"
   // shape as BeneficiariesService.assertStaffCanAccessWaqf — a Founder's
   // request is exactly as sensitive as the beneficiary/asset/distribution
   // data it's asking staff to act on, so it gets the same scoping.
   async assertStaffCanAccessWaqf(waqfId: string, staff: { id: string; staffRole: string }): Promise<void> {
-    if (staff.staffRole === "platform_admin") return;
+    if (await staffHasAccess(staff, "caseload.view_all")) return;
     const assignment = await prisma.waqfCaseAssignment.findFirst({
       where: { waqfId, birrStaffId: staff.id, status: "active" },
       select: { id: true },
@@ -147,13 +148,13 @@ export class FounderRequestsService {
 
   // waqfId given: caller has already asserted access via
   // assertStaffCanAccessWaqf. Omitted: scoped to the staff member's own
-  // active caseload, platform_admin sees everything — same shape as
+  // active caseload; caseload.view_all (platform_admin) sees everything — same shape as
   // BeneficiariesService.list().
-  list(waqfId: string | undefined, staff: { id: string; staffRole: string }) {
+  async list(waqfId: string | undefined, staff: { id: string; staffRole: string }) {
     if (waqfId) {
       return prisma.founderRequest.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" }, include: FOUNDER_REQUEST_INCLUDE });
     }
-    if (staff.staffRole === "platform_admin") {
+    if (await staffHasAccess(staff, "caseload.view_all")) {
       return prisma.founderRequest.findMany({ orderBy: { createdAt: "desc" }, include: FOUNDER_REQUEST_INCLUDE, take: 200 });
     }
     return prisma.founderRequest.findMany({

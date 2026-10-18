@@ -4,11 +4,8 @@ import { FieldPhotosService, UploadFieldPhotosInput } from "./field-photos.servi
 import { FieldPhotoStorageService, MAX_UPLOAD_BYTES } from "./field-photo-storage.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
-// Who may upload photos and take them down. Legal and Compliance are
-// included on purpose: hiding a photo is their safeguarding lever.
-const STAFF_ROLES = ["mutawalli_officer", "legal_adviser", "compliance_officer", "platform_admin"] as const;
 const MAX_FILES_PER_UPLOAD = 20;
 
 @Controller("impact/photos")
@@ -26,7 +23,7 @@ export class FieldPhotosController {
     return this.service.listPublic(parsed > 0 ? Math.min(parsed, 60) : undefined);
   }
 
-  @RequiresStaffRole([...STAFF_ROLES])
+  @RequiresAccess("impact_photo.manage")
   @Get("staff")
   listForVault(@Query("vaultId") vaultId?: string) {
     if (!vaultId) throw new BadRequestException("vaultId is required.");
@@ -35,7 +32,7 @@ export class FieldPhotosController {
 
   // multipart/form-data, many photos in one request. `limits.fileSize`
   // stops multer buffering an oversized file before the app-layer check runs.
-  @RequiresStaffRole([...STAFF_ROLES])
+  @RequiresAccess("impact_photo.manage")
   @Post()
   @UseInterceptors(FilesInterceptor("photos", MAX_FILES_PER_UPLOAD, { limits: { fileSize: MAX_UPLOAD_BYTES } }))
   async upload(
@@ -51,19 +48,19 @@ export class FieldPhotosController {
     return this.service.createMany(body, urls, staff.userId);
   }
 
-  @RequiresStaffRole([...STAFF_ROLES])
+  @RequiresAccess("impact_photo.manage")
   @Post(":id/hide")
   hide(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.hide(id, staff.userId);
   }
 
-  @RequiresStaffRole([...STAFF_ROLES])
+  @RequiresAccess("impact_photo.manage")
   @Post(":id/unhide")
   unhide(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.unhide(id, staff.userId);
   }
 
-  @RequiresStaffRole([...STAFF_ROLES])
+  @RequiresAccess("impact_photo.manage")
   @Post(":id/archive")
   archive(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.archive(id, staff.userId);

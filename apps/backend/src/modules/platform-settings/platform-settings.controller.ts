@@ -4,7 +4,7 @@ import type { Request } from "express";
 import { SettingsService } from "../../common/settings/settings.service";
 import { PROVIDER_FIELDS } from "../../common/settings/provider-fields";
 import { resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 class SetSettingBody {
   @IsString()
@@ -39,7 +39,7 @@ export class PlatformSettingsController {
   }
 
   @Put(":provider/:key")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("platform_settings.manage")
   async set(
     @Param("provider") provider: string,
     @Param("key") key: string,
@@ -51,7 +51,7 @@ export class PlatformSettingsController {
   }
 
   @Delete(":provider/:key")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("platform_settings.manage")
   async clear(
     @Param("provider") provider: string,
     @Param("key") key: string,

@@ -8,7 +8,7 @@ import {
   AuthenticatedBirrStaff,
   CurrentBirrStaff,
 } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 
 const REVIEW_OUTCOMES = ["reviewed", "cleared", "escalated"] as const;
 
@@ -44,7 +44,7 @@ export class ConflictOfInterestDeclarationsController {
   }
 
   @Post(":id/review")
-  @RequiresStaffRole("compliance_officer")
+  @RequiresAccess("coi.review")
   review(
     @Param("id") id: string,
     @Body() body: ReviewBody,

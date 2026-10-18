@@ -8,7 +8,7 @@ import {
   AuthenticatedBirrStaff,
   CurrentBirrStaff,
 } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { CaseAssignmentRole } from "@birr/db";
 
 const CLOSE_STATUSES = ["closed", "reassigned"] as const;
@@ -43,13 +43,13 @@ export class WaqfCaseAssignmentsController {
   constructor(private readonly service: WaqfCaseAssignmentsService) {}
 
   @Post()
-  @RequiresStaffRole(["platform_admin", "mutawalli_officer"])
+  @RequiresAccess("case_assignment.manage")
   assign(@Body() body: AssignBody, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.assign({ ...body, actorUserId: staff.userId });
   }
 
   @Post(":id/close")
-  @RequiresStaffRole(["platform_admin", "mutawalli_officer"])
+  @RequiresAccess("case_assignment.manage")
   close(
     @Param("id") id: string,
     @Body() body: CloseBody,

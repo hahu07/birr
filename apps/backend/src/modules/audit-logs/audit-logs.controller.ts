@@ -2,17 +2,13 @@ import { Controller, Get, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { prisma } from "@birr/db";
 import { AuditLogsService } from "./audit-logs.service";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { resolveFounderFromSession } from "../../common/auth/current-founder";
 import { Public } from "../../common/guards/public.decorator";
 
 const PAGE_SIZE = 50;
 
-// The three roles CLAUDE.md's segregation-of-duties list actually gives
-// a compliance/audit mandate to — not every birr_staff member should be
-// able to pull the whole trustee-wide compliance evidence export.
-const AUDIT_EXPORT_ROLES = ["platform_admin", "audit_committee", "external_auditor"] as const;
 
 @Controller("audit-logs")
 export class AuditLogsController {
@@ -96,7 +92,7 @@ export class AuditLogsController {
   }
 
   @Get("export")
-  @RequiresStaffRole([...AUDIT_EXPORT_ROLES])
+  @RequiresAccess("audit_log.export")
   async export(@CurrentBirrStaff() staff: AuthenticatedBirrStaff, @Query("waqfId") waqfId?: string) {
     const result = await this.auditLogsService.exportChain(waqfId ? { waqfId } : undefined);
 
@@ -113,7 +109,7 @@ export class AuditLogsController {
   }
 
   @Get("verify")
-  @RequiresStaffRole([...AUDIT_EXPORT_ROLES])
+  @RequiresAccess("audit_log.export")
   async verify(@CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     const result = await this.auditLogsService.verifyChain();
 

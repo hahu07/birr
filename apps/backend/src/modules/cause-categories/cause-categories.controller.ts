@@ -8,7 +8,7 @@ import {
 } from "./cause-categories.service";
 import { CauseCategoryDocumentStorageService, MAX_SIZE_BYTES } from "./cause-category-document-storage.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { Public } from "../../common/guards/public.decorator";
 
 // @Public() — the standard catalog a Founder picks causes from when
@@ -25,13 +25,13 @@ export class CauseCategoriesController {
   ) {}
 
   @Post()
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("cause_category.manage")
   create(@Body() body: CreateCauseCategoryInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
 
   @Put(":id")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("cause_category.manage")
   update(
     @Param("id") id: string,
     @Body() body: UpdateCauseCategoryInput,
@@ -46,7 +46,7 @@ export class CauseCategoriesController {
   // just reads the catalog — same platform_admin-only posture as
   // create()/update().
   @Post(":id/project-plan-file")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("cause_category.manage")
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: MAX_SIZE_BYTES } }))
   async setProjectPlanFile(
     @Param("id") id: string,
@@ -59,14 +59,14 @@ export class CauseCategoriesController {
   }
 
   @Post(":id/retire")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("cause_category.manage")
   async retire(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.retire(id, staff.userId);
     return { ok: true };
   }
 
   @Post(":id/restore")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("cause_category.manage")
   async restore(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.restore(id, staff.userId);
     return { ok: true };

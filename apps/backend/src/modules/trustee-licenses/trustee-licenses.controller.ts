@@ -4,7 +4,7 @@ import {
   CreateTrusteeLicenseInput,
   UpdateTrusteeLicenseInput,
 } from "./trustee-licenses.service";
-import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 
 // Reads default to "any authenticated staff" (SessionAuthGuard's floor —
@@ -17,13 +17,13 @@ export class TrusteeLicensesController {
   constructor(private readonly service: TrusteeLicensesService) {}
 
   @Post()
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("jurisdiction.manage")
   create(@Body() body: CreateTrusteeLicenseInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
 
   @Put(":id")
-  @RequiresStaffRole("platform_admin")
+  @RequiresAccess("jurisdiction.manage")
   update(
     @Param("id") id: string,
     @Body() body: UpdateTrusteeLicenseInput,

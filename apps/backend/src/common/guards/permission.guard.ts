@@ -48,6 +48,17 @@ export const REQUIRES_PERMISSION_KEY = "requiresPermission";
 export const RequiresPermission = (side: PermissionSide, permissionKey?: string) =>
   SetMetadata(REQUIRES_PERMISSION_KEY, { side, permissionKey } satisfies PermissionRequirement);
 
+/**
+ * `@RequiresAccess("vault.curate")` — the caller's role must hold this
+ * plain access permission (seed-data.ts's accessPermissions). Replaced
+ * every @RequiresStaffRole (2026-10-18): who may do what now lives in one
+ * place, the roles/permissions tables, instead of role names scattered
+ * across controllers. An access grant is stored as canMaker, so this is
+ * the fixed-key maker check below under a name that reads correctly for
+ * an action with no proposer/approver split.
+ */
+export const RequiresAccess = (permissionKey: string) => RequiresPermission("maker", permissionKey);
+
 @Injectable()
 export class PermissionGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
@@ -61,9 +72,9 @@ export class PermissionGuard implements CanActivate {
     const { side, permissionKey: fixedPermissionKey } = requirement;
 
     const request = context.switchToHttp().getRequest<Request>();
-    // requireMfa: false — same reasoning as SessionAuthGuard/
-    // StaffRoleGuard: this guard's own assertStaffMfa call right below
-    // is the exemption-aware check.
+    // requireMfa: false — same reasoning as SessionAuthGuard: this
+    // guard's own assertStaffMfa call right below is the exemption-aware
+    // check.
     const birrStaff = await resolveBirrStaffFromSession(request, { requireMfa: false });
     assertStaffMfa(this.reflector, context, birrStaff);
 

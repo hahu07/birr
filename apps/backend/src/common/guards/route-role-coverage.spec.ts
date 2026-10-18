@@ -4,7 +4,7 @@ import * as ts from "typescript";
 
 /**
  * Deny-by-default check for write routes. Every non-GET route must either
- * declare who may call it (@RequiresStaffRole / @RequiresPermission) or be
+ * declare who may call it (@RequiresAccess / @RequiresPermission) or be
  * listed in UNGATED_WRITE_ROUTES below with the reason it doesn't need a
  * staff-role gate. Found 2026-10-18: ~35 staff write routes (recording
  * proceeds, approving beneficiary nominations, creating vaults, ...) were
@@ -91,7 +91,7 @@ function controllerFiles(dir: string): string[] {
 }
 
 const WRITE_DECORATORS: Record<string, string> = { Post: "POST", Put: "PUT", Patch: "PATCH", Delete: "DELETE" };
-const GATE_DECORATORS = new Set(["RequiresStaffRole", "RequiresPermission"]);
+const GATE_DECORATORS = new Set(["RequiresAccess", "RequiresPermission"]);
 
 interface WriteRoute {
   key: string;

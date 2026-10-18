@@ -5,6 +5,7 @@ import { prisma, Prisma, BeneficiaryStatus, BeneficiaryKind, PayoutProvider } fr
 import { withFounderScope } from "../../common/db/founder-scope";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import type { PayoutBankDetails } from "../distributions/providers/payout-provider.interface";
+import { staffHasAccess } from "../../common/auth/staff-permissions";
 
 // See list()'s own 2026-09-14 comment below — bounds the two
 // waqfId-omitted "see everything" branches, which otherwise returned
@@ -298,7 +299,7 @@ export class BeneficiariesService {
   // bypass instead of scoping them to their actual caseload would be a
   // policy call, not something to infer from the finding itself.
   async assertStaffCanAccessWaqf(waqfId: string, staff: { id: string; staffRole: string }): Promise<void> {
-    if (staff.staffRole === "platform_admin") return;
+    if (await staffHasAccess(staff, "caseload.view_all")) return;
     const assignment = await prisma.waqfCaseAssignment.findFirst({
       where: { waqfId, birrStaffId: staff.id, status: "active" },
       select: { id: true },
@@ -313,7 +314,7 @@ export class BeneficiariesService {
   // waqfId given: caller (BeneficiariesController) has already asserted
   // access via assertStaffCanAccessWaqf. waqfId omitted: rather than the
   // previous firm-wide dump, scope to the caller's own active caseload —
-  // platform_admin keeps seeing everything, matching its role as the one
+  // caseload.view_all (platform_admin) keeps seeing everything, matching the one
   // exemption above.
   //
   // Update, 2026-09-14 — both waqfId-omitted branches are capped at
@@ -330,7 +331,7 @@ export class BeneficiariesService {
   // WaqfsService.list()'s own capped branch — this codebase has no
   // cursor-pagination primitive yet, so a hard cap is the established
   // pattern, not a partial fix.
-  list(waqfId: string | undefined, staff: { id: string; staffRole: string }) {
+  async list(waqfId: string | undefined, staff: { id: string; staffRole: string }) {
     // deletedAt: null on every branch — nothing currently soft-deletes a
     // Beneficiary (status flips active/inactive instead; see
     // updateStatus()), so this is a no-op today, but listForFounder()
@@ -342,7 +343,7 @@ export class BeneficiariesService {
     if (waqfId) {
       return prisma.beneficiary.findMany({ where: { waqfId, deletedAt: null }, orderBy: { createdAt: "desc" } });
     }
-    if (staff.staffRole === "platform_admin") {
+    if (await staffHasAccess(staff, "caseload.view_all")) {
       return prisma.beneficiary.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "desc" }, take: MAX_UNSCOPED_LIST_ROWS });
     }
     return prisma.beneficiary.findMany({
