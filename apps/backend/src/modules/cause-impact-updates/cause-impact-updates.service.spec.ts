@@ -24,7 +24,7 @@ describe("CauseImpactUpdatesService", () => {
     });
     actorUserId = actorUser.id;
     await prisma.birrStaff.create({
-      data: { userId: actorUser.id, staffRole: "mutawalli_officer" },
+      data: { userId: actorUser.id, roles: { create: { role: "mutawalli_officer" } } },
     });
 
     const founder = await prisma.founder.create({ data: { name: "Cause Impact Fixture Founder", kind: "institution" } });

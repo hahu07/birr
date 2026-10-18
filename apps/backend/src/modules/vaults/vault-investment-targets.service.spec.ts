@@ -38,7 +38,7 @@ describe("VaultInvestmentTargetsService", () => {
       data: { email: `vault-investment-targets-actor-${Date.now()}@example.com`, fullName: "Test Actor" },
     });
     actorUserId = actorUser.id;
-    await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "investment_committee" } });
+    await prisma.birrStaff.create({ data: { userId: actorUser.id, roles: { create: { role: "investment_committee" } } } });
 
     const counterparty = await prisma.counterparty.create({
       data: { name: `Vault Investment Targets Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", status: "active" },

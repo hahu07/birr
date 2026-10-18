@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { prisma, BirrStaffRole } from "@birr/db";
 import { assertStaffInvitable, invitationAuditSnapshot, newInvitationToken } from "../invitations/invitations.service";
 import { EMERGENCY_APPROVER_ROLES, MIN_REASON_LENGTH } from "./emergency-mfa-reset";
+import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
 
 // First-setup counterpart to the `staff.invite` governed action. Adding a
 // staff member needs a board_of_trustees / compliance_officer member to
@@ -33,7 +34,7 @@ export interface BootstrapFirstApproverResult {
 
 function findActiveApprover() {
   return prisma.birrStaff.findFirst({
-    where: { status: "active", staffRole: { in: EMERGENCY_APPROVER_ROLES } },
+    where: { status: "active", ...holdsAnyRole(...EMERGENCY_APPROVER_ROLES) },
     include: { user: { select: { email: true } } },
   });
 }
@@ -43,7 +44,7 @@ function findActiveApprover() {
 // some; the CLI never passes it.
 export async function bootstrapFirstApprover(
   input: BootstrapFirstApproverInput,
-  deps: { findActiveApprover?: () => Promise<{ staffRole: BirrStaffRole; user: { email: string } } | null> } = {},
+  deps: { findActiveApprover?: () => Promise<{ user: { email: string } } | null> } = {},
 ): Promise<BootstrapFirstApproverResult> {
   const reason = input.reason.trim();
   if (reason.length < MIN_REASON_LENGTH) {
@@ -61,7 +62,7 @@ export async function bootstrapFirstApprover(
   const existingApprover = await (deps.findActiveApprover ?? findActiveApprover)();
   if (existingApprover) {
     throw new BadRequestException(
-      `An active ${existingApprover.staffRole} already exists (${existingApprover.user.email}) — propose new staff from the Staff page and have them approve it instead.`,
+      `An active Board/Compliance member already exists (${existingApprover.user.email}) — propose new staff from the Staff page and have them approve it instead.`,
     );
   }
 
@@ -69,8 +70,8 @@ export async function bootstrapFirstApprover(
   await assertStaffInvitable(email, prisma);
 
   const inviterUser = await prisma.user.findUnique({ where: { email: input.invitedByEmail.trim().toLowerCase() } });
-  const inviter = inviterUser && (await prisma.birrStaff.findUnique({ where: { userId: inviterUser.id } }));
-  if (!inviterUser || !inviter || inviter.status !== "active" || inviter.staffRole !== "platform_admin") {
+  const inviter = inviterUser && (await prisma.birrStaff.findUnique({ where: { userId: inviterUser.id }, include: ROLE_NAMES }));
+  if (!inviterUser || !inviter || inviter.status !== "active" || !roleNames(inviter).includes("platform_admin")) {
     throw new NotFoundException(`"${input.invitedByEmail}" is not an active platform_admin.`);
   }
 

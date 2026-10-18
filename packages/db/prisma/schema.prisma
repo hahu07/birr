@@ -56,11 +56,9 @@ enum MembershipStatus {
   revoked
 }
 
-// Kept as an enum on BirrStaff for quick filtering/display, alongside the
-// separate Role/Permission/RolePermission tables for detailed permission
-// checks. The two should stay in sync by key. Consider collapsing into a
-// single FK-based model once the governance workflow engine (Milestone 3)
-// is built — flagged as a rough edge in milestone-1-data-model.md.
+// The roles a staff member can hold (BirrStaffRoleGrant), matching the
+// Role table's keys — Role/Permission/RolePermission define what each one
+// may do. The two must stay in sync by key.
 enum BirrStaffRole {
   mutawalli_officer
   board_of_trustees
@@ -440,19 +438,40 @@ model FounderMembership {
 }
 
 model BirrStaff {
-  id        String        @id @default(uuid())
-  userId    String        @unique
-  user      User          @relation(fields: [userId], references: [id])
-  staffRole BirrStaffRole
-  status    StaffStatus   @default(active)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id        String               @id @default(uuid())
+  userId    String               @unique
+  user      User                 @relation(fields: [userId], references: [id])
+  // A staff member may hold several roles (owner decision, 2026-10-18) —
+  // see BirrStaffRoleGrant. What they can do is the union of their
+  // roles' permissions. Replaced the single staffRole column.
+  roles     BirrStaffRoleGrant[]
+  status    StaffStatus          @default(active)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 
   caseAssignments         WaqfCaseAssignment[]
   coiDeclarations         ConflictOfInterestDeclaration[]
   reviewedFounderRequests FounderRequest[]
 
   @@map("birr_staff")
+}
+
+// One row per role a staff member holds. Added or removed only through the
+// staff.role_add / staff.role_remove governed actions (or an invitation's
+// single role on acceptance). Two rules live in the database itself, not
+// just the app (see migration 20261018120000_staff_multiple_roles):
+// external_auditor can't be combined with any other role (an auditor must
+// stay independent of what they audit), and every staff member keeps at
+// least one role.
+model BirrStaffRoleGrant {
+  birrStaffId String
+  birrStaff   BirrStaff     @relation(fields: [birrStaffId], references: [id])
+  role        BirrStaffRole
+  createdAt   DateTime      @default(now())
+
+  @@id([birrStaffId, role])
+  @@index([role])
+  @@map("birr_staff_roles")
 }
 
 model Role {

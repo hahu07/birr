@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { IsEmail, IsString } from "class-validator";
-import { prisma, Prisma } from "@birr/db";
+import { prisma, Prisma, BirrStaffRole } from "@birr/db";
 import { verifyUserPassword } from "../../common/auth/password-auth";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MfaService } from "../../common/auth/mfa.service";
 import { staffAccessKeys } from "../../common/auth/staff-permissions";
+import { ROLE_NAMES, roleNames } from "../../common/auth/staff-roles";
 
 export class BirrStaffLoginInput {
   @IsEmail()
@@ -35,6 +36,12 @@ const SAFE_USER_SELECT = {
   whatsappVerifiedAt: true,
 } as const;
 
+// API shape: `roles` as a plain list (["legal_adviser", ...]) rather than
+// the join rows Prisma loads.
+function withRoleNames<T extends { roles: { role: BirrStaffRole }[] }>(staff: T): Omit<T, "roles"> & { roles: BirrStaffRole[] } {
+  return { ...staff, roles: roleNames(staff) };
+}
+
 @Injectable()
 export class BirrStaffService {
   constructor(
@@ -42,15 +49,17 @@ export class BirrStaffService {
     private readonly mfa: MfaService,
   ) {}
 
-  findById(id: string) {
-    return prisma.birrStaff.findUnique({ where: { id }, include: { user: { select: SAFE_USER_SELECT } } });
+  async findById(id: string) {
+    const staff = await prisma.birrStaff.findUnique({ where: { id }, include: { user: { select: SAFE_USER_SELECT }, ...ROLE_NAMES } });
+    return staff && withRoleNames(staff);
   }
 
-  list() {
-    return prisma.birrStaff.findMany({
+  async list() {
+    const staff = await prisma.birrStaff.findMany({
       orderBy: { createdAt: "desc" },
-      include: { user: { select: SAFE_USER_SELECT } },
+      include: { user: { select: SAFE_USER_SELECT }, ...ROLE_NAMES },
     });
+    return staff.map(withRoleNames);
   }
 
   async login(input: BirrStaffLoginInput) {
@@ -174,18 +183,20 @@ export class BirrStaffService {
     }
     await tx.user.update({ where: { id: staff.userId }, data: { mfaEnabled: false, mfaSecretEncrypted: null } });
     await tx.mfaBackupCode.deleteMany({ where: { userId: staff.userId } });
-    return { userId: staff.userId, fullName: staff.user.fullName, staffRole: staff.staffRole };
+    return { userId: staff.userId, fullName: staff.user.fullName };
   }
 
   /** GET /birr-staff/me — session bootstrap for the Ops Console. */
   async getSessionSummary(userId: string) {
-    const staff = await prisma.birrStaff.findUniqueOrThrow({
-      where: { userId },
-      include: { user: { select: SAFE_USER_SELECT } },
-    });
-    // Every permission this person's role holds, so the Ops Console can
-    // show or hide controls without hard-coding role names. The backend
-    // guards remain the real boundary.
+    const staff = withRoleNames(
+      await prisma.birrStaff.findUniqueOrThrow({
+        where: { userId },
+        include: { user: { select: SAFE_USER_SELECT }, ...ROLE_NAMES },
+      }),
+    );
+    // Every permission any of this person's roles holds, so the Ops
+    // Console can show or hide controls without hard-coding role names.
+    // The backend guards remain the real boundary.
     return { ...staff, permissions: await staffAccessKeys(staff) };
   }
 }

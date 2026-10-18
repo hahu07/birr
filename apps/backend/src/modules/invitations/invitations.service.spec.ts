@@ -56,7 +56,7 @@ describe("InvitationsService", () => {
     });
     inviterUserId = inviterUser.id;
     await prisma.birrStaff.create({
-      data: { userId: inviterUser.id, staffRole: "mutawalli_officer" },
+      data: { userId: inviterUser.id, roles: { create: { role: "mutawalli_officer" } } },
     });
 
     const founder = await prisma.founder.create({
@@ -193,7 +193,7 @@ describe("InvitationsService", () => {
     await expect(service.resendStaffInvitationEmail(founder.id, inviterUserId)).rejects.toThrow(NotFoundException);
 
     const staff = await staffInvitation(`resend-revoked-${Date.now()}@example.com`, "audit_committee");
-    await service.revoke(staff.id, inviterUserId, { type: "birr_staff", staffRole: "platform_admin" });
+    await service.revoke(staff.id, inviterUserId, { type: "birr_staff", roles: ["platform_admin"] });
     await expect(service.resendStaffInvitationEmail(staff.id, inviterUserId)).rejects.toThrow(BadRequestException);
   });
 
@@ -319,7 +319,7 @@ describe("InvitationsService", () => {
   test("revoke() transitions pending to revoked and rejects revoking a non-pending invitation", async () => {
     const invitation = await staffInvitation(`revoke-${Date.now()}@example.com`, "shariah_board_member");
 
-    const adminActor = { type: "birr_staff" as const, staffRole: "platform_admin" };
+    const adminActor = { type: "birr_staff" as const, roles: ["platform_admin"] };
     const revoked = await service.revoke(invitation.id, inviterUserId, adminActor);
     expect(revoked.status).toBe("revoked");
 
@@ -332,7 +332,7 @@ describe("InvitationsService", () => {
     const invitation = await staffInvitation(`revoke-nonadmin-${Date.now()}@example.com`, "shariah_board_member");
 
     await expect(
-      service.revoke(invitation.id, inviterUserId, { type: "birr_staff", staffRole: "mutawalli_officer" }),
+      service.revoke(invitation.id, inviterUserId, { type: "birr_staff", roles: ["mutawalli_officer"] }),
     ).rejects.toThrow(ForbiddenException);
     const reloaded = await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.id } });
     expect(reloaded.status).toBe("pending");

@@ -3,6 +3,7 @@ import { IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, WaqfType } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { NotificationsService } from "../notifications/notifications.service";
+import { holdsAnyRole } from "../../common/auth/staff-roles";
 
 export interface ApproveCauseSuggestionFields {
   description: string;
@@ -106,7 +107,7 @@ export class CauseCategorySuggestionsService {
 
   private async notifyPlatformAdmins(suggestionId: string, name: string): Promise<void> {
     const admins = await prisma.birrStaff.findMany({
-      where: { staffRole: "platform_admin", status: "active" },
+      where: { ...holdsAnyRole("platform_admin"), status: "active" },
       select: { userId: true },
     });
     await Promise.all(

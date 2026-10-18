@@ -45,7 +45,7 @@ describe("CauseCategorySuggestionsService", () => {
     });
     reviewerUserId = reviewerUser.id;
     await prisma.birrStaff.create({
-      data: { userId: reviewerUser.id, staffRole: "platform_admin" },
+      data: { userId: reviewerUser.id, roles: { create: { role: "platform_admin" } } },
     });
   });
 

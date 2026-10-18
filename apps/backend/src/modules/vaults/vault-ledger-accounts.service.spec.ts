@@ -13,7 +13,7 @@ describe("VaultLedgerAccountsService", () => {
       data: { email: `vault-ledger-accounts-actor-${Date.now()}@example.com`, fullName: "Test Actor" },
     });
     actorUserId = actorUser.id;
-    await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "platform_admin" } });
+    await prisma.birrStaff.create({ data: { userId: actorUser.id, roles: { create: { role: "platform_admin" } } } });
   });
 
   afterAll(async () => {

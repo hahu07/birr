@@ -46,7 +46,7 @@ export async function seedStaffUser(staffRole: string = "mutawalli_officer") {
   const user = await prisma.user.create({
     data: { email, fullName: "E2E Fixture Staff", passwordHash },
   });
-  await prisma.birrStaff.create({ data: { userId: user.id, staffRole: staffRole as never } });
+  await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: { role: staffRole as never } } } });
   return { userId: user.id, email, password: E2E_PASSWORD };
 }
 

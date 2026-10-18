@@ -44,7 +44,7 @@ describe("FoundersController — staff/founder session isolation", () => {
     });
     staffUserId = staffUser.id;
     await prisma.birrStaff.create({
-      data: { userId: staffUser.id, staffRole: "compliance_officer" },
+      data: { userId: staffUser.id, roles: { create: { role: "compliance_officer" } } },
     });
   });
 
@@ -89,7 +89,7 @@ describe("FoundersController — list()/findById() are Birr-staff only", () => {
     });
     staffUserId = staffUser.id;
     await prisma.birrStaff.create({
-      data: { userId: staffUser.id, staffRole: "compliance_officer" },
+      data: { userId: staffUser.id, roles: { create: { role: "compliance_officer" } } },
     });
 
     const founderUser = await prisma.user.create({

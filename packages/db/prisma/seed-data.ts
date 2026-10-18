@@ -88,6 +88,10 @@ const governedPermissions = [
   // rule as staff.mfa_reset: maker platform_admin; checkers
   // board_of_trustees / compliance_officer.
   { key: "staff.invite", category: "staff", requiresMakerChecker: true, description: "Invite a new Birr staff member into a given staff role." },
+  // A staff member may hold several roles (2026-10-18). Adding or removing
+  // one is the same two-person rule as staff.invite.
+  { key: "staff.role_add", category: "staff", requiresMakerChecker: true, description: "Give an existing staff member an additional role." },
+  { key: "staff.role_remove", category: "staff", requiresMakerChecker: true, description: "Take a role away from a staff member who holds more than one." },
   { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
 ] as const;
 
@@ -209,6 +213,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "founder.mfa_reset": { canChecker: true },
     "staff.mfa_reset": { canChecker: true },
     "staff.invite": { canChecker: true },
+    "staff.role_add": { canChecker: true },
+    "staff.role_remove": { canChecker: true },
   },
   investment_committee: {
     "asset.dispose": { canChecker: true },
@@ -260,6 +266,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "founder.mfa_reset": { canChecker: true },
     "staff.mfa_reset": { canChecker: true },
     "staff.invite": { canChecker: true },
+    "staff.role_add": { canChecker: true },
+    "staff.role_remove": { canChecker: true },
   },
   legal_adviser: {
     "waqf.view": { canMaker: true },
@@ -279,6 +287,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "founder.mfa_reset": { canMaker: true },
     "staff.mfa_reset": { canMaker: true },
     "staff.invite": { canMaker: true },
+    "staff.role_add": { canMaker: true },
+    "staff.role_remove": { canMaker: true },
   },
 };
 

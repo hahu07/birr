@@ -80,26 +80,21 @@ export class PermissionGuard implements CanActivate {
 
     const permissionId = await this.resolveTargetPermissionId(request, fixedPermissionKey);
 
-    const role = await prisma.role.findUnique({
-      where: { key: birrStaff.staffRole },
+    // Eligible if ANY of the person's roles holds this side of the
+    // permission (a staff member may hold several roles). The individual
+    // maker != checker rule is still the database's checker_not_maker
+    // constraint, which compares people, not roles.
+    const grant = await prisma.rolePermission.findFirst({
+      where: {
+        permissionId,
+        role: { key: { in: birrStaff.roles } },
+        ...(side === "maker" ? { canMaker: true } : { canChecker: true }),
+      },
+      select: { roleId: true },
     });
-    if (!role) {
-      // Role/BirrStaffRole enum are meant to stay in sync by key — see the
-      // comment on BirrStaffRole in schema.prisma. If this fires, the two
-      // have drifted.
+    if (!grant) {
       throw new ForbiddenException(
-        `No role_permissions entry for staff role "${birrStaff.staffRole}".`,
-      );
-    }
-
-    const rolePermission = await prisma.rolePermission.findUnique({
-      where: { roleId_permissionId: { roleId: role.id, permissionId } },
-    });
-    const eligible =
-      side === "maker" ? rolePermission?.canMaker : rolePermission?.canChecker;
-    if (!eligible) {
-      throw new ForbiddenException(
-        `Role "${birrStaff.staffRole}" is not eligible as ${side} for this permission.`,
+        `None of your roles (${birrStaff.roles.join(", ")}) is eligible as ${side} for this permission.`,
       );
     }
 

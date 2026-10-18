@@ -318,7 +318,7 @@ export class AiAgentsService {
         ...(draft.after as Record<string, unknown>),
         publishedByStaffId: staff.userId,
         publishedByName: publishingUser.fullName,
-        publishedByRole: staff.staffRole,
+        publishedByRoles: staff.roles,
       },
     });
   }

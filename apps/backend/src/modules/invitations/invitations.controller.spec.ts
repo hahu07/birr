@@ -38,13 +38,13 @@ describe("InvitationsController — birr_staff invitation authorization", () => 
       data: { email: `invitations-ctrl-nonadmin-${Date.now()}@example.test`, fullName: "Not An Admin", mfaEnabled: true },
     });
     nonAdminUserId = nonAdminUser.id;
-    await prisma.birrStaff.create({ data: { userId: nonAdminUser.id, staffRole: "compliance_officer" } });
+    await prisma.birrStaff.create({ data: { userId: nonAdminUser.id, roles: { create: { role: "compliance_officer" } } } });
 
     const adminUser = await prisma.user.create({
       data: { email: `invitations-ctrl-admin-${Date.now()}@example.test`, fullName: "A Real Admin", mfaEnabled: true },
     });
     adminUserId = adminUser.id;
-    await prisma.birrStaff.create({ data: { userId: adminUser.id, staffRole: "platform_admin" } });
+    await prisma.birrStaff.create({ data: { userId: adminUser.id, roles: { create: { role: "platform_admin" } } } });
 
     const founder = await prisma.founder.create({ data: { name: "Invitations Ctrl Fixture Founder", kind: "institution" } });
     existingFounderId = founder.id;

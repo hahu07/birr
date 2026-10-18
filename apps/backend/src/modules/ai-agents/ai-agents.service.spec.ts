@@ -56,12 +56,12 @@ describe("AiAgentsService", () => {
       data: { email: `ai-agents-publisher-${Date.now()}@example.com`, fullName: "Test Legal Adviser" },
     });
     const publisherBirrStaff = await prisma.birrStaff.create({
-      data: { userId: publisherUser.id, staffRole: "legal_adviser" },
+      data: { userId: publisherUser.id, roles: { create: { role: "legal_adviser" } } },
     });
     publisherStaff = {
       id: publisherBirrStaff.id,
       userId: publisherUser.id,
-      staffRole: publisherBirrStaff.staffRole,
+      roles: ["legal_adviser"],
       mfaEnabled: false,
     };
   });
@@ -313,7 +313,7 @@ describe("AiAgentsService", () => {
         data: { email: `ai-agents-portfolio-actor-${Date.now()}@example.com`, fullName: "Test Actor" },
       });
       portfolioActorUserId = actorUser.id;
-      await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "investment_committee" } });
+      await prisma.birrStaff.create({ data: { userId: actorUser.id, roles: { create: { role: "investment_committee" } } } });
 
       const counterparty = await prisma.counterparty.create({
         data: { name: `AI Agents Portfolio Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "AE", status: "active" },
@@ -536,7 +536,7 @@ describe("AiAgentsService", () => {
         body: "Fixture body.",
         publishedByStaffId: publisherStaff.userId,
         publishedByName: "Test Legal Adviser",
-        publishedByRole: "legal_adviser",
+        publishedByRoles: ["legal_adviser"],
       });
     });
 

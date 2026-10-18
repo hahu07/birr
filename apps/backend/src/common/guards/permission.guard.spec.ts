@@ -17,6 +17,9 @@ class TestController {
   @RequiresAccess("no_such.permission")
   unknownPermission() {}
 
+  @RequiresAccess("investment.create")
+  investmentCommitteeOnly() {}
+
   unrestricted() {}
 }
 
@@ -33,16 +36,16 @@ function makeContext(handler: () => void, token?: string): ExecutionContext {
 describe("PermissionGuard — @RequiresAccess", () => {
   const guard = new PermissionGuard(new Reflector());
   const controller = new TestController();
-  const userIds: Partial<Record<BirrStaffRole | "noMfaAdmin", string>> = {};
+  const userIds: Partial<Record<BirrStaffRole | "noMfaAdmin" | "twoRoles", string>> = {};
 
   beforeAll(async () => {
     // Fixture Users/BirrStaff not cleaned up — audit_logs references, and
     // that table is insert-only at the DB role level.
-    const make = async (key: BirrStaffRole | "noMfaAdmin", staffRole: BirrStaffRole, mfaEnabled = true) => {
+    const make = async (key: keyof typeof userIds, staffRole: BirrStaffRole | BirrStaffRole[], mfaEnabled = true) => {
       const user = await prisma.user.create({
         data: { email: `permission-guard-${key}-${Date.now()}@example.test`, fullName: `Guard Spec ${key}`, mfaEnabled },
       });
-      await prisma.birrStaff.create({ data: { userId: user.id, staffRole } });
+      await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: [staffRole].flat().map((role) => ({ role })) } } });
       userIds[key] = user.id;
     };
     await Promise.all([
@@ -51,6 +54,7 @@ describe("PermissionGuard — @RequiresAccess", () => {
       make("mutawalli_officer", "mutawalli_officer"),
       make("external_auditor", "external_auditor"),
       make("noMfaAdmin", "platform_admin", false),
+      make("twoRoles", ["legal_adviser", "investment_committee"]),
     ]);
     // Generous: under a full parallel suite run, fixture inserts queue
     // behind every other spec's writes.
@@ -72,6 +76,11 @@ describe("PermissionGuard — @RequiresAccess", () => {
     await expect(guard.canActivate(makeContext(controller.eitherOfTwoRoles, as("mutawalli_officer")))).resolves.toBe(true);
     await expect(guard.canActivate(makeContext(controller.eitherOfTwoRoles, as("compliance_officer")))).resolves.toBe(true);
     await expect(guard.canActivate(makeContext(controller.eitherOfTwoRoles, as("external_auditor")))).rejects.toThrow(ForbiddenException);
+  });
+
+  test("someone holding several roles gets a permission through any one of them", async () => {
+    await expect(guard.canActivate(makeContext(controller.investmentCommitteeOnly, as("twoRoles")))).resolves.toBe(true);
+    await expect(guard.canActivate(makeContext(controller.adminOnly, as("twoRoles")))).rejects.toThrow(ForbiddenException);
   });
 
   // SessionAuthGuard returns early on a @Public() controller, so this guard

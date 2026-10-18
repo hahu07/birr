@@ -47,7 +47,7 @@ describe("SessionAuthGuard", () => {
     });
     staffUserId = user.id;
     await prisma.birrStaff.create({
-      data: { userId: user.id, staffRole: "compliance_officer" },
+      data: { userId: user.id, roles: { create: { role: "compliance_officer" } } },
     });
 
     // mfaEnabled defaults to false — represents a real session that
@@ -57,7 +57,7 @@ describe("SessionAuthGuard", () => {
     });
     unenrolledStaffUserId = unenrolledUser.id;
     await prisma.birrStaff.create({
-      data: { userId: unenrolledUser.id, staffRole: "compliance_officer" },
+      data: { userId: unenrolledUser.id, roles: { create: { role: "compliance_officer" } } },
     });
   });
 

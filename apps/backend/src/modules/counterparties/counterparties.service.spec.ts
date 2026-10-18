@@ -19,13 +19,13 @@ describe("CounterpartiesService", () => {
       data: { email: `counterparties-actor-${randomUUID()}@example.com`, fullName: "Test Actor" },
     });
     actorUserId = actorUser.id;
-    await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "investment_committee" } });
+    await prisma.birrStaff.create({ data: { userId: actorUser.id, roles: { create: { role: "investment_committee" } } } });
 
     const shariahUser = await prisma.user.create({
       data: { email: `counterparties-shariah-${randomUUID()}@example.com`, fullName: "Shariah Approver" },
     });
     shariahApproverUserId = shariahUser.id;
-    await prisma.birrStaff.create({ data: { userId: shariahUser.id, staffRole: "shariah_board_member" } });
+    await prisma.birrStaff.create({ data: { userId: shariahUser.id, roles: { create: { role: "shariah_board_member" } } } });
   });
 
   afterAll(async () => {

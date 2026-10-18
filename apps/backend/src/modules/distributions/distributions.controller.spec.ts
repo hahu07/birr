@@ -46,7 +46,7 @@ describe("DistributionsController.summary() — session routing never leaks bene
       data: { email: `distributions-controller-staff-${Date.now()}@example.test`, fullName: "Staff, Reviewing Summary", mfaEnabled: true },
     });
     staffUserId = staffUser.id;
-    await prisma.birrStaff.create({ data: { userId: staffUserId, staffRole: "mutawalli_officer" } });
+    await prisma.birrStaff.create({ data: { userId: staffUserId, roles: { create: { role: "mutawalli_officer" } } } });
 
     const founderUser = await prisma.user.create({
       data: { email: `distributions-controller-founder-${Date.now()}@example.test`, fullName: "Founder, Viewing Own Summary" },

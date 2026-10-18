@@ -49,7 +49,7 @@ describe("MessagesService", () => {
       data: { email: `messages-staff-${Date.now()}@example.com`, fullName: "Test Staff" },
     });
     staffUserId = staffUser.id;
-    const staff = await prisma.birrStaff.create({ data: { userId: staffUser.id, staffRole: "mutawalli_officer" } });
+    const staff = await prisma.birrStaff.create({ data: { userId: staffUser.id, roles: { create: { role: "mutawalli_officer" } } } });
     staffId = staff.id;
 
     const founderUserA = await prisma.user.create({

@@ -31,7 +31,7 @@ describe("BeneficiaryNominationsService", () => {
       data: { email: `beneficiary-nominations-staff-${Date.now()}@example.com`, fullName: "Test Staff" },
     });
     staffUserId = staffUser.id;
-    await prisma.birrStaff.create({ data: { userId: staffUser.id, staffRole: "mutawalli_officer" } });
+    await prisma.birrStaff.create({ data: { userId: staffUser.id, roles: { create: { role: "mutawalli_officer" } } } });
 
     const founderUser = await prisma.user.create({
       data: { email: `beneficiary-nominations-founder-${Date.now()}@example.com`, fullName: "Test Founder User" },

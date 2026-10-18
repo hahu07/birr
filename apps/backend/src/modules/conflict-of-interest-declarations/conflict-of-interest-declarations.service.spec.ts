@@ -23,7 +23,7 @@ describe("ConflictOfInterestDeclarationsService", () => {
     });
     declarantUserId = declarantUser.id;
     const declarantStaff = await prisma.birrStaff.create({
-      data: { userId: declarantUser.id, staffRole: "compliance_officer" },
+      data: { userId: declarantUser.id, roles: { create: { role: "compliance_officer" } } },
     });
     declarantStaffId = declarantStaff.id;
 
@@ -32,7 +32,7 @@ describe("ConflictOfInterestDeclarationsService", () => {
     });
     reviewerUserId = reviewerUser.id;
     await prisma.birrStaff.create({
-      data: { userId: reviewerUser.id, staffRole: "audit_committee" },
+      data: { userId: reviewerUser.id, roles: { create: { role: "audit_committee" } } },
     });
   });
 

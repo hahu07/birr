@@ -4,6 +4,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { InvestmentTargetsService } from "./investment-targets.service";
 import { VaultInvestmentTargetsService } from "../vaults/vault-investment-targets.service";
 import { PORTFOLIO_DRIFT_THRESHOLD_PERCENT } from "./investment-drift.constants";
+import { holdsAnyRole } from "../../common/auth/staff-roles";
 
 const logger = new Logger("PortfolioDriftScheduler");
 
@@ -116,7 +117,7 @@ async function checkVaultDrift(
   // investment_committee is also the role that sets these targets in
   // the first place.
   const recipients = await prisma.birrStaff.findMany({
-    where: { staffRole: "investment_committee", status: "active" },
+    where: { ...holdsAnyRole("investment_committee"), status: "active" },
     select: { userId: true },
   });
   if (recipients.length === 0) return;

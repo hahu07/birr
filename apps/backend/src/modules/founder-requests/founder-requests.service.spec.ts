@@ -40,13 +40,13 @@ describe("FounderRequestsService", () => {
       data: { email: `founder-requests-staff-${Date.now()}@example.com`, fullName: "Fixture Staff" },
     });
     staffUserId = staffUser.id;
-    const staff = await prisma.birrStaff.create({ data: { userId: staffUser.id, staffRole: "mutawalli_officer" } });
+    const staff = await prisma.birrStaff.create({ data: { userId: staffUser.id, roles: { create: { role: "mutawalli_officer" } } } });
     staffId = staff.id;
 
     const adminUser = await prisma.user.create({
       data: { email: `founder-requests-admin-${Date.now()}@example.com`, fullName: "Fixture Platform Admin" },
     });
-    const admin = await prisma.birrStaff.create({ data: { userId: adminUser.id, staffRole: "platform_admin" } });
+    const admin = await prisma.birrStaff.create({ data: { userId: adminUser.id, roles: { create: { role: "platform_admin" } } } });
     platformAdminId = admin.id;
   });
 
@@ -115,14 +115,14 @@ describe("FounderRequestsService", () => {
 
   describe("staff caseload scoping", () => {
     test("assertStaffCanAccessWaqf() rejects staff with no active case assignment on the waqf", async () => {
-      await expect(service.assertStaffCanAccessWaqf(waqfAId, { id: staffId, staffRole: "mutawalli_officer" })).rejects.toThrow(
+      await expect(service.assertStaffCanAccessWaqf(waqfAId, { id: staffId, roles: ["mutawalli_officer"] })).rejects.toThrow(
         ForbiddenException,
       );
     });
 
     test("assertStaffCanAccessWaqf() allows platform_admin unconditionally", async () => {
       await expect(
-        service.assertStaffCanAccessWaqf(waqfAId, { id: platformAdminId, staffRole: "platform_admin" }),
+        service.assertStaffCanAccessWaqf(waqfAId, { id: platformAdminId, roles: ["platform_admin"] }),
       ).resolves.toBeUndefined();
     });
 
@@ -132,10 +132,10 @@ describe("FounderRequestsService", () => {
       });
       waqfCaseAssignmentIds.push(assignment.id);
 
-      const scoped = await service.list(undefined, { id: staffId, staffRole: "mutawalli_officer" });
+      const scoped = await service.list(undefined, { id: staffId, roles: ["mutawalli_officer"] });
       expect(scoped.every((r) => r.waqfId === waqfAId)).toBe(true);
 
-      const unscoped = await service.list(undefined, { id: platformAdminId, staffRole: "platform_admin" });
+      const unscoped = await service.list(undefined, { id: platformAdminId, roles: ["platform_admin"] });
       expect(unscoped.length).toBeGreaterThanOrEqual(scoped.length);
     });
   });

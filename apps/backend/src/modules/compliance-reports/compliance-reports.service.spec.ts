@@ -25,7 +25,7 @@ describe("ComplianceReportsService", () => {
     });
     requestedByUserId = requesterUser.id;
     await prisma.birrStaff.create({
-      data: { userId: requesterUser.id, staffRole: "compliance_officer" },
+      data: { userId: requesterUser.id, roles: { create: { role: "compliance_officer" } } },
     });
 
     // checker_required_once_decided (2026-09-08) requires a checkerUserId
@@ -36,7 +36,7 @@ describe("ComplianceReportsService", () => {
     });
     checkerUserId = checkerUser.id;
     await prisma.birrStaff.create({
-      data: { userId: checkerUser.id, staffRole: "mutawalli_officer" },
+      data: { userId: checkerUser.id, roles: { create: { role: "mutawalli_officer" } } },
     });
 
     // Every Waqf must belong to a Foundation now — this fixture doesn't

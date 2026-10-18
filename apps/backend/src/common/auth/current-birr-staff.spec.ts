@@ -35,7 +35,7 @@ describe("resolveBirrStaffFromSession", () => {
     });
     activeUserId = activeUser.id;
     await prisma.birrStaff.create({
-      data: { userId: activeUser.id, staffRole: "compliance_officer", status: "active" },
+      data: { userId: activeUser.id, roles: { create: { role: "compliance_officer" } }, status: "active" },
     });
 
     const inactiveUser = await prisma.user.create({
@@ -43,7 +43,7 @@ describe("resolveBirrStaffFromSession", () => {
     });
     inactiveUserId = inactiveUser.id;
     await prisma.birrStaff.create({
-      data: { userId: inactiveUser.id, staffRole: "compliance_officer", status: "suspended" },
+      data: { userId: inactiveUser.id, roles: { create: { role: "compliance_officer" } }, status: "suspended" },
     });
 
     const plainUser = await prisma.user.create({
@@ -58,7 +58,7 @@ describe("resolveBirrStaffFromSession", () => {
     });
     unenrolledUserId = unenrolledUser.id;
     await prisma.birrStaff.create({
-      data: { userId: unenrolledUser.id, staffRole: "compliance_officer", status: "active" },
+      data: { userId: unenrolledUser.id, roles: { create: { role: "compliance_officer" } }, status: "active" },
     });
   });
 
@@ -70,7 +70,7 @@ describe("resolveBirrStaffFromSession", () => {
     const request = requestWithCookie(signSessionToken(activeUserId));
     const staff = await resolveBirrStaffFromSession(request);
     expect(staff.userId).toBe(activeUserId);
-    expect(staff.staffRole).toBe("compliance_officer");
+    expect(staff.roles).toEqual(["compliance_officer"]);
   });
 
   test("rejects a missing session cookie", async () => {

@@ -7,6 +7,7 @@ import { TrusteeLicensesService } from "../trustee-licenses/trustee-licenses.ser
 import { NotificationsService } from "../notifications/notifications.service";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
+import { holdsAnyRole } from "../../common/auth/staff-roles";
 
 export class CreateWaqfInput {
   @IsString()
@@ -189,7 +190,7 @@ export class WaqfsService {
 
   private async notifyPlatformAdminsOfNewWaqf(waqfId: string, waqfName: string): Promise<void> {
     const admins = await prisma.birrStaff.findMany({
-      where: { staffRole: "platform_admin", status: "active" },
+      where: { ...holdsAnyRole("platform_admin"), status: "active" },
       select: { userId: true },
     });
     await Promise.all(

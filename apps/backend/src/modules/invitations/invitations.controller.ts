@@ -150,7 +150,7 @@ export class InvitationsController {
       return this.service.revoke(id, user.id, { type: "founder_user", founderId: founder.id });
     }
     const staff = await resolveBirrStaffFromSession(request);
-    return this.service.revoke(id, staff.userId, { type: "birr_staff", staffRole: staff.staffRole });
+    return this.service.revoke(id, staff.userId, { type: "birr_staff", roles: staff.roles });
   }
 
   // Staff invitation links are emailed only, never shown in the app (see

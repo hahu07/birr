@@ -36,7 +36,7 @@ describe("BeneficiariesService", () => {
     });
     actorUserId = actorUser.id;
     await prisma.birrStaff.create({
-      data: { userId: actorUser.id, staffRole: "mutawalli_officer" },
+      data: { userId: actorUser.id, roles: { create: { role: "mutawalli_officer" } } },
     });
 
     const foundation = await prisma.foundation.create({
@@ -291,10 +291,10 @@ describe("BeneficiariesService", () => {
         data: { email: `beneficiaries-unassigned-${Date.now()}@example.com`, fullName: "Unassigned Staff" },
       });
       const unassignedStaff = await prisma.birrStaff.create({
-        data: { userId: unassignedUser.id, staffRole: "external_auditor" },
+        data: { userId: unassignedUser.id, roles: { create: { role: "external_auditor" } } },
       });
       await expect(
-        service.assertStaffCanAccessWaqf(waqfAId, { id: unassignedStaff.id, staffRole: unassignedStaff.staffRole }),
+        service.assertStaffCanAccessWaqf(waqfAId, { id: unassignedStaff.id, roles: ["external_auditor"] }),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -303,19 +303,19 @@ describe("BeneficiariesService", () => {
         data: { email: `beneficiaries-assigned-${Date.now()}@example.com`, fullName: "Assigned Staff" },
       });
       const assignedStaff = await prisma.birrStaff.create({
-        data: { userId: assignedUser.id, staffRole: "mutawalli_officer" },
+        data: { userId: assignedUser.id, roles: { create: { role: "mutawalli_officer" } } },
       });
       await prisma.waqfCaseAssignment.create({
         data: { waqfId: waqfAId, birrStaffId: assignedStaff.id, assignmentRole: "mutawalli_officer" },
       });
       await expect(
-        service.assertStaffCanAccessWaqf(waqfAId, { id: assignedStaff.id, staffRole: assignedStaff.staffRole }),
+        service.assertStaffCanAccessWaqf(waqfAId, { id: assignedStaff.id, roles: ["mutawalli_officer"] }),
       ).resolves.toBeUndefined();
     });
 
     test("always allows platform_admin, with no case assignment needed", async () => {
       await expect(
-        service.assertStaffCanAccessWaqf(waqfAId, { id: "irrelevant-id", staffRole: "platform_admin" }),
+        service.assertStaffCanAccessWaqf(waqfAId, { id: "irrelevant-id", roles: ["platform_admin"] }),
       ).resolves.toBeUndefined();
     });
 
@@ -324,7 +324,7 @@ describe("BeneficiariesService", () => {
         data: { email: `beneficiaries-caseload-${Date.now()}@example.com`, fullName: "Caseload Staff" },
       });
       const caseloadStaff = await prisma.birrStaff.create({
-        data: { userId: caseloadUser.id, staffRole: "mutawalli_officer" },
+        data: { userId: caseloadUser.id, roles: { create: { role: "mutawalli_officer" } } },
       });
       await prisma.waqfCaseAssignment.create({
         data: { waqfId: waqfAId, birrStaffId: caseloadStaff.id, assignmentRole: "mutawalli_officer" },
@@ -341,7 +341,7 @@ describe("BeneficiariesService", () => {
       );
       beneficiaryIds.push(onB.id);
 
-      const results = await service.list(undefined, { id: caseloadStaff.id, staffRole: caseloadStaff.staffRole });
+      const results = await service.list(undefined, { id: caseloadStaff.id, roles: ["mutawalli_officer"] });
       const resultIds = results.map((b) => b.id);
       expect(resultIds).toContain(onA.id);
       expect(resultIds).not.toContain(onB.id);
@@ -357,10 +357,10 @@ describe("BeneficiariesService", () => {
     test("list() with no waqfId caps both the platform_admin and caseload branches at MAX_UNSCOPED_LIST_ROWS", async () => {
       const findManySpy = jest.spyOn(prisma.beneficiary, "findMany");
       try {
-        await service.list(undefined, { id: "irrelevant-id", staffRole: "platform_admin" });
+        await service.list(undefined, { id: "irrelevant-id", roles: ["platform_admin"] });
         expect(findManySpy).toHaveBeenLastCalledWith(expect.objectContaining({ take: MAX_UNSCOPED_LIST_ROWS }));
 
-        await service.list(undefined, { id: "irrelevant-id", staffRole: "mutawalli_officer" });
+        await service.list(undefined, { id: "irrelevant-id", roles: ["mutawalli_officer"] });
         expect(findManySpy).toHaveBeenLastCalledWith(expect.objectContaining({ take: MAX_UNSCOPED_LIST_ROWS }));
       } finally {
         findManySpy.mockRestore();
@@ -392,7 +392,7 @@ describe("BeneficiariesService", () => {
       beneficiaryIds.push(softDeleted.id);
       await prisma.beneficiary.update({ where: { id: softDeleted.id }, data: { deletedAt: new Date() } });
 
-      const scoped = await service.list(waqfAId, { id: actorUserId, staffRole: "mutawalli_officer" });
+      const scoped = await service.list(waqfAId, { id: actorUserId, roles: ["mutawalli_officer"] });
       expect(scoped.find((b) => b.id === softDeleted.id)).toBeUndefined();
       expect(scoped.find((b) => b.id === kept.id)).toBeDefined();
     });

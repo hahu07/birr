@@ -28,7 +28,7 @@ describe("VaultDonorThresholdsService", () => {
       data: { email: `vault-donor-thresholds-actor-${Date.now()}@example.com`, fullName: "Test Actor" },
     });
     actorUserId = actorUser.id;
-    await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "compliance_officer" } });
+    await prisma.birrStaff.create({ data: { userId: actorUser.id, roles: { create: { role: "compliance_officer" } } } });
   });
 
   afterAll(async () => {

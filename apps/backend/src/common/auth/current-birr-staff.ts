@@ -6,14 +6,17 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { Request } from "express";
-import { prisma } from "@birr/db";
+import { prisma, BirrStaffRole } from "@birr/db";
 import { STAFF_SESSION_COOKIE_NAME, verifySessionToken } from "./session";
 import { assertStaffMfa } from "../guards/mfa-exempt.decorator";
+import { ROLE_NAMES, roleNames } from "./staff-roles";
 
 export interface AuthenticatedBirrStaff {
   id: string;
   userId: string;
-  staffRole: string;
+  // Every role this person holds — what they may do is the union of these
+  // roles' permissions (see staff-permissions.ts).
+  roles: BirrStaffRole[];
   // See SessionAuthGuard's own comment — false blocks every route except
   // the ones marked @MfaExempt() (enrollment itself, plus GET /me).
   mfaEnabled: boolean;
@@ -69,7 +72,7 @@ export async function resolveBirrStaffFromSession(
 
   const birrStaff = await prisma.birrStaff.findUnique({
     where: { userId: payload.userId },
-    include: { user: { select: { mfaEnabled: true } } },
+    include: { user: { select: { mfaEnabled: true } }, ...ROLE_NAMES },
   });
   if (!birrStaff || birrStaff.status !== "active") {
     throw new UnauthorizedException("Unknown or inactive Birr staff.");
@@ -83,7 +86,7 @@ export async function resolveBirrStaffFromSession(
   return {
     id: birrStaff.id,
     userId: birrStaff.userId,
-    staffRole: birrStaff.staffRole,
+    roles: roleNames(birrStaff),
     mfaEnabled: birrStaff.user.mfaEnabled,
   };
 }

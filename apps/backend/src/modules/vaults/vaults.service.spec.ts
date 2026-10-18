@@ -22,7 +22,7 @@ describe("VaultsService", () => {
       data: { email: `vaults-actor-${Date.now()}@example.com`, fullName: "Test Actor" },
     });
     actorUserId = actorUser.id;
-    await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "mutawalli_officer" } });
+    await prisma.birrStaff.create({ data: { userId: actorUser.id, roles: { create: { role: "mutawalli_officer" } } } });
   });
 
   afterAll(async () => {

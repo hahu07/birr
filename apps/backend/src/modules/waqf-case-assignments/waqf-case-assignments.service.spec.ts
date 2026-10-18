@@ -23,14 +23,14 @@ describe("WaqfCaseAssignmentsService", () => {
     });
     actorUserId = actorUser.id;
     await prisma.birrStaff.create({
-      data: { userId: actorUser.id, staffRole: "mutawalli_officer" },
+      data: { userId: actorUser.id, roles: { create: { role: "mutawalli_officer" } } },
     });
 
     const staffUser = await prisma.user.create({
       data: { email: `case-staff-${Date.now()}@example.com`, fullName: "Test Case Staff" },
     });
     const staff = await prisma.birrStaff.create({
-      data: { userId: staffUser.id, staffRole: "compliance_officer" },
+      data: { userId: staffUser.id, roles: { create: { role: "compliance_officer" } } },
     });
     birrStaffId = staff.id;
 
@@ -42,7 +42,7 @@ describe("WaqfCaseAssignmentsService", () => {
       data: { email: `case-audit-${Date.now()}@example.com`, fullName: "Test Audit Committee Staff" },
     });
     const auditCommitteeStaff = await prisma.birrStaff.create({
-      data: { userId: auditCommitteeUser.id, staffRole: "audit_committee" },
+      data: { userId: auditCommitteeUser.id, roles: { create: { role: "audit_committee" } } },
     });
     auditCommitteeStaffId = auditCommitteeStaff.id;
 
@@ -50,7 +50,7 @@ describe("WaqfCaseAssignmentsService", () => {
       data: { email: `case-investment-${Date.now()}@example.com`, fullName: "Test Investment Committee Staff" },
     });
     const investmentCommitteeStaff = await prisma.birrStaff.create({
-      data: { userId: investmentCommitteeUser.id, staffRole: "investment_committee" },
+      data: { userId: investmentCommitteeUser.id, roles: { create: { role: "investment_committee" } } },
     });
     investmentCommitteeStaffId = investmentCommitteeStaff.id;
 

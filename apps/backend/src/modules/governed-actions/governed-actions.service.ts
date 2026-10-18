@@ -25,6 +25,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { InvitationsService, assertStaffInvitable, invitationAuditSnapshot } from "../invitations/invitations.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
+import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
 
 function extractProposedFoundationId(payload: unknown): string | null {
   if (
@@ -78,6 +79,69 @@ function parseStaffInvitePayload(payload: unknown): { email: string; staffRole: 
 }
 
 
+// staff.role_add / staff.role_remove payload: which staff member, which role.
+function parseStaffRolePayload(payload: unknown): { staffId: string; role: BirrStaffRole } {
+  const { staffId, role } = (payload ?? {}) as { staffId?: unknown; role?: unknown };
+  if (typeof staffId !== "string" || !staffId) {
+    throw new BadRequestException("A staff member is required.");
+  }
+  if (typeof role !== "string" || !Object.values(BirrStaffRole).includes(role as BirrStaffRole)) {
+    throw new BadRequestException(`"${String(role)}" is not a valid staff role.`);
+  }
+  return { staffId, role: role as BirrStaffRole };
+}
+
+async function loadRoleChangeTarget(staffId: string, db: Prisma.TransactionClient) {
+  const staff = await db.birrStaff.findUnique({
+    where: { id: staffId },
+    include: { user: { select: { id: true, fullName: true, email: true } }, ...ROLE_NAMES },
+  });
+  if (!staff) throw new NotFoundException(`Staff member "${staffId}" not found.`);
+  if (staff.status !== "active") throw new BadRequestException(`${staff.user.fullName} is not an active staff member.`);
+  return { ...staff, roleList: roleNames(staff) };
+}
+
+// Owner decision (2026-10-18): nobody proposes changes to their own roles,
+// and — the same self-dealing from the other side — nobody approves them.
+function assertNotOwnRoles(target: { user: { id: string; fullName: string } }, userId: string, as: "propose" | "approve") {
+  if (target.user.id === userId) {
+    throw new ForbiddenException(`You can't ${as} a change to your own roles — another staff member has to.`);
+  }
+}
+
+// The checks that make an add or remove fulfillable. The database enforces
+// external_auditor-alone and at-least-one-role too (birr_staff_roles
+// triggers); these give a clear message before it gets that far.
+export async function assertRoleChangeAllowed(
+  kind: "add" | "remove",
+  target: { id: string; user: { fullName: string }; roleList: BirrStaffRole[] },
+  role: BirrStaffRole,
+  db: Prisma.TransactionClient,
+) {
+  const name = target.user.fullName;
+  if (kind === "add") {
+    if (target.roleList.includes(role)) throw new ConflictException(`${name} already holds the ${role} role.`);
+    if (role === "external_auditor" || target.roleList.includes("external_auditor")) {
+      throw new BadRequestException("An external_auditor can't hold any other role — they must stay independent of what they audit.");
+    }
+    return;
+  }
+  if (!target.roleList.includes(role)) throw new BadRequestException(`${name} doesn't hold the ${role} role.`);
+  if (target.roleList.length === 1) {
+    throw new BadRequestException(`${role} is ${name}'s only role — every staff member keeps at least one.`);
+  }
+  if (role === "platform_admin") {
+    const otherAdmins = await db.birrStaff.count({
+      where: { id: { not: target.id }, status: "active", ...holdsAnyRole("platform_admin") },
+    });
+    if (otherAdmins === 0) {
+      throw new BadRequestException(
+        `${name} is the last active platform_admin — removing it would leave nobody able to propose staff changes.`,
+      );
+    }
+  }
+}
+
 /**
  * One handler per permission key that this backend can actually fulfill.
  * Every seeded governed-action permission has a handler as of this
@@ -114,7 +178,7 @@ interface GovernedActionHandler {
    * review something that can only fail on approval. Optional; most
    * handlers' targets are validated by the service they call on approval.
    */
-  validatePropose?(payload: unknown): Promise<void>;
+  validatePropose?(payload: unknown, ctx: { makerUserId: string }): Promise<void>;
   /**
    * propose()-time, before the row is created: reject if an equivalent
    * proposal is already pending for this same target. A target entity's
@@ -1144,9 +1208,9 @@ export class GovernedActionsService {
           },
           describePayload: async (payload) => {
             const { staffId } = payload as { staffId: string };
-            const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true } });
+            const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true, ...ROLE_NAMES } });
             return staff
-              ? `Reset two-factor authentication for ${staff.user.fullName} (${staff.staffRole}, ${staff.user.email}) — they must re-enrol on next sign-in. Confirm the request through a separate channel before approving.`
+              ? `Reset two-factor authentication for ${staff.user.fullName} (${roleNames(staff).join(", ")}, ${staff.user.email}) — they must re-enrol on next sign-in. Confirm the request through a separate channel before approving.`
               : `Staff member "${staffId}" not found.`;
           },
           describeCurrentState: async (payload) => {
@@ -1217,6 +1281,132 @@ export class GovernedActionsService {
               entityId: invitation.id,
               before: null,
               after: { ...invitationAuditSnapshot(invitation), approvedByUserId: ctx.checkerUserId },
+            };
+          },
+        },
+      ],
+      // ---- Staff roles (2026-10-18). A staff member may hold several
+      // roles; adding or removing one is two-person, same rule as
+      // staff.invite (maker platform_admin; checkers board_of_trustees /
+      // compliance_officer). Nobody proposes or approves changes to their
+      // own roles, and the last active platform_admin keeps that role. ----
+      [
+        "staff.role_add",
+        {
+          validatePropose: async (payload, ctx) => {
+            const { staffId, role } = parseStaffRolePayload(payload);
+            const target = await loadRoleChangeTarget(staffId, prisma);
+            assertNotOwnRoles(target, ctx.makerUserId, "propose");
+            await assertRoleChangeAllowed("add", target, role, prisma);
+          },
+          checkDuplicate: async (payload) => {
+            const { staffId } = parseStaffRolePayload(payload);
+            const permissions = await prisma.permission.findMany({
+              where: { key: { in: ["staff.role_add", "staff.role_remove"] } },
+              select: { id: true },
+            });
+            const pending = await prisma.governedAction.findFirst({
+              where: {
+                permissionId: { in: permissions.map((p) => p.id) },
+                status: "proposed",
+                payload: { path: ["staffId"], equals: staffId },
+              },
+            });
+            if (pending) {
+              throw new ConflictException(
+                "A role change for this staff member is already awaiting approval — decide that one first.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { staffId, role } = parseStaffRolePayload(payload);
+            const target = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true, ...ROLE_NAMES } });
+            return target
+              ? `Add ${role.replace(/_/g, " ")} to ${target.user.fullName} (currently: ${roleNames(target).join(", ")}). Confirm through a separate channel before approving.`
+              : `Staff member "${staffId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { staffId } = parseStaffRolePayload(payload);
+            const target = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: ROLE_NAMES });
+            return target ? { roles: roleNames(target) } : null;
+          },
+          onApprove: async (payload, tx, ctx) => {
+            const { staffId, role } = parseStaffRolePayload(payload);
+            // Re-checked at approval: the person's roles, or the number of
+            // active platform admins, may have changed since it was proposed.
+            const target = await loadRoleChangeTarget(staffId, tx);
+            assertNotOwnRoles(target, ctx.checkerUserId, "approve");
+            await assertRoleChangeAllowed("add", target, role, tx);
+            await tx.birrStaffRoleGrant.create({ data: { birrStaffId: staffId, role } });
+            return {
+              auditAction: "birr_staff.role_added",
+              entityType: "BirrStaff",
+              entityId: staffId,
+              before: { roles: target.roleList },
+              after: { roles: [...target.roleList, role].sort(), approvedByUserId: ctx.checkerUserId },
+            };
+          },
+        },
+      ],
+      [
+        "staff.role_remove",
+        {
+          validatePropose: async (payload, ctx) => {
+            const { staffId, role } = parseStaffRolePayload(payload);
+            const target = await loadRoleChangeTarget(staffId, prisma);
+            assertNotOwnRoles(target, ctx.makerUserId, "propose");
+            await assertRoleChangeAllowed("remove", target, role, prisma);
+          },
+          checkDuplicate: async (payload) => {
+            const { staffId } = parseStaffRolePayload(payload);
+            const permissions = await prisma.permission.findMany({
+              where: { key: { in: ["staff.role_add", "staff.role_remove"] } },
+              select: { id: true },
+            });
+            const pending = await prisma.governedAction.findFirst({
+              where: {
+                permissionId: { in: permissions.map((p) => p.id) },
+                status: "proposed",
+                payload: { path: ["staffId"], equals: staffId },
+              },
+            });
+            if (pending) {
+              throw new ConflictException(
+                "A role change for this staff member is already awaiting approval — decide that one first.",
+              );
+            }
+          },
+          describePayload: async (payload) => {
+            const { staffId, role } = parseStaffRolePayload(payload);
+            const target = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true, ...ROLE_NAMES } });
+            return target
+              ? `Remove ${role.replace(/_/g, " ")} from ${target.user.fullName} (currently: ${roleNames(target).join(", ")}). Confirm through a separate channel before approving.`
+              : `Staff member "${staffId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const { staffId } = parseStaffRolePayload(payload);
+            const target = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: ROLE_NAMES });
+            return target ? { roles: roleNames(target) } : null;
+          },
+          onApprove: async (payload, tx, ctx) => {
+            const { staffId, role } = parseStaffRolePayload(payload);
+            // Re-checked at approval: the person's roles, or the number of
+            // active platform admins, may have changed since it was proposed.
+            // Serializes concurrent platform_admin removals, so two approvals
+            // can't each count the other admin and together remove the last.
+            if (role === "platform_admin") {
+              await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('birr_staff_roles:platform_admin'))`;
+            }
+            const target = await loadRoleChangeTarget(staffId, tx);
+            assertNotOwnRoles(target, ctx.checkerUserId, "approve");
+            await assertRoleChangeAllowed("remove", target, role, tx);
+            await tx.birrStaffRoleGrant.delete({ where: { birrStaffId_role: { birrStaffId: staffId, role } } });
+            return {
+              auditAction: "birr_staff.role_removed",
+              entityType: "BirrStaff",
+              entityId: staffId,
+              before: { roles: target.roleList },
+              after: { roles: target.roleList.filter((r) => r !== role), approvedByUserId: ctx.checkerUserId },
             };
           },
         },
@@ -1312,7 +1502,7 @@ export class GovernedActionsService {
     }
 
     const handler = this.handlers.get(input.permissionKey)!;
-    await handler.validatePropose?.(input.payload);
+    await handler.validatePropose?.(input.payload, { makerUserId: input.makerUserId });
     await handler.checkDuplicate?.(input.payload);
     const waqfId = await handler.resolveWaqfId?.(input.payload);
     const vaultId = await handler.resolveVaultId?.(input.payload);
@@ -1387,7 +1577,7 @@ export class GovernedActionsService {
 
     const checkers = await prisma.birrStaff.findMany({
       where: {
-        staffRole: { in: roles.map((r) => r.key as BirrStaffRole) },
+        ...holdsAnyRole(...roles.map((r) => r.key as BirrStaffRole)),
         status: "active",
         ...(action.makerUserId ? { userId: { not: action.makerUserId } } : {}),
       },
@@ -1619,6 +1809,24 @@ export class GovernedActionsService {
     });
   }
 
+  // The affected person always hears about a change to their own roles —
+  // the one message that lets them catch a change they didn't expect.
+  private async notifyRoleChange(action: { id: string }, fulfillment: FulfillmentResult): Promise<void> {
+    const staff = await prisma.birrStaff.findUnique({ where: { id: fulfillment.entityId }, select: { userId: true } });
+    if (!staff) return;
+    const { roles } = fulfillment.after as { roles: string[] };
+    await this.notificationsService.notify({
+      recipientType: "birr_staff",
+      recipientUserId: staff.userId,
+      type: "birr_staff.roles_changed",
+      title: "Your Birr staff roles changed",
+      body: `Your roles are now: ${roles.join(", ")}. If you didn't expect this, contact Birr's security lead.`,
+      linkUrl: "/ops/profile",
+      relatedEntityType: "GovernedAction",
+      relatedEntityId: action.id,
+    });
+  }
+
   private async notifyDecision(
     action: {
       id: string;
@@ -1649,6 +1857,13 @@ export class GovernedActionsService {
     // before the waqf-only early return below.
     if (decided.status === "approved" && fulfillment?.auditAction === "birr_staff.mfa_reset") {
       await this.notifyMfaReset(action, decided, fulfillment.entityId);
+      return;
+    }
+    if (
+      decided.status === "approved" &&
+      (fulfillment?.auditAction === "birr_staff.role_added" || fulfillment?.auditAction === "birr_staff.role_removed")
+    ) {
+      await this.notifyRoleChange(action, fulfillment);
       return;
     }
     if (decided.status === "approved" && fulfillment?.auditAction === "founder.mfa_reset") {
