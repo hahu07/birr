@@ -15,12 +15,12 @@ describe("BlogService", () => {
       data: { email: `blog-author-${Date.now()}@example.com`, fullName: "Blog Author" },
     });
     authorUserId = author.id;
-    await prisma.birrStaff.create({ data: { userId: author.id, staffRole: "mutawalli_officer" } });
+    await prisma.birrStaff.create({ data: { userId: author.id, roles: { create: { role: "mutawalli_officer" } } } });
     const reviewer = await prisma.user.create({
       data: { email: `blog-reviewer-${Date.now()}@example.com`, fullName: "Blog Reviewer" },
     });
     reviewerUserId = reviewer.id;
-    await prisma.birrStaff.create({ data: { userId: reviewer.id, staffRole: "legal_adviser" } });
+    await prisma.birrStaff.create({ data: { userId: reviewer.id, roles: { create: { role: "legal_adviser" } } } });
   });
 
   afterAll(async () => {

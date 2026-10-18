@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { BirrStaffRole, PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { syncPermissions } from "./sync-permissions";
 import {
@@ -126,6 +126,22 @@ async function connectWithRetry(attempts = 5, delayMs = 3000) {
   }
 }
 
+// An active BirrStaff row for this user that holds `role` (adding the role
+// if they don't have it yet). Re-runnable: never removes other roles a
+// person was given since.
+async function ensureStaffWithRole(userId: string, role: BirrStaffRole) {
+  const staff = await prisma.birrStaff.upsert({
+    where: { userId },
+    update: { status: "active" },
+    create: { userId, roles: { create: { role } } },
+  });
+  await prisma.birrStaffRoleGrant.upsert({
+    where: { birrStaffId_role: { birrStaffId: staff.id, role } },
+    update: {},
+    create: { birrStaffId: staff.id, role },
+  });
+}
+
 async function main() {
   await connectWithRetry();
 
@@ -213,11 +229,7 @@ async function main() {
       status: "active",
     },
   });
-  await prisma.birrStaff.upsert({
-    where: { userId: adminUser.id },
-    update: { staffRole: "platform_admin", status: "active" },
-    create: { userId: adminUser.id, staffRole: "platform_admin" },
-  });
+  await ensureStaffWithRole(adminUser.id, "platform_admin");
 
   console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums, ${corpusMinimums.length} corpus minimums, ${vaultDonorThresholds.length} vault donor thresholds, ${causeCategories.length} cause categories, ${shariahProhibitedSectors.length} shariah prohibited sectors, ${vaultLedgerAccounts.length} vault ledger accounts, ${waqfLedgerAccounts.length} waqf ledger accounts.`);
   console.log(`Seeded bootstrap platform_admin: ${SEED_ADMIN_EMAIL} (password: ${SEED_ADMIN_PASSWORD}) — change this before any shared/non-local use.`);
@@ -260,11 +272,7 @@ async function main() {
         update: { passwordHash: staffPasswordHash, status: "active" },
         create: { email: s.email, fullName: s.fullName, passwordHash: staffPasswordHash, status: "active" },
       });
-      await prisma.birrStaff.upsert({
-        where: { userId: staffUser.id },
-        update: { staffRole: s.staffRole, status: "active" },
-        create: { userId: staffUser.id, staffRole: s.staffRole },
-      });
+      await ensureStaffWithRole(staffUser.id, s.staffRole);
     }
     console.log(
       `Seeded ${SEED_STAFF.length} dev staff logins (password: ${SEED_STAFF_PASSWORD}) — local dev only, sign in at /ops/sign-in:\n` +

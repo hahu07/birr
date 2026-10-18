@@ -445,7 +445,7 @@ export class InvitationsService {
         membershipOrStaff = await tx.birrStaff.create({
           data: {
             userId: user.id,
-            staffRole: invitation.roleKey as BirrStaffRole,
+            roles: { create: { role: invitation.roleKey as BirrStaffRole } },
           },
         });
       }
@@ -550,7 +550,7 @@ export class InvitationsService {
   async revoke(
     id: string,
     revokedByUserId: string,
-    actor: { type: "birr_staff"; staffRole: string } | { type: "founder_user"; founderId: string },
+    actor: { type: "birr_staff"; roles: readonly string[] } | { type: "founder_user"; founderId: string },
   ) {
     const invitation = await prisma.invitation.findUnique({ where: { id } });
     if (!invitation) throw new NotFoundException(`Invitation "${id}" not found.`);

@@ -19,7 +19,7 @@ describe("WaqfMilestonesService", () => {
       data: { email: `waqf-milestones-actor-${Date.now()}@example.com`, fullName: "Test Actor" },
     });
     actorUserId = actorUser.id;
-    await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "mutawalli_officer" } });
+    await prisma.birrStaff.create({ data: { userId: actorUser.id, roles: { create: { role: "mutawalli_officer" } } } });
 
     const foundation = await prisma.foundation.create({ data: { name: "Waqf Milestones Fixture Foundation" } });
     foundationId = foundation.id;

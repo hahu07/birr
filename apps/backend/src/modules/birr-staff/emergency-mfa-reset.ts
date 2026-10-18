@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { prisma, BirrStaffRole } from "@birr/db";
+import { ROLE_NAMES, roleNames } from "../../common/auth/staff-roles";
 
 // Break-glass MFA recovery for the one case the normal, governed
 // `staff.mfa_reset` action can't cover: nobody left who can *propose* it
@@ -29,10 +30,10 @@ const normalize = (email: string) => email.trim().toLowerCase();
 
 async function loadActiveStaff(email: string, label: string) {
   const user = await prisma.user.findUnique({ where: { email: normalize(email) } });
-  const staff = user && (await prisma.birrStaff.findUnique({ where: { userId: user.id } }));
+  const staff = user && (await prisma.birrStaff.findUnique({ where: { userId: user.id }, include: ROLE_NAMES }));
   if (!user || !staff) throw new NotFoundException(`${label} "${email}" is not a Birr staff account.`);
   if (staff.status !== "active") throw new BadRequestException(`${label} "${email}" is not an active staff account.`);
-  return { user, staff };
+  return { user, staff, roles: roleNames(staff) };
 }
 
 export async function emergencyMfaReset(input: EmergencyMfaResetInput): Promise<EmergencyMfaResetResult> {
@@ -61,17 +62,17 @@ export async function emergencyMfaReset(input: EmergencyMfaResetInput): Promise<
     loadActiveStaff(approverBEmail, "Approver 2"),
   ]);
   for (const [i, a] of approvers.entries()) {
-    if (!EMERGENCY_APPROVER_ROLES.includes(a.staff.staffRole)) {
+    if (!a.roles.some((role) => EMERGENCY_APPROVER_ROLES.includes(role))) {
       throw new BadRequestException(
-        `Approver ${i + 1} (${a.user.email}) is a ${a.staff.staffRole}; emergency approvers must be one of: ${EMERGENCY_APPROVER_ROLES.join(", ")}.`,
+        `Approver ${i + 1} (${a.user.email}) is a ${a.roles.join(", ")}; emergency approvers must hold one of: ${EMERGENCY_APPROVER_ROLES.join(", ")}.`,
       );
     }
   }
 
   const summary = [
-    `Target:     ${target.user.fullName} <${target.user.email}> (${target.staff.staffRole})`,
-    `Approver 1: ${approvers[0].user.fullName} <${approvers[0].user.email}> (${approvers[0].staff.staffRole})`,
-    `Approver 2: ${approvers[1].user.fullName} <${approvers[1].user.email}> (${approvers[1].staff.staffRole})`,
+    `Target:     ${target.user.fullName} <${target.user.email}> (${target.roles.join(", ")})`,
+    `Approver 1: ${approvers[0].user.fullName} <${approvers[0].user.email}> (${approvers[0].roles.join(", ")})`,
+    `Approver 2: ${approvers[1].user.fullName} <${approvers[1].user.email}> (${approvers[1].roles.join(", ")})`,
     `Reason:     ${reason}`,
     "Effect:     clears their authenticator secret and every backup code; they must re-enrol at next sign-in. Password unchanged.",
   ];

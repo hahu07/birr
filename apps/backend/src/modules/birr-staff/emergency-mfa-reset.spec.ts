@@ -13,7 +13,7 @@ describe("emergencyMfaReset", () => {
     const user = await prisma.user.create({
       data: { email: `emergency-${key}-${stamp}@example.com`.toLowerCase(), fullName: `Emergency ${key}`, mfaEnabled: mfa, mfaSecretEncrypted: mfa ? "not-a-real-secret" : null },
     });
-    await prisma.birrStaff.create({ data: { userId: user.id, staffRole } });
+    await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: { role: staffRole } } } });
     if (mfa) await prisma.mfaBackupCode.createMany({ data: [{ userId: user.id, codeHash: "x" }, { userId: user.id, codeHash: "y" }] });
     users[key] = { id: user.id, email: user.email };
   }

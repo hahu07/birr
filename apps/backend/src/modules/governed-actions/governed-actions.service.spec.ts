@@ -1,7 +1,7 @@
-import { prisma, Beneficiary, Investment, Distribution } from "@birr/db";
+import { prisma, Beneficiary, Investment, Distribution, BirrStaffRole } from "@birr/db";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { GovernedActionsService } from "./governed-actions.service";
+import { GovernedActionsService, assertRoleChangeAllowed } from "./governed-actions.service";
 import { AssetsService } from "../assets/assets.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
 import { InvestmentsService } from "../investments/investments.service";
@@ -176,7 +176,7 @@ describe("GovernedActionsService", () => {
     });
     makerUserId = makerUser.id;
     await prisma.birrStaff.create({
-      data: { userId: makerUser.id, staffRole: "mutawalli_officer" },
+      data: { userId: makerUser.id, roles: { create: { role: "mutawalli_officer" } } },
     });
 
     const assetCheckerUser = await prisma.user.create({
@@ -184,7 +184,7 @@ describe("GovernedActionsService", () => {
     });
     assetCheckerUserId = assetCheckerUser.id;
     await prisma.birrStaff.create({
-      data: { userId: assetCheckerUser.id, staffRole: "audit_committee" },
+      data: { userId: assetCheckerUser.id, roles: { create: { role: "audit_committee" } } },
     });
 
     const beneficiaryCheckerUser = await prisma.user.create({
@@ -195,7 +195,7 @@ describe("GovernedActionsService", () => {
     });
     beneficiaryCheckerUserId = beneficiaryCheckerUser.id;
     await prisma.birrStaff.create({
-      data: { userId: beneficiaryCheckerUser.id, staffRole: "shariah_board_member" },
+      data: { userId: beneficiaryCheckerUser.id, roles: { create: { role: "shariah_board_member" } } },
     });
 
     // investment.change flips the usual pairing: investment_committee is
@@ -209,7 +209,7 @@ describe("GovernedActionsService", () => {
     });
     investmentMakerUserId = investmentMakerUser.id;
     await prisma.birrStaff.create({
-      data: { userId: investmentMakerUser.id, staffRole: "investment_committee" },
+      data: { userId: investmentMakerUser.id, roles: { create: { role: "investment_committee" } } },
     });
 
     // distribution.approve's seeded checker — mutawalli_officer
@@ -223,7 +223,7 @@ describe("GovernedActionsService", () => {
     });
     distributionCheckerUserId = distributionCheckerUser.id;
     await prisma.birrStaff.create({
-      data: { userId: distributionCheckerUser.id, staffRole: "compliance_officer" },
+      data: { userId: distributionCheckerUser.id, roles: { create: { role: "compliance_officer" } } },
     });
 
     // vault.contribution_refund's seeded checker — compliance_officer
@@ -233,7 +233,7 @@ describe("GovernedActionsService", () => {
     });
     boardCheckerUserId = boardCheckerUser.id;
     await prisma.birrStaff.create({
-      data: { userId: boardCheckerUser.id, staffRole: "board_of_trustees" },
+      data: { userId: boardCheckerUser.id, roles: { create: { role: "board_of_trustees" } } },
     });
 
     const founder = await prisma.founder.create({
@@ -949,7 +949,7 @@ describe("GovernedActionsService", () => {
     const secondChecker = await prisma.user.create({
       data: { email: `distribution-checker-2-${Date.now()}@example.com`, fullName: "Test Second Distribution Checker" },
     });
-    await prisma.birrStaff.create({ data: { userId: secondChecker.id, staffRole: "compliance_officer" } });
+    await prisma.birrStaff.create({ data: { userId: secondChecker.id, roles: { create: { role: "compliance_officer" } } } });
 
     const outcomes = await Promise.allSettled([
       service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true }),
@@ -1972,12 +1972,12 @@ describe("GovernedActionsService", () => {
         data: { email: `blog-legal-${Date.now()}@example.com`, fullName: "Test Legal Adviser" },
       });
       legalUserId = legal.id;
-      await prisma.birrStaff.create({ data: { userId: legal.id, staffRole: "legal_adviser" } });
+      await prisma.birrStaff.create({ data: { userId: legal.id, roles: { create: { role: "legal_adviser" } } } });
       const other = await prisma.user.create({
         data: { email: `blog-legal-2-${Date.now()}@example.com`, fullName: "Second Legal Adviser" },
       });
       otherLegalUserId = other.id;
-      await prisma.birrStaff.create({ data: { userId: other.id, staffRole: "legal_adviser" } });
+      await prisma.birrStaff.create({ data: { userId: other.id, roles: { create: { role: "legal_adviser" } } } });
     });
 
     async function draftArticle(createdByUserId: string) {
@@ -2103,12 +2103,12 @@ describe("GovernedActionsService", () => {
         data: { email: `mfa-admin-${Date.now()}@example.com`, fullName: "MFA Request Admin" },
       });
       adminUserId = admin.id;
-      await prisma.birrStaff.create({ data: { userId: admin.id, staffRole: "platform_admin" } });
+      await prisma.birrStaff.create({ data: { userId: admin.id, roles: { create: { role: "platform_admin" } } } });
       const board = await prisma.user.create({
         data: { email: `mfa-board-${Date.now()}@example.com`, fullName: "MFA Approving Board Member" },
       });
       boardUserId = board.id;
-      await prisma.birrStaff.create({ data: { userId: board.id, staffRole: "board_of_trustees" } });
+      await prisma.birrStaff.create({ data: { userId: board.id, roles: { create: { role: "board_of_trustees" } } } });
     });
 
     async function enrolledStaff(label: string) {
@@ -2120,7 +2120,7 @@ describe("GovernedActionsService", () => {
           mfaSecretEncrypted: "not-a-real-secret",
         },
       });
-      const staff = await prisma.birrStaff.create({ data: { userId: user.id, staffRole: "mutawalli_officer" } });
+      const staff = await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: { role: "mutawalli_officer" } } } });
       await prisma.mfaBackupCode.create({ data: { userId: user.id, codeHash: "x" } });
       return { user, staff };
     }
@@ -2213,12 +2213,12 @@ describe("GovernedActionsService", () => {
         data: { email: `sinv-admin-${Date.now()}@example.com`, fullName: "Staff Invite Proposing Admin" },
       });
       adminUserId = admin.id;
-      await prisma.birrStaff.create({ data: { userId: admin.id, staffRole: "platform_admin" } });
+      await prisma.birrStaff.create({ data: { userId: admin.id, roles: { create: { role: "platform_admin" } } } });
       const compliance = await prisma.user.create({
         data: { email: `sinv-compliance-${Date.now()}@example.com`, fullName: "Staff Invite Approving Compliance" },
       });
       complianceUserId = compliance.id;
-      await prisma.birrStaff.create({ data: { userId: compliance.id, staffRole: "compliance_officer" } });
+      await prisma.birrStaff.create({ data: { userId: compliance.id, roles: { create: { role: "compliance_officer" } } } });
     });
 
     afterAll(async () => {
@@ -2311,6 +2311,133 @@ describe("GovernedActionsService", () => {
       expect((await prisma.governedAction.findUniqueOrThrow({ where: { id: action.id } })).status).toBe("proposed");
     });
   });
+  // staff.role_add / staff.role_remove (2026-10-18) — a staff member may
+  // hold several roles. Maker: platform_admin; checkers: board_of_trustees /
+  // compliance_officer. Nobody proposes or approves changes to their own
+  // roles; external_auditor stands alone; the last active platform_admin
+  // keeps that role.
+  describe("staff.role_add / staff.role_remove", () => {
+    let adminUserId: string;
+    let adminStaffId: string;
+    let complianceUserId: string;
+    let complianceStaffId: string;
+
+    async function staffWith(label: string, ...roles: BirrStaffRole[]) {
+      const user = await prisma.user.create({
+        data: { email: `roles-${label}-${randomUUID().slice(0, 8)}@example.com`, fullName: `Roles ${label}` },
+      });
+      const staff = await prisma.birrStaff.create({
+        data: { userId: user.id, roles: { create: roles.map((role) => ({ role })) } },
+      });
+      return { user, staff };
+    }
+    const rolesOf = async (staffId: string) =>
+      (await prisma.birrStaffRoleGrant.findMany({ where: { birrStaffId: staffId }, orderBy: { role: "asc" } })).map((g) => g.role);
+    const propose = async (kind: "add" | "remove", staffId: string, role: BirrStaffRole, makerUserId = adminUserId) => {
+      const action = await service.propose({ permissionKey: `staff.role_${kind}`, payload: { staffId, role }, makerUserId });
+      governedActionIds.push(action.id);
+      return action;
+    };
+
+    beforeAll(async () => {
+      const admin = await staffWith("admin", "platform_admin");
+      adminUserId = admin.user.id;
+      adminStaffId = admin.staff.id;
+      const compliance = await staffWith("compliance", "compliance_officer");
+      complianceUserId = compliance.user.id;
+      complianceStaffId = compliance.staff.id;
+    }, 30000);
+
+    test("add → the role is granted, audit-logged with before/after, and the person is notified", async () => {
+      const { user, staff } = await staffWith("add", "legal_adviser");
+      const action = await propose("add", staff.id, "compliance_officer");
+      await service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: true });
+
+      expect(await rolesOf(staff.id)).toEqual(["compliance_officer", "legal_adviser"]);
+      const log = await prisma.auditLog.findFirst({ where: { entityId: staff.id, action: "birr_staff.role_added" } });
+      expect(log?.before).toEqual({ roles: ["legal_adviser"] });
+      expect(log?.after).toMatchObject({ roles: ["compliance_officer", "legal_adviser"], approvedByUserId: complianceUserId });
+      let notice = null;
+      for (let i = 0; i < 20 && !notice; i++) {
+        notice = await prisma.notification.findFirst({ where: { recipientUserId: user.id, type: "birr_staff.roles_changed" } });
+        if (!notice) await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(notice).not.toBeNull();
+    });
+
+    test("remove → the role is taken away", async () => {
+      const { staff } = await staffWith("remove", "legal_adviser", "audit_committee");
+      const action = await propose("remove", staff.id, "audit_committee");
+      await service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: true });
+      expect(await rolesOf(staff.id)).toEqual(["legal_adviser"]);
+    });
+
+    test("the proposer cannot approve it, and the database refuses it too", async () => {
+      const { staff } = await staffWith("self-approve", "legal_adviser");
+      const action = await propose("add", staff.id, "audit_committee");
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: adminUserId, approve: true }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: adminUserId } }),
+      ).rejects.toThrow();
+    });
+
+    test("nobody can propose a change to their own roles", async () => {
+      await expect(propose("add", adminStaffId, "legal_adviser")).rejects.toThrow(ForbiddenException);
+    });
+
+    test("nobody can approve a change to their own roles", async () => {
+      const action = await propose("add", complianceStaffId, "legal_adviser");
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: true }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(await rolesOf(complianceStaffId)).toEqual(["compliance_officer"]);
+    });
+
+    test("external_auditor stands alone, in both directions", async () => {
+      const { staff: auditor } = await staffWith("auditor", "external_auditor");
+      await expect(propose("add", auditor.id, "legal_adviser")).rejects.toThrow(BadRequestException);
+      const { staff: legal } = await staffWith("legal", "legal_adviser");
+      await expect(propose("add", legal.id, "external_auditor")).rejects.toThrow(BadRequestException);
+    });
+
+    test("can't add a role already held, remove one not held, or remove someone's only role", async () => {
+      const { staff } = await staffWith("rules", "legal_adviser");
+      await expect(propose("add", staff.id, "legal_adviser")).rejects.toThrow(ConflictException);
+      await expect(propose("remove", staff.id, "audit_committee")).rejects.toThrow(BadRequestException);
+      await expect(propose("remove", staff.id, "legal_adviser")).rejects.toThrow(BadRequestException);
+    });
+
+    test("a second pending change for the same person is a duplicate", async () => {
+      const { staff } = await staffWith("dup", "legal_adviser");
+      await propose("add", staff.id, "audit_committee");
+      await expect(propose("add", staff.id, "board_of_trustees")).rejects.toThrow(ConflictException);
+    });
+
+    test("the last active platform_admin keeps that role", async () => {
+      const { staff } = await staffWith("last-admin", "platform_admin", "legal_adviser");
+      const target = {
+        id: staff.id,
+        user: { fullName: "Roles last-admin" },
+        roleList: ["legal_adviser", "platform_admin"] as BirrStaffRole[],
+      };
+      // Rolled back: with every other admin suspended, this is the last one.
+      class Rollback extends Error {}
+      await expect(
+        prisma.$transaction(async (tx) => {
+          await tx.birrStaff.updateMany({
+            where: { id: { not: staff.id }, status: "active", roles: { some: { role: "platform_admin" } } },
+            data: { status: "suspended" },
+          });
+          await expect(assertRoleChangeAllowed("remove", target, "platform_admin", tx)).rejects.toThrow(/last active platform_admin/);
+          throw new Rollback();
+        }),
+      ).rejects.toBeInstanceOf(Rollback);
+      // Outside that transaction other admins exist, so it's allowed.
+      await expect(assertRoleChangeAllowed("remove", target, "platform_admin", prisma)).resolves.toBeUndefined();
+    });
+  });
   // founder.mfa_reset (2026-10-01) — the Founder Portal counterpart of
   // staff.mfa_reset. Maker: platform_admin; checkers: board_of_trustees /
   // compliance_officer. The Founder is notified when it lands.
@@ -2323,12 +2450,12 @@ describe("GovernedActionsService", () => {
         data: { email: `fmfa-admin-${Date.now()}@example.com`, fullName: "Founder MFA Request Admin" },
       });
       adminUserId = admin.id;
-      await prisma.birrStaff.create({ data: { userId: admin.id, staffRole: "platform_admin" } });
+      await prisma.birrStaff.create({ data: { userId: admin.id, roles: { create: { role: "platform_admin" } } } });
       const board = await prisma.user.create({
         data: { email: `fmfa-board-${Date.now()}@example.com`, fullName: "Founder MFA Approving Board" },
       });
       boardUserId = board.id;
-      await prisma.birrStaff.create({ data: { userId: board.id, staffRole: "board_of_trustees" } });
+      await prisma.birrStaff.create({ data: { userId: board.id, roles: { create: { role: "board_of_trustees" } } } });
     });
 
     async function enrolledFounderUser(label: string) {

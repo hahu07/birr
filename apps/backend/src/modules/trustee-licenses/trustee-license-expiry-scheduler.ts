@@ -1,6 +1,7 @@
 import { Logger } from "@nestjs/common";
 import { prisma } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
+import { holdsAnyRole } from "../../common/auth/staff-roles";
 
 const logger = new Logger("TrusteeLicenseExpiryScheduler");
 
@@ -59,7 +60,7 @@ async function checkExpiringLicenses(notificationsService: NotificationsService)
   if (licenses.length === 0) return;
 
   const admins = await prisma.birrStaff.findMany({
-    where: { staffRole: "platform_admin", status: "active" },
+    where: { ...holdsAnyRole("platform_admin"), status: "active" },
     select: { userId: true },
   });
 

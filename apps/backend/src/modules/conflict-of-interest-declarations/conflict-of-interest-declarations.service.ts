@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { prisma, CoiStatus, BirrStaffRole } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
+import { ROLE_NAMES, holdsAnyRole } from "../../common/auth/staff-roles";
 
 export interface DeclareInput {
   birrStaffId: string;
@@ -25,7 +26,7 @@ export interface ReviewInput {
 // Resolved for display only — never select passwordHash, same principle
 // as BirrStaffService's SAFE_USER_SELECT / AuditLogsController's include.
 const COI_INCLUDE = {
-  birrStaff: { select: { id: true, staffRole: true, user: { select: { id: true, fullName: true } } } },
+  birrStaff: { select: { id: true, ...ROLE_NAMES, user: { select: { id: true, fullName: true } } } },
   waqf: { select: { id: true, name: true } },
   reviewedByUser: { select: { id: true, fullName: true } },
 } as const;
@@ -100,7 +101,7 @@ export class ConflictOfInterestDeclarationsService {
     declarationId: string,
   ): Promise<void> {
     const reviewers = await prisma.birrStaff.findMany({
-      where: { staffRole: { in: roles }, status: "active", userId: { not: excludeUserId } },
+      where: { ...holdsAnyRole(...roles), status: "active", userId: { not: excludeUserId } },
       select: { userId: true },
     });
     await Promise.all(

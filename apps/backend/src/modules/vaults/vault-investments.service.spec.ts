@@ -27,7 +27,7 @@ describe("VaultInvestmentsService", () => {
       data: { email: `vault-investments-actor-${Date.now()}@example.com`, fullName: "Test Actor" },
     });
     actorUserId = actorUser.id;
-    await prisma.birrStaff.create({ data: { userId: actorUser.id, staffRole: "mutawalli_officer" } });
+    await prisma.birrStaff.create({ data: { userId: actorUser.id, roles: { create: { role: "mutawalli_officer" } } } });
 
     const investmentVault = await vaultsService.create(
       { name: "Investment Test Vault", slug: `investment-test-${Date.now()}`, type: "investment", currency: "USD", jurisdiction: "NG" },

@@ -298,7 +298,7 @@ export class BeneficiariesService {
   // roles as its example of the *problem*, and granting them a blanket
   // bypass instead of scoping them to their actual caseload would be a
   // policy call, not something to infer from the finding itself.
-  async assertStaffCanAccessWaqf(waqfId: string, staff: { id: string; staffRole: string }): Promise<void> {
+  async assertStaffCanAccessWaqf(waqfId: string, staff: { id: string; roles: readonly string[] }): Promise<void> {
     if (await staffHasAccess(staff, "caseload.view_all")) return;
     const assignment = await prisma.waqfCaseAssignment.findFirst({
       where: { waqfId, birrStaffId: staff.id, status: "active" },
@@ -331,7 +331,7 @@ export class BeneficiariesService {
   // WaqfsService.list()'s own capped branch — this codebase has no
   // cursor-pagination primitive yet, so a hard cap is the established
   // pattern, not a partial fix.
-  async list(waqfId: string | undefined, staff: { id: string; staffRole: string }) {
+  async list(waqfId: string | undefined, staff: { id: string; roles: readonly string[] }) {
     // deletedAt: null on every branch — nothing currently soft-deletes a
     // Beneficiary (status flips active/inactive instead; see
     // updateStatus()), so this is a no-op today, but listForFounder()

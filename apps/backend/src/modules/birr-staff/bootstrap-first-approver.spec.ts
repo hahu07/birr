@@ -14,7 +14,7 @@ describe("bootstrapFirstApprover", () => {
     const admin = await prisma.user.create({
       data: { email: `bootstrap-admin-${stamp}@example.com`, fullName: "Bootstrap Admin" },
     });
-    await prisma.birrStaff.create({ data: { userId: admin.id, staffRole: "platform_admin" } });
+    await prisma.birrStaff.create({ data: { userId: admin.id, roles: { create: { role: "platform_admin" } } } });
     adminEmail = admin.email;
     // Guarantees an active approver exists, whatever else the shared test
     // database holds — the "no approver yet" path is exercised inside a
@@ -22,7 +22,7 @@ describe("bootstrapFirstApprover", () => {
     const board = await prisma.user.create({
       data: { email: `bootstrap-board-${stamp}@example.com`, fullName: "Bootstrap Existing Board" },
     });
-    await prisma.birrStaff.create({ data: { userId: board.id, staffRole: "board_of_trustees" } });
+    await prisma.birrStaff.create({ data: { userId: board.id, roles: { create: { role: "board_of_trustees" } } } });
   });
 
   afterAll(() => prisma.$disconnect());

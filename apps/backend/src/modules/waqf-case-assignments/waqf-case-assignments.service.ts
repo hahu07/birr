@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { prisma, Prisma, CaseAssignmentRole, BirrStaffRole } from "@birr/db";
+import { ROLE_NAMES, roleNames } from "../../common/auth/staff-roles";
 
 export interface AssignInput {
   waqfId: string;
@@ -41,13 +42,14 @@ const ASSIGNABLE_STAFF_ROLES: Record<CaseAssignmentRole, BirrStaffRole[]> = {
 @Injectable()
 export class WaqfCaseAssignmentsService {
   async assign(input: AssignInput) {
-    const assignee = await prisma.birrStaff.findUnique({ where: { id: input.birrStaffId } });
+    const assignee = await prisma.birrStaff.findUnique({ where: { id: input.birrStaffId }, include: ROLE_NAMES });
     if (!assignee) {
       throw new NotFoundException(`BirrStaff "${input.birrStaffId}" not found.`);
     }
-    if (!ASSIGNABLE_STAFF_ROLES[input.assignmentRole].includes(assignee.staffRole)) {
+    const assigneeRoles = roleNames(assignee);
+    if (!assigneeRoles.some((role) => ASSIGNABLE_STAFF_ROLES[input.assignmentRole].includes(role))) {
       throw new BadRequestException(
-        `A "${assignee.staffRole}" staff member can't hold the "${input.assignmentRole}" case role — only ${ASSIGNABLE_STAFF_ROLES[input.assignmentRole].join(" or ")} can.`,
+        `A "${assigneeRoles.join(", ")}" staff member can't hold the "${input.assignmentRole}" case role — only ${ASSIGNABLE_STAFF_ROLES[input.assignmentRole].join(" or ")} can.`,
       );
     }
 

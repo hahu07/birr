@@ -804,7 +804,7 @@ describe("FoundersService MFA", () => {
     const staffUser = await prisma.user.create({
       data: { email: testEmail("mfa-founder-is-staff"), fullName: "Staff Not Founder", mfaEnabled: true, mfaSecretEncrypted: "x" },
     });
-    await prisma.birrStaff.create({ data: { userId: staffUser.id, staffRole: "mutawalli_officer" } });
+    await prisma.birrStaff.create({ data: { userId: staffUser.id, roles: { create: { role: "mutawalli_officer" } } } });
     await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(staffUser.id, tx))).rejects.toThrow(/staff member/);
   });
 });

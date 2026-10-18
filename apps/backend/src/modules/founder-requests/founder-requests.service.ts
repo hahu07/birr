@@ -71,7 +71,7 @@ export class FounderRequestsService {
   // shape as BeneficiariesService.assertStaffCanAccessWaqf — a Founder's
   // request is exactly as sensitive as the beneficiary/asset/distribution
   // data it's asking staff to act on, so it gets the same scoping.
-  async assertStaffCanAccessWaqf(waqfId: string, staff: { id: string; staffRole: string }): Promise<void> {
+  async assertStaffCanAccessWaqf(waqfId: string, staff: { id: string; roles: readonly string[] }): Promise<void> {
     if (await staffHasAccess(staff, "caseload.view_all")) return;
     const assignment = await prisma.waqfCaseAssignment.findFirst({
       where: { waqfId, birrStaffId: staff.id, status: "active" },
@@ -150,7 +150,7 @@ export class FounderRequestsService {
   // assertStaffCanAccessWaqf. Omitted: scoped to the staff member's own
   // active caseload; caseload.view_all (platform_admin) sees everything — same shape as
   // BeneficiariesService.list().
-  async list(waqfId: string | undefined, staff: { id: string; staffRole: string }) {
+  async list(waqfId: string | undefined, staff: { id: string; roles: readonly string[] }) {
     if (waqfId) {
       return prisma.founderRequest.findMany({ where: { waqfId }, orderBy: { createdAt: "desc" }, include: FOUNDER_REQUEST_INCLUDE });
     }

@@ -338,7 +338,7 @@ describe("WaqfsService", () => {
         data: { email: `waqfs-lifecycle-staff-${Date.now()}@example.com`, fullName: "Lifecycle Fixture Staff" },
       });
       lifecycleStaffUserId = staffUser.id;
-      await prisma.birrStaff.create({ data: { userId: lifecycleStaffUserId, staffRole: "mutawalli_officer" } });
+      await prisma.birrStaff.create({ data: { userId: lifecycleStaffUserId, roles: { create: { role: "mutawalli_officer" } } } });
 
       // Distinct, unlikely-to-collide jurisdiction codes — the shared dev
       // DB already has a real CompliancePolicySet for "AE", which would
