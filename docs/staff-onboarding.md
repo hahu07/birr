@@ -49,6 +49,13 @@ rules always apply:
 - Everyone keeps **at least one** role.
 - The **last active Platform Admin** can't lose that role.
 
+**Changing what a role can do.** On **Roles & Access**, the Platform Admin
+uses **Propose a change**: pick a role, a permission, and the new setting.
+A Board member approves it on **Approvals**, and it takes effect straight
+away. The system refuses any change that would leave an approval action
+with nobody able to propose or approve it, give one role both sides of the
+same approval, or give the External Auditor either side.
+
 ---
 
 ## B. First approver — from the server

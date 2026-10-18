@@ -2,12 +2,19 @@ import type { PrismaClient } from "@prisma/client";
 import { roles, permissions, rolePermissions } from "./seed-data";
 
 // The code-defined half of seeding, on its own: which staff roles exist,
-// which governed/ungoverned permissions exist, and which role may propose
-// (canMaker) or approve (canChecker) each. All of it lives in seed-data.ts,
-// and the Ops Console's Roles & Access page is read-only — so the database
-// copy must always equal this file, and a deploy that adds a permission
-// (e.g. blog.publish, staff.mfa_reset, founder.mfa_reset) is broken until
-// the rows exist.
+// which governed/ungoverned permissions exist, and the DEFAULT grant of
+// each permission to each role (canMaker = may propose / may do;
+// canChecker = may approve), all from seed-data.ts. A deploy that adds a
+// permission is broken until its rows exist, so this runs on every deploy.
+//
+// Since 2026-10-18 the database, not this file, is the source of truth for
+// grants: the Board can change them in the Ops Console (the governed
+// role.permission_change action). So by default this only ADDS — new
+// roles, new permissions, and a grant row for any role/permission pair
+// that has none yet — and never changes or switches off an existing grant.
+// A grant the Board removed stays as a row with both flags false, so it
+// isn't re-added here. `{ reset: true }` (sync:permissions --reset) is the
+// deliberate, explicit way back to exactly seed-data.ts.
 //
 // Deliberately NOT part of this: the bootstrap platform_admin (its
 // password is reset on every full seed), the AI agents' API keys, and
@@ -17,10 +24,9 @@ import { roles, permissions, rolePermissions } from "./seed-data";
 // why it — not the full seed — runs on every deploy (see
 // apps/backend/docker-entrypoint.sh).
 //
-// Grants removed from seed-data.ts are switched off (both flags false),
-// not deleted: a role that loses an approval right must lose it in the
-// database too, but the row itself is harmless history.
-export async function syncPermissions(prisma: PrismaClient) {
+// With `reset`, grants removed from seed-data.ts are switched off (both
+// flags false), not deleted — the row itself is harmless history.
+export async function syncPermissions(prisma: PrismaClient, { reset = false }: { reset?: boolean } = {}) {
   const roleIdByKey = new Map<string, string>();
   for (const role of roles) {
     const row = await prisma.role.upsert({
@@ -54,18 +60,29 @@ export async function syncPermissions(prisma: PrismaClient) {
       const permissionId = permissionIdByKey.get(permissionKey);
       if (!permissionId) throw new Error(`Unknown permission key in rolePermissions: ${permissionKey}`);
 
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId, permissionId } },
-        update: { canMaker, canChecker },
-        create: { roleId, permissionId, canMaker, canChecker },
-      });
-      grants++;
+      if (reset) {
+        await prisma.rolePermission.upsert({
+          where: { roleId_permissionId: { roleId, permissionId } },
+          update: { canMaker, canChecker },
+          create: { roleId, permissionId, canMaker, canChecker },
+        });
+        grants++;
+      } else {
+        // Add-only: a row that already exists was either seeded earlier or
+        // decided in the Ops Console — leave it exactly as it is.
+        const created = await prisma.rolePermission.createMany({
+          data: [{ roleId, permissionId, canMaker, canChecker }],
+          skipDuplicates: true,
+        });
+        grants += created.count;
+      }
     }
   }
 
-  // Switch off any grant that exists in the database but is no longer in
-  // seed-data.ts (only for roles/permissions this file defines).
+  // Reset only: switch off any grant that exists in the database but is no
+  // longer in seed-data.ts (only for roles/permissions this file defines).
   let revoked = 0;
+  if (!reset) return { roles: roles.length, permissions: permissions.length, grants, revoked };
   const existing = await prisma.rolePermission.findMany({
     where: {
       roleId: { in: [...roleIdByKey.values()] },

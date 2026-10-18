@@ -92,6 +92,12 @@ const governedPermissions = [
   // one is the same two-person rule as staff.invite.
   { key: "staff.role_add", category: "staff", requiresMakerChecker: true, description: "Give an existing staff member an additional role." },
   { key: "staff.role_remove", category: "staff", requiresMakerChecker: true, description: "Take a role away from a staff member who holds more than one." },
+  // Changing what a role may do, from the Ops Console (2026-10-18). Owner's
+  // decisions: proposed by platform_admin, approved by board_of_trustees
+  // only, and every permission is editable — this one included — subject
+  // to the guard rails in GovernedActionsService (no lock-outs, no role
+  // both proposes and approves, external_auditor stays read-only).
+  { key: "role.permission_change", category: "staff", requiresMakerChecker: true, description: "Change what a staff role may propose, approve, or do." },
   { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
 ] as const;
 
@@ -215,6 +221,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.invite": { canChecker: true },
     "staff.role_add": { canChecker: true },
     "staff.role_remove": { canChecker: true },
+    "role.permission_change": { canChecker: true },
   },
   investment_committee: {
     "asset.dispose": { canChecker: true },
@@ -289,6 +296,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.invite": { canMaker: true },
     "staff.role_add": { canMaker: true },
     "staff.role_remove": { canMaker: true },
+    "role.permission_change": { canMaker: true },
   },
 };
 

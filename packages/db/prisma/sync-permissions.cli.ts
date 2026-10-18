@@ -24,9 +24,13 @@ async function connectWithRetry(attempts = 5, delayMs = 3000) {
 
 async function main() {
   await connectWithRetry();
-  const result = await syncPermissions(prisma);
+  // --reset: overwrite every grant to exactly seed-data.ts, discarding any
+  // change the Board approved in the Ops Console. Deliberate use only.
+  const reset = process.argv.includes("--reset");
+  const result = await syncPermissions(prisma, { reset });
   console.log(
-    `Synced ${result.roles} roles, ${result.permissions} permissions, ${result.grants} role grants` +
+    `Synced ${result.roles} roles, ${result.permissions} permissions, ` +
+      (reset ? `${result.grants} role grants reset to seed-data.ts` : `${result.grants} new role grant(s) added`) +
       (result.revoked > 0 ? `; switched off ${result.revoked} grant(s) no longer in seed-data.ts` : "") +
       ".",
   );
