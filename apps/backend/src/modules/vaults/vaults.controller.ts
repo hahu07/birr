@@ -13,6 +13,7 @@ import { VaultCoverStorageService, MAX_SIZE_BYTES as MAX_COVER_SIZE_BYTES } from
 import { VaultDocumentStorageService, MAX_SIZE_BYTES as MAX_DOCUMENT_SIZE_BYTES } from "./vault-document-storage.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 @Controller("vaults")
 export class VaultsController {
@@ -22,16 +23,18 @@ export class VaultsController {
     private readonly documentStorage: VaultDocumentStorageService,
   ) {}
 
-  // Staff-only, no @Public() — matches WaqfCausesController.create()'s
-  // own posture: plain CRUD, any authenticated staff member, no
-  // dedicated role gate (see VaultsService.updateStatus's own comment on
-  // why publishing itself is left at this same trust level for v1).
+  // Staff-only, no @Public() — plain CRUD, not governed (publishing is
+  // the governed step). Vault curation is mutawalli_officer's job (owner
+  // decision, 2026-10-18); pause/close below also admits
+  // compliance_officer, who is likeliest to spot a reason to stop giving.
   @Post()
+  @RequiresStaffRole("mutawalli_officer")
   create(@Body() body: CreateVaultInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }
 
   @Patch(":id/status")
+  @RequiresStaffRole(["mutawalli_officer", "compliance_officer"])
   updateStatus(
     @Param("id") id: string,
     @Body() body: UpdateVaultStatusInput,
@@ -78,6 +81,7 @@ export class VaultsController {
   }
 
   @Post("causes")
+  @RequiresStaffRole("mutawalli_officer")
   createCause(@Body() body: CreateVaultCauseInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.createCause(body, staff.userId);
   }
@@ -91,6 +95,7 @@ export class VaultsController {
   // above (plain CRUD on descriptive content, not a money-moving
   // governed action).
   @Patch("causes/:id/project-plan")
+  @RequiresStaffRole("mutawalli_officer")
   updateCauseProjectPlan(
     @Param("id") id: string,
     @Body() body: UpdateVaultCauseProjectPlanInput,
@@ -102,6 +107,7 @@ export class VaultsController {
   // Same trust tier as updateCauseProjectPlan above — see
   // VaultsService.updateCauseTargetAmount's own comment.
   @Patch("causes/:id/target-amount")
+  @RequiresStaffRole("mutawalli_officer")
   updateCauseTargetAmount(
     @Param("id") id: string,
     @Body() body: UpdateVaultCauseTargetAmountInput,
@@ -118,6 +124,7 @@ export class VaultsController {
   // without it, multer buffers the whole upload before the app-layer
   // size check ever runs.
   @Post(":id/cover")
+  @RequiresStaffRole("mutawalli_officer")
   @UseInterceptors(FileInterceptor("cover", { limits: { fileSize: MAX_COVER_SIZE_BYTES } }))
   async uploadCover(
     @Param("id") id: string,
@@ -133,6 +140,7 @@ export class VaultsController {
   // optional so a title-only edit doesn't require re-uploading the
   // file, mirroring VaultMilestonesController's own evidence route.
   @Post(":id/feasibility-report")
+  @RequiresStaffRole("mutawalli_officer")
   @UseInterceptors(FileInterceptor("report", { limits: { fileSize: MAX_DOCUMENT_SIZE_BYTES } }))
   async setFeasibilityReport(
     @Param("id") id: string,

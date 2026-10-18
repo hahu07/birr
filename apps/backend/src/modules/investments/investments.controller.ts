@@ -17,6 +17,7 @@ export class InvestmentsController {
   // invoked internally, from GovernedActionsService.decide().
 
   @Post()
+  @RequiresStaffRole("investment_committee")
   create(@Body() body: CreateInvestmentInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }

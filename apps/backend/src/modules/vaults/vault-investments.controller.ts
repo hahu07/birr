@@ -11,6 +11,7 @@ export class VaultInvestmentsController {
   constructor(private readonly service: VaultInvestmentsService) {}
 
   @Post()
+  @RequiresStaffRole("investment_committee")
   create(@Body() body: CreateVaultInvestmentInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.create(body, staff.userId);
   }

@@ -3,8 +3,9 @@
 // Conflict-of-Interest Declarations — CLAUDE.md's non-negotiable:
 // declarations required of Birr staff on waqf-specific or general
 // governance matters, stored as structured data. Any active BirrStaff
-// may declare their own conflict or review someone else's — never their
-// own (checker_not_maker-style DB constraint: coi_reviewer_not_declarant).
+// may declare their own conflict; only a compliance_officer may review
+// one, and never their own (checker_not_maker-style DB constraint:
+// coi_reviewer_not_declarant).
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate, humanize } from "../../../lib/format";
@@ -130,7 +131,13 @@ export default function ConflictOfInterestPage() {
               </TableHead>
               <TableBody>
                 {visibleDeclarations.map((d) => (
-                  <DeclarationRow key={d.id} declaration={d} currentUserId={staff?.userId} onChanged={load} />
+                  <DeclarationRow
+                    key={d.id}
+                    declaration={d}
+                    currentUserId={staff?.userId}
+                    isComplianceOfficer={staff?.staffRole === "compliance_officer"}
+                    onChanged={load}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -144,15 +151,17 @@ export default function ConflictOfInterestPage() {
 function DeclarationRow({
   declaration,
   currentUserId,
+  isComplianceOfficer,
   onChanged,
 }: {
   declaration: ConflictOfInterestDeclaration;
   currentUserId: string | undefined;
+  isComplianceOfficer: boolean;
   onChanged: () => void;
 }) {
   const [reviewing, setReviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canReview = declaration.status === "declared" && declaration.birrStaff.user.id !== currentUserId;
+  const canReview = isComplianceOfficer && declaration.status === "declared" && declaration.birrStaff.user.id !== currentUserId;
 
   async function review(status: "reviewed" | "cleared" | "escalated") {
     setError(null);
@@ -203,7 +212,7 @@ function DeclarationRow({
             {declaration.reviewedAt && ` · ${formatDate(declaration.reviewedAt)}`}
           </span>
         ) : declaration.status === "declared" ? (
-          <span className="text-xs text-slate-500">Awaiting a different reviewer</span>
+          <span className="text-xs text-slate-500">{isComplianceOfficer ? "Awaiting a different reviewer" : "Awaiting compliance review"}</span>
         ) : null}
       </TableCell>
     </TableRow>

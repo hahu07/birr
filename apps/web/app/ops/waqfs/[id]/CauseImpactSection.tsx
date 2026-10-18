@@ -12,11 +12,15 @@ import { formatDate } from "../../../../lib/format";
 import type { CauseImpactUpdate, WaqfCause } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, StatCard } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export function CauseImpactSection({ waqfId, causesVersion }: { waqfId: string; causesVersion: number }) {
   const [causes, setCauses] = useState<WaqfCause[]>([]);
   const [selectedCauseId, setSelectedCauseId] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — CauseImpactUpdatesController.create is the real gate.
+  const canLog = staff?.staffRole === "mutawalli_officer";
 
   useEffect(() => {
     apiFetchJson<WaqfCause[]>(`/waqf-causes?waqfId=${waqfId}`)
@@ -43,8 +47,8 @@ export function CauseImpactSection({ waqfId, causesVersion }: { waqfId: string; 
       <SectionHeader
         title="Cause Impact"
         description="Periodic reporting on what each cause has actually achieved."
-        actionLabel={showForm ? "Cancel" : "Log update"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canLog ? (showForm ? "Cancel" : "Log update") : undefined}
+        onAction={canLog ? () => setShowForm((v) => !v) : undefined}
       />
 
       <div className="mb-4 space-y-1.5">
@@ -68,7 +72,7 @@ export function CauseImpactSection({ waqfId, causesVersion }: { waqfId: string; 
         </Alert>
       )}
 
-      {showForm && (
+      {canLog && showForm && (
         <ImpactUpdateForm
           waqfCauseId={selectedCauseId}
           onCreated={() => {

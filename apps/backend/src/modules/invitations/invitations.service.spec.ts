@@ -1,5 +1,5 @@
 import { prisma } from "@birr/db";
-import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { InvitationsService } from "./invitations.service";
 import { ResendInvitationEmailAdapter } from "./email/resend-invitation.adapter";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
@@ -280,12 +280,29 @@ describe("InvitationsService", () => {
     });
     invitationIds.push(invitation.id);
 
-    const revoked = await service.revoke(invitation.id, inviterUserId);
+    const adminActor = { type: "birr_staff" as const, staffRole: "platform_admin" };
+    const revoked = await service.revoke(invitation.id, inviterUserId, adminActor);
     expect(revoked.status).toBe("revoked");
 
-    await expect(service.revoke(invitation.id, inviterUserId)).rejects.toThrow(
+    await expect(service.revoke(invitation.id, inviterUserId, adminActor)).rejects.toThrow(
       BadRequestException,
     );
+  });
+
+  test("revoke() rejects a non-platform_admin staff member revoking a birr_staff invitation", async () => {
+    const invitation = await service.invite({
+      inviteeKind: "birr_staff",
+      email: `revoke-nonadmin-${Date.now()}@example.com`,
+      roleKey: "shariah_board_member",
+      invitedByUserId: inviterUserId,
+    });
+    invitationIds.push(invitation.id);
+
+    await expect(
+      service.revoke(invitation.id, inviterUserId, { type: "birr_staff", staffRole: "mutawalli_officer" }),
+    ).rejects.toThrow(ForbiddenException);
+    const reloaded = await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.id } });
+    expect(reloaded.status).toBe("pending");
   });
 
   describe("co_founder invitations", () => {

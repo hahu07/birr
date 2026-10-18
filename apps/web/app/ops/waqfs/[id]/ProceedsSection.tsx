@@ -22,6 +22,7 @@ import { formatAmount, formatDate } from "../../../../lib/format";
 import type { Investment, WaqfProceeds } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export function ProceedsSection({
   waqfId,
@@ -42,6 +43,9 @@ export function ProceedsSection({
   } = useLoadedResource(() => apiFetchJson<WaqfProceeds[]>(`/waqf-proceeds?waqfId=${waqfId}`), [waqfId]);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — WaqfProceedsController.record is the real gate.
+  const canRecord = staff?.staffRole === "investment_committee" || staff?.staffRole === "mutawalli_officer";
 
   useEffect(() => {
     apiFetchJson<Investment[]>(`/investments?waqfId=${waqfId}`).then(setInvestments).catch(() => setInvestments([]));
@@ -54,8 +58,8 @@ export function ProceedsSection({
       <SectionHeader
         title="Proceeds"
         description="Investment returns recorded over time — the corpus stays invested. Doesn't affect corpus-based Cause Allocation; automatically split across Causes proportionally, shown below."
-        actionLabel={showForm ? "Cancel" : "Record proceeds"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canRecord ? (showForm ? "Cancel" : "Record proceeds") : undefined}
+        onAction={canRecord ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -64,7 +68,7 @@ export function ProceedsSection({
         </Alert>
       )}
 
-      {showForm && (
+      {canRecord && showForm && (
         <ProceedsForm
           waqfId={waqfId}
           investments={investments}

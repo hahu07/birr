@@ -350,13 +350,11 @@ export class BeneficiaryNominationsService {
   }
 
   /**
-   * No @RequiresStaffRole on the controller route calling this —
-   * deliberate divergence from CauseCategorySuggestionsService.approve(),
-   * which is platform_admin-only because it performs the same
-   * authority-level write as CauseCategoriesController's own create.
-   * Approving a nomination performs the same write
-   * BeneficiariesController.create() already does, and that route
-   * carries no role restriction — so this shouldn't invent one either.
+   * Gated to mutawalli_officer on the controller route — the same gate
+   * as BeneficiariesController.create(), since approving a nomination
+   * performs exactly that write (not platform_admin-only like
+   * CauseCategorySuggestionsService.approve(), whose write is a catalog
+   * change instead).
    * A Beneficiary needs nothing beyond what the nomination already
    * carries (name, eligibilityCriteria, causeId) — unlike the
    * precedent's approval, which adds icon/sortOrder/typicalWaqfTypes

@@ -75,6 +75,7 @@ export class DistributionsController {
   // restriction beyond an authenticated staff session, same posture as
   // create() above.
   @Post(":id/retry-disbursement")
+  @RequiresStaffRole("mutawalli_officer")
   async retryDisbursement(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.retryDisbursement(id, staff.userId);
     return { ok: true };

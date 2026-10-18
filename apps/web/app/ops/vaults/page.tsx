@@ -51,6 +51,9 @@ export default function VaultsPage() {
   const [vaults, setVaults] = useState<Vault[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — creating a vault is mutawalli_officer-only.
+  const canCreate = staff?.staffRole === "mutawalli_officer";
 
   const load = useCallback(() => {
     apiFetchJson<Vault[]>("/vaults")
@@ -81,11 +84,11 @@ export default function VaultsPage() {
         <SectionHeader
           title="Vaults"
           description="Starts as draft — add causes, then publish to make it visible on the public donation page."
-          actionLabel={showForm ? "Cancel" : "Create vault"}
-          onAction={() => setShowForm((v) => !v)}
+          actionLabel={canCreate ? (showForm ? "Cancel" : "Create vault") : undefined}
+          onAction={canCreate ? () => setShowForm((v) => !v) : undefined}
         />
 
-        {showForm && (
+        {canCreate && showForm && (
           <CreateForm
             onCreated={() => {
               setShowForm(false);

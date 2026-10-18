@@ -159,7 +159,7 @@ export class InvitationsController {
       return this.service.revoke(id, user.id, { type: "founder_user", founderId: founder.id });
     }
     const staff = await resolveBirrStaffFromSession(request);
-    return this.service.revoke(id, staff.userId);
+    return this.service.revoke(id, staff.userId, { type: "birr_staff", staffRole: staff.staffRole });
   }
 
   // A Founder session sees only invitations they've sent for their own

@@ -9,12 +9,13 @@ import {
 import { resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 // @Public() — reachable by a signed-in Founder proposing/listing their
 // own nominations (Founder-Portal self-service, same posture as
-// CauseCategorySuggestionsController); approve/reject are Birr-staff
-// only regardless — see BeneficiaryNominationsService.approve's own
-// comment on why that's not further role-restricted.
+// CauseCategorySuggestionsController); approve/reject are
+// mutawalli_officer-only — see BeneficiaryNominationsService.approve's
+// own comment on why that matches BeneficiariesController.create().
 @Public()
 @Controller("beneficiary-nominations")
 export class BeneficiaryNominationsController {
@@ -36,11 +37,13 @@ export class BeneficiaryNominationsController {
   }
 
   @Post(":id/approve")
+  @RequiresStaffRole("mutawalli_officer")
   approve(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.approve(id, staff.userId);
   }
 
   @Post(":id/reject")
+  @RequiresStaffRole("mutawalli_officer")
   reject(
     @Param("id") id: string,
     @Body() body: RejectBeneficiaryNominationInput,

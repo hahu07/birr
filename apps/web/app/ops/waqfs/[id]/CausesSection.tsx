@@ -10,6 +10,7 @@ import { formatAmount, formatDate } from "../../../../lib/format";
 import type { Waqf, WaqfCause, WaqfProceeds } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export function CausesSection({
   waqfId,
@@ -44,6 +45,11 @@ export function CausesSection({
     reload: load,
   } = useLoadedResource(() => apiFetchJson<WaqfCause[]>(`/waqf-causes?waqfId=${waqfId}`), [waqfId, proceedsVersion]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — WaqfCausesController's guards are the real gate.
+  // Causes/project plans are mutawalli_officer; proceeds allocation is investment_committee only.
+  const canManageCauses = staff?.staffRole === "mutawalli_officer";
+  const canAllocateProceeds = staff?.staffRole === "investment_committee";
 
   // Only an Investment-type waqf can ever have recorded WaqfProceeds
   // (WaqfProceedsService.record rejects every other type) — the
@@ -79,8 +85,8 @@ export function CausesSection({
       <SectionHeader
         title="Causes"
         description="Themes within this fund — Beneficiaries and Distributions are tracked against one."
-        actionLabel={showForm ? "Cancel" : "Add cause"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canManageCauses ? (showForm ? "Cancel" : "Add cause") : undefined}
+        onAction={canManageCauses ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -89,7 +95,7 @@ export function CausesSection({
         </Alert>
       )}
 
-      {showForm && (
+      {canManageCauses && showForm && (
         <CauseForm
           waqfId={waqfId}
           onCreated={() => {
@@ -100,7 +106,7 @@ export function CausesSection({
         />
       )}
 
-      {showProceeds && !error && causes !== null && causes.length > 0 && (
+      {canAllocateProceeds && showProceeds && !error && causes !== null && causes.length > 0 && (
         <AutoAllocateProportionallyBar
           waqfId={waqfId}
           causes={causes}
@@ -137,7 +143,7 @@ export function CausesSection({
                 <TableCell className="font-medium text-slate-900">{c.name}</TableCell>
                 <TableCell className="text-slate-500">{c.description ?? "—"}</TableCell>
                 <TableCell className="text-slate-500">
-                  <ProjectPlanCell causeId={c.id} value={c.projectPlan} onSaved={load} />
+                  <ProjectPlanCell causeId={c.id} value={c.projectPlan} canEdit={canManageCauses} onSaved={load} />
                 </TableCell>
                 {/* Founder self-service (see WaqfCausesService.allocate's
                     own comment) — read-only here, no staff write path. */}
@@ -148,6 +154,7 @@ export function CausesSection({
                   <TableCell className="text-slate-500">
                     <ProceedsAllocationCell
                       cause={c}
+                      canEdit={canAllocateProceeds}
                       available={proceedsAvailableExcluding(c.id)}
                       corpusCurrency={corpusCurrency}
                       onChanged={() => {
@@ -277,11 +284,13 @@ function AutoAllocateProportionallyBar({
 // server re-validates for real on submit.
 function ProceedsAllocationCell({
   cause,
+  canEdit,
   available,
   corpusCurrency,
   onChanged,
 }: {
   cause: WaqfCause;
+  canEdit: boolean;
   available: number | null;
   corpusCurrency: string | null;
   onChanged: () => void;
@@ -297,17 +306,19 @@ function ProceedsAllocationCell({
         <span>
           {cause.proceedsAllocatedAmount !== null ? `${corpusCurrency ?? ""} ${formatAmount(cause.proceedsAllocatedAmount)}` : "—"}
         </span>
-        <button
-          type="button"
-          className="text-xs font-medium text-primary-700 hover:underline"
-          onClick={() => {
-            setAmount(cause.proceedsAllocatedAmount ?? "");
-            setError(null);
-            setEditing(true);
-          }}
-        >
-          Set
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            className="text-xs font-medium text-primary-700 hover:underline"
+            onClick={() => {
+              setAmount(cause.proceedsAllocatedAmount ?? "");
+              setError(null);
+              setEditing(true);
+            }}
+          >
+            Set
+          </button>
+        )}
       </div>
     );
   }
@@ -421,7 +432,17 @@ function CauseForm({ waqfId, onCreated }: { waqfId: string; onCreated: () => voi
 
 // Plain staff CRUD (POST /waqf-causes/:id/project-plan), not a governed
 // propose — mirrors VaultCausesSection.tsx's own ProjectPlanCell exactly.
-function ProjectPlanCell({ causeId, value, onSaved }: { causeId: string; value: string | null; onSaved: () => void }) {
+function ProjectPlanCell({
+  causeId,
+  value,
+  canEdit,
+  onSaved,
+}: {
+  causeId: string;
+  value: string | null;
+  canEdit: boolean;
+  onSaved: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
   const [submitting, setSubmitting] = useState(false);
@@ -431,17 +452,19 @@ function ProjectPlanCell({ causeId, value, onSaved }: { causeId: string; value: 
     return (
       <div className="flex items-start gap-2">
         <span className="max-w-xs truncate">{value || "—"}</span>
-        <button
-          type="button"
-          className="shrink-0 text-xs font-medium text-primary-700 hover:underline"
-          onClick={() => {
-            setDraft(value ?? "");
-            setError(null);
-            setEditing(true);
-          }}
-        >
-          {value ? "Edit" : "Add"}
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            className="shrink-0 text-xs font-medium text-primary-700 hover:underline"
+            onClick={() => {
+              setDraft(value ?? "");
+              setError(null);
+              setEditing(true);
+            }}
+          >
+            {value ? "Edit" : "Add"}
+          </button>
+        )}
       </div>
     );
   }

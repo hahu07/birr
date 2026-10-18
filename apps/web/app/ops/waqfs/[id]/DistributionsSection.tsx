@@ -194,7 +194,7 @@ export function DistributionsSection({
                       onProposed={load}
                     />
                   )}
-                  {d.status === "payout_failed" && <RetryDisbursementAction distributionId={d.id} onRetried={load} />}
+                  {canCreate && d.status === "payout_failed" && <RetryDisbursementAction distributionId={d.id} onRetried={load} />}
                 </TableCell>
               </TableRow>
             ))}

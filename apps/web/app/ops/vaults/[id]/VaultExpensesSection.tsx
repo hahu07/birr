@@ -9,6 +9,7 @@ import { formatAmount } from "../../../../lib/format";
 import type { VaultExpense, VaultLedgerAccount, VaultMilestone } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export function VaultExpensesSection({
   vaultId,
@@ -36,6 +37,9 @@ export function VaultExpensesSection({
   } = useLoadedResource(() => apiFetchJson<VaultExpense[]>(`/vault-expenses?vaultId=${vaultId}`), [vaultId]);
   const [expenseAccounts, setExpenseAccounts] = useState<VaultLedgerAccount[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — VaultExpensesController.create is the real gate.
+  const canRecord = staff?.staffRole === "mutawalli_officer";
 
   useEffect(() => {
     apiFetchJson<VaultLedgerAccount[]>("/vault-ledger-accounts")
@@ -50,8 +54,8 @@ export function VaultExpensesSection({
       <SectionHeader
         title="Expenses"
         description="Itemized project spend — each one posts a balanced entry to this vault's ledger below."
-        actionLabel={showForm ? "Cancel" : "Add expense"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canRecord ? (showForm ? "Cancel" : "Add expense") : undefined}
+        onAction={canRecord ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -60,7 +64,7 @@ export function VaultExpensesSection({
         </Alert>
       )}
 
-      {showForm &&
+      {canRecord && showForm &&
         (expenseAccounts.length === 0 ? (
           <Alert tone="warning" title="No expense accounts yet" className="mb-4">
             Add an expense account on the Vault Ledger Accounts page first.

@@ -8,6 +8,7 @@ import {
   AuthenticatedBirrStaff,
   CurrentBirrStaff,
 } from "../../common/auth/current-birr-staff";
+import { RequiresStaffRole } from "../../common/guards/staff-role.guard";
 
 const REVIEW_OUTCOMES = ["reviewed", "cleared", "escalated"] as const;
 
@@ -25,10 +26,10 @@ class ReviewBody {
   status!: CoiReviewOutcome;
 }
 
-// No @RequiresPermission here — this isn't a governed_actions permission,
-// so there's no role-eligibility gate to check beyond "not the same
-// person," which the service (and the DB) already enforce. Any active
-// BirrStaff may declare or review (someone else's) conflict.
+// No @RequiresPermission here — this isn't a governed_actions permission.
+// Any active BirrStaff may declare a conflict; reviewing one (someone
+// else's — the service and the DB enforce "not the same person") is
+// compliance_officer-only (owner decision, 2026-10-18).
 @Controller("conflict-of-interest-declarations")
 export class ConflictOfInterestDeclarationsController {
   constructor(private readonly service: ConflictOfInterestDeclarationsService) {}
@@ -43,6 +44,7 @@ export class ConflictOfInterestDeclarationsController {
   }
 
   @Post(":id/review")
+  @RequiresStaffRole("compliance_officer")
   review(
     @Param("id") id: string,
     @Body() body: ReviewBody,

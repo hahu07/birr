@@ -12,6 +12,7 @@ import { formatAmount, formatDate } from "../../../../lib/format";
 import type { VaultInvestment, VaultProceeds } from "../../../../lib/ops-types";
 import { Alert, Button, EmptyState, Input, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export function VaultProceedsSection({ vaultId, currency }: { vaultId: string; currency: string }) {
   const {
@@ -21,6 +22,9 @@ export function VaultProceedsSection({ vaultId, currency }: { vaultId: string; c
   } = useLoadedResource(() => apiFetchJson<VaultProceeds[]>(`/vault-proceeds?vaultId=${vaultId}`), [vaultId]);
   const [investments, setInvestments] = useState<VaultInvestment[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — VaultProceedsController.record is the real gate.
+  const canRecord = staff?.staffRole === "investment_committee" || staff?.staffRole === "mutawalli_officer";
 
   useEffect(() => {
     apiFetchJson<VaultInvestment[]>(`/vault-investments?vaultId=${vaultId}`).then(setInvestments).catch(() => setInvestments([]));
@@ -33,8 +37,8 @@ export function VaultProceedsSection({ vaultId, currency }: { vaultId: string; c
       <SectionHeader
         title="Proceeds"
         description="Investment returns recorded over time. Allocate to a cause above via a governed approval — recording here doesn't do it automatically."
-        actionLabel={showForm ? "Cancel" : "Record proceeds"}
-        onAction={() => setShowForm((v) => !v)}
+        actionLabel={canRecord ? (showForm ? "Cancel" : "Record proceeds") : undefined}
+        onAction={canRecord ? () => setShowForm((v) => !v) : undefined}
       />
 
       {error && (
@@ -43,7 +47,7 @@ export function VaultProceedsSection({ vaultId, currency }: { vaultId: string; c
         </Alert>
       )}
 
-      {showForm && (
+      {canRecord && showForm && (
         <ProceedsForm
           vaultId={vaultId}
           currency={currency}

@@ -14,6 +14,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import type { Vault } from "../../../../lib/ops-types";
 import { Alert, Button, Input } from "@birr/ui";
 import { SectionHeader } from "../../_components/SectionChrome";
+import { useStaffSession } from "../../../../lib/staff-session";
 
 export function VaultFeasibilityReportSection({ vault, onChanged }: { vault: Vault; onChanged: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -21,6 +22,9 @@ export function VaultFeasibilityReportSection({ vault, onChanged }: { vault: Vau
   const [savingTitle, setSavingTitle] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { staff } = useStaffSession();
+  // Hides controls the backend would 403 — vault curation is mutawalli_officer-only.
+  const canEdit = staff?.staffRole === "mutawalli_officer";
 
   async function handleSaveTitle() {
     setSavingTitle(true);
@@ -69,10 +73,12 @@ export function VaultFeasibilityReportSection({ vault, onChanged }: { vault: Vau
       <div className="flex flex-wrap items-start gap-3 rounded-lg border border-slate-200 bg-white p-4">
         <div className="min-w-[16rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Title</label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Kaduna Water Needs Assessment, 2026" />
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={savingTitle} onClick={handleSaveTitle}>
-            {savingTitle ? "Saving…" : "Save title"}
-          </Button>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} readOnly={!canEdit} placeholder="e.g. Kaduna Water Needs Assessment, 2026" />
+          {canEdit && (
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={savingTitle} onClick={handleSaveTitle}>
+              {savingTitle ? "Saving…" : "Save title"}
+            </Button>
+          )}
         </div>
         <div className="space-y-1.5">
           <p className="text-sm font-medium text-slate-700">File</p>
@@ -86,22 +92,26 @@ export function VaultFeasibilityReportSection({ vault, onChanged }: { vault: Vau
               View current report →
             </a>
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,application/pdf"
-            className="hidden"
-            onChange={handleFileSelected}
-          />
-          <Button
-            variant="secondary"
-            className="px-3 py-1.5 text-xs"
-            disabled={uploadingFile}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {uploadingFile ? "Uploading…" : vault.feasibilityReportUrl ? "Replace file" : "Upload file"}
-          </Button>
-          <p className="text-xs text-slate-400">PNG, JPEG, WebP, or PDF — 10MB max.</p>
+          {canEdit && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,application/pdf"
+                className="hidden"
+                onChange={handleFileSelected}
+              />
+              <Button
+                variant="secondary"
+                className="px-3 py-1.5 text-xs"
+                disabled={uploadingFile}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {uploadingFile ? "Uploading…" : vault.feasibilityReportUrl ? "Replace file" : "Upload file"}
+              </Button>
+              <p className="text-xs text-slate-400">PNG, JPEG, WebP, or PDF — 10MB max.</p>
+            </>
+          )}
         </div>
       </div>
     </section>
