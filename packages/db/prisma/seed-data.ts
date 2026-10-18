@@ -168,7 +168,9 @@ export const permissions = [
 // permission — segregation of duties is modeled here at the role level;
 // the individual-level guarantee is the DB CHECK constraint on
 // governed_actions (checker_not_maker), not this table.
-export const rolePermissions: Record<string, Record<string, { canMaker?: boolean; canChecker?: boolean }>> = {
+type Grants = Record<string, { canMaker?: boolean; canChecker?: boolean }>;
+
+const governedRolePermissions: Record<string, Grants> = {
   mutawalli_officer: {
     "asset.dispose": { canMaker: true },
     "distribution.approve": { canMaker: true },
@@ -280,11 +282,20 @@ export const rolePermissions: Record<string, Record<string, { canMaker?: boolean
   },
 };
 
-for (const { key, roles } of accessPermissions) {
-  for (const role of roles) {
-    rolePermissions[role] = { ...rolePermissions[role], [key]: { canMaker: true } };
-  }
-}
+// Each role's governed grants plus every access permission listing it.
+export const rolePermissions: Record<string, Grants> = Object.fromEntries(
+  Object.entries(governedRolePermissions).map(([role, grants]) => [
+    role,
+    {
+      ...grants,
+      ...Object.fromEntries(
+        accessPermissions
+          .filter((p) => (p.roles as readonly string[]).includes(role))
+          .map((p) => [p.key, { canMaker: true }]),
+      ),
+    },
+  ]),
+);
 
 // Enforced in ContributionsService.initiate() before a payment is ever
 // created. NGN is a placeholder FX approximation of the ~$100 USD-
