@@ -1,5 +1,11 @@
 version: 2
 updates:
+  # Every npm entry ignores major @types/node updates: the type
+  # definitions should match the Node release production actually runs
+  # (node:22 in each Dockerfile), or code type-checks against APIs the
+  # runtime doesn't have. Bump them together with the Node version
+  # itself, not on their own.
+  #
   # One entry per workspace that carries its own package.json — pnpm
   # workspaces don't need a special ecosystem value; Dependabot detects
   # the pnpm-lock.yaml at the repo root and resolves each directory's
@@ -10,26 +16,44 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/apps/backend"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/apps/web"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/packages/db"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/packages/ui"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/services/agents"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   # GitHub Actions themselves (actions/checkout, pnpm/action-setup, etc.
   # in ci.yml) are a dependency too — same drift risk as any npm package.
   - package-ecosystem: "github-actions"
