@@ -8,6 +8,7 @@
 // (the "Birr sees it afterward" half of the self-service model).
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ShowMoreFooter, useShowMore } from "../_components/ShowMore";
 import { apiFetchJson } from "../../../lib/api";
 import type { Foundation } from "../../../lib/ops-types";
 import {
@@ -24,6 +25,9 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@birr/ui";
+
+/** Rows drawn per page; search still covers every Foundation. */
+const FOUNDATIONS_PER_PAGE = 25;
 
 export default function FoundationsPage() {
   const [foundations, setFoundations] = useState<Foundation[] | null>(null);
@@ -54,6 +58,7 @@ export default function FoundationsPage() {
         (f.jurisdiction ?? "").toLowerCase().includes(query) ||
         f.foundationFounders.some((ff) => ff.founder.name.toLowerCase().includes(query)),
     ) ?? [];
+  const page = useShowMore(filteredFoundations, FOUNDATIONS_PER_PAGE, query);
 
   return (
     <div>
@@ -107,7 +112,7 @@ export default function FoundationsPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredFoundations.map((foundation) => (
+                {page.visible.map((foundation) => (
                   <TableRow key={foundation.id}>
                     <TableCell>
                       <Link
@@ -135,6 +140,7 @@ export default function FoundationsPage() {
               </TableBody>
             </Table>
           )}
+          <ShowMoreFooter shown={page.shown} total={page.total} pageSize={FOUNDATIONS_PER_PAGE} noun="foundations" onShowMore={page.showMore} />
         </>
       )}
     </div>

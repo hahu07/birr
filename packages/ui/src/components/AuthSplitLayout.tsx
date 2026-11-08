@@ -10,10 +10,8 @@ export interface AuthSplitLayoutProps {
   subcopy?: string;
   /**
    * Controls the decorative panel's gradient. "founder" (default) is the
-   * public-facing teal→violet treatment; "ops" is a cooler, more
-   * restrained slate→indigo treatment — a deliberate visual cue that
-   * you're in a different, internal system, echoing the logical
-   * separation between the two route groups that use this component.
+   * public-facing teal→violet treatment; "ops" is the Ops Console's
+   * deep teal, matching the console's own sidebar, with a gold eyebrow.
    */
   tone?: "founder" | "ops";
 }
@@ -27,11 +25,11 @@ export interface AuthSplitLayoutProps {
 const GRADIENTS: Record<NonNullable<AuthSplitLayoutProps["tone"]>, string> = {
   founder:
     "linear-gradient(135deg in oklch, var(--color-primary-900) 0%, var(--color-primary-700) 40%, var(--color-violet-800) 75%, var(--color-violet-600) 100%)",
-  // Cooler and more restrained than "founder" (the ops-vs-public visual
-  // cue this component documents), but still a saturated navy-violet
-  // waypoint rather than flat slate — the previous #0f172a stop was
-  // where the dead band lived.
-  ops: "linear-gradient(135deg in oklch, var(--color-primary-900) 0%, var(--color-primary-800) 35%, #1e2547 60%, var(--color-violet-800) 85%, var(--color-violet-600) 100%)",
+  // The Ops Console's own chrome (its sidebar) is deep teal and gold, so
+  // its sign-in now matches what a staff member lands on. Violet is
+  // reserved for the AI surface (see styles.css); the earlier
+  // navy-violet ramp clashed with the console behind it.
+  ops: "linear-gradient(160deg in oklch, var(--color-primary-950) 0%, var(--color-primary-900) 45%, var(--color-primary-800) 80%, var(--color-primary-700) 100%)",
 };
 
 /**
@@ -52,8 +50,10 @@ export function AuthSplitLayout({ children, eyebrow, headline, subcopy, tone = "
         className="relative hidden overflow-hidden lg:flex lg:w-1/2 lg:items-end"
         style={{ backgroundImage: GRADIENTS[tone] }}
       >
-        {/* Decorative radial glow, top-right */}
-        <div className="pointer-events-none absolute -right-32 -top-32 h-[36rem] w-[36rem] rounded-full bg-white/10 blur-3xl" />
+        {/* Decorative radial glow, top-right — gold on the Ops Console's teal. */}
+        <div
+          className={`pointer-events-none absolute -right-32 -top-32 h-[36rem] w-[36rem] rounded-full blur-3xl ${tone === "ops" ? "bg-accent-400/15" : "bg-white/10"}`}
+        />
         {/* Decorative thin diagonal lines */}
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.12]"
@@ -67,7 +67,9 @@ export function AuthSplitLayout({ children, eyebrow, headline, subcopy, tone = "
           <IconMark className="h-10 w-10" />
           <div className="max-w-md">
             {eyebrow && (
-              <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-white/70">{eyebrow}</p>
+              <p className={`mb-4 text-xs font-semibold uppercase tracking-widest ${tone === "ops" ? "text-accent-300" : "text-white/70"}`}>
+                {eyebrow}
+              </p>
             )}
             <h2 className="text-3xl font-semibold leading-tight tracking-tight text-white">{headline}</h2>
             {subcopy && <p className="mt-4 max-w-sm text-sm leading-relaxed text-white/70">{subcopy}</p>}
