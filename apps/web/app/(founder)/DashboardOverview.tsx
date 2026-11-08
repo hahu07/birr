@@ -517,7 +517,7 @@ function EarmarkPanel({ waqfs, className = "" }: { waqfs: Waqf[]; className?: st
       <PanelHeader title="How your endowment is earmarked" href={manageHref} linkLabel="Manage" />
       <div className="flex flex-1 flex-col px-5 py-5">
         {failed ? (
-          <p className="text-sm text-slate-500">Couldn't load your causes right now.</p>
+          <p className="text-sm text-slate-500">Couldn&apos;t load your causes right now.</p>
         ) : causesByWaqf === null ? (
           <EarmarkSkeleton />
         ) : (
@@ -737,7 +737,7 @@ function AttentionPanel({ items, className = "" }: { items: AttentionItem[]; cla
             <IconCheckCircle className="h-[18px] w-[18px]" />
           </span>
           <div>
-            <p className="text-sm font-medium text-slate-900">You're all caught up</p>
+            <p className="text-sm font-medium text-slate-900">You&apos;re all caught up</p>
             <p className="text-xs text-slate-500">Nothing is waiting on you right now.</p>
           </div>
         </div>
