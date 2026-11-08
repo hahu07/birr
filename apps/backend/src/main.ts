@@ -301,7 +301,7 @@ async function bootstrap() {
     .map((origin) => origin.trim())
     .filter(Boolean);
   app.enableCors({
-    origin(origin, callback) {
+    origin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
       if (!origin) return callback(null, true); // non-browser callers (e.g. server-to-server, curl) carry no Origin header at all
       if (allowedOrigins.length > 0) {
         return callback(null, allowedOrigins.includes(origin));

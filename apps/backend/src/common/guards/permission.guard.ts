@@ -118,7 +118,11 @@ export class PermissionGuard implements CanActivate {
       return permission.id;
     }
 
-    const governedActionId = request.params?.id;
+    // Express 5 types every route param as string | string[] (a named
+    // wildcard can capture several segments); `:id` here is always a
+    // single segment, so anything else is treated as absent.
+    const rawId = request.params?.id;
+    const governedActionId = typeof rawId === "string" ? rawId : undefined;
     if (governedActionId) {
       const action = await prisma.governedAction.findUnique({
         where: { id: governedActionId },
