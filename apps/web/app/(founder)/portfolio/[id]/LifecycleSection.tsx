@@ -119,9 +119,9 @@ export function LifecycleSection({ waqfId }: { waqfId: string }) {
   }, [waqfId]);
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Lifecycle</p>
-      <p className="mb-3 text-sm text-slate-500">Where this fund stands across every governance and administration stage.</p>
+    <div className="mt-8 border-t border-slate-100 pt-7">
+      <p className="mb-1 text-[15px] font-semibold text-slate-900">Lifecycle</p>
+      <p className="mb-4 text-sm text-slate-500">Where this fund stands across every governance and administration stage.</p>
 
       {error && (
         <Alert tone="danger" title="Couldn't load lifecycle status" className="mb-4">

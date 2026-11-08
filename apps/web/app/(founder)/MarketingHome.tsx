@@ -6,21 +6,24 @@
 // or the other). No Founder Portal chrome — a first-time visitor hasn't
 // signed up yet, so every fact on this page has to stand on its own,
 // not lean on nav/context that only exists once signed in.
+//
+// 2026-10 redesign: the hero leads with the product itself (the Founder
+// Portal overview on a desktop monitor, sample data), and the two products
+// are laid side by side rather than behind tabs. Copy stays to what the
+// platform actually enforces — "dual authorisation" rather than "Board
+// approval", because a payout's checker may be a Board member or a
+// Compliance Officer; "Shariah advisory" is the owner's chosen public name.
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  Button,
-  Card,
-  IconArchive,
+  IconArrowRight,
   IconCheckCircle,
-  IconChevronDown,
-  IconLandmark,
-  IconClipboardCheck,
-  IconRepeat,
-  IconUsers,
   IconFileText,
   IconGlobe,
+  IconLandmark,
+  IconShieldCheck,
   IconSparkle,
+  IconUsers,
 } from "@birr/ui";
 import { apiFetchJson } from "../../lib/api";
 import type { ArticleSummary } from "../../lib/blog-meta";
@@ -29,213 +32,113 @@ import { ImpactSection } from "./ImpactSection";
 import type { Vault } from "../../lib/types";
 import { ArticleCard } from "../../components/blog/ArticleCard";
 import { GRADIENT, Reveal, SiteFooter, SiteHeader, VaultCard } from "./SiteChrome";
-import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS } from "./waqf-types/content";
+import { WAQF_TYPE_CONTENT, WAQF_TYPE_SLUGS, type WaqfTypeSlug } from "./waqf-types/content";
+import { GeometricPattern } from "./_components/ui";
+import { DashboardMockup, HeroMonitor } from "./_components/DashboardMockup";
 
-// The three Waqf Fund types a Founder can establish — WAQF_TYPE_CONTENT
-// (waqf-types/content.ts) is the single source for this, shared with
-// the /waqf-types/[slug] detail pages each card below links to, so the
-// summary here and the fuller page can never drift apart.
+// The three Waqf Fund types — label/summary/icon come from WAQF_TYPE_CONTENT
+// (waqf-types/content.ts), shared with the /waqf-types/[slug] pages each
+// card links to, so the two can't drift apart. The classical category and
+// a worked example are homepage-only additions.
 const WAQF_TYPES = WAQF_TYPE_SLUGS.map((slug) => WAQF_TYPE_CONTENT[slug]);
-
-// Hero subheadline's rotating close — three distinct angles on the same
-// single gift (practical: the corpus itself; spiritual: ongoing reward;
-// legacy: what it leaves behind), cycled so "Give once." keeps making a
-// different case for itself rather than picking just one.
-const GIVING_IMPACT_PHRASES = ["Fund a cause forever.", "Build everlasting rewards.", "Leave a legacy that lasts generations."];
-
-// Two parallel four-step paths through the same platform — a Founder
-// establishes and governs their own fund; anyone else can support one of
-// Birr's own Vaults without ever establishing anything. Deliberately the
-// same four-beat rhythm (self-service action -> Birr-mediated middle ->
-// money reaches a cause -> audited) so the two paths read as siblings,
-// not a primary flow with an afterthought bolted on — see the "one
-// platform, many possibilities" framing this was built around.
-const HOW_IT_WORKS_FOUNDER = [
-  {
-    n: "01",
-    title: "Establish",
-    body: "Sign up and create your Foundation and Waqf Fund yourself, self-service. Birr becomes Mutawalli the moment you establish it — no approval gate.",
-    icon: IconLandmark,
+const WAQF_TYPE_EXTRA: Record<WaqfTypeSlug, { classical: string; example: string }> = {
+  investment: {
+    classical: "waqf istithmari",
+    example: "₦20,000,000 endowed and never touched — its returns paying school fees, year after year.",
   },
-  {
-    n: "02",
-    title: "Govern",
-    body: "From here, Birr's own staff carry ongoing governance — every asset, distribution, and investment change runs through maker-checker approval.",
-    icon: IconClipboardCheck,
+  asset: {
+    classical: "istithmari or mubashir",
+    example: "A shop building whose rent meets a clinic's running costs, or a borehole a community draws on.",
   },
-  {
-    n: "03",
-    title: "Distribute",
-    // 2026-09-19 founder-facing copy pass (CLAUDE.md's 2026-09-04
-    // decision): the old wording ("capped at exactly the amount you've
-    // allocated... never a cent more") is only true for Asset/Project
-    // funds. For an Investment fund, corpus allocation is a
-    // preservation target, not a spending ceiling — investment
-    // proceeds are what's actually distributable there (see
-    // CausesSection.tsx/ProceedsSection.tsx's own type-aware copy).
-    // Kept type-neutral here rather than caveated, since this is a
-    // 4-step marketing summary, not the place for that distinction —
-    // the dedicated pages above carry the full explanation.
-    body: "Approved distributions reach the causes you've selected, never past the ceiling you've set for each.",
-    icon: IconCheckCircle,
+  project: {
+    classical: "developmental",
+    example: "Several families, as co-founders of one Foundation, endowing a maternity clinic together.",
   },
-  {
-    n: "04",
-    title: "Audit",
-    body: "Every governed action is written to an immutable, append-only trail from establishment onward — there for your own reporting, always.",
-    icon: IconFileText,
-  },
-];
-
-// Reuses IconClipboardCheck for "Reach" and IconFileText for "Audit" —
-// the exact same icons as the Founder path's "Govern"/"Audit" steps,
-// deliberately, not an oversight — both pairs literally route through
-// the identical maker-checker engine and the identical audit trail (see
-// each step's own body copy), so the shared icon reinforces "same
-// governance, either door" instead of implying two different systems.
-const HOW_IT_WORKS_GIVER = [
-  {
-    n: "01",
-    title: "Discover",
-    body: "Browse Birr-curated vaults and the causes each one supports — no account needed to look.",
-    icon: IconGlobe,
-  },
-  {
-    n: "02",
-    title: "Give",
-    body: "Contribute any amount by card, bank transfer, or stablecoin. One email is all that's required for a receipt.",
-    icon: IconRepeat,
-  },
-  {
-    n: "03",
-    title: "Reach",
-    body: "Birr allocates and disburses to the vault's causes through the exact same maker-checker approval as every Waqf Fund.",
-    icon: IconClipboardCheck,
-  },
-  {
-    n: "04",
-    title: "Audit",
-    body: "Every contribution and disbursement is written to the same immutable, append-only trail — nothing lighter for a smaller gift.",
-    icon: IconFileText,
-  },
-];
-
-// Vault has only two types (see VaultType's own schema comment — no
-// "asset" value, a vault is always pooled cash, never a registered
-// individual asset), described statically here rather than from a
-// per-type content module like WAQF_TYPE_CONTENT — there's no dedicated
-// public page per vault type yet, so each links to the /vaults index
-// instead.
-const VAULT_TYPES = [
-  {
-    icon: IconLandmark,
-    label: "Investment-style vault",
-    summary: "Pooled gifts are placed with a counterparty; the return funds the vault's causes, corpus stays intact.",
-  },
-  {
-    icon: IconArchive,
-    label: "Project-style vault",
-    summary: "Pooled gifts go directly to the vault's causes — relief, education, whatever it was created for.",
-  },
-];
+};
 
 // The homepage stays a teaser, not a duplicate of the dedicated /vaults
-// index — cap it here and point to that page for the rest, same
-// "preview here, full list there" relationship the /waqf-types/[slug]
-// pages already have with this page's own summary cards above.
-const VAULT_TEASER_LIMIT = 6;
+// index — cap it here and point to that page for the rest.
+const VAULT_TEASER_LIMIT = 3;
 
-// A primary/accent/violet trio, not a rainbow: violet is reserved for
-// the AI Agents surface (see styles.css's documented hue rationale), so
-// it appears exactly once below, on the one pillar that's actually
-// about AI. Every other pillar alternates the two chrome-carrying hues
-// (primary, accent) so the grid reads as one considered palette, not
-// six unrelated tiles.
-const GOVERNANCE_PILLARS = [
+const TRUST_POINTS = [
+  { icon: IconLandmark, title: "Registered trustee", body: "Incorporated Trustee under the Corporate Affairs Commission" },
+  { icon: IconShieldCheck, title: "Shariah advisory", body: "Investments screened against prohibited sectors" },
+  { icon: IconUsers, title: "Dual authorisation", body: "Every payout approved by a second person" },
+  { icon: IconFileText, title: "Permanent record", body: "Every action logged — nothing edited or deleted" },
+];
+
+const GOVERNANCE_POINTS = [
   {
-    title: "Self-service establishment",
-    body: "Create your Foundation and Waqf Fund directly — establishing a fund is itself how you agree Birr becomes Mutawalli over it. The Founder path in; a Vault needs no establishment at all.",
-    icon: IconLandmark,
-    tone: "primary" as const,
-  },
-  {
-    title: "Maker-checker, enforced by the database",
-    body: "Every asset disposal, distribution, and investment change is proposed by one person and approved by another — never the same person, a rule the database itself rejects otherwise.",
-    icon: IconClipboardCheck,
-    tone: "accent" as const,
-  },
-  {
-    title: "Segregation of duties",
-    body: "Mutawalli Officer, Board of Trustees, Shariah Supervisory Board, Investment Committee, Audit Committee, Risk & Compliance, and Legal Adviser — distinct roles, distinct permissions.",
+    id: undefined,
     icon: IconUsers,
-    tone: "primary" as const,
+    title: "Dual authorisation on every consequential act",
+    body: "Distributions, investment changes, asset disposals and beneficiary criteria each need two different people. The system itself refuses an approval by the person who proposed it.",
   },
   {
-    title: "Immutable audit trail",
-    body: "Every write to a governed record is logged — actor, timestamp, before and after. Append-only: nothing in the trail can be edited or deleted, by design, not just by policy.",
+    id: undefined,
+    icon: IconLandmark,
+    title: "Separated duties",
+    body: "Board of Trustees, Shariah advisory, Investment and Audit Committees, Risk & Compliance — distinct roles, each with defined authority.",
+  },
+  {
+    id: undefined,
     icon: IconFileText,
-    tone: "accent" as const,
+    title: "An audit trail no one can edit",
+    body: "Who acted, when, and what changed — append-only, including for the people who run Birr.",
   },
   {
-    title: "Jurisdiction-aware compliance",
-    body: "Governance aligns with AAOIFI and IFSB principles and the regulatory requirements of each waqf's or vault's own jurisdiction, not one policy applied everywhere.",
+    id: undefined,
     icon: IconGlobe,
-    tone: "primary" as const,
+    title: "Jurisdiction-aware compliance",
+    body: "Each waqf is governed by the requirements of its own jurisdiction, aligned with AAOIFI and IFSB principles — not one policy applied everywhere.",
   },
   {
-    title: "AI proposes, humans decide",
-    body: "AI agents may draft, flag, and monitor — never approve. There's no field in our system for an AI checker; every fiduciary decision stays with a person.",
+    // Keeps the old "/#ai" anchor working now that AI has no section of its own.
+    id: "ai",
     icon: IconSparkle,
-    tone: "violet" as const,
+    title: "AI that advises, never approves",
+    body: "AI agents may draft, flag and monitor. There is no field in the system for an AI approval — a named person decides.",
   },
 ];
 
 // Answers to the objections a first-time visitor actually has, each one
-// grounded in a fact this page (or the platform itself) already makes
-// elsewhere — never a claim invented just for this section. Placed
-// right before the closing CTA, the standard spot for a last round of
-// reassurance before asking someone to act.
+// grounded in what the platform enforces — never a claim invented here.
 const FAQ_ITEMS = [
-  {
-    question: 'What is Sadaqah Jariyah, and how does Birr "prove" it?',
-    answer:
-      "Sadaqah Jariyah is ongoing charity — a gift that keeps benefiting others, and keeps earning reward, long after you give it. Birr proves that continuity the same way it proves every other governed decision: every asset, distribution, and investment change is written to an immutable, append-only audit trail from the moment your Waqf Fund is established.",
-  },
   {
     question: "Do I need approval to establish a Waqf Fund?",
     answer:
-      "No. Establishing your Foundation and Waqf Fund is entirely self-service — there's no application, no waiting period, no Birr staff involved. Creating the fund is itself how you agree Birr becomes Mutawalli (trustee) over it.",
+      "No. Establishing your Foundation and Waqf Fund is entirely self-service — no application, no waiting period, no Birr staff involved. Creating the fund is itself how you agree Birr becomes Mutawalli (trustee) over it.",
+  },
+  {
+    question: 'What is Sadaqah Jariyah, and how does Birr "prove" it?',
+    answer:
+      "Sadaqah Jariyah is ongoing charity — a gift that keeps benefiting others, and keeps earning reward, long after you give it. Birr proves that continuity the same way it proves every other governed decision: every asset, distribution and investment change is written to an immutable, append-only audit trail from the moment your Waqf Fund is established.",
   },
   {
     question: "Who manages my Waqf Fund once it's established?",
     answer:
-      "Ongoing governance — asset disposal, distribution approval, investment changes — moves to Birr's own staff, through a maker-checker process where every action must be proposed by one person and approved by a different one, enforced by the database itself, not just policy.",
+      "Ongoing governance — asset disposal, distribution approval, investment changes — moves to Birr's own staff under dual authorisation: every action is proposed by one person and approved by a different one, enforced by the database itself, not just policy. You keep the purpose — which causes it supports and how its endowment is earmarked between them.",
   },
   {
-    question: "What's the difference between establishing a Waqf Fund and giving to a Vault?",
+    question: "What's the difference between a Waqf Fund and a Vault?",
     answer:
-      "A Waqf Fund is yours — you establish it, name its causes, and Birr becomes its trustee. A Vault is a Birr-curated public campaign anyone can give to directly, with no account or Foundation required. Both route through the exact same governed approval process once money moves.",
+      "A Waqf Fund is an endowment you establish; its corpus is preserved and Birr becomes its trustee. A Vault is a Birr-curated campaign anyone can give to, with no account needed; the gift is spent on the need it was given for. Both run under the same dual authorisation once money moves.",
   },
   {
     question: "How is Shariah compliance ensured?",
     answer:
-      "A dedicated Shariah Supervisory Board sits alongside Birr's other governance roles, and every investment goes through its own Shariah screening before it's placed — not a one-time certification, but an ongoing check tied to the actual assets involved.",
+      "Shariah advisory sits alongside Birr's other governance roles, every investment is screened against prohibited sectors before it's placed, and for an Investment Waqf the system refuses any distribution drawn from the corpus itself.",
+  },
+  {
+    question: "Is establishing a waqf the same as paying zakat?",
+    answer: "No. Zakat is an obligation on wealth with its own recipients, and establishing a waqf does not discharge it. The two are separate acts.",
   },
   {
     question: "Is my gift's use ever a black box?",
     answer:
-      "No — every governed action on your Waqf Fund or a Vault you've given to is recorded permanently: who acted, when, and what changed. That trail can't be edited or deleted after the fact, by design, and it's there for your own reporting whenever you want to see it.",
+      "No — every governed action on your Waqf Fund, or on a Vault you've given to, is recorded permanently: who acted, when, and what changed. That trail can't be edited or deleted after the fact, by design.",
   },
 ];
-
-const PILLAR_ICON_CLASSES: Record<(typeof GOVERNANCE_PILLARS)[number]["tone"], string> = {
-  primary: "bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-primary-900/25",
-  // Deep-on-gold, not white-on-gold: a lighter gold field with a
-  // near-black glyph clears AA with margin and reads as more premium
-  // than white text over the same stops.
-  accent: "bg-gradient-to-br from-accent-300 to-accent-500 text-accent-950 shadow-accent-900/20",
-  violet: "bg-gradient-to-br from-violet-500 to-violet-700 text-white shadow-violet-900/25",
-};
 
 export default function MarketingHome({
   articles = [],
@@ -246,21 +149,12 @@ export default function MarketingHome({
   impact?: ImpactSummary | null;
   impactPhotos?: FieldPhoto[];
 }) {
-  const [howItWorksPath, setHowItWorksPath] = useState<"founder" | "giver">("founder");
-  const [managesProduct, setManagesProduct] = useState<"waqf" | "vault">("waqf");
-
   // Real data, not a placeholder — GET /vaults/open is @Public(), no
-  // session needed. Each vault's own causes come embedded in the
-  // listOpen() response itself (see VaultsService.listOpen's own
-  // comment) — GET /vaults/:id/causes is staff-only, not something this
-  // unauthenticated page could call per vault to fill them in afterward.
+  // session needed, and each vault's causes come embedded in the response.
   const [openVaults, setOpenVaults] = useState<Vault[] | null>(null);
-  // On a fetch failure, openVaults deliberately stays null rather than
-  // being forced to [] — the hero badge and "no vaults open" copy below
-  // both already treat null as "nothing to show yet," which is honest
-  // here (unlike claiming zero vaults are open when the real count is
-  // unknown). See /vaults/page.tsx's own loadError for the fuller
-  // version of this same fix on the page where it matters more.
+  // On a fetch failure openVaults deliberately stays null rather than []
+  // — the hero badge and empty-state copy treat null as "nothing to show
+  // yet", which is honest (unlike claiming zero vaults are open).
   const [vaultsLoadError, setVaultsLoadError] = useState(false);
 
   useEffect(() => {
@@ -271,343 +165,344 @@ export default function MarketingHome({
 
   return (
     <div className="min-h-screen bg-white">
-      <SiteHeader />
+      <SiteHeader tone="dark" />
 
-      <section className="relative overflow-hidden px-6 pb-28 pt-24 sm:px-8 sm:pt-32" style={{ backgroundImage: GRADIENT }}>
-        <div
-          className="pointer-events-none absolute -right-32 -top-32 h-[36rem] w-[36rem] rounded-full bg-white/10 blur-3xl motion-safe:animate-[float-slow_16s_ease-in-out_infinite]"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute -bottom-40 -left-24 h-[28rem] w-[28rem] rounded-full bg-accent-400/10 blur-3xl motion-safe:animate-[float-slow_20s_ease-in-out_infinite_reverse]"
-          aria-hidden="true"
-        />
-        {/* A third, smaller orb behind the headline itself — the two
-            above sit at the corners; this gives the type block its own
-            faint halo instead of floating on flat gradient. */}
-        <div
-          className="pointer-events-none absolute left-1/2 top-1/3 h-[24rem] w-[24rem] -translate-x-1/2 rounded-full bg-white/[0.06] blur-3xl motion-safe:animate-[float-slow_24s_ease-in-out_infinite]"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.12]"
-          style={{
-            backgroundImage:
-              "repeating-linear-gradient(115deg, transparent 0px, transparent 58px, rgba(255,255,255,0.6) 58px, rgba(255,255,255,0.6) 59px)",
-          }}
-          aria-hidden="true"
-        />
-        <div className="relative z-10 mx-auto max-w-3xl text-center">
-          <Reveal>
+      {/* ---------------- Hero ---------------- */}
+      <section className="relative overflow-hidden px-6 pb-16 sm:px-8 lg:pb-14">
+        <div className="absolute inset-0 overflow-hidden" style={{ backgroundImage: GRADIENT }} aria-hidden="true">
+          <GeometricPattern className="absolute inset-0 h-full w-full text-accent-400/[0.13] [mask-image:linear-gradient(to_bottom,black,rgba(0,0,0,0.45))]" />
+          <div className="absolute -right-40 -top-40 h-[34rem] w-[34rem] rounded-full bg-primary-500/20 blur-3xl" />
+        </div>
+
+        <div className="relative mx-auto grid max-w-7xl items-center gap-14 pt-12 sm:pt-16 lg:grid-cols-2 lg:pt-12 lg:gap-12 xl:gap-16">
+          <div className="text-center lg:text-left">
             {/* A live figure, not a decorative label — falls back to a
-                plain category pill until openVaults has actually loaded
-                or if nothing's open right now, so this never flashes a
-                wrong or deflating "0" on first paint. */}
-            <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-white/80 backdrop-blur-sm">
+                plain category pill until openVaults has loaded, or if
+                nothing's open, so it never flashes a deflating "0". */}
+            <p className="inline-flex items-center gap-2.5 rounded-full border border-accent-200/30 bg-white/[0.04] px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-accent-200">
               {openVaults && openVaults.length > 0 ? (
                 <>
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-400 motion-safe:animate-pulse" aria-hidden="true" />
-                  {openVaults.length} {openVaults.length === 1 ? "vault" : "vaults"} open for giving right now
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary-300 shadow-[0_0_0_4px_rgba(120,203,178,0.18)]" aria-hidden="true" />
+                  {openVaults.length} {openVaults.length === 1 ? "vault" : "vaults"} open for giving now
                 </>
               ) : (
-                "Waqf & Vault Trustee Platform"
+                "Digital trustee for Islamic waqf"
               )}
             </p>
-          </Reveal>
-          <Reveal delayMs={90}>
-            <h1 className="font-display text-balance text-4xl font-medium tracking-tight text-white sm:text-6xl">
+            <h1 className="mt-6 font-display text-[2.6rem] font-medium leading-[1.04] tracking-tight text-white text-balance sm:text-6xl xl:text-[4.25rem]">
               A gift that outlives you.
-              <br className="hidden sm:block" />
-              {/* Explicit space — without it, JSX collapses the
-                  whitespace between the (mobile-hidden) <br> and this
-                  span to nothing, running "you.Sadaqah" together once
-                  the <br> disappears below the sm breakpoint. */}
-              <span> </span>
-              <span className="bg-gradient-to-r from-accent-300 to-accent-500 bg-clip-text text-transparent">
+              <span className="mt-4 block text-[0.6em] font-normal italic leading-[1.15] text-accent-300">
                 Sadaqah Jariyah, engineered to prove it.
               </span>
             </h1>
-          </Reveal>
-          <Reveal delayMs={180}>
-            {/* A div, not a <p> — Reveal renders a <div>, and the nested
-                Reveal below (the punchline) would be invalid HTML nested
-                inside a real <p> (browsers silently close the paragraph
-                early on a block child, splitting the sentence). */}
-            <div className="mx-auto mt-6 max-w-xl text-balance text-lg text-white/80">
-              Give once —  <RotatingPhrase phrases={GIVING_IMPACT_PHRASES} />
-            </div>
-          </Reveal>
-          <Reveal delayMs={270}>
-            <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-              <Link href="/sign-up" className="w-full sm:w-auto">
-                <Button
-                  variant="secondary"
-                  className="w-full px-6 py-3 text-base shadow-lg shadow-black/20 transition-transform motion-safe:hover:-translate-y-0.5"
-                >
-                  Establish your Waqf Fund
-                </Button>
+            <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-primary-100/85 text-pretty sm:text-lg lg:mx-0">
+              Establish your own Waqf Fund in minutes. Birr becomes your Mutawalli — investing, distributing and reporting under dual
+              authorisation and an audit trail no one can edit.
+            </p>
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+              <Link
+                href="/sign-up"
+                className="inline-flex items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-primary-950 shadow-lg shadow-accent-900/30 transition-colors hover:bg-accent-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-300"
+              >
+                Establish your Waqf Fund
               </Link>
               <Link
                 href="/vaults"
-                className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-white/30 px-6 py-3 text-base font-medium text-white transition-colors hover:border-white/60 hover:bg-white/10 sm:w-auto"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/25 bg-white/[0.04] px-6 py-3.5 text-base font-semibold text-white transition-colors hover:border-white/50 hover:bg-white/10"
               >
                 Support a cause <span aria-hidden="true">→</span>
               </Link>
             </div>
-            <Link href="/sign-in" className="mt-5 inline-block text-sm font-medium text-white/70 hover:text-white">
-              Already have an account? Sign in →
-            </Link>
+            <ul className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-primary-200 lg:justify-start">
+              {["CAC-registered trustee", "Shariah advisory", "Dual authorisation"].map((t) => (
+                <li key={t} className="flex items-center gap-1.5">
+                  <IconCheckCircle className="h-4 w-4 text-accent-300" />
+                  {t}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="mx-auto w-full max-w-[560px] xl:max-w-[600px]">
+            <div className="relative">
+              <FloatingNote
+                className="-left-8 bottom-[4%]"
+                tone="primary"
+                title="Distribution approved"
+                line="₦620,000 to Education"
+                note="Proposed by one officer, approved by another"
+                icon={<IconCheckCircle className="h-4 w-4" />}
+              />
+              <FloatingNote
+                className="-right-6 bottom-[4%]"
+                tone="accent"
+                title="Corpus preserved"
+                line="₦25,000,000 Investment Waqf"
+                note="Only its returns are ever distributed"
+                icon={<IconShieldCheck className="h-4 w-4" />}
+              />
+              <HeroMonitor>
+                <DashboardMockup />
+              </HeroMonitor>
+            </div>
+            <p className="mt-4 text-center text-xs text-primary-200/70 sm:text-sm">
+              The Founder Portal, shown with sample data.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- Trust strip ---------------- */}
+      <section aria-label="Why founders trust Birr" className="border-y border-slate-200/80 px-6 sm:px-8">
+        <ul className="mx-auto grid max-w-6xl sm:grid-cols-2 lg:grid-cols-4">
+          {TRUST_POINTS.map((p, i) => (
+            <li
+              key={p.title}
+              className={`flex gap-3.5 py-7 sm:px-6 ${i > 0 ? "border-t border-slate-200/80 sm:border-t-0" : ""} ${
+                i % 2 === 1 ? "sm:border-l sm:border-slate-200/80" : ""
+              } ${i === 2 ? "lg:border-l lg:border-slate-200/80" : ""} ${i >= 2 ? "sm:border-t sm:border-slate-200/80 lg:border-t-0" : ""}`}
+            >
+              <p.icon className="mt-0.5 h-[22px] w-[22px] shrink-0 text-accent-600" />
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{p.title}</p>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-slate-500">{p.body}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* ---------------- Two ways to give ---------------- */}
+      <section id="how-it-works" className="px-6 py-16 sm:px-8 lg:py-16">
+        <div className="mx-auto max-w-6xl">
+          <SectionHead
+            kicker="Two ways to give"
+            split
+            title="One trustee. Two very different gifts."
+            lead="Establish an endowment that keeps giving for generations, or give today to a need Birr has already vetted. They are deliberately kept apart — one is not a smaller version of the other."
+          />
+          <div className="mt-8 grid gap-6 lg:grid-cols-2">
+            <Reveal>
+              <article className="relative flex h-full flex-col overflow-hidden rounded-3xl p-7 text-white sm:p-8" style={{ backgroundImage: GRADIENT }}>
+                <GeometricPattern className="pointer-events-none absolute inset-0 h-full w-full text-accent-400/[0.1] [mask-image:linear-gradient(200deg,black,transparent_70%)]" />
+                <div className="relative flex flex-1 flex-col">
+                  <span className="self-start rounded-full border border-accent-200/30 bg-accent-200/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-accent-200">
+                    For founders
+                  </span>
+                  <h3 className="mt-4 font-display text-[1.75rem] font-medium tracking-tight">Establish your own Waqf Fund</h3>
+                  <p className="mt-2.5 text-[15px] leading-relaxed text-primary-100/85">
+                    For individuals, families and institutions. You set up your Foundation and Waqf Fund yourself — creating it is what
+                    appoints Birr as your Mutawalli.
+                  </p>
+                  <CheckList
+                    tone="dark"
+                    items={["Self-service, with no approval gate", "One signed deed covers every fund you add later", "Built to keep giving long after you"]}
+                  />
+                  <Link
+                    href="/sign-up"
+                    className="mt-6 inline-flex self-start rounded-xl bg-accent-500 px-5 py-3 text-sm font-semibold text-primary-950 transition-colors hover:bg-accent-300"
+                  >
+                    Establish your Waqf Fund
+                  </Link>
+                </div>
+              </article>
+            </Reveal>
+            <Reveal delayMs={90}>
+              <article className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-7 sm:p-8">
+                <span className="self-start rounded-full border border-primary-100 bg-primary-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary-700">
+                  For everyone
+                </span>
+                <h3 className="mt-4 font-display text-[1.75rem] font-medium tracking-tight text-slate-900">Give through a Vault</h3>
+                <p className="mt-2.5 text-[15px] leading-relaxed text-slate-600">
+                  Campaigns curated by Birr around a defined need. Anyone can give — no account, no paperwork — and every gift is traced
+                  to the partner who delivers it.
+                </p>
+                <CheckList
+                  tone="light"
+                  items={["Pay in naira by card or transfer", "Several causes per campaign, each shown separately", "Results posted publicly against each cause"]}
+                />
+                <Link
+                  href="/vaults"
+                  className="mt-6 inline-flex self-start rounded-xl bg-primary-700 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-800"
+                >
+                  See open Vaults
+                </Link>
+              </article>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- What a waqf is ---------------- */}
+      <section className="bg-slate-50/80 px-6 py-16 sm:px-8 lg:py-16">
+        <div className="mx-auto grid max-w-6xl items-center gap-14 lg:grid-cols-[0.9fr_1.1fr]">
+          <div>
+            <SectionHead
+              kicker="What a waqf is"
+              title="Give once. It keeps giving."
+              lead="A waqf is a permanent charitable endowment. The corpus is set aside and never spent — only what it produces is given away, for as long as the endowment lasts."
+            />
+            <dl className="mt-7 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+              {[
+                ["The founder", "waqif", "The person or institution that endows it."],
+                ["The corpus", "mawquf", "The endowment itself, preserved for good."],
+                ["The beneficiaries", "mawquf alayh", "Those the waqf is created to serve."],
+                ["The trustee", "mutawalli", "The role Birr takes on — never the owner."],
+              ].map(([term, arabic, def]) => (
+                <div key={term}>
+                  <dt className="text-sm font-semibold text-slate-900">
+                    {term} <span className="ml-1 font-display font-normal italic text-accent-700">{arabic}</span>
+                  </dt>
+                  <dd className="mt-1 text-sm leading-relaxed text-slate-600">{def}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          <Reveal>
+            <figure className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_30px_60px_-40px_rgba(8,39,32,0.35)] sm:p-7">
+              <WaqfDiagram />
+              <figcaption className="mt-4 text-sm italic text-slate-500">The same diagram founders find in the Waqf Founder's Handbook.</figcaption>
+            </figure>
           </Reveal>
         </div>
       </section>
 
-      <section id="waqf-types" className="px-6 pb-20 pt-24 sm:px-8">
-        <Reveal className="mx-auto max-w-2xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-primary-600">What Birr manages</p>
-          <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
-            Two products, one trustee.
-          </h2>
-          <p className="mt-3 text-sm leading-relaxed text-slate-600">
-            Waqf Funds you establish yourself, and Vaults Birr curates for anyone to support — different products,
-            the same maker-checker governance and audit trail underneath.
-          </p>
-        </Reveal>
-
-        <div className="mx-auto mt-8 flex max-w-2xl justify-center gap-2">
-          <button
-            type="button"
-            onClick={() => setManagesProduct("waqf")}
-            className={`rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
-              managesProduct === "waqf" ? "bg-primary-700 text-white" : "border border-slate-200 text-slate-500 hover:border-primary-300"
-            }`}
-          >
-            Waqf Funds
-          </button>
-          <button
-            type="button"
-            onClick={() => setManagesProduct("vault")}
-            className={`rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
-              managesProduct === "vault" ? "bg-accent-500 text-accent-950" : "border border-slate-200 text-slate-500 hover:border-accent-300"
-            }`}
-          >
-            Vaults
-          </button>
-        </div>
-
-        <SlideTrack
-          className="mx-auto mt-10 max-w-4xl"
-          active={managesProduct === "waqf" ? "left" : "right"}
-          left={
-            <>
-              <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-primary-700">
-                Waqf Funds <span className="font-medium normal-case text-slate-500">— you establish, self-service</span>
-              </p>
-              <div className="grid gap-5 sm:grid-cols-3">
-                {WAQF_TYPES.map((type) => (
-                  <Link key={type.slug} href={`/waqf-types/${type.slug}`} className="group block h-full">
-                    <Card tone="neutral" className="h-full transition-all group-hover:-translate-y-0.5 group-hover:shadow-md">
-                      <span
-                        className="mb-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700 ring-1 ring-inset ring-primary-100"
-                        aria-hidden="true"
-                      >
-                        <type.icon className="h-5 w-5" />
-                      </span>
-                      <h3 className="text-sm font-semibold text-slate-900">{type.label}</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-600">{type.summary}</p>
-                      <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary-700 group-hover:text-primary-800">
-                        Learn more <span aria-hidden="true">→</span>
-                      </span>
-                    </Card>
-                  </Link>
-                ))}
-              </div>
-            </>
-          }
-          right={
-            <>
-              <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-accent-700">
-                Vaults <span className="font-medium normal-case text-slate-500">— Birr curates, anyone can support</span>
-              </p>
-              <div className="mx-auto grid gap-5 sm:grid-cols-2 sm:max-w-xl">
-                {VAULT_TYPES.map((type) => (
-                  <Link key={type.label} href="/vaults" className="group block h-full">
-                    <Card tone="accent" className="h-full transition-all group-hover:-translate-y-0.5 group-hover:shadow-md">
-                      <span
-                        className="mb-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-100 text-accent-700 ring-1 ring-inset ring-accent-200"
-                        aria-hidden="true"
-                      >
-                        <type.icon className="h-5 w-5" />
-                      </span>
-                      <h3 className="text-sm font-semibold text-slate-900">{type.label}</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-slate-600">{type.summary}</p>
-                      <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-accent-700 group-hover:text-accent-800">
-                        See open vaults <span aria-hidden="true">→</span>
-                      </span>
-                    </Card>
-                  </Link>
-                ))}
-              </div>
-            </>
-          }
-        />
-      </section>
-
-      <section id="how-it-works" className="bg-gradient-to-b from-primary-50/60 to-white px-6 py-20 sm:px-8">
-        <Reveal className="mx-auto max-w-2xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-primary-600">How it works</p>
-          <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
-            Two paths, one trustee.
-          </h2>
-          <p className="mt-3 text-sm leading-relaxed text-slate-600">
-            Whichever door you came through, the same governance runs underneath. Click a path to switch.
-          </p>
-        </Reveal>
-
-        <div className="mx-auto mt-6 flex max-w-2xl justify-center gap-2">
-          <button
-            type="button"
-            onClick={() => setHowItWorksPath("founder")}
-            className={`rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
-              howItWorksPath === "founder" ? "bg-primary-700 text-white" : "border border-slate-200 text-slate-500 hover:border-primary-300"
-            }`}
-          >
-            For Founders
-          </button>
-          <button
-            type="button"
-            onClick={() => setHowItWorksPath("giver")}
-            className={`rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
-              howItWorksPath === "giver" ? "bg-accent-500 text-accent-950" : "border border-slate-200 text-slate-500 hover:border-accent-300"
-            }`}
-          >
-            For Everyone
-          </button>
-        </div>
-
-        <SlideTrack
-          className="mx-auto mt-10 max-w-lg"
-          active={howItWorksPath === "founder" ? "left" : "right"}
-          left={
-            <>
-              <p className="mb-5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <span className="h-2 w-2 rounded-full bg-primary-600" aria-hidden="true" /> Founder path
-              </p>
-              <div className="space-y-6">
-                {HOW_IT_WORKS_FOUNDER.map((step) => (
-                  <div key={step.n} className="flex gap-4">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-800">
-                      <step.icon className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-900">{step.title}</h3>
-                      <p className="mt-1 text-sm leading-relaxed text-slate-600">{step.body}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Link href="/waqf-types" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-primary-700 hover:text-primary-800">
-                See how establishing works <span aria-hidden="true">→</span>
-              </Link>
-            </>
-          }
-          right={
-            <>
-              <p className="mb-5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <span className="h-2 w-2 rounded-full bg-accent-500" aria-hidden="true" /> Giver path
-              </p>
-              <div className="space-y-6">
-                {HOW_IT_WORKS_GIVER.map((step) => (
-                  <div key={step.n} className="flex gap-4">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-800">
-                      <step.icon className="h-4 w-4" />
-                    </span>
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-900">{step.title}</h3>
-                      <p className="mt-1 text-sm leading-relaxed text-slate-600">{step.body}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Link href="/vaults" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-accent-700 hover:text-accent-800">
-                Browse open vaults <span aria-hidden="true">→</span>
-              </Link>
-            </>
-          }
-        />
-      </section>
-
-      <section id="vaults" className="px-6 py-20 sm:px-8">
-        <Reveal className="mx-auto max-w-2xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-accent-600">Support a cause</p>
-          <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
-            Open vaults, right now.
-          </h2>
-          <p className="mt-3 text-sm leading-relaxed text-slate-600">
-            Every vault is curated by Birr's own team and tied to one or more causes from our standard catalog —
-            the same catalog every Waqf Fund draws from.
-          </p>
-        </Reveal>
-
-        {openVaults !== null && openVaults.length === 0 && (
-          <p className="mx-auto mt-10 max-w-md text-center text-sm text-slate-500">
-            No vaults are open for giving right now — check back soon.
-          </p>
-        )}
-
-        {/* A load failure shouldn't claim "nothing's open" — just say
-            nothing here; /vaults (this section's own "Browse every open
-            vault" link) shows a real retry affordance instead. */}
-        {vaultsLoadError && (
-          <p className="mx-auto mt-10 max-w-md text-center text-sm text-slate-500">
-            Couldn't load open vaults right now.{" "}
-            <Link href="/vaults" className="font-semibold text-primary-700 hover:text-primary-800">
-              Try the full list
-            </Link>
-            .
-          </p>
-        )}
-
-        {openVaults !== null && openVaults.length > 0 && (
-          <div className="mx-auto mt-10 grid max-w-5xl gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {openVaults.slice(0, VAULT_TEASER_LIMIT).map((vault, i) => (
-              <Reveal key={vault.id} delayMs={i * 75}>
-                <VaultCard vault={vault} />
+      {/* ---------------- Three kinds of waqf fund ---------------- */}
+      <section id="waqf-types" className="px-6 py-16 sm:px-8 lg:py-16">
+        <div className="mx-auto max-w-6xl">
+          <SectionHead
+            kicker="Waqf funds"
+            split
+            title="Choose the kind of waqf fund."
+            lead="The type decides what is preserved and what is spent. Your Mutawalli Officer helps you choose before anything is signed."
+          />
+          <div className="mt-9 grid gap-6 md:grid-cols-3">
+            {WAQF_TYPES.map((type, i) => (
+              <Reveal key={type.slug} delayMs={i * 75}>
+                <Link
+                  href={`/waqf-types/${type.slug}`}
+                  className="group flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-lg hover:shadow-primary-950/5"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-accent-100 bg-accent-50 text-accent-700">
+                    <type.icon className="h-5 w-5" />
+                  </span>
+                  <h3 className="mt-4 font-display text-[1.4rem] font-medium tracking-tight text-slate-900">{type.label} Waqf</h3>
+                  <p className="mt-0.5 text-sm font-semibold italic text-accent-700">{WAQF_TYPE_EXTRA[type.slug].classical}</p>
+                  <p className="mb-4 mt-3 text-[15px] leading-relaxed text-slate-600">{type.summary}</p>
+                  <p className="mt-auto border-t border-slate-100 pt-4 text-sm leading-relaxed text-slate-500">
+                    <span className="font-semibold text-primary-700">For example,</span> {WAQF_TYPE_EXTRA[type.slug].example}
+                  </p>
+                  <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary-700 group-hover:text-primary-800">
+                    Learn more <IconArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
               </Reveal>
             ))}
           </div>
-        )}
+        </div>
+      </section>
 
-        {openVaults !== null && openVaults.length > 0 && (
-          <Link
-            href="/vaults"
-            className="mt-8 block text-center text-sm font-semibold text-primary-700 hover:text-primary-800"
-          >
-            Browse every open vault <span aria-hidden="true">→</span>
-          </Link>
-        )}
-
+      {/* ---------------- Governance ---------------- */}
+      <section id="governance" className="bg-slate-50/80 px-6 py-16 sm:px-8 lg:py-16">
+        <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[0.85fr_1.15fr]">
+          <Reveal className="order-2 lg:order-1">
+            <figure className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_30px_60px_-40px_rgba(8,39,32,0.35)] sm:p-7">
+              <DualAuthorisationDiagram />
+              <figcaption className="mt-4 text-sm italic text-slate-500">Enforced by the database itself — not left to policy or good intentions.</figcaption>
+            </figure>
+          </Reveal>
+          <div className="order-1 lg:order-2">
+            <SectionHead kicker="Governance" title="Built for a fiduciary, not a feature race." />
+            <ul className="mt-6 space-y-4">
+              {GOVERNANCE_POINTS.map((p) => (
+                <li key={p.title} id={p.id} className="flex scroll-mt-28 gap-4">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-primary-100 bg-primary-50 text-primary-700">
+                    <p.icon className="h-[18px] w-[18px]" />
+                  </span>
+                  <div>
+                    <h3 className="text-[15px] font-semibold text-slate-900">{p.title}</h3>
+                    <p className="mt-0.5 text-sm leading-relaxed text-slate-600">{p.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </section>
 
       <ImpactSection impact={impact} photos={impactPhotos} />
 
-      {articles.length > 0 && (
-        <section id="learn" className="bg-slate-50/70 px-6 py-20 sm:px-8">
-          <div className="mx-auto max-w-5xl">
-            <Reveal className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div className="max-w-xl">
-                <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">Learn</p>
-                <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
-                  Featured articles.
-                </h2>
-                <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                  Plain-English guides to waqf, trusteeship and giving — written for people new to all three.
-                </p>
-              </div>
-              <Link href="/blog" className="shrink-0">
-                <Button variant="secondary">View all articles</Button>
+      {/* ---------------- Open vaults ---------------- */}
+      <section id="vaults" className="px-6 py-16 sm:px-8 lg:py-16">
+        <div className="mx-auto max-w-6xl">
+          <SectionHead
+            kicker="Support a cause"
+            title="Open Vaults, right now."
+            lead="Curated by Birr's own team, each tied to a named delivery partner. Give to the cause you choose."
+            aside={
+              openVaults !== null && openVaults.length > 0 ? (
+                <Link href="/vaults" className="inline-flex items-center gap-1 text-sm font-semibold text-primary-700 hover:text-primary-800">
+                  Browse every open Vault <IconArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              ) : undefined
+            }
+          />
+
+          {openVaults !== null && openVaults.length === 0 && (
+            <p className="mt-9 rounded-2xl border border-dashed border-slate-300 px-6 py-10 text-center text-sm text-slate-500">
+              No Vaults are open for giving right now — check back soon.
+            </p>
+          )}
+
+          {/* A load failure shouldn't claim "nothing's open" — point to the
+              full list, which has a real retry affordance. */}
+          {vaultsLoadError && (
+            <p className="mt-9 rounded-2xl border border-dashed border-slate-300 px-6 py-10 text-center text-sm text-slate-500">
+              Couldn't load open Vaults right now.{" "}
+              <Link href="/vaults" className="font-semibold text-primary-700 hover:text-primary-800">
+                Try the full list
               </Link>
-            </Reveal>
-            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              .
+            </p>
+          )}
+
+          {openVaults !== null && openVaults.length > 0 && (
+            <div className="mt-9 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {openVaults.slice(0, VAULT_TEASER_LIMIT).map((vault, i) => (
+                <Reveal key={vault.id} delayMs={i * 75}>
+                  <VaultCard vault={vault} />
+                </Reveal>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-7 flex flex-col gap-4 rounded-2xl border border-accent-100 bg-accent-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm leading-relaxed text-slate-700">
+              <span className="font-semibold text-slate-900">A Vault gift is not a waqf — and that's the point.</span> It is spent on the need it
+              was given for; a waqf is preserved and gives only what it produces.
+            </p>
+            <Link href="/#how-it-works" className="shrink-0 text-sm font-semibold text-primary-700 hover:text-primary-800">
+              Compare the two →
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------- Learn ---------------- */}
+      {articles.length > 0 && (
+        <section id="learn" className="bg-slate-50/80 px-6 py-16 sm:px-8 lg:py-16">
+          <div className="mx-auto max-w-6xl">
+            <SectionHead
+              kicker="Learn"
+              title="Plain-English guides."
+              lead="Waqf, trusteeship and giving — written for people new to all three."
+              aside={
+                <Link href="/blog" className="inline-flex items-center gap-1 text-sm font-semibold text-primary-700 hover:text-primary-800">
+                  View all articles <IconArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              }
+            />
+            <div className="mt-9 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {articles.map((a, i) => (
                 <Reveal key={a.slug} delayMs={i * 75}>
                   <ArticleCard article={a} />
@@ -618,108 +513,62 @@ export default function MarketingHome({
         </section>
       )}
 
-      <section id="governance" className="px-6 py-20 sm:px-8">
-        <Reveal className="mx-auto max-w-2xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-primary-600">Governance</p>
-          <h2 className="font-display mt-3 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
-            Built for a fiduciary, not a feature race.
-          </h2>
-          <p className="mt-3 text-sm leading-relaxed text-slate-600">
-            Correctness, auditability, and access control — enforced structurally, not left to policy alone.
-          </p>
-        </Reveal>
-        <div className="mx-auto mt-10 grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {GOVERNANCE_PILLARS.map((pillar, i) => (
-            <Reveal key={pillar.title} delayMs={(i % 3) * 75}>
-              <Card tone={pillar.tone} className="h-full">
-                <span
-                  className={`mb-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm ${PILLAR_ICON_CLASSES[pillar.tone]}`}
-                  aria-hidden="true"
-                >
-                  <pillar.icon className="h-5 w-5" />
-                </span>
-                <h3 className="text-sm font-semibold text-slate-900">{pillar.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{pillar.body}</p>
-              </Card>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
-      <section id="ai" className="bg-violet-50/60 px-6 py-20 sm:px-8">
-        <div className="mx-auto max-w-4xl">
-          <Reveal>
-            <Card tone="violet" className="flex flex-col items-start gap-6 sm:flex-row sm:items-center">
-              <span
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-violet-700 text-white shadow-sm shadow-violet-900/25"
-                aria-hidden="true"
-              >
-                <IconSparkle className="h-7 w-7" />
-              </span>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-violet-700">Artificial intelligence</p>
-                <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">Advisory only — enforced structurally.</h2>
-                <p className="mt-3 text-sm leading-relaxed text-slate-700">
-                  AI agents assist Birr's officers behind the scenes — watching regulatory change, triaging caseloads,
-                  spotting anomalies, drafting distribution recommendations — every one of them scoped to its own
-                  registry entry, never an undifferentiated "the AI." Any agent may propose a governed action; none
-                  can ever approve one. That's not a policy an officer could override — there's no{" "}
-                  <code className="rounded bg-violet-100 px-1.5 py-0.5 font-mono text-xs text-violet-900">checker_agent_id</code>{" "}
-                  field in our schema for a human to fill in, by design.
-                </p>
-              </div>
-            </Card>
-          </Reveal>
-        </div>
-      </section>
-
-      <section id="faq" className="px-6 py-20 sm:px-8">
-        <div className="mx-auto max-w-3xl">
-          <Reveal>
-            <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">Questions</p>
-            <h2 className="font-display mt-2 text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl">
-              Frequently asked questions
-            </h2>
-          </Reveal>
-          <div className="mt-8 divide-y divide-slate-200 rounded-2xl border border-slate-200">
+      {/* ---------------- FAQ ---------------- */}
+      <section id="faq" className="px-6 py-16 sm:px-8 lg:py-16">
+        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:gap-16">
+          <div>
+            <SectionHead kicker="Questions" title="What founders ask first." />
+            <p className="mt-4 text-base leading-relaxed text-slate-600">
+              Can't find your answer? Write to{" "}
+              <a href="mailto:info@birrwaqf.org" className="font-semibold text-primary-700 hover:text-primary-800">
+                info@birrwaqf.org
+              </a>
+              .
+            </p>
+          </div>
+          <div className="border-t border-slate-200">
             {FAQ_ITEMS.map((item, index) => (
-              <Reveal key={item.question} delayMs={index * 40}>
-                <details className="group px-6 py-1 open:pb-4 sm:px-8">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-left text-base font-medium text-slate-900 marker:content-none">
-                    {item.question}
-                    <IconChevronDown className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <p className="text-sm leading-relaxed text-slate-600">{item.answer}</p>
-                </details>
-              </Reveal>
+              <details key={item.question} className="group border-b border-slate-200" open={index === 0}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-4 text-left text-base font-semibold text-slate-900 marker:content-none sm:text-[17px]">
+                  {item.question}
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 text-primary-700 transition-transform group-open:rotate-45 motion-reduce:transition-none">
+                    <span aria-hidden="true" className="text-lg leading-none">+</span>
+                  </span>
+                </summary>
+                <p className="-mt-1 max-w-2xl pb-5 text-[15px] leading-relaxed text-slate-600">{item.answer}</p>
+              </details>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="px-6 pb-24 pt-4 sm:px-8">
-        <Reveal className="mx-auto max-w-4xl">
-          <div className="relative overflow-hidden rounded-2xl px-8 py-14 text-center sm:px-16" style={{ backgroundImage: GRADIENT }}>
-            <div
-              className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-white/10 blur-3xl"
-              aria-hidden="true"
-            />
-            <h2 className="font-display relative text-2xl font-medium tracking-tight text-white sm:text-3xl">
-              Ready to establish your Waqf Fund?
-            </h2>
-            <p className="relative mx-auto mt-3 max-w-md text-sm leading-relaxed text-white/80">
-              No approval gate, no Birr staff involvement to get started — just your Foundation, your first Waqf
-              Fund, and a trustee relationship that begins the moment you create it.
-            </p>
-            <div className="relative mt-7 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-              <Link href="/sign-up" className="w-full sm:w-auto">
-                <Button variant="secondary" className="w-full">
-                  Sign up
-                </Button>
-              </Link>
-              <Link href="/sign-in" className="text-sm font-medium text-white/80 hover:text-white">
-                Already have an account? Sign in →
-              </Link>
+      {/* ---------------- Closing call to action ---------------- */}
+      <section className="px-6 pb-16 sm:px-8">
+        <Reveal className="mx-auto max-w-6xl">
+          <div className="relative overflow-hidden rounded-3xl px-8 py-11 sm:px-12 sm:py-12" style={{ backgroundImage: GRADIENT }}>
+            <GeometricPattern className="pointer-events-none absolute inset-0 h-full w-full text-accent-400/[0.1]" />
+            <div className="relative grid items-center gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+              <div>
+                <h2 className="font-display text-3xl font-medium tracking-tight text-white text-balance sm:text-4xl">Ready to establish your Waqf Fund?</h2>
+                <p className="mt-3 max-w-xl text-base leading-relaxed text-primary-100/85">
+                  No approval gate and no staff appointment to get started — just your Foundation, your first Waqf Fund, and a trustee
+                  relationship that begins the moment you create it.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
+                <Link
+                  href="/sign-up"
+                  className="inline-flex items-center justify-center rounded-xl bg-accent-500 px-6 py-3.5 text-base font-semibold text-primary-950 transition-colors hover:bg-accent-300"
+                >
+                  Establish your Waqf Fund
+                </Link>
+                <Link
+                  href="/sign-in"
+                  className="inline-flex items-center justify-center rounded-xl border border-white/25 px-6 py-3.5 text-base font-semibold text-white transition-colors hover:border-white/50 hover:bg-white/10"
+                >
+                  Sign in
+                </Link>
+              </div>
             </div>
           </div>
         </Reveal>
@@ -730,77 +579,166 @@ export default function MarketingHome({
   );
 }
 
-// Cycles through a short list of phrases in place — each one fades/
-// slides in via a CSS keyframe (globals.css's own rotate-word-in) that
-// re-plays because `key={index}` forces React to re-mount the <span>
-// on every change, not because any class gets toggled by hand. The
-// interval itself is skipped under prefers-reduced-motion (same check
-// SiteChrome's own useInView makes for Reveal) — auto-changing text is
-// exactly the kind of motion that preference exists to turn off, not
-// just the transition between changes.
-function RotatingPhrase({ phrases, intervalMs = 2600 }: { phrases: string[]; intervalMs?: number }) {
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const id = window.setInterval(() => setIndex((i) => (i + 1) % phrases.length), intervalMs);
-    return () => window.clearInterval(id);
-  }, [phrases, intervalMs]);
-
+// `split` puts the lead beside the title on wide screens rather than under
+// it, so a section's heading takes one band and the content fits on screen.
+function SectionHead({ kicker, title, lead, aside, split }: { kicker: string; title: string; lead?: string; aside?: ReactNode; split?: boolean }) {
+  const heading = (
+    <>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent-700">{kicker}</p>
+      <h2 className="mt-3 font-display text-3xl font-medium leading-[1.1] tracking-tight text-slate-900 text-balance sm:text-4xl">{title}</h2>
+    </>
+  );
+  const leadText = lead && <p className="text-base leading-relaxed text-slate-600 text-pretty sm:text-[17px]">{lead}</p>;
+  if (split) {
+    return (
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-end lg:gap-12">
+        <div>{heading}</div>
+        {leadText}
+      </div>
+    );
+  }
   return (
-    <span
-      key={index}
-      className="inline-block motion-safe:animate-[rotate-word-in_500ms_ease-out] font-semibold bg-gradient-to-r from-accent-300 to-accent-500 bg-clip-text text-transparent"
-    >
-      {phrases[index]}
-    </span>
+    <div className={aside ? "flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between" : undefined}>
+      <div className="max-w-2xl">
+        {heading}
+        {leadText && <div className="mt-3.5">{leadText}</div>}
+      </div>
+      {aside && <div className="shrink-0">{aside}</div>}
+    </div>
   );
 }
 
-// Real slide, not a visibility toggle — both panels sit side by side in
-// one 200%-wide flex row, translated by exactly one panel-width per
-// click (overflow-hidden on the outer div crops whichever isn't active).
-// Plain flexbox alone leaves the wrapper as tall as the TALLER of the
-// two panels even while showing the shorter one — a flex row's own
-// height always follows its tallest child regardless of which is
-// visible — so the outer div's own height is measured from the active
-// panel and animated to match, closing that gap instead of leaving dead
-// space below the shorter panel. Re-measures on every resize too, since
-// text reflow at a different width changes each panel's own height.
-function SlideTrack({ active, left, right, className = "" }: { active: "left" | "right"; left: ReactNode; right: ReactNode; className?: string }) {
-  const leftRef = useRef<HTMLDivElement>(null);
-  const rightRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number>();
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const el = active === "left" ? leftRef.current : rightRef.current;
-      if (el) setHeight(el.offsetHeight);
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [active, left, right]);
-
+function CheckList({ items, tone }: { items: string[]; tone: "dark" | "light" }) {
   return (
-    // motion-reduce:transition-none on both layers — same convention
-    // Reveal (SiteChrome.tsx) already uses, applied here too (found in a
-    // codebase audit: this component had no reduced-motion handling at
-    // all, so switching tabs always animated regardless of OS setting).
-    // The height/position still update instantly; only the animation
-    // between them is skipped.
-    <div className={`overflow-hidden transition-[height] duration-500 ease-in-out motion-reduce:transition-none ${className}`} style={{ height }}>
-      <div
-        className="flex transition-transform duration-500 ease-in-out motion-reduce:transition-none"
-        style={{ width: "200%", transform: active === "left" ? "translateX(0%)" : "translateX(-50%)" }}
+    <ul className="mt-5 space-y-2.5">
+      {items.map((item) => (
+        <li key={item} className={`flex items-start gap-2.5 text-[15px] ${tone === "dark" ? "text-primary-50" : "text-slate-800"}`}>
+          <IconCheckCircle className={`mt-0.5 h-[18px] w-[18px] shrink-0 ${tone === "dark" ? "text-accent-300" : "text-primary-600"}`} />
+          {item}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// A card overlapping the monitor's edge — two of them narrate the two
+// promises the product makes (dual authorisation; a preserved corpus).
+// Wide screens only: on narrower ones they would cover the dashboard.
+function FloatingNote({
+  className,
+  tone,
+  title,
+  line,
+  note,
+  icon,
+}: {
+  className: string;
+  tone: "primary" | "accent";
+  title: string;
+  line: string;
+  note: string;
+  icon: ReactNode;
+}) {
+  return (
+    <div
+      className={`absolute z-10 hidden w-56 gap-2.5 rounded-xl bg-white p-3 shadow-[0_26px_50px_-20px_rgba(8,39,32,0.5)] ring-1 ring-slate-900/5 xl:flex ${className}`}
+      aria-hidden="true"
+    >
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+          tone === "primary" ? "bg-primary-50 text-primary-700" : "bg-accent-50 text-accent-700"
+        }`}
       >
-        <div ref={leftRef} className="w-1/2 shrink-0 px-1 self-start">
-          {left}
-        </div>
-        <div ref={rightRef} className="w-1/2 shrink-0 px-1 self-start">
-          {right}
-        </div>
+        {icon}
+      </span>
+      <div>
+        <p className="text-[12.5px] font-bold leading-tight text-slate-900">{title}</p>
+        <p className="mt-0.5 text-xs text-slate-600">{line}</p>
+        <p className="mt-1 text-[11px] leading-snug text-slate-500">{note}</p>
       </div>
     </div>
+  );
+}
+
+// Founder → corpus → beneficiaries, with the trustee administering all
+// three — the same figure as page 3 of the Waqf Founder's Handbook.
+function WaqfDiagram() {
+  const b = { fontSize: 9.5, fontWeight: 600, fill: "#113f33" };
+  const s = { fontSize: 8, fill: "#475569" };
+  const ar = { fontSize: 8, fontStyle: "italic" as const, fontWeight: 600, fill: "#7c5514" };
+  return (
+    <svg
+      viewBox="0 0 360 150"
+      className="block h-auto w-full"
+      role="img"
+      aria-label="How a waqf works: the founder endows a corpus that is never spent; what it produces reaches the beneficiaries; Birr administers it all as trustee."
+    >
+      <defs>
+        <marker id="home-waqf-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0 0 10 5 0 10z" fill="#17755d" />
+        </marker>
+      </defs>
+      <rect x="1" y="22" width="84" height="50" rx="7" fill="#eff9f6" stroke="#aee1d1" />
+      <text x="43" y="44" textAnchor="middle" style={b}>Founder</text>
+      <text x="43" y="59" textAnchor="middle" style={ar}>waqif</text>
+      <path d="M88 47H129" fill="none" stroke="#17755d" strokeWidth="1.4" markerEnd="url(#home-waqf-arrow)" />
+      <text x="108.5" y="39" textAnchor="middle" style={s}>endows</text>
+      <rect x="133" y="14" width="94" height="66" rx="8" fill="#113f33" />
+      <text x="180" y="40" textAnchor="middle" style={{ ...b, fill: "#fff" }}>Corpus</text>
+      <text x="180" y="54" textAnchor="middle" style={{ ...ar, fill: "#f3d888" }}>mawquf</text>
+      <text x="180" y="68" textAnchor="middle" style={{ ...s, fill: "#d7f0e8" }}>never spent</text>
+      <path d="M230 47H271" fill="none" stroke="#17755d" strokeWidth="1.4" markerEnd="url(#home-waqf-arrow)" />
+      <text x="250.5" y="39" textAnchor="middle" style={s}>produces</text>
+      <rect x="275" y="22" width="84" height="50" rx="7" fill="#eff9f6" stroke="#aee1d1" />
+      <text x="317" y="44" textAnchor="middle" style={b}>Beneficiaries</text>
+      <text x="317" y="59" textAnchor="middle" style={ar}>mawquf alayh</text>
+      <path d="M43 74V100M180 82V100M317 74V100" fill="none" stroke="#e6c46f" strokeWidth="1.2" strokeDasharray="2 2.5" />
+      <rect x="1" y="100" width="358" height="46" rx="7" fill="#fdf8ec" stroke="#f3d888" />
+      <text x="180" y="119" textAnchor="middle" style={{ ...b, fill: "#7c5514" }}>
+        Trustee · <tspan style={{ fontStyle: "italic" }}>mutawalli</tspan>
+      </text>
+      <text x="180" y="134" textAnchor="middle" style={s}>
+        Birr administers and preserves the waqf — after its founder, too
+      </text>
+    </svg>
+  );
+}
+
+// Dual authorisation: proposer, a different approver, then the action —
+// and the refused path when the proposer tries to approve their own.
+function DualAuthorisationDiagram() {
+  const b = { fontSize: 9.5, fontWeight: 600, fill: "#113f33" };
+  const s = { fontSize: 8, fill: "#475569" };
+  return (
+    <svg
+      viewBox="0 0 360 134"
+      className="block h-auto w-full"
+      role="img"
+      aria-label="Officer A proposes, a different Officer B approves, and only then is the action carried out and recorded. If Officer A tries to approve their own proposal, the system refuses to record it."
+    >
+      <defs>
+        <marker id="home-auth-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0 0 10 5 0 10z" fill="#17755d" />
+        </marker>
+        <marker id="home-auth-refused" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0 0 10 5 0 10z" fill="#a23b2a" />
+        </marker>
+      </defs>
+      <rect x="1" y="10" width="92" height="50" rx="7" fill="#eff9f6" stroke="#aee1d1" />
+      <text x="47" y="31" textAnchor="middle" style={b}>Officer A</text>
+      <text x="47" y="46" textAnchor="middle" style={s}>proposes</text>
+      <path d="M96 35H130" fill="none" stroke="#17755d" strokeWidth="1.4" markerEnd="url(#home-auth-arrow)" />
+      <rect x="134" y="10" width="92" height="50" rx="7" fill="#eff9f6" stroke="#aee1d1" />
+      <text x="180" y="31" textAnchor="middle" style={b}>Officer B</text>
+      <text x="180" y="46" textAnchor="middle" style={s}>reviews &amp; approves</text>
+      <path d="M229 35H263" fill="none" stroke="#17755d" strokeWidth="1.4" markerEnd="url(#home-auth-arrow)" />
+      <rect x="267" y="10" width="92" height="50" rx="7" fill="#113f33" />
+      <text x="313" y="31" textAnchor="middle" style={{ ...b, fill: "#fff" }}>Carried out</text>
+      <text x="313" y="46" textAnchor="middle" style={{ ...s, fill: "#d7f0e8" }}>and recorded</text>
+      <path d="M47 62V107H130" fill="none" stroke="#a23b2a" strokeWidth="1.3" strokeDasharray="3 2.6" markerEnd="url(#home-auth-refused)" />
+      <rect x="134" y="84" width="225" height="46" rx="7" fill="#fbeeeb" stroke="#e7b4aa" />
+      <text x="246.5" y="103" textAnchor="middle" style={s}>Officer A tries to approve their own proposal</text>
+      <text x="246.5" y="119" textAnchor="middle" style={{ ...b, fill: "#a23b2a" }}>The system refuses to record it</text>
+    </svg>
   );
 }

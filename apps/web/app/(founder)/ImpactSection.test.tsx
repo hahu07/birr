@@ -52,9 +52,10 @@ describe("ImpactSection — numbers", () => {
 });
 
 describe("ImpactSection — photo wall", () => {
-  it("shows three different labelled illustrations when there are no photos yet — never an empty hole", () => {
-    render(<ImpactSection impact={impact()} photos={[]} />);
-    for (const label of ["Investment funds", "Asset funds", "Project funds"]) expect(screen.getByText(label)).toBeTruthy();
+  it("leaves the wall out entirely when there are no photos yet, rather than filling it with placeholder art", () => {
+    const { container } = render(<ImpactSection impact={impact()} photos={[]} />);
+    expect(screen.queryAllByRole("img")).toHaveLength(0);
+    expect(container.querySelector(".impact-marquee")).toBeNull();
   });
 
   it("with a few photos, shows each once in a grid, labelled from the real event and linking to its vault", () => {
@@ -63,7 +64,6 @@ describe("ImpactSection — photo wall", () => {
     expect(img.getAttribute("src")).toBe("http://x/p1.jpg");
     expect(img.closest("a")?.getAttribute("href")).toBe("/vaults/vault-1");
     expect(screen.getAllByRole("img")).toHaveLength(3);
-    expect(screen.queryByText("Investment funds")).toBeNull(); // real photos replace the placeholders
   });
 
   it("includes the field team's caption in the description, and the right label per kind", () => {

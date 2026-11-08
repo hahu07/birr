@@ -11,7 +11,7 @@
 // WaqfsService.getLifecycleStatus's financialReporting stage checks.
 import { useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
-import { formatAmount, formatDate } from "../../../../lib/format";
+import { formatAmount, formatDate, formatMoney } from "../../../../lib/format";
 import type { FinancialReport } from "../../../../lib/types";
 import {
   Alert,
@@ -131,18 +131,17 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
           {report && (
             <Button
               variant="secondary"
-              className="px-3 py-1.5 text-xs"
               onClick={() => downloadCsv(report, report.waqf.name)}
             >
               Download CSV
             </Button>
           )}
           {report && (
-            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => window.print()}>
+            <Button variant="secondary" onClick={() => window.print()}>
               Print / Save as PDF
             </Button>
           )}
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={loading} onClick={generate}>
+          <Button disabled={loading} onClick={generate}>
             {loading ? "Generating…" : report ? "Regenerate" : "Generate report"}
           </Button>
         </div>
@@ -161,9 +160,10 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
             items={[
               {
                 label: "Corpus target",
-                value: report.waqf.corpusAmount
-                  ? `${report.waqf.corpusCurrency} ${formatAmount(report.waqf.corpusAmount)}`
-                  : "Not declared",
+                value:
+                  report.waqf.corpusAmount && report.waqf.corpusCurrency
+                    ? formatMoney(report.waqf.corpusAmount, report.waqf.corpusCurrency)
+                    : "Not declared",
               },
               { label: "Jurisdiction", value: report.waqf.jurisdiction },
               { label: "Generated", value: formatDate(report.generatedAt) },
@@ -175,12 +175,12 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
             <div>
               <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Raised</p>
               {report.raised.length === 0 ? (
-                <p className="text-sm text-slate-500">Nothing confirmed yet.</p>
+                <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">Nothing confirmed yet.</p>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {report.raised.map((r) => (
                     <li key={r.currency} className="font-medium text-slate-900">
-                      {r.currency} {formatAmount(r.totalAmount)}
+                      {formatMoney(r.totalAmount, r.currency)}
                     </li>
                   ))}
                 </ul>
@@ -189,12 +189,12 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
             <div>
               <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Distributed</p>
               {report.distributed.length === 0 ? (
-                <p className="text-sm text-slate-500">Nothing paid out yet.</p>
+                <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">Nothing paid out yet.</p>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {report.distributed.map((d) => (
                     <li key={d.currency} className="font-medium text-slate-900">
-                      {d.currency} {formatAmount(d.totalAmount)}
+                      {formatMoney(d.totalAmount, d.currency)}
                     </li>
                   ))}
                 </ul>
@@ -207,7 +207,7 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
               By cause ({report.distributionsByCause.length})
             </p>
             {report.distributionsByCause.length === 0 ? (
-              <p className="text-sm text-slate-500">No paid distributions yet.</p>
+              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No paid distributions yet.</p>
             ) : (
               <Table>
                 <TableHead>
@@ -240,7 +240,7 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
               <ul className="space-y-1 text-sm">
                 {report.proceeds.map((p) => (
                   <li key={p.currency} className="font-medium text-slate-900">
-                    {p.currency} {formatAmount(p.totalAmount)} recorded
+                    {formatMoney(p.totalAmount, p.currency)} recorded
                   </li>
                 ))}
               </ul>
@@ -252,7 +252,7 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
               Cause allocations ({report.causeAllocations.length})
             </p>
             {report.causeAllocations.length === 0 ? (
-              <p className="text-sm text-slate-500">No causes selected for this waqf yet.</p>
+              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No causes selected for this waqf yet.</p>
             ) : (
               <Table>
                 <TableHead>

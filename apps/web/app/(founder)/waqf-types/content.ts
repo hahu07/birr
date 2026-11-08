@@ -37,7 +37,7 @@ export const WAQF_TYPE_CONTENT: Record<WaqfTypeSlug, WaqfTypeContent> = {
     label: "Investment",
     article: "an",
     tagline: "Corpus invested, income spent — perpetuity by design.",
-    summary: "Corpus stays invested — distributable income funds the causes you've allocated it to.",
+    summary: "Corpus stays invested — only its returns are spent, funding the causes you've chosen.",
     icon: IconBriefcase,
     illustration: InvestmentIllustration,
     description:
@@ -75,7 +75,7 @@ export const WAQF_TYPE_CONTENT: Record<WaqfTypeSlug, WaqfTypeContent> = {
     label: "Project",
     article: "a",
     tagline: "One initiative, however many Founders stand behind it.",
-    summary: "A defined initiative — the one type more than one Founder can establish jointly.",
+    summary: "A defined initiative, built or delivered to a stated scope — a natural fit for a shared endowment.",
     icon: IconUsers,
     illustration: ProjectIllustration,
     description:

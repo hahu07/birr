@@ -31,7 +31,7 @@ export default function TopUpPage() {
   }, [params.id]);
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl">
       <PageHeader
         back={{ href: `/portfolio/${params.id}`, label: waqf?.name ?? "Back to fund" }}
         eyebrow="Add funds"

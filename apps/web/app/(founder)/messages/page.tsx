@@ -53,7 +53,7 @@ export default function FounderMessagesInboxPage() {
   const withoutConversation = (foundations ?? []).filter((f) => !inbox?.some((row) => row.foundation.id === f.id));
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="max-w-4xl">
       <PageHeader
         eyebrow="Messages"
         title="Conversations with Birr"

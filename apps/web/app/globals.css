@@ -33,34 +33,6 @@
   font-family: var(--font-sans);
 }
 
-/* MarketingHome's hero orbs — referenced via Tailwind's arbitrary
-   `animate-[float-slow_..]` utility, gated by the `motion-safe:` variant
-   at each call site so this never runs under prefers-reduced-motion. */
-@keyframes float-slow {
-  0%,
-  100% {
-    transform: translate(0, 0);
-  }
-  50% {
-    transform: translate(-2%, -6%);
-  }
-}
-
-/* MarketingHome's hero subheadline — RotatingPhrase re-mounts a new
-   <span> (via a changing `key`) every few seconds; this keyframe is
-   what actually plays on each mount, gated by `motion-safe:` at the
-   call site the same as float-slow above. */
-@keyframes rotate-word-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* Homepage "Our impact" photo wall (app/(founder)/ImpactSection.tsx): two rows
    of field photos drifting in opposite directions. Each track holds the same
    set of photos twice, so sliding it by exactly half loops with no jump. Pauses

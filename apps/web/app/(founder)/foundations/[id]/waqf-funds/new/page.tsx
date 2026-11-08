@@ -42,7 +42,7 @@ export default function NewWaqfFundPage() {
   }, [foundationId]);
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div>
       <PageHeader
         back={{ href: foundation ? `/foundations/${foundationId}` : "/portfolio", label: foundation ? foundation.name : "Portfolio" }}
         eyebrow="New Waqf Fund"

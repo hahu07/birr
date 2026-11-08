@@ -148,10 +148,10 @@ export function CausesSection({
   const hasSplit = categories !== null && suggested.length > 0 && otherCategories.length > 0;
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
+    <div className="mt-8 border-t border-slate-100 pt-7">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Causes</p>
+          <p className="mb-1 text-[15px] font-semibold text-slate-900">Causes</p>
           <p className="text-sm text-slate-500">Pick which of Birr's standard causes apply to this fund.</p>
         </div>
         {suggestState === "idle" && (
@@ -297,8 +297,8 @@ export function CausesSection({
 
       {!error && catalogCauses.length > 0 && (
         <div className="mt-6 border-t border-slate-100 pt-5">
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Allocation</p>
-          <p className="mb-3 text-sm text-slate-500">
+          <p className="mb-1 text-[15px] font-semibold text-slate-900">Allocation</p>
+          <p className="mb-4 text-sm text-slate-500">
             {waqfType === "investment"
               ? // Update, 2026-09-14 — for Investment funds, corpus allocation is
                 // a preservation record, not a spending ceiling: only staff-set
@@ -309,7 +309,7 @@ export function CausesSection({
           </p>
 
           {pool === 0 ? (
-            <p className="text-sm text-slate-500">Nothing raised yet — nothing to allocate until this fund receives a contribution.</p>
+            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">Nothing raised yet — nothing to allocate until this fund receives a contribution.</p>
           ) : (
             <>
               <p className="mb-3 text-sm text-slate-600">
@@ -545,7 +545,7 @@ function CauseCheckboxList({
   onToggle: (category: CauseCategory) => void;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="grid gap-2 sm:grid-cols-2">
       {buildCauseTree(categories).map((node) => (
         <CauseTreeNode key={node.category.id} node={node} causes={causes} pendingCategoryId={pendingCategoryId} onToggle={onToggle} />
       ))}
@@ -575,12 +575,12 @@ function CauseTreeNode({
     );
   }
   return (
-    <div>
+    <div className="sm:col-span-2">
       <p className="flex items-center gap-1.5 px-1 py-1 text-sm font-medium text-slate-700">
         {node.category.icon && <span>{node.category.icon}</span>}
         {node.category.name}
       </p>
-      <div className="ml-4 space-y-1.5 border-l border-slate-200 pl-3">
+      <div className="ml-4 grid gap-2 border-l border-slate-200 pl-3 sm:grid-cols-2">
         {node.children.map((child) => (
           <CauseTreeNode key={child.category.id} node={child} causes={causes} pendingCategoryId={pendingCategoryId} onToggle={onToggle} />
         ))}
@@ -604,8 +604,8 @@ function CauseCheckbox({
   const isPending = pendingCategoryId === category.id;
   return (
     <label
-      className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 text-sm transition-colors ${
-        isSelected ? "border-primary-200 bg-primary-50" : "border-slate-200 bg-white hover:bg-slate-50"
+      className={`flex h-full cursor-pointer items-start gap-3 rounded-xl border px-3.5 py-3 text-sm transition-colors ${
+        isSelected ? "border-primary-300 bg-primary-50 ring-1 ring-inset ring-primary-200" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
       } ${isPending ? "opacity-60" : ""}`}
     >
       <input
@@ -620,7 +620,7 @@ function CauseCheckbox({
           {category.icon && <span className="mr-1.5">{category.icon}</span>}
           {category.name}
         </span>
-        {category.description && <span className="block text-slate-500">{category.description}</span>}
+        {category.description && <span className="mt-0.5 block text-[13px] leading-snug text-slate-500">{category.description}</span>}
       </span>
     </label>
   );
