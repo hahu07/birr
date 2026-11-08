@@ -271,7 +271,7 @@ export function WaqfFundForm({
         two-column grid when the guide is shown (!waqfAlreadyExists) —
         otherwise a single centered column.
       */}
-      <div className={!waqfAlreadyExists ? "grid gap-6 lg:grid-cols-[1fr_320px] lg:items-start" : "mx-auto max-w-2xl"}>
+      <div className={!waqfAlreadyExists ? "grid gap-6 lg:grid-cols-[1fr_320px] lg:items-start" : "max-w-2xl"}>
         <div className="space-y-6">
           {!waqfAlreadyExists && (
             <FormSection step={1} title="Fund details" description="What this Waqf Fund is, and the jurisdiction it's governed under.">

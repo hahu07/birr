@@ -38,7 +38,7 @@ export default function WaqfDeedRedirectPage() {
   }, [params.id, router]);
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="max-w-3xl">
       {error ? (
         <Alert tone="danger" title="Couldn't load this deed" className="mt-6">
           {error}

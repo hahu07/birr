@@ -104,19 +104,23 @@ export function ProgressBar({
   );
 }
 
-/** Decorative 8-point-star lattice — a quiet nod to Islamic geometric art. */
+/**
+ * Decorative khatam lattice — interlaced 8-point stars joined edge to edge,
+ * the same motif as Birr's printed literature, so the portal, the public
+ * site and the handbook share one visual signature.
+ */
 export function GeometricPattern({ className = "" }: { className?: string }) {
   const id = useId();
   return (
     <svg className={className} aria-hidden="true">
       <defs>
         <pattern id={id} width="56" height="56" patternUnits="userSpaceOnUse">
-          <path
-            d="M28 6 34 22 50 28 34 34 28 50 22 34 6 28 22 22Z M28 14 32 24 42 28 32 32 28 42 24 32 14 28 24 24Z"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1"
-          />
+          <g fill="none" stroke="currentColor" strokeWidth="1">
+            <path d="M28 9.33 46.67 28 28 46.67 9.33 28Z" />
+            <path d="M14.8 14.8h26.4v26.4H14.8Z" />
+            <path d="M28 0v9.33M56 28h-9.33M28 56v-9.33M0 28h9.33" />
+            <circle cx="28" cy="28" r="4.9" />
+          </g>
         </pattern>
       </defs>
       <rect width="100%" height="100%" fill={`url(#${id})`} />

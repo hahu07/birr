@@ -41,9 +41,9 @@ export function ProceedsSection({ waqfId }: { waqfId: string }) {
   const total = (proceeds ?? []).reduce((sum, p) => sum + Number(p.amount), 0);
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Proceeds</p>
-      <p className="mb-3 text-sm text-slate-500">
+    <div className="mt-8 border-t border-slate-100 pt-7">
+      <p className="mb-1 text-[15px] font-semibold text-slate-900">Proceeds</p>
+      <p className="mb-4 text-sm text-slate-500">
         {/* Update, 2026-09-14 — "alongside your own corpus allocation" was
             the pre-2026-09-04 additive model; corpus no longer counts
             toward what a distribution can draw against for Investment
@@ -66,12 +66,12 @@ export function ProceedsSection({ waqfId }: { waqfId: string }) {
       )}
 
       {!error && proceeds !== null && proceeds.length === 0 && (
-        <p className="text-sm text-slate-500">No proceeds recorded yet.</p>
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No proceeds recorded yet.</p>
       )}
 
       {!error && proceeds !== null && proceeds.length > 0 && (
         <>
-          <p className="mb-3 text-sm text-slate-500">
+          <p className="mb-4 text-sm text-slate-500">
             Total recorded: <span className="font-medium text-slate-900">{formatAmount(total)}</span>
           </p>
           <Table>

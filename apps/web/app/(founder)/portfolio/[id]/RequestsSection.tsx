@@ -64,10 +64,10 @@ export function RequestsSection({
   }, [load]);
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
+    <div className="mt-8 border-t border-slate-100 pt-7">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Requests</p>
+          <p className="mb-1 text-[15px] font-semibold text-slate-900">Requests</p>
           <p className="text-sm text-slate-500">
             Ask Birr's staff for a distribution, an investment change, or another decision on this fund.
           </p>
@@ -106,7 +106,7 @@ export function RequestsSection({
       )}
 
       {!error && requests !== null && requests.length === 0 && !showForm && (
-        <p className="mt-3 text-sm text-slate-500">No requests submitted yet.</p>
+        <p className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No requests submitted yet.</p>
       )}
 
       {!error && requests !== null && requests.length > 0 && (

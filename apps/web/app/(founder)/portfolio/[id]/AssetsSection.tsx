@@ -8,7 +8,7 @@
 // aggregate — see AssetsService.listForFounder's own comment.
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
-import { formatAmount, formatDate, humanize } from "../../../../lib/format";
+import { formatDate, formatMoney, humanize } from "../../../../lib/format";
 import type { Asset } from "../../../../lib/types";
 import { Alert, Badge, Skeleton, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 
@@ -31,9 +31,9 @@ export function AssetsSection({ waqfId }: { waqfId: string }) {
   }, [waqfId]);
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Assets</p>
-      <p className="mb-3 text-sm text-slate-500">What this fund actually holds.</p>
+    <div className="mt-8 border-t border-slate-100 pt-7">
+      <p className="mb-1 text-[15px] font-semibold text-slate-900">Assets</p>
+      <p className="mb-4 text-sm text-slate-500">What this fund actually holds.</p>
 
       {error && (
         <Alert tone="danger" title="Couldn't load assets">
@@ -49,7 +49,7 @@ export function AssetsSection({ waqfId }: { waqfId: string }) {
       )}
 
       {!error && assets !== null && assets.length === 0 && (
-        <p className="text-sm text-slate-500">No assets registered yet.</p>
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No assets registered yet.</p>
       )}
 
       {!error && assets !== null && assets.length > 0 && (
@@ -68,7 +68,7 @@ export function AssetsSection({ waqfId }: { waqfId: string }) {
               <TableRow key={asset.id}>
                 <TableCell className="font-medium text-slate-900">{asset.name}</TableCell>
                 <TableCell className="text-slate-500">{humanize(asset.category)}</TableCell>
-                <TableCell className="text-slate-500">{asset.currency} {formatAmount(asset.estimatedValue)}</TableCell>
+                <TableCell className="tabular-nums text-slate-700">{formatMoney(asset.estimatedValue, asset.currency)}</TableCell>
                 <TableCell>
                   <Badge tone={asset.status === "active" ? "success" : "neutral"}>{humanize(asset.status)}</Badge>
                 </TableCell>

@@ -16,7 +16,7 @@ export default function NewFoundationPage() {
   const router = useRouter();
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="max-w-2xl">
       <PageHeader
         back={{ href: "/portfolio", label: "Portfolio" }}
         eyebrow="New Foundation"

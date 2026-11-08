@@ -36,9 +36,9 @@ export function InvestmentsSection({ waqfId }: { waqfId: string }) {
   }, [waqfId]);
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Investments</p>
-      <p className="mb-3 text-sm text-slate-500">How this fund's value is allocated.</p>
+    <div className="mt-8 border-t border-slate-100 pt-7">
+      <p className="mb-1 text-[15px] font-semibold text-slate-900">Investments</p>
+      <p className="mb-4 text-sm text-slate-500">How this fund's value is allocated.</p>
 
       {error && (
         <Alert tone="danger" title="Couldn't load investments">
@@ -54,7 +54,7 @@ export function InvestmentsSection({ waqfId }: { waqfId: string }) {
       )}
 
       {!error && investments !== null && investments.length === 0 && (
-        <p className="text-sm text-slate-500">No investments allocated yet.</p>
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No investments allocated yet.</p>
       )}
 
       {!error && investments !== null && investments.length > 0 && (

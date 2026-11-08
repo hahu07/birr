@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatDate, formatMoney, humanize } from "../../../../lib/format";
 import { markNotificationsReadForEntity } from "../../../../lib/notifications";
+import { linkButton } from "../../_components/ui";
 import type { Contribution, Waqf } from "../../../../lib/types";
 import {
   Alert,
@@ -60,12 +61,12 @@ export function ContributionsSection({ waqf, onCorpusIncreased }: { waqf: Waqf; 
   const percent = target ? Math.min(100, (raised / target) * 100) : null;
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
+    <div className="mt-8 border-t border-slate-100 pt-7">
       {/* flex-col below sm — the two buttons beside the funding summary
           squeezed it to one or two words per line on a phone. */}
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Funding</p>
+          <p className="mb-1 text-[15px] font-semibold text-slate-900">Funding</p>
           <p className="text-sm text-slate-500">
             {target
               ? `${humanize(waqf.fundingPlan)} — ${formatMoney(raised, waqf.corpusCurrency ?? "", { decimals: 0 })} of ${formatMoney(
@@ -81,16 +82,13 @@ export function ContributionsSection({ waqf, onCorpusIncreased }: { waqf: Waqf; 
             <Button
               type="button"
               variant="secondary"
-              className="px-3 py-1.5 text-xs"
               onClick={() => setShowIncreaseTarget((v) => !v)}
             >
               {showIncreaseTarget ? "Cancel" : "Increase target"}
             </Button>
           )}
-          <Link href={`/portfolio/${waqf.id}/top-up`}>
-            <Button type="button" variant="secondary" className="px-3 py-1.5 text-xs">
-              Top up
-            </Button>
+          <Link href={`/portfolio/${waqf.id}/top-up`} className={linkButton.secondary}>
+            Top up
           </Link>
         </div>
       </div>
@@ -128,7 +126,7 @@ export function ContributionsSection({ waqf, onCorpusIncreased }: { waqf: Waqf; 
       )}
 
       {!error && contributions !== null && contributions.length === 0 && (
-        <p className="text-sm text-slate-500">No contributions yet.</p>
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No contributions yet.</p>
       )}
 
       {!error && contributions !== null && contributions.length > 0 && (

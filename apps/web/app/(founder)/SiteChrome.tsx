@@ -98,51 +98,85 @@ function useScrolled(thresholdPx = 8) {
 // nav without needing to know which page it's currently rendering.
 const NAV_LINKS = [
   { href: "/#how-it-works", label: "How it works" },
+  { href: "/#waqf-types", label: "Waqf funds" },
   { href: "/vaults", label: "Support a cause" },
   { href: "/#governance", label: "Governance" },
-  { href: "/#ai", label: "AI" },
   { href: "/blog", label: "Learn" },
 ];
 
-export function SiteHeader() {
+// `dark` sits over the homepage's deep-teal hero (translucent, so the
+// hero's pattern shows through as it scrolls under); every other public
+// page keeps the default white bar.
+export function SiteHeader({ tone = "light" }: { tone?: "light" | "dark" }) {
   const scrolled = useScrolled();
+  const dark = tone === "dark";
   return (
     <header
-      className={`sticky top-0 z-50 bg-white/95 backdrop-blur transition-shadow ${
-        scrolled ? "shadow-sm border-b border-slate-200" : "border-b border-transparent"
+      className={`sticky top-0 z-50 backdrop-blur transition-shadow ${
+        dark
+          ? "border-b border-white/10 bg-primary-950/90"
+          : `bg-white/95 ${scrolled ? "border-b border-slate-200 shadow-sm" : "border-b border-transparent"}`
       }`}
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 sm:px-8">
         <Link href="/" className="flex items-center gap-2.5">
           <IconMark className="h-9 w-9" />
-          <span className="text-lg font-semibold tracking-tight text-slate-900">Birr</span>
+          <span className={`text-lg font-semibold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}>Birr</span>
         </Link>
         <nav className="hidden items-center gap-8 md:flex" aria-label="Page sections">
           {NAV_LINKS.map((link) => (
-            <Link key={link.href} href={link.href} className="text-sm font-medium text-slate-600 hover:text-slate-900">
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`text-sm font-medium ${dark ? "text-primary-100/80 hover:text-white" : "text-slate-600 hover:text-slate-900"}`}
+            >
               {link.label}
             </Link>
           ))}
         </nav>
         <div className="flex items-center gap-5">
-          <Link href="/sign-in" className="text-sm font-medium text-slate-600 hover:text-slate-900">
+          <Link
+            href="/sign-in"
+            className={`text-sm font-medium ${dark ? "text-primary-100/80 hover:text-white" : "text-slate-600 hover:text-slate-900"}`}
+          >
             Sign in
           </Link>
-          <Link href="/sign-up">
-            <Button variant="primary">Sign up</Button>
-          </Link>
+          {dark ? (
+            <Link
+              href="/sign-up"
+              className="inline-flex items-center rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-primary-950 shadow-sm shadow-accent-900/30 transition-colors hover:bg-accent-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-300"
+            >
+              <SignUpLabel />
+            </Link>
+          ) : (
+            <Link href="/sign-up">
+              <Button variant="primary">
+                <SignUpLabel />
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     </header>
   );
 }
 
+// Full call to action where there's room; plain "Sign up" on a phone,
+// where the longer label would crowd Sign in off the bar.
+function SignUpLabel() {
+  return (
+    <>
+      <span className="sm:hidden">Sign up</span>
+      <span className="hidden sm:inline">Establish a waqf</span>
+    </>
+  );
+}
+
 const FOOTER_PLATFORM_LINKS = [
-  { href: "/#waqf-types", label: "What Birr manages" },
   { href: "/#how-it-works", label: "How it works" },
+  { href: "/#waqf-types", label: "Waqf funds" },
   { href: "/vaults", label: "Support a cause" },
   { href: "/#governance", label: "Governance" },
-  { href: "/#ai", label: "AI" },
   { href: "/blog", label: "Learn" },
 ];
 
@@ -166,7 +200,7 @@ export function SiteFooter() {
           </Link>
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-500">
             A digital trustee for Islamic waqf — establish your own Waqf Fund, or support one of Birr's own Vaults.
-            Every decision runs through the same maker-checker governance either way.
+            Every payout runs under the same dual authorisation either way.
           </p>
         </div>
 
@@ -202,10 +236,11 @@ export function SiteFooter() {
         </FooterColumn>
       </div>
 
-      <div className="mx-auto mt-12 max-w-6xl border-t border-slate-100 pt-6">
+      <div className="mx-auto mt-12 flex max-w-6xl flex-col gap-2 border-t border-slate-100 pt-6 sm:flex-row sm:justify-between">
         <p className="text-xs text-slate-500">
           © {new Date().getFullYear()} Birr. Every governed action is recorded to an immutable audit trail.
         </p>
+        <p className="text-xs text-slate-500">Registered Incorporated Trustee · Corporate Affairs Commission, Nigeria</p>
       </div>
     </footer>
   );

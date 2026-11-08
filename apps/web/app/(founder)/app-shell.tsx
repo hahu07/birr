@@ -21,6 +21,7 @@ import { ROUTE_FOR_STEP, useOnboardingStatus } from "../../lib/onboarding";
 import { useNotifications } from "../../lib/notifications";
 import { formatRelativeTime } from "../../lib/format";
 import { OnboardingWizardChrome } from "./onboarding/OnboardingWizardChrome";
+import { GeometricPattern } from "./_components/ui";
 import {
   IconBriefcase,
   IconClock,
@@ -247,11 +248,27 @@ export function AppShell({ children }: { children: ReactNode }) {
             <IconMark className="h-8 w-8" />
             <span className="text-[15px] font-semibold tracking-tight text-slate-900">Birr</span>
           </Link>
-          <p className="hidden truncate text-sm text-slate-500 md:block">
-            <span className="text-slate-400">Founder Portal</span>
-            <span className="mx-2 text-slate-300">/</span>
-            <span className="font-medium text-slate-800">{sectionTitle(pathname)}</span>
-          </p>
+          <nav aria-label="Breadcrumb" className="hidden min-w-0 md:block">
+            <ol className="flex items-center truncate text-sm text-slate-500">
+              <li className="text-slate-400">Founder Portal</li>
+              {breadcrumbs(pathname).map((crumb, i, all) => (
+                <li key={`${i}-${crumb.label}`} className="flex min-w-0 items-center">
+                  <span className="mx-2 text-slate-300" aria-hidden="true">
+                    /
+                  </span>
+                  {crumb.href && i < all.length - 1 ? (
+                    <Link href={crumb.href} className="truncate transition-colors hover:text-primary-700">
+                      {crumb.label}
+                    </Link>
+                  ) : (
+                    <span className="truncate font-medium text-slate-800" aria-current={i === all.length - 1 ? "page" : undefined}>
+                      {crumb.label}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </nav>
           <NotificationBell
             notifications={notifications}
             unreadCount={unreadCount}
@@ -265,9 +282,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* pb-28 below md clears the fixed bottom tab bar. */}
         <main className="flex-1 px-4 pb-28 pt-6 sm:px-6 sm:pt-8 md:pb-12 lg:px-10 lg:pt-10 print:p-0">
           {/* max-w-6xl, matching the Ops Console shell's own content
-              width. Pages with their own narrower single-column form
-              (foundations/new, waqf-funds/new, portfolio/[id]) still cap
-              themselves further inside this. */}
+              width. Pages with a narrower single column (forms, deeds,
+              account, activity) cap their own width inside this but stay
+              left-aligned, so every page starts at the same edge. */}
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
@@ -287,12 +304,35 @@ function isActivePath(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-/** The top bar's "Founder Portal / {section}" label. */
-function sectionTitle(pathname: string): string {
-  if (pathname.startsWith("/foundations")) return "Portfolio";
-  if (pathname.startsWith("/account")) return "Account & security";
+interface Crumb {
+  label: string;
+  href?: string;
+}
+
+/**
+ * The top bar's "Founder Portal / …" trail. Built from the path alone, so
+ * a level is named by what it is ("Waqf Fund", "Foundation") rather than
+ * by a name that would need its own fetch; each level links back up.
+ */
+function breadcrumbs(pathname: string): Crumb[] {
+  const parts = pathname.split("/").filter(Boolean);
+  const portfolio: Crumb = { label: "Portfolio", href: "/portfolio" };
+  if (parts[0] === "portfolio" && parts[1]) {
+    const fund: Crumb = { label: "Waqf Fund", href: `/portfolio/${parts[1]}` };
+    if (parts[2] === "top-up") return [portfolio, fund, { label: "Add funds" }];
+    if (parts[2] === "deed") return [portfolio, fund, { label: "Deed" }];
+    return [portfolio, fund];
+  }
+  if (parts[0] === "foundations") {
+    if (parts[1] === "new") return [portfolio, { label: "New Foundation" }];
+    const foundation: Crumb = { label: "Foundation", href: `/foundations/${parts[1]}` };
+    if (parts[2] === "deed") return [portfolio, foundation, { label: "Foundation Deed" }];
+    if (parts[2] === "waqf-funds") return [portfolio, foundation, { label: "New Waqf Fund" }];
+    return [portfolio, foundation];
+  }
+  if (parts[0] === "account") return [{ label: "Account & security" }];
   const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => isActivePath(pathname, i.href));
-  return item?.label ?? "Overview";
+  return [{ label: item?.label ?? "Overview" }];
 }
 
 function Sidebar({
@@ -319,8 +359,11 @@ function Sidebar({
     // Same deep teal/gold gradient as the Ops Console sidebar (see
     // apps/web/app/ops/app-shell.tsx) — one brand chrome across both.
     <aside
-      className={`sticky top-0 hidden h-screen w-[76px] shrink-0 flex-col bg-gradient-to-b from-primary-950 via-primary-900 to-primary-950 md:flex lg:w-64 ${className}`}
+      className={`sticky top-0 isolate hidden h-screen w-[76px] shrink-0 flex-col bg-gradient-to-b from-primary-950 via-primary-900 to-primary-950 md:flex lg:w-64 ${className}`}
     >
+      {/* `isolate` above makes this the stacking context, so the -z-10
+          lattice paints over the gradient but under the nav. */}
+      <GeometricPattern className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-80 w-full text-accent-400/[0.08] [mask-image:linear-gradient(to_top,black,transparent)]" />
       <div className="flex h-14 items-center justify-center gap-2.5 border-b border-white/10 px-3 lg:justify-start lg:px-6">
         <IconMark className="h-8 w-8 shrink-0" />
         <div className="hidden lg:block">

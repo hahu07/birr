@@ -10,6 +10,7 @@
 // still awaiting a Birr officer's maker-checker decision.
 import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
+import { formatMoney } from "../../../../lib/format";
 import { useMarkNotificationsReadByTypeAndLink } from "../../../../lib/notifications";
 import type { DistributionCauseSummary } from "../../../../lib/types";
 import { Alert, Skeleton } from "@birr/ui";
@@ -41,9 +42,9 @@ export function DistributionsSection({ waqfId }: { waqfId: string }) {
   }, [waqfId]);
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Distributions</p>
-      <p className="mb-3 text-sm text-slate-500">What this fund has actually paid out, by cause.</p>
+    <div className="mt-8 border-t border-slate-100 pt-7">
+      <p className="mb-1 text-[15px] font-semibold text-slate-900">Distributions</p>
+      <p className="mb-4 text-sm text-slate-500">What this fund has actually paid out, by cause.</p>
 
       {error && (
         <Alert tone="danger" title="Couldn't load distribution history">
@@ -59,7 +60,7 @@ export function DistributionsSection({ waqfId }: { waqfId: string }) {
       )}
 
       {!error && summary !== null && summary.length === 0 && (
-        <p className="text-sm text-slate-500">No approved distributions yet.</p>
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No approved distributions yet.</p>
       )}
 
       {!error && summary !== null && summary.length > 0 && (
@@ -67,13 +68,11 @@ export function DistributionsSection({ waqfId }: { waqfId: string }) {
           {summary.map((row) => (
             <div
               key={`${row.causeId}-${row.currency}`}
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
             >
               <span className="font-medium text-slate-900">{row.causeName}</span>
               <span className="text-slate-500">
-                <span className="font-medium text-slate-900">
-                  {row.totalAmount} {row.currency}
-                </span>{" "}
+                <span className="font-medium tabular-nums text-slate-900">{formatMoney(row.totalAmount, row.currency)}</span>{" "}
                 across {row.distributionCount} {row.distributionCount === 1 ? "distribution" : "distributions"} to{" "}
                 {row.beneficiaryCount} {row.beneficiaryCount === 1 ? "beneficiary" : "beneficiaries"}
               </span>

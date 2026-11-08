@@ -75,7 +75,7 @@ export default function ImpactPage() {
   const fundCount = new Set((updates ?? []).map((u) => u.waqfCause.waqf.id)).size;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="max-w-4xl">
       <PageHeader
         eyebrow="Impact"
         title="What your endowments achieved"

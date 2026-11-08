@@ -37,9 +37,9 @@ export function GovernanceActivitySection({ waqfId }: { waqfId: string }) {
   }, [waqfId]);
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Governance activity</p>
-      <p className="mb-3 text-sm text-slate-500">Decisions Birr's staff have made on this fund.</p>
+    <div className="mt-8 border-t border-slate-100 pt-7">
+      <p className="mb-1 text-[15px] font-semibold text-slate-900">Governance activity</p>
+      <p className="mb-4 text-sm text-slate-500">Decisions Birr's staff have made on this fund.</p>
 
       {error && (
         <Alert tone="danger" title="Couldn't load governance activity">
@@ -55,7 +55,7 @@ export function GovernanceActivitySection({ waqfId }: { waqfId: string }) {
       )}
 
       {!error && activity !== null && activity.length === 0 && (
-        <p className="text-sm text-slate-500">No decisions recorded yet.</p>
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No decisions recorded yet.</p>
       )}
 
       {!error && activity !== null && activity.length > 0 && (

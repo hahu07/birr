@@ -39,21 +39,23 @@ export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
   }, [waqfId]);
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
-      <div className="mb-1.5 flex flex-wrap items-start justify-between gap-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Beneficiaries</p>
+    <div className="mt-8 border-t border-slate-100 pt-7">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="mb-1 text-[15px] font-semibold text-slate-900">Beneficiaries</p>
+          <p className="text-sm text-slate-500">Who this fund serves.</p>
+        </div>
         {nominateState === "idle" && (
           <div className="flex shrink-0 gap-2">
-            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setNominateState("form")}>
+            <Button variant="secondary" onClick={() => setNominateState("form")}>
               Nominate a beneficiary
             </Button>
-            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setNominateState("bulk")}>
+            <Button variant="secondary" onClick={() => setNominateState("bulk")}>
               Bulk import (CSV)
             </Button>
           </div>
         )}
       </div>
-      <p className="mb-3 text-sm text-slate-500">Who this fund serves.</p>
 
       {nominateState === "submitted" && (
         <Alert tone="success" title="Nomination submitted" className="mb-4">
@@ -113,7 +115,7 @@ export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
       )}
 
       {!error && summary !== null && summary.total === 0 && (
-        <p className="text-sm text-slate-500">No beneficiaries registered yet.</p>
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-5 text-center text-sm text-slate-500">No beneficiaries registered yet.</p>
       )}
 
       {!error && summary !== null && summary.total > 0 && (

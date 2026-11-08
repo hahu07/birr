@@ -33,8 +33,8 @@ export function ProjectProgressSection({ waqfId, currency }: { waqfId: string; c
 
   if (error) {
     return (
-      <div className="mt-5 border-t border-slate-100 pt-5">
-        <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Project progress</p>
+      <div className="mt-8 border-t border-slate-100 pt-7">
+        <p className="mb-1 text-[15px] font-semibold text-slate-900">Project progress</p>
         <Alert tone="danger" title="Couldn't load project progress">
           {error}
         </Alert>
@@ -44,8 +44,8 @@ export function ProjectProgressSection({ waqfId, currency }: { waqfId: string; c
 
   if (milestones === null) {
     return (
-      <div className="mt-5 border-t border-slate-100 pt-5">
-        <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Project progress</p>
+      <div className="mt-8 border-t border-slate-100 pt-7">
+        <p className="mb-1 text-[15px] font-semibold text-slate-900">Project progress</p>
         <div className="space-y-2">
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
@@ -57,9 +57,9 @@ export function ProjectProgressSection({ waqfId, currency }: { waqfId: string; c
   if (milestones.length === 0) return null;
 
   return (
-    <div className="mt-5 border-t border-slate-100 pt-5">
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Project progress</p>
-      <p className="mb-3 text-sm text-slate-500">
+    <div className="mt-8 border-t border-slate-100 pt-7">
+      <p className="mb-1 text-[15px] font-semibold text-slate-900">Project progress</p>
+      <p className="mb-4 text-sm text-slate-500">
         A distribution against a milestone can only happen once it's marked completed — a maker-checker decision by
         Birr's staff.
       </p>

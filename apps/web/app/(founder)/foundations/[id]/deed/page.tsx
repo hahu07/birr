@@ -60,7 +60,7 @@ export default function FoundationDeedPage() {
   useMarkNotificationsReadForEntity("FoundationDeed", foundation?.foundationDeed?.id);
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="max-w-3xl">
       <div className="flex items-center justify-between gap-3 print:hidden">
         <Link
           href={`/foundations/${params.id}`}

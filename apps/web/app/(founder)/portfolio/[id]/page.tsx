@@ -125,7 +125,7 @@ export default function WaqfFundDetailPage() {
   useMarkNotificationsReadForEntity("Waqf", waqf?.id);
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div>
       <Link href="/portfolio" className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-primary-700">
         <IconArrowRight className="h-3.5 w-3.5 rotate-180" />
         Portfolio

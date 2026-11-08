@@ -56,7 +56,7 @@ export default function ActivityPage() {
   }, [nextCursor]);
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="max-w-3xl">
       <PageHeader
         eyebrow="Activity"
         title="Your team's activity"
