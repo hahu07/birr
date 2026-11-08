@@ -8,6 +8,7 @@
 // in the app — the API returns no token for them — so a failed email is
 // retried with "Resend email", not a copy-able link.
 import { useCallback, useEffect, useState } from "react";
+import { ShowMoreFooter, useShowMore } from "../_components/ShowMore";
 import { apiFetchJson } from "../../../lib/api";
 import { humanize, formatDate } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
@@ -41,6 +42,9 @@ const STAFF_ROLES: BirrStaffRole[] = [
   "external_auditor",
   "platform_admin",
 ];
+
+/** Rows drawn per page; search still covers the whole roster. */
+const STAFF_PER_PAGE = 25;
 
 export default function StaffPage() {
   const { staff: currentStaff, can } = useStaffSession();
@@ -83,6 +87,7 @@ export default function StaffPage() {
         s.user.email.toLowerCase().includes(query) ||
         s.roles.some((role) => role.toLowerCase().includes(query)),
     ) ?? [];
+  const page = useShowMore(visibleStaff, STAFF_PER_PAGE, query);
 
   return (
     <div>
@@ -167,7 +172,7 @@ export default function StaffPage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {visibleStaff.map((s) => (
+                    {page.visible.map((s) => (
                       <TableRow key={s.id}>
                         <TableCell>
                           <span className="font-medium text-slate-900">{s.user.fullName}</span>
@@ -212,6 +217,7 @@ export default function StaffPage() {
                   </TableBody>
                 </Table>
               )}
+              <ShowMoreFooter shown={page.shown} total={page.total} pageSize={STAFF_PER_PAGE} noun="staff members" onShowMore={page.showMore} />
             </>
           )}
 

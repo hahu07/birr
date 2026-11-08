@@ -217,7 +217,7 @@ function VaultDonorThresholdsCard() {
 
   return (
     <Card>
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Donor identity thresholds</p>
+      <p className="mb-1 text-base font-semibold text-slate-900">Donor identity thresholds</p>
       <p className="mb-4 text-sm text-slate-500">
         Per-currency AML control — a single contribution at or above this, or a donor's running total crossing it,
         requires their full name and an ID on the public donation form.

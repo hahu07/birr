@@ -16,6 +16,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { ShowMoreFooter, useShowMore } from "../_components/ShowMore";
 import { apiFetchJson } from "../../../lib/api";
 import { humanize } from "../../../lib/format";
 import type { Waqf } from "../../../lib/ops-types";
@@ -32,6 +33,9 @@ interface FoundationGroup {
   foundation: Waqf["foundation"];
   waqfs: Waqf[];
 }
+
+/** Foundation groups drawn per page; search still covers every fund. */
+const FOUNDATION_GROUPS_PER_PAGE = 20;
 
 export default function WaqfsPage() {
   return (
@@ -107,6 +111,7 @@ function WaqfsPageContent() {
     }
     return Array.from(byId.values());
   }, [waqfs, query, foundationIdFilter]);
+  const page = useShowMore(groups, FOUNDATION_GROUPS_PER_PAGE, `${query}|${foundationIdFilter ?? ""}`);
 
   return (
     <div>
@@ -157,11 +162,20 @@ function WaqfsPageContent() {
       )}
 
       {!error && groups.length > 0 && (
-        <div className="space-y-6">
-          {groups.map((group) => (
-            <FoundationGroupCard key={group.foundation.id} group={group} />
-          ))}
-        </div>
+        <>
+          <div className="space-y-6">
+            {page.visible.map((group) => (
+              <FoundationGroupCard key={group.foundation.id} group={group} />
+            ))}
+          </div>
+          <ShowMoreFooter
+            shown={page.shown}
+            total={page.total}
+            pageSize={FOUNDATION_GROUPS_PER_PAGE}
+            noun="foundations"
+            onShowMore={page.showMore}
+          />
+        </>
       )}
     </div>
   );

@@ -60,10 +60,13 @@ const WAQF_STATUS_ICON: Record<Waqf["status"], typeof IconCheckCircle> = {
   dissolved: IconArchive,
 };
 
+// Brand palette only — violet is reserved for the AI surface (see
+// packages/ui styles.css). Gold/teal/light teal, as on the Founder
+// dashboard's endowment bar.
 const WAQF_TYPE_COLOR: Record<Waqf["type"], string> = {
-  investment: "var(--color-violet-600)",
+  investment: "var(--color-accent-500)",
   asset: "var(--color-primary-600)",
-  project: "var(--color-accent-500)",
+  project: "var(--color-primary-300)",
 };
 
 // GET /contributions/platform-summary and GET /distributions/platform-summary
