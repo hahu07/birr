@@ -135,30 +135,8 @@ function attentionItems(waqfs: Waqf[], unreadMessages: number): AttentionItem[] 
     }
   }
   for (const w of waqfs) {
-    if (w.status === "draft") {
-      items.push({
-        key: `draft-${w.id}`,
-        title: "Complete the first contribution",
-        detail: `${w.name} becomes active once its first payment is confirmed.`,
-        href: `/portfolio/${w.id}/top-up`,
-        cta: "Add funds",
-        tone: "primary",
-        icon: "fund",
-      });
-    } else if (w.status === "active" && w.fundingPlan === "installment" && w.corpusAmount && w.corpusCurrency) {
-      const remaining = Number(w.corpusAmount) - Number(w.amountRaised ?? 0);
-      if (remaining > 0) {
-        items.push({
-          key: `installment-${w.id}`,
-          title: `${formatMoney(remaining, w.corpusCurrency, { decimals: 0 })} left to fund`,
-          detail: `${w.name} is on an instalment plan toward its ${formatMoney(w.corpusAmount, w.corpusCurrency, { decimals: 0 })} corpus.`,
-          href: `/portfolio/${w.id}/top-up`,
-          cta: "Top up",
-          tone: "accent",
-          icon: "fund",
-        });
-      }
-    }
+    const item = fundAttentionItem(w);
+    if (item) items.push(item);
   }
   if (unreadMessages > 0) {
     items.push({
@@ -172,6 +150,33 @@ function attentionItems(waqfs: Waqf[], unreadMessages: number): AttentionItem[] 
     });
   }
   return items;
+}
+
+/** A draft fund awaiting its first payment, or an instalment fund with corpus still to raise. */
+function fundAttentionItem(w: Waqf): AttentionItem | null {
+  if (w.status === "draft") {
+    return {
+      key: `draft-${w.id}`,
+      title: "Complete the first contribution",
+      detail: `${w.name} becomes active once its first payment is confirmed.`,
+      href: `/portfolio/${w.id}/top-up`,
+      cta: "Add funds",
+      tone: "primary",
+      icon: "fund",
+    };
+  }
+  if (w.status !== "active" || w.fundingPlan !== "installment" || !w.corpusAmount || !w.corpusCurrency) return null;
+  const remaining = Number(w.corpusAmount) - Number(w.amountRaised ?? 0);
+  if (remaining <= 0) return null;
+  return {
+    key: `installment-${w.id}`,
+    title: `${formatMoney(remaining, w.corpusCurrency, { decimals: 0 })} left to fund`,
+    detail: `${w.name} is on an instalment plan toward its ${formatMoney(w.corpusAmount, w.corpusCurrency, { decimals: 0 })} corpus.`,
+    href: `/portfolio/${w.id}/top-up`,
+    cta: "Top up",
+    tone: "accent",
+    icon: "fund",
+  };
 }
 
 function greeting(): string {
@@ -473,14 +478,14 @@ function earmarksByCurrency(waqfs: Waqf[], causesByWaqf: Record<string, WaqfCaus
     });
 }
 
-function EarmarkPanel({ waqfs, className = "" }: { waqfs: Waqf[]; className?: string }) {
-  // One request per fund — the founder-scoped /waqf-causes listing is
-  // per waqf; a founder holds a handful of funds, not hundreds.
+/**
+ * Each fund's selected causes. One request per fund — the founder-scoped
+ * /waqf-causes listing is per waqf; a founder holds a handful of funds,
+ * not hundreds. `null` while loading.
+ */
+function useCausesByWaqf(fundIds: string[]) {
   const [causesByWaqf, setCausesByWaqf] = useState<Record<string, WaqfCause[]> | null>(null);
   const [failed, setFailed] = useState(false);
-  const [currency, setCurrency] = useState<string | null>(null);
-
-  const fundIds = waqfs.filter((w) => w.corpusCurrency).map((w) => w.id);
   const fundKey = fundIds.join(",");
 
   useEffect(() => {
@@ -495,6 +500,14 @@ function EarmarkPanel({ waqfs, className = "" }: { waqfs: Waqf[]; className?: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fundKey]);
 
+  return { causesByWaqf, failed };
+}
+
+function EarmarkPanel({ waqfs, className = "" }: { waqfs: Waqf[]; className?: string }) {
+  const [currency, setCurrency] = useState<string | null>(null);
+  const fundIds = waqfs.filter((w) => w.corpusCurrency).map((w) => w.id);
+  const { causesByWaqf, failed } = useCausesByWaqf(fundIds);
+
   const earmarks = useMemo(() => (causesByWaqf ? earmarksByCurrency(waqfs, causesByWaqf) : []), [waqfs, causesByWaqf]);
   const shown = earmarks.find((e) => e.currency === currency) ?? earmarks[0];
   const manageHref = fundIds.length === 1 ? `/portfolio/${fundIds[0]}` : "/portfolio";
@@ -506,61 +519,12 @@ function EarmarkPanel({ waqfs, className = "" }: { waqfs: Waqf[]; className?: st
         {failed ? (
           <p className="text-sm text-slate-500">Couldn't load your causes right now.</p>
         ) : causesByWaqf === null ? (
-          <div className="flex items-center gap-5">
-            <Skeleton className="h-32 w-32 shrink-0 rounded-full" />
-            <div className="flex-1 space-y-3">
-              <Skeleton className="h-3.5 w-full" />
-              <Skeleton className="h-3.5 w-4/5" />
-              <Skeleton className="h-3.5 w-3/5" />
-            </div>
-          </div>
-        ) : !shown || shown.causeNames.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left">
-            <svg viewBox="0 0 120 120" className="h-24 w-24 shrink-0" aria-hidden="true">
-              <circle cx="60" cy="60" r="44" fill="none" stroke="currentColor" strokeWidth="16" className="text-slate-100" />
-              <circle cx="60" cy="60" r="44" fill="none" stroke="currentColor" strokeWidth="16" strokeDasharray="6 10" className="text-slate-200" />
-            </svg>
-            <div>
-              <p className="text-sm leading-relaxed text-slate-500">
-                Choose the causes your waqf supports, then earmark how its endowment is divided between them.
-              </p>
-              <Link href={manageHref} className={`${linkButton.secondary} mt-4`}>
-                Choose causes
-              </Link>
-            </div>
-          </div>
-        ) : shown.slices.length === 0 ? (
-          <div>
-            <p className="text-sm leading-relaxed text-slate-600">Nothing is earmarked yet. Your causes:</p>
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {shown.causeNames.map((n) => (
-                <li key={n} className="rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-800 ring-1 ring-inset ring-primary-100">
-                  {n}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <EarmarkSkeleton />
         ) : (
-          <EarmarkDonut earmark={shown} />
+          <EarmarkBody earmark={shown} manageHref={manageHref} />
         )}
 
-        {earmarks.length > 1 && (
-          <div className="mt-4 flex gap-1.5" role="group" aria-label="Currency">
-            {earmarks.map((e) => (
-              <button
-                key={e.currency}
-                type="button"
-                onClick={() => setCurrency(e.currency)}
-                aria-pressed={e.currency === shown?.currency}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                  e.currency === shown?.currency ? "bg-primary-700 text-white" : "border border-slate-200 text-slate-600 hover:border-primary-300"
-                }`}
-              >
-                {e.currency}
-              </button>
-            ))}
-          </div>
-        )}
+        {earmarks.length > 1 && <CurrencyToggle currencies={earmarks.map((e) => e.currency)} active={shown?.currency} onChange={setCurrency} />}
 
         {shown?.hasInvestment && shown.slices.length > 0 && (
           <p className="mt-auto pt-4 text-xs leading-relaxed text-slate-500">
@@ -570,6 +534,76 @@ function EarmarkPanel({ waqfs, className = "" }: { waqfs: Waqf[]; className?: st
         )}
       </div>
     </Panel>
+  );
+}
+
+function EarmarkSkeleton() {
+  return (
+    <div className="flex items-center gap-5">
+      <Skeleton className="h-32 w-32 shrink-0 rounded-full" />
+      <div className="flex-1 space-y-3">
+        <Skeleton className="h-3.5 w-full" />
+        <Skeleton className="h-3.5 w-4/5" />
+        <Skeleton className="h-3.5 w-3/5" />
+      </div>
+    </div>
+  );
+}
+
+/** No causes yet → a prompt to choose them; causes but nothing earmarked → the list; otherwise the donut. */
+function EarmarkBody({ earmark, manageHref }: { earmark: Earmark | undefined; manageHref: string }) {
+  if (!earmark || earmark.causeNames.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center sm:flex-row sm:text-left">
+        <svg viewBox="0 0 120 120" className="h-24 w-24 shrink-0" aria-hidden="true">
+          <circle cx="60" cy="60" r="44" fill="none" stroke="currentColor" strokeWidth="16" className="text-slate-100" />
+          <circle cx="60" cy="60" r="44" fill="none" stroke="currentColor" strokeWidth="16" strokeDasharray="6 10" className="text-slate-200" />
+        </svg>
+        <div>
+          <p className="text-sm leading-relaxed text-slate-500">
+            Choose the causes your waqf supports, then earmark how its endowment is divided between them.
+          </p>
+          <Link href={manageHref} className={`${linkButton.secondary} mt-4`}>
+            Choose causes
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  if (earmark.slices.length === 0) {
+    return (
+      <div>
+        <p className="text-sm leading-relaxed text-slate-600">Nothing is earmarked yet. Your causes:</p>
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {earmark.causeNames.map((n) => (
+            <li key={n} className="rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-800 ring-1 ring-inset ring-primary-100">
+              {n}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+  return <EarmarkDonut earmark={earmark} />;
+}
+
+function CurrencyToggle({ currencies, active, onChange }: { currencies: string[]; active: string | undefined; onChange: (c: string) => void }) {
+  return (
+    <div className="mt-4 flex gap-1.5" role="group" aria-label="Currency">
+      {currencies.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          aria-pressed={c === active}
+          className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+            c === active ? "bg-primary-700 text-white" : "border border-slate-200 text-slate-600 hover:border-primary-300"
+          }`}
+        >
+          {c}
+        </button>
+      ))}
+    </div>
   );
 }
 

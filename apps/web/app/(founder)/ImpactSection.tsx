@@ -168,7 +168,34 @@ function PhotoWall({ photos }: { photos: FieldPhoto[] }) {
 
 export function ImpactSection({ impact, photos }: { impact: ImpactSummary | null; photos: FieldPhoto[] }) {
   if (!impact) return null;
+  const { lead, row } = impactStats(impact);
+  return (
+    <section id="impact" className="relative isolate overflow-hidden bg-primary-950 py-16 text-white lg:py-20">
+      {/* Backdrop: a faint dot grid and two soft glows — gold top-right, green bottom-left. */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-10 opacity-60 [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.07)_1px,transparent_0)] [background-size:26px_26px]"
+      />
+      <div aria-hidden="true" className="absolute -right-24 -top-32 -z-10 h-96 w-96 rounded-full bg-accent-400/15 blur-3xl" />
+      <div aria-hidden="true" className="absolute -bottom-32 -left-24 -z-10 h-[28rem] w-[28rem] rounded-full bg-primary-500/20 blur-3xl" />
 
+      <div className="mx-auto grid max-w-6xl gap-12 px-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-center lg:gap-14">
+        <ImpactIntro hasPhotos={photos.length > 0} />
+
+        <FiguresPanel lead={lead} row={row} />
+      </div>
+
+      {photos.length > 0 && (
+        <Reveal delayMs={200} className="mt-14">
+          <PhotoWall photos={photos} />
+        </Reveal>
+      )}
+    </section>
+  );
+}
+
+/** The lead figure (money given, or the gift count if nothing yet) and the row beneath it. */
+function impactStats(impact: ImpactSummary): { lead: Stat; row: Stat[] } {
   const given = splitCurrencies(impact.givenByCurrency);
   const paid = splitCurrencies(impact.paidOutByCurrency);
   const gifts: Stat = { value: impact.giftsReceived.toLocaleString("en-NG"), label: "Gifts received", detail: "Each one a separate, confirmed payment" };
@@ -183,92 +210,81 @@ export function ImpactSection({ impact, photos }: { impact: ImpactSummary | null
       ? [{ value: formatCompactMoney(paid.lead), label: "Paid out to causes", detail: "Released under dual authorisation", others: paid.others }]
       : []),
   ];
+  return { lead, row };
+}
 
+function ImpactIntro({ hasPhotos }: { hasPhotos: boolean }) {
   return (
-    <section id="impact" className="relative isolate overflow-hidden bg-primary-950 py-16 text-white lg:py-20">
-      {/* Backdrop: a faint dot grid and two soft glows — gold top-right, green bottom-left. */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 -z-10 opacity-60 [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.07)_1px,transparent_0)] [background-size:26px_26px]"
-      />
-      <div aria-hidden="true" className="absolute -right-24 -top-32 -z-10 h-96 w-96 rounded-full bg-accent-400/15 blur-3xl" />
-      <div aria-hidden="true" className="absolute -bottom-32 -left-24 -z-10 h-[28rem] w-[28rem] rounded-full bg-primary-500/20 blur-3xl" />
+    <Reveal>
+      <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-300">
+        <span className="relative flex h-2 w-2" aria-hidden="true">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-300 opacity-60 motion-reduce:animate-none" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-300" />
+        </span>
+        Our impact · live
+      </p>
+      <h2 className="font-display mt-4 text-4xl font-medium leading-[1.08] tracking-tight text-balance sm:text-[2.75rem]">
+        Giving you can <span className="italic text-accent-300">verify.</span>
+      </h2>
+      <p className="mt-4 max-w-md text-base leading-relaxed text-primary-100/80">
+        {hasPhotos
+          ? "These photos were taken when gifts were delivered and project steps completed. Open any one to see the campaign and the proof behind it."
+          : "Every figure here is counted from Birr's own records — the same ledger our trustees and auditors work from."}
+      </p>
 
-      <div className="mx-auto grid max-w-6xl gap-12 px-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-center lg:gap-14">
-        <Reveal>
-          <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-300">
-            <span className="relative flex h-2 w-2" aria-hidden="true">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-300 opacity-60 motion-reduce:animate-none" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-300" />
-            </span>
-            Our impact · live
-          </p>
-          <h2 className="font-display mt-4 text-4xl font-medium leading-[1.08] tracking-tight text-balance sm:text-[2.75rem]">
-            Giving you can <span className="italic text-accent-300">verify.</span>
-          </h2>
-          <p className="mt-4 max-w-md text-base leading-relaxed text-primary-100/80">
-            {photos.length > 0
-              ? "These photos were taken when gifts were delivered and project steps completed. Open any one to see the campaign and the proof behind it."
-              : "Every figure here is counted from Birr's own records — the same ledger our trustees and auditors work from."}
-          </p>
+      <ul className="mt-7 space-y-3 border-t border-white/10 pt-6">
+        {COUNTING_RULES.map((rule) => (
+          <li key={rule} className="flex gap-3 text-sm leading-relaxed text-primary-100/85">
+            <IconCheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent-300" />
+            {rule}
+          </li>
+        ))}
+      </ul>
 
-          <ul className="mt-7 space-y-3 border-t border-white/10 pt-6">
-            {COUNTING_RULES.map((rule) => (
-              <li key={rule} className="flex gap-3 text-sm leading-relaxed text-primary-100/85">
-                <IconCheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-accent-300" />
-                {rule}
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Link
-              href="/vaults"
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-accent-500 px-5 py-3 text-sm font-semibold text-primary-950 shadow-lg shadow-black/20 transition-colors hover:bg-accent-300"
-            >
-              Browse open Vaults
-            </Link>
-            <Link
-              href="/#governance"
-              className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-3 text-sm font-semibold text-primary-100 transition-colors hover:text-white"
-            >
-              How every decision is checked <IconArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-        </Reveal>
-
-        <Reveal delayMs={120}>
-          <div className="overflow-hidden rounded-3xl bg-white/[0.04] shadow-2xl shadow-black/30 ring-1 ring-inset ring-white/10 backdrop-blur-sm">
-            <div className="relative px-7 pb-8 pt-7 sm:px-9 sm:pt-8">
-              <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-300/60 to-transparent" />
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-200/80">{lead.label}</p>
-              <p className="font-display mt-3 text-6xl font-medium leading-none tracking-tight text-accent-300 tabular-nums sm:text-7xl">{lead.value}</p>
-              <OtherCurrencies list={lead.others} />
-              <p className="mt-4 text-sm text-primary-100/70">{lead.detail}</p>
-            </div>
-            <dl className={`grid divide-y divide-white/10 border-t border-white/10 sm:divide-x sm:divide-y-0 ${STAT_COLUMNS[row.length] ?? "sm:grid-cols-3"}`}>
-              {row.map((stat) => (
-                <div key={stat.label} className="flex flex-col px-7 py-6 sm:px-6">
-                  <dt className="order-2 mt-2 text-sm font-medium text-white">{stat.label}</dt>
-                  <dd className="order-1 font-display text-4xl font-medium leading-none tracking-tight text-white tabular-nums">{stat.value}</dd>
-                  <dd className="order-3 mt-1 text-xs leading-snug text-primary-100/60">{stat.detail}</dd>
-                  {stat.others && stat.others.length > 0 && (
-                    <dd className="order-4">
-                      <OtherCurrencies list={stat.others} />
-                    </dd>
-                  )}
-                </div>
-              ))}
-            </dl>
-          </div>
-        </Reveal>
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Link
+          href="/vaults"
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-xl bg-accent-500 px-5 py-3 text-sm font-semibold text-primary-950 shadow-lg shadow-black/20 transition-colors hover:bg-accent-300"
+        >
+          Browse open Vaults
+        </Link>
+        <Link
+          href="/#governance"
+          className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-3 text-sm font-semibold text-primary-100 transition-colors hover:text-white"
+        >
+          How every decision is checked <IconArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
+    </Reveal>
+  );
+}
 
-      {photos.length > 0 && (
-        <Reveal delayMs={200} className="mt-14">
-          <PhotoWall photos={photos} />
-        </Reveal>
-      )}
-    </section>
+function FiguresPanel({ lead, row }: { lead: Stat; row: Stat[] }) {
+  return (
+    <Reveal delayMs={120}>
+      <div className="overflow-hidden rounded-3xl bg-white/[0.04] shadow-2xl shadow-black/30 ring-1 ring-inset ring-white/10 backdrop-blur-sm">
+        <div className="relative px-7 pb-8 pt-7 sm:px-9 sm:pt-8">
+          <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent-300/60 to-transparent" />
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-200/80">{lead.label}</p>
+          <p className="font-display mt-3 text-6xl font-medium leading-none tracking-tight text-accent-300 tabular-nums sm:text-7xl">{lead.value}</p>
+          <OtherCurrencies list={lead.others} />
+          <p className="mt-4 text-sm text-primary-100/70">{lead.detail}</p>
+        </div>
+        <dl className={`grid divide-y divide-white/10 border-t border-white/10 sm:divide-x sm:divide-y-0 ${STAT_COLUMNS[row.length] ?? "sm:grid-cols-3"}`}>
+          {row.map((stat) => (
+            <div key={stat.label} className="flex flex-col px-7 py-6 sm:px-6">
+              <dt className="order-2 mt-2 text-sm font-medium text-white">{stat.label}</dt>
+              <dd className="order-1 font-display text-4xl font-medium leading-none tracking-tight text-white tabular-nums">{stat.value}</dd>
+              <dd className="order-3 mt-1 text-xs leading-snug text-primary-100/60">{stat.detail}</dd>
+              {stat.others && stat.others.length > 0 && (
+                <dd className="order-4">
+                  <OtherCurrencies list={stat.others} />
+                </dd>
+              )}
+            </div>
+          ))}
+        </dl>
+      </div>
+    </Reveal>
   );
 }
