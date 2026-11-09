@@ -111,12 +111,15 @@ jobs:
       # migration, or a migration file was edited after being committed
       # — the DB and the migrations/ directory no longer agree on what
       # the schema actually is.
+      # Prisma 7 removed --shadow-database-url; the shadow database now
+      # comes from prisma.config.ts, which reads SHADOW_DATABASE_URL.
       - run: |
           pnpm --filter @birr/db exec prisma migrate diff \
             --from-migrations prisma/migrations \
-            --to-schema-datamodel prisma/schema.prisma \
-            --shadow-database-url postgresql://birr:birr_dev_password@localhost:5432/birr_shadow \
+            --to-schema prisma/schema.prisma \
             --exit-code
+        env:
+          SHADOW_DATABASE_URL: postgresql://birr:birr_dev_password@localhost:5432/birr_shadow
 
   test:
     runs-on: ubuntu-latest

@@ -14,15 +14,14 @@
     "lint": "eslint .",
     "backfill:foundations": "tsx scripts/backfill-foundations-and-causes.ts"
   },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
-  },
   "dependencies": {
-    "@prisma/client": "^6.19.3",
-    "bcryptjs": "^3.0.3"
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "prisma": "^6.19.3",
+    "prisma": "^7.10.1",
     "tsx": "^4.23.15",
     "typescript": "^5.6.0"
   }

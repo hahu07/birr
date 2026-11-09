@@ -14,9 +14,10 @@
 // Idempotent: safe to re-run. Already-backfilled waqfs/distributions
 // and the shared "Unaffiliated Waqfs"/per-waqf "General" cause records
 // are detected and skipped/reused, not duplicated.
-import { PrismaClient } from "@prisma/client";
+import "../prisma/load-env";
+import { createPrismaClient } from "../src";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 interface WaqfFounderRow {
   waqfId: string;

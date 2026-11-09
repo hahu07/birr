@@ -2,10 +2,11 @@
 // Run on every deploy by apps/backend/docker-entrypoint.sh (and the
 // docker-compose `migrate` service), right after migrations. Safe to run
 // any number of times; touches only roles/permissions/role_permissions.
-import { PrismaClient } from "@prisma/client";
+import "./load-env";
+import { createPrismaClient } from "../src";
 import { syncPermissions } from "./sync-permissions";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 // Same transient-connect retry the full seed uses (Render's free-tier
 // Postgres sometimes refuses the very first connection of a deploy).
