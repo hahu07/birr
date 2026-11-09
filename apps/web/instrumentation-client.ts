@@ -6,10 +6,12 @@
 // that one). No-op when unset, same posture as every other Sentry
 // config in this repo.
 import * as Sentry from "@sentry/nextjs";
+import { SENTRY_DATA_COLLECTION } from "./sentry.shared";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   tracesSampleRate: 0.1,
+  dataCollection: SENTRY_DATA_COLLECTION,
 });
 
 // Required export, per the SDK's own build-time warning otherwise —
