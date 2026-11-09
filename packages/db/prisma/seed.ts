@@ -1,4 +1,6 @@
-import { BirrStaffRole, PrismaClient } from "@prisma/client";
+import "./load-env";
+import { BirrStaffRole } from "@prisma/client";
+import { createPrismaClient } from "../src";
 import { hash } from "bcryptjs";
 import { syncPermissions } from "./sync-permissions";
 import {
@@ -14,7 +16,7 @@ import {
   waqfLedgerAccounts,
 } from "./seed-data";
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 const BCRYPT_ROUNDS = 10;
 
 // Dev/pilot-stage bootstrap credential only — chicken-and-egg fix for
