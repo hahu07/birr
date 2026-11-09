@@ -245,9 +245,6 @@ export default function MarketingHome({
                 <DashboardMockup />
               </HeroMonitor>
             </div>
-            <p className="mt-4 text-center text-xs text-primary-200/70 sm:text-sm">
-              The Founder Portal, shown with sample data.
-            </p>
           </div>
         </div>
       </section>
