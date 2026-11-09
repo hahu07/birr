@@ -4,8 +4,11 @@ import { PrismaClient } from "@prisma/client";
 /**
  * A Prisma client connected through the node-postgres driver adapter,
  * which Prisma 7 requires for every database (its own query engine is
- * gone). The pool timeouts restate Prisma 6's defaults: pg's own defaults
- * are no connect timeout at all and a 10s idle timeout. Pool size is pg's
+ * gone). The timeouts restate Prisma 6's behaviour, since pg's own
+ * defaults are no connect timeout at all and a 10s idle timeout. pg's
+ * connectionTimeoutMillis covers both waiting for a free pooled
+ * connection and opening a new one, so it takes Prisma 6's longer pool
+ * wait (10s) rather than its 5s connect timeout. Pool size is pg's
  * default of 10 connections per client.
  *
  * Use this only where a separate process needs its own client (seed and
@@ -21,7 +24,7 @@ export function createPrismaClient(connectionString: string | undefined = proces
   }
   const adapter = new PrismaPg({
     connectionString,
-    connectionTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 300_000,
   });
   return new PrismaClient({ adapter });

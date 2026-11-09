@@ -48,10 +48,12 @@ describe("WaqfFundingService", () => {
 
     const logs = await prisma.auditLog.findMany({ where: { entityId: updated.id, action: "corpus_minimum.updated" } });
     expect(logs).toHaveLength(1);
-    // The before/after snapshot is a JSONB column — a Prisma.Decimal
-    // serializes into it as a plain JSON number, not the Decimal-typed
-    // string every other field on the live row would show.
-    expect(logs[0].before).toMatchObject({ minAmount: 1000 });
+    // The before/after snapshot is a JSONB column. Since Prisma 7 a
+    // Prisma.Decimal serializes into it as its exact decimal string, the
+    // same form the API returns; Prisma 6 wrote a JSON number, which can
+    // lose precision on large amounts. Snapshots written before the
+    // upgrade still hold numbers.
+    expect(logs[0].before).toMatchObject({ minAmount: "1000" });
   });
 
   test("listCorpusMinimums() includes the fixture currency", async () => {
