@@ -18,11 +18,11 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0",
+    "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
-    "prisma": "^5.20.0",
+    "prisma": "^6.19.3",
     "tsx": "^4.23.15",
     "typescript": "^5.6.0"
   }
