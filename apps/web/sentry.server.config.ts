@@ -4,8 +4,10 @@
 // SENTRY_DSN is unset, same posture as every other Sentry config in this
 // repo (see apps/backend/src/instrument.ts's own comment).
 import * as Sentry from "@sentry/nextjs";
+import { SENTRY_DATA_COLLECTION } from "./sentry.shared";
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   tracesSampleRate: 0.1,
+  dataCollection: SENTRY_DATA_COLLECTION,
 });
