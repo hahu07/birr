@@ -279,7 +279,16 @@ jobs:
       # the browser binary itself, which a local run without sudo access
       # can't do (falls back to a browser-only install there instead;
       # see apps/web/e2e's own notes on that gap).
-      - run: pnpm --filter @birr/web exec playwright install --with-deps chromium
+      # If apt can't reach Ubuntu's mirrors (seen three runs in a row on
+      # 2026-11-11: "Temporary failure resolving archive.ubuntu.com"), fall
+      # back to the browser alone: the runner image already has the shared
+      # libraries Chromium needs ("already the newest version" in those
+      # logs) — only extra font packages failed to download. A browser that
+      # truly can't start still fails the e2e step below.
+      - run: |
+          pnpm --filter @birr/web exec playwright install --with-deps chromium \
+            || { echo "::warning::apt couldn't install Chromium's system packages; installing the browser alone"; \
+                 pnpm --filter @birr/web exec playwright install chromium; }
       # The real login-endpoint rate limit (10 per 10 min — see
       # apps/backend/src/common/auth/login-throttle.ts) is raised for
       # this run via apps/web/playwright.config.ts's own backend
