@@ -39,6 +39,8 @@ ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
 # via --build-arg.
 ARG NEXT_PUBLIC_SENTRY_DSN=""
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
+# The zakah pages import @birr/zakah, whose main is its compiled dist/.
+RUN pnpm --filter @birr/zakah build
 RUN pnpm --filter @birr/web build
 
 # ---- Runtime image ----

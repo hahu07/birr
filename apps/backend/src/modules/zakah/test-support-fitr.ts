@@ -1,3 +1,4 @@
+import { randomInt } from "crypto";
 import { prisma } from "@birr/db";
 
 /**
@@ -6,7 +7,7 @@ import { prisma } from "@birr/db";
  */
 export async function unusedFitrSeason(): Promise<string> {
   for (;;) {
-    const season = String(2000 + Math.floor(Math.random() * 8000));
+    const season = String(randomInt(2000, 10000));
     if (!(await prisma.zakahFitrCampaign.findFirst({ where: { season } }))) return season;
   }
 }
