@@ -2999,7 +2999,129 @@ model ZakahMetalPrice {
   governedActionId String         @unique
   governedAction   GovernedAction @relation(fields: [governedActionId], references: [id])
   createdAt        DateTime       @default(now())
+  payments         ZakahPayment[]
 
   @@index([asOf])
   @@map("zakah_metal_prices")
+}
+
+// Someone who has paid zakah through Birr, known only by the email they
+// typed — the same identity model, and the same accepted gaps, as
+// VaultDonor (owner's decision, 2026-11-11: email optional, like Vault).
+// Kept separate from VaultDonor because zakah is its own product; one
+// consequence is that the AML threshold check never adds a person's
+// Vault and zakah giving together — left, like the different-emails gap,
+// to Compliance's off-platform review (see CLAUDE.md's 2026-09-15 note).
+model ZakahPayer {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  fullName          String?
+  idType            IdType?
+  idNumberEncrypted String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  payments ZakahPayment[]
+
+  @@map("zakah_payers")
+}
+
+// One zakah payment. Birr receives it as the payer's agent (wakil), so it
+// settles into a separate zakah bank account through a Paystack
+// subaccount (owner's decision, 2026-11-11) and is booked in its own
+// ledger as money held for recipients, never as Birr's revenue.
+//
+// Deliberately does NOT store the wealth figures the payer entered in the
+// calculator — that page promises they stay on the payer's device. Only
+// the amount paid, plus which ruleset version and prices produced it.
+model ZakahPayment {
+  id                    String               @id @default(uuid())
+  payerId               String?
+  payer                 ZakahPayer?          @relation(fields: [payerId], references: [id], onDelete: Restrict)
+  // The zakah itself — what reaches recipients, in full.
+  amount                Decimal
+  // What the payer chose to add so the processing fee is covered too
+  // (0 if they didn't, in which case Birr pays the fee from its own
+  // operating funds). Settles to Birr's main account, never the zakah one.
+  feeCover              Decimal              @default(0)
+  currency              String
+  provider              ContributionProvider
+  providerReference     String               @unique
+  providerPaymentId     String?
+  status                ContributionStatus   @default(pending)
+  confirmedAt           DateTime?
+  // The Paystack subaccount the zakah was routed to — proof of where it settled.
+  settlementSubaccount  String
+  // Which wording of the agency (wakalah) appointment the payer accepted.
+  wakalahConsentVersion String
+  rulesetKey            String?
+  rulesetVersion        Int?
+  metalPriceId          String?
+  metalPrice            ZakahMetalPrice?     @relation(fields: [metalPriceId], references: [id], onDelete: Restrict)
+  // Captured server-side for Compliance's off-platform AML review only,
+  // same as VaultContribution.ipAddress; never gates a payment.
+  ipAddress             String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@index([payerId])
+  @@index([status])
+  @@map("zakah_payments")
+}
+
+// Zakah's own double-entry ledger, never shared with Vault or Waqf. The
+// two system accounts are created by the migration that adds these
+// tables: 1000 Zakah bank account (asset) and 2000 Zakah held for
+// recipients (liability). A confirmed payment debits the first and
+// credits the second; distributing to recipients will later debit the
+// liability. Journal rows are append-only, enforced in the database.
+model ZakahLedgerAccount {
+  id              String            @id @default(uuid())
+  code            String            @unique
+  name            String
+  type            LedgerAccountType
+  isSystemDefault Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+
+  lines ZakahJournalEntryLine[]
+
+  @@map("zakah_ledger_accounts")
+}
+
+enum ZakahJournalEntrySource {
+  payment
+  manual_adjustment
+}
+
+model ZakahJournalEntry {
+  id          String                  @id @default(uuid())
+  entryDate   DateTime                @default(now())
+  description String
+  currency    String
+  source      ZakahJournalEntrySource
+  // The ZakahPayment (etc.) that triggered this entry. Unique per source,
+  // so a provider retrying the same webhook can't post the money twice.
+  sourceId    String?
+  actorType   ActorType
+  actorUserId String?
+  createdAt   DateTime                @default(now())
+
+  lines ZakahJournalEntryLine[]
+
+  @@unique([source, sourceId])
+  @@map("zakah_journal_entries")
+}
+
+model ZakahJournalEntryLine {
+  id              String             @id @default(uuid())
+  journalEntryId  String
+  journalEntry    ZakahJournalEntry  @relation(fields: [journalEntryId], references: [id])
+  ledgerAccountId String
+  ledgerAccount   ZakahLedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+  debit           Decimal            @default(0)
+  credit          Decimal            @default(0)
+
+  @@index([journalEntryId])
+  @@index([ledgerAccountId])
+  @@map("zakah_journal_entry_lines")
 }

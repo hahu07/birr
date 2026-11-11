@@ -1339,3 +1339,27 @@ export interface ZakahMetalPriceRow {
   source: string;
   createdAt: string;
 }
+
+/** A zakah payment as the Ops Console lists it (see ZakahPayment). Amounts in Naira; never the payer's ID. */
+export interface ZakahPaymentRow {
+  id: string;
+  amount: string;
+  feeCover: string;
+  currency: string;
+  status: "pending" | "confirmed" | "failed";
+  rulesetKey: string | null;
+  rulesetVersion: number | null;
+  createdAt: string;
+  confirmedAt: string | null;
+  payer: { email: string; fullName: string | null } | null;
+}
+
+/** One account in zakah's own ledger, with its balance. */
+export interface ZakahLedgerBalance {
+  code: string;
+  name: string;
+  type: string;
+  debit: string;
+  credit: string;
+  balance: string;
+}

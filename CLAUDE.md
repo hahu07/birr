@@ -412,6 +412,44 @@ in keeping this ledger current, not a functional gap. Noted here so a
 future session doesn't re-do already-finished work on the strength of
 the stale note above.
 
+**Update, 2026-11-11 — Zakah, a third product alongside Waqf and Vault.**
+Zakah is obligatory, goes only to the eight eligible categories (Qur'an
+9:60), and Birr receives it as each payer's **agent (wakil)** — not as
+trustee and not as its own money — so it has its own tables, ledger and
+module (`packages/zakah`, `apps/backend/src/modules/zakah`), never
+extending Waqf or Vault ones. Owner's decisions so far:
+- **Web first, mobile later.** A public calculator at `/zakah` now; an
+  Expo app afterwards, sharing `@birr/zakah` (the pure-TypeScript
+  calculation engine) with the web app and backend.
+- **Flexible madhhab.** Madhhab rulings are data (`ZakahRuleset`), one
+  ruleset per calculation. A ruleset goes live only through the governed
+  `zakah.ruleset_approve`: proposed by `mutawalli_officer`, approved by
+  `shariah_board_member` **only** (not the Board of Trustees — these are
+  Shariah rulings). The bundled four are drafts; the calculator refuses
+  a draft. The nisab basis (gold vs silver) is still the Board's open
+  decision and moves the threshold roughly tenfold.
+- **Metal prices set the nisab, so two people set them.** Governed
+  `zakah.metal_price_set`: proposed by `investment_committee`, approved by
+  `compliance_officer` **only**. Payers are warned once prices are over 7
+  days old and refused a figure after 31.
+- **Zakah settles into a separate bank account**, through a Paystack
+  subaccount (Platform Settings → `ZAKAH_SUBACCOUNT_CODE`); no zakah
+  payment is taken until it's configured. It is booked in zakah's own
+  ledger as a **liability (held for recipients)**, never revenue.
+- **100% of zakah reaches recipients.** The payer may add the processing
+  fee on top; otherwise Birr pays it from operating funds. Never deducted
+  from the zakah.
+- **Email optional, like Vault**, with the same accepted AML gaps — plus
+  one more: the threshold check never adds a person's Vault and zakah
+  giving together. Left to Compliance's off-platform review.
+- The calculator's wealth figures stay on the payer's device; a payment
+  stores only the amount and which ruleset version and prices produced it.
+
+Still to come: refunds (governed, like Vault's), distribution to the
+eight categories, and Zakah al-Fitr. The agency (wakalah) wording a payer
+accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
+Supervisory Board must approve before payments open.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

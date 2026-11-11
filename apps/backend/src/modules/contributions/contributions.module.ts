@@ -6,12 +6,13 @@ import { NotificationsModule } from "../notifications/notifications.module";
 import { DistributionsModule } from "../distributions/distributions.module";
 import { VaultsModule } from "../vaults/vaults.module";
 import { WaqfLedgerModule } from "../waqf-ledger/waqf-ledger.module";
+import { ZakahModule } from "../zakah/zakah.module";
 import { StripeAdapter } from "./providers/stripe.adapter";
 import { PaystackAdapter } from "./providers/paystack.adapter";
 import { StablecoinAdapter } from "./providers/stablecoin.adapter";
 import { SettingsModule } from "../../common/settings/settings.module";
 
-// DistributionsModule/VaultsModule imports are only for their own
+// DistributionsModule/VaultsModule/ZakahModule imports are only for their own
 // webhook dispatch — both need to be tried from the same
 // POST /webhooks/{stripe,paystack,stablecoin} routes ContributionsController
 // already owns (Paystack specifically only supports one webhook URL per
@@ -20,7 +21,7 @@ import { SettingsModule } from "../../common/settings/settings.module";
 // payout/contribution-adjacent consumer ever shows up; not worth the
 // bigger diff for three.
 @Module({
-  imports: [AssetsModule, NotificationsModule, DistributionsModule, VaultsModule, SettingsModule, WaqfLedgerModule],
+  imports: [AssetsModule, NotificationsModule, DistributionsModule, VaultsModule, SettingsModule, WaqfLedgerModule, ZakahModule],
   controllers: [ContributionsController],
   providers: [ContributionsService, StripeAdapter, PaystackAdapter, StablecoinAdapter],
   exports: [ContributionsService],

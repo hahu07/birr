@@ -71,6 +71,13 @@ export class PaystackAdapter implements PaymentProviderAdapter {
         currency: input.currency.toUpperCase(),
         reference: input.reference,
         callback_url: callbackUrl,
+        ...(input.split && {
+          subaccount: input.split.subaccount,
+          // A flat amount (kobo) kept by the main account; it overrides the
+          // subaccount's configured percentage split.
+          transaction_charge: input.split.mainAccountShareMinorUnits,
+          bearer: "account",
+        }),
       }),
     });
     const body = (await res.json()) as PaystackInitializeResponse;

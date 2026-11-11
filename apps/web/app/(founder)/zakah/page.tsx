@@ -11,12 +11,13 @@ import { ApiError, apiFetchJson } from "../../../lib/api";
 import { Alert, Button, Skeleton } from "@birr/ui";
 import { Reveal, SiteFooter, SiteHeader } from "../SiteChrome";
 import { ZakahCalculator } from "./ZakahCalculator";
+import type { ZakahPaymentTerms } from "./PayZakahForm";
 
 type Loaded =
   | { state: "loading" }
   | { state: "error" }
   | { state: "unavailable"; reason: "no_rulesets" | "no_prices" }
-  | { state: "ready"; rulesets: ZakahRuleset[]; prices: MetalPrices };
+  | { state: "ready"; rulesets: ZakahRuleset[]; prices: MetalPrices; paymentTerms: ZakahPaymentTerms | null };
 
 /** Today in Nigeria, which is what Birr dates its prices by. */
 function lagosToday(): string {
@@ -33,8 +34,10 @@ export default function ZakahCalculatorPage() {
         if (err instanceof ApiError && err.status === 404) return null;
         throw err;
       }),
+      // Paying is optional to the page: without the terms the calculator still works.
+      apiFetchJson<ZakahPaymentTerms>("/zakah-payments/terms").catch(() => null),
     ])
-      .then(([rulesets, prices]) => {
+      .then(([rulesets, prices, paymentTerms]) => {
         if (rulesets.length === 0) setLoaded({ state: "unavailable", reason: "no_rulesets" });
         else if (!prices) setLoaded({ state: "unavailable", reason: "no_prices" });
         else
@@ -42,6 +45,7 @@ export default function ZakahCalculatorPage() {
             state: "ready",
             rulesets,
             prices: { goldPerGram: prices.goldPerGram, silverPerGram: prices.silverPerGram, asOf: prices.asOf, source: prices.source },
+            paymentTerms,
           });
       })
       .catch(() => setLoaded({ state: "error" }));
@@ -93,12 +97,14 @@ export default function ZakahCalculatorPage() {
             </Alert>
           )}
 
-          {loaded.state === "ready" && <ZakahCalculator rulesets={loaded.rulesets} prices={loaded.prices} today={lagosToday()} />}
+          {loaded.state === "ready" && (
+            <ZakahCalculator rulesets={loaded.rulesets} prices={loaded.prices} today={lagosToday()} paymentTerms={loaded.paymentTerms} />
+          )}
         </div>
 
         <p className="mx-auto mt-12 max-w-2xl text-center text-xs leading-relaxed text-slate-500">
           This calculator covers cash, savings, business stock, money owed to you, and gold and silver. Livestock, crops, shares,
-          pensions and crypto have their own rules and aren&apos;t included yet. Paying your zakah through Birr is coming soon.
+          pensions and crypto have their own rules and aren&apos;t included yet.
         </p>
       </section>
 

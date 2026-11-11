@@ -17,6 +17,7 @@ import {
 } from "@birr/zakah";
 import { Alert, Button, Input, Select } from "@birr/ui";
 import { formatDate, formatMoney } from "../../../lib/format";
+import { PayZakahForm, type ZakahPaymentTerms } from "./PayZakahForm";
 
 const GOLD_PURITIES = [
   { label: "24k (pure)", value: karatToPurity(24) },
@@ -61,10 +62,13 @@ export function ZakahCalculator({
   rulesets,
   prices,
   today,
+  paymentTerms = null,
 }: {
   rulesets: ZakahRuleset[];
   prices: MetalPrices;
   today: string;
+  /** null when the payment terms couldn't be loaded — the calculator still works. */
+  paymentTerms?: ZakahPaymentTerms | null;
 }) {
   const [rulesetId, setRulesetId] = useState(() => (rulesets.find((r) => r.madhhab === "maliki") ?? rulesets[0]).id);
   const [amounts, setAmounts] = useState({ cash: "", tradeGoods: "", receivables: "", debtsDueNow: "" });
@@ -212,7 +216,7 @@ export function ZakahCalculator({
         </label>
       </div>
 
-      <ResultPanel outcome={outcome} heldAYear={heldAYear} ruleset={ruleset} prices={prices} />
+      <ResultPanel outcome={outcome} heldAYear={heldAYear} ruleset={ruleset} prices={prices} paymentTerms={paymentTerms} />
     </div>
   );
 }
@@ -243,9 +247,21 @@ function AmountField({ id, label, hint, value, onChange }: { id: string; label: 
   );
 }
 
-function ResultPanel({ outcome, heldAYear, ruleset, prices }: { outcome: Outcome; heldAYear: boolean; ruleset: ZakahRuleset; prices: MetalPrices }) {
+function ResultPanel({
+  outcome,
+  heldAYear,
+  ruleset,
+  prices,
+  paymentTerms,
+}: {
+  outcome: Outcome;
+  heldAYear: boolean;
+  ruleset: ZakahRuleset;
+  prices: MetalPrices;
+  paymentTerms: ZakahPaymentTerms | null;
+}) {
   return (
-    <aside aria-live="polite" className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-24">
+    <aside className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       {outcome.kind === "prices_expired" && (
         <Alert tone="warning" title="Prices are out of date">
           Today&apos;s gold and silver prices haven&apos;t been updated recently, so we can&apos;t work out the nisab. Please check back soon.
@@ -257,6 +273,19 @@ function ResultPanel({ outcome, heldAYear, ruleset, prices }: { outcome: Outcome
         </Alert>
       )}
       {outcome.kind === "result" && <ResultDetails result={outcome.result} heldAYear={heldAYear} />}
+      {outcome.kind === "result" && heldAYear && outcome.result.meetsNisab && (
+        paymentTerms?.available ? (
+          // Keyed by the figure, so the amount resets when the calculation changes.
+          <PayZakahForm
+            key={outcome.result.zakahDue}
+            zakahDue={outcome.result.zakahDue}
+            ruleset={{ key: outcome.result.ruleset.id, version: outcome.result.ruleset.version }}
+            terms={paymentTerms}
+          />
+        ) : (
+          <p className="mt-6 border-t border-slate-100 pt-4 text-sm text-slate-600">Paying your zakah through Birr opens soon.</p>
+        )
+      )}
 
       <p className="mt-6 border-t border-slate-100 pt-4 text-xs leading-relaxed text-slate-500">
         Uses the {ruleset.label} ruleset (version {ruleset.version}), approved by Birr&apos;s Shariah Supervisory Board, and gold
@@ -279,6 +308,7 @@ function ResultDetails({ result, heldAYear }: { result: ZakahResult; heldAYear: 
         </Alert>
       )}
 
+      <div aria-live="polite">
       <p className="text-sm font-medium text-slate-500">Your zakah</p>
       {!heldAYear ? (
         <p className="mt-2 text-sm text-slate-600">Tick the box confirming you&apos;ve held this wealth for a full lunar year to see what you owe.</p>
@@ -297,6 +327,8 @@ function ResultDetails({ result, heldAYear }: { result: ZakahResult; heldAYear: 
           </p>
         </>
       )}
+
+      </div>
 
       <dl className="mt-5 space-y-2 text-sm">
         <div className="flex justify-between gap-4">

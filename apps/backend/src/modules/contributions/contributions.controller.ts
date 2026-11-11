@@ -7,6 +7,7 @@ import { ContributionsService } from "./contributions.service";
 import { DistributionsService } from "../distributions/distributions.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
+import { ZakahPaymentsService } from "../zakah/zakah-payments.service";
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { hasAnySessionCookie } from "../../common/auth/session";
@@ -50,6 +51,7 @@ export class ContributionsController {
     private readonly distributionsService: DistributionsService,
     private readonly vaultContributionsService: VaultContributionsService,
     private readonly vaultDistributionsService: VaultDistributionsService,
+    private readonly zakahPaymentsService: ZakahPaymentsService,
   ) {}
 
   // Self-service — same posture as POST /waqfs and POST /foundations,
@@ -205,8 +207,12 @@ export class ContributionsController {
 
     // Same "verify again, look up by reference, null means not mine"
     // contract as every participant in this chain above — see
-    // VaultContributionsService.handleWebhook's own comment. Last in
-    // the chain: nothing left to try after this.
-    return this.vaultContributionsService.handleWebhook(provider, rawBody, headers);
+    // VaultContributionsService.handleWebhook's own comment.
+    const vaultResult = await this.vaultContributionsService.handleWebhook(provider, rawBody, headers);
+    if (vaultResult !== null) return vaultResult;
+
+    // Zakah payments (2026-11-11), same contract. Last in the chain:
+    // nothing left to try after this.
+    return this.zakahPaymentsService.handleWebhook(provider, rawBody, headers);
   }
 }

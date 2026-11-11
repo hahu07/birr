@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { draftRulesets } from "@birr/zakah";
 import { StaffSessionProvider } from "../../../lib/staff-session";
-import type { BirrStaff, ZakahMetalPriceRow, ZakahRulesetRow } from "../../../lib/ops-types";
+import type { BirrStaff, ZakahLedgerBalance, ZakahMetalPriceRow, ZakahPaymentRow, ZakahRulesetRow } from "../../../lib/ops-types";
 import ZakahPage from "./page";
 
 vi.mock("../../../lib/api", () => ({
@@ -57,11 +57,21 @@ const draft: ZakahRulesetRow = {
   createdAt: "2026-11-11T00:00:00.000Z",
 };
 
-function setup(staff: BirrStaff, { prices = [price], rulesets = [draft] }: { prices?: ZakahMetalPriceRow[]; rulesets?: ZakahRulesetRow[] } = {}) {
+const ledger: ZakahLedgerBalance[] = [
+  { code: "1000", name: "Zakah bank account", type: "asset", debit: "95000.00", credit: "0.00", balance: "95000.00" },
+  { code: "2000", name: "Zakah held for recipients", type: "liability", debit: "0.00", credit: "95000.00", balance: "95000.00" },
+];
+
+function setup(
+  staff: BirrStaff,
+  { prices = [price], rulesets = [draft], payments = [] }: { prices?: ZakahMetalPriceRow[]; rulesets?: ZakahRulesetRow[]; payments?: ZakahPaymentRow[] } = {},
+) {
   mockedApiFetchJson.mockImplementation((path: string) => {
     if (path === "/birr-staff/me") return Promise.resolve(staff);
     if (path === "/zakah/metal-prices") return Promise.resolve(prices);
     if (path === "/zakah/rulesets") return Promise.resolve(rulesets);
+    if (path === "/zakah-payments") return Promise.resolve(payments);
+    if (path === "/zakah-payments/ledger") return Promise.resolve(ledger);
     if (path === "/governed-actions" || path.startsWith("/zakah/rulesets")) return Promise.resolve({});
     return Promise.reject(new Error(`Unhandled path in test: ${path}`));
   });
@@ -93,6 +103,21 @@ describe("Ops Console — Zakah", () => {
     expect(screen.queryByRole("button", { name: "Draft a ruleset" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Propose for Shariah approval" })).not.toBeInTheDocument();
+  });
+
+  test("lists payments with the payer, or Anonymous, and the zakah held for recipients", async () => {
+    setup(staffWith(["compliance_officer"], []), {
+      payments: [
+        { id: "p-1", amount: "95000.00", feeCover: "1548.23", currency: "NGN", status: "confirmed", rulesetKey: "maliki", rulesetVersion: 1, createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: { email: "amina@example.com", fullName: "Amina Bello" } },
+        { id: "p-2", amount: "5000.00", feeCover: "0.00", currency: "NGN", status: "pending", rulesetKey: null, rulesetVersion: null, createdAt: "2027-02-11T00:00:00.000Z", confirmedAt: null, payer: null },
+      ],
+    });
+
+    expect(await screen.findByText("Amina Bello")).toBeInTheDocument();
+    expect(screen.getByText("amina@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Anonymous")).toBeInTheDocument();
+    expect(screen.getByText(/\+ ₦1,548.23 fee cover/)).toBeInTheDocument();
+    expect(screen.getByText("Held for recipients, not yet distributed:")).toBeInTheDocument();
   });
 
   test("Investment Committee proposes new prices as a governed action", async () => {

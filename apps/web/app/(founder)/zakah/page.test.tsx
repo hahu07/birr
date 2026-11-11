@@ -32,8 +32,15 @@ const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).for
 // Illustrative prices: silver nisab (595g) = ₦1,190,000; gold nisab (85g) = ₦12,750,000.
 const freshPrices = { goldPerGram: "150000", silverPerGram: "2000", asOf: today, source: "Test source", freshness: { ageDays: 0, status: "fresh" } };
 
-function setup({ rulesets = [approved("maliki"), approved("hanafi")], prices = freshPrices as unknown }: { rulesets?: ZakahRuleset[]; prices?: unknown } = {}) {
+const openTerms = { available: true, currency: "NGN", minimumAmount: "100", wakalah: { version: "v-test", text: "I appoint Birr as my agent." } };
+
+function setup({
+  rulesets = [approved("maliki"), approved("hanafi")],
+  prices = freshPrices as unknown,
+  terms = openTerms as unknown,
+}: { rulesets?: ZakahRuleset[]; prices?: unknown; terms?: unknown } = {}) {
   mockedApiFetchJson.mockImplementation((path: string) => {
+    if (path === "/zakah-payments/terms") return terms ? Promise.resolve(terms) : Promise.reject(new Error("down"));
     if (path === "/zakah/rulesets/current") return Promise.resolve(rulesets);
     if (path === "/zakah/metal-prices/current") {
       return prices ? Promise.resolve(prices) : Promise.reject(new ApiError("No metal prices have been approved yet.", 404));
@@ -49,7 +56,9 @@ async function enterAmina(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("Debts you must pay now"), "400000");
 }
 
-describe("Public zakah calculator", () => {
+// These tests type whole amounts keystroke by keystroke, which can pass
+// the 5s default on a busy machine.
+describe("Public zakah calculator", { timeout: 15_000 }, () => {
   beforeEach(() => {
     mockedApiFetchJson.mockReset();
   });
@@ -129,6 +138,36 @@ describe("Public zakah calculator", () => {
     expect(paths).toEqual([
       { path: "/zakah/rulesets/current", method: undefined },
       { path: "/zakah/metal-prices/current", method: undefined },
+      { path: "/zakah-payments/terms", method: undefined },
     ]);
+  });
+
+  test("offers payment once there's zakah to pay and payments are open", async () => {
+    const user = userEvent.setup();
+    setup();
+    await enterAmina(user);
+    expect(screen.queryByText("Pay your zakah through Birr")).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText(/held this wealth for a full lunar year/));
+
+    expect(screen.getByText("Pay your zakah through Birr")).toBeInTheDocument();
+    expect(screen.getByLabelText("Amount to pay")).toHaveValue("95000.00");
+  });
+
+  test("says paying isn't open yet when the zakah account isn't set up", async () => {
+    const user = userEvent.setup();
+    setup({ terms: { ...openTerms, available: false } });
+    await enterAmina(user);
+    await user.click(screen.getByLabelText(/held this wealth for a full lunar year/));
+
+    expect(screen.getByText("Paying your zakah through Birr opens soon.")).toBeInTheDocument();
+    expect(screen.queryByText("Pay your zakah through Birr")).not.toBeInTheDocument();
+  });
+
+  test("still calculates when the payment terms can't be loaded", async () => {
+    const user = userEvent.setup();
+    setup({ terms: null });
+    await enterAmina(user);
+    await user.click(screen.getByLabelText(/held this wealth for a full lunar year/));
+    expect(screen.getByText("₦95,000.00")).toBeInTheDocument();
   });
 });

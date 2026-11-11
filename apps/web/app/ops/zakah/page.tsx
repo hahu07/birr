@@ -10,7 +10,7 @@ import { draftRulesets, priceFreshness, type ZakahRulings } from "@birr/zakah";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate, formatMoney } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
-import type { ZakahMetalPriceRow, ZakahRulesetRow } from "../../../lib/ops-types";
+import type { ZakahLedgerBalance, ZakahMetalPriceRow, ZakahPaymentRow, ZakahRulesetRow } from "../../../lib/ops-types";
 import {
   Alert,
   Badge,
@@ -38,6 +38,7 @@ const MADHHAB_LABELS: Record<ZakahRulesetRow["madhhab"], string> = {
 
 const STATUS_TONE = { draft: "warning", approved: "success", superseded: "neutral" } as const;
 const FRESHNESS_TONE = { fresh: "success", stale: "warning", expired: "danger" } as const;
+const PAYMENT_TONE = { pending: "neutral", confirmed: "success", failed: "danger" } as const;
 
 function lagosToday(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
@@ -70,9 +71,87 @@ export default function ZakahPage() {
           </p>
         </div>
       </header>
+      <PaymentsSection />
       <MetalPricesSection />
       <RulesetsSection />
     </div>
+  );
+}
+
+function PaymentsSection() {
+  const [payments, setPayments] = useState<ZakahPaymentRow[] | null>(null);
+  const [ledger, setLedger] = useState<ZakahLedgerBalance[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([apiFetchJson<ZakahPaymentRow[]>("/zakah-payments"), apiFetchJson<ZakahLedgerBalance[]>("/zakah-payments/ledger")])
+      .then(([p, l]) => {
+        setPayments(p);
+        setLedger(l);
+      })
+      .catch((err: unknown) => setError(errorText(err)));
+  }, []);
+
+  const held = ledger?.find((a) => a.code === "2000");
+
+  return (
+    <section className="mb-10">
+      <SectionHeader
+        title="Payments"
+        description="Zakah received as each payer's agent. Only the zakah itself is booked here — a payer's optional fee cover settles to Birr's main account, not the zakah one."
+      />
+      {error && (
+        <Alert tone="danger" title="Couldn't load zakah payments" className="mb-4">
+          {error}
+        </Alert>
+      )}
+      {held && (
+        <p className="mb-3 text-sm text-slate-600">
+          Held for recipients, not yet distributed:{" "}
+          <span className="font-semibold text-slate-900">{formatMoney(held.balance, "NGN")}</span>
+        </p>
+      )}
+      {!error && payments === null && <RowsSkeleton columns={4} />}
+      {!error && payments !== null && payments.length === 0 && (
+        <EmptyState title="No zakah payments yet" description="Payments appear here once the zakah account is set up and payers start using the calculator." />
+      )}
+      {payments !== null && payments.length > 0 && (
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell>Date</TableHeaderCell>
+              <TableHeaderCell>Payer</TableHeaderCell>
+              <TableHeaderCell>Zakah</TableHeaderCell>
+              <TableHeaderCell>Status</TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {payments.map((p) => (
+              <TableRow key={p.id}>
+                <TableCell className="text-slate-500">{formatDate(p.createdAt)}</TableCell>
+                <TableCell>
+                  {p.payer ? (
+                    <>
+                      <div className="font-medium text-slate-900">{p.payer.fullName ?? p.payer.email}</div>
+                      {p.payer.fullName && <div className="text-xs text-slate-500">{p.payer.email}</div>}
+                    </>
+                  ) : (
+                    <span className="text-slate-500">Anonymous</span>
+                  )}
+                </TableCell>
+                <TableCell className="tabular-nums">
+                  {formatMoney(p.amount, p.currency)}
+                  {Number(p.feeCover) > 0 && <div className="text-xs text-slate-500">+ {formatMoney(p.feeCover, p.currency)} fee cover</div>}
+                </TableCell>
+                <TableCell>
+                  <Badge tone={PAYMENT_TONE[p.status]}>{p.status}</Badge>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </section>
   );
 }
 
