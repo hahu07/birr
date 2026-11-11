@@ -445,8 +445,21 @@ extending Waqf or Vault ones. Owner's decisions so far:
 - The calculator's wealth figures stay on the payer's device; a payment
   stores only the amount and which ruleset version and prices produced it.
 
-Still to come: refunds (governed, like Vault's), distribution to the
-eight categories, and Zakah al-Fitr. The agency (wakalah) wording a payer
+- **Distribution to the eight categories** (`ZakahDistribution`),
+  owner's decisions: to verified individuals (`ZakahRecipient`) **and**
+  to active, vetted partners (`Counterparty`), who must report back the
+  people reached. A Mutawalli Officer proposes; a Shariah board member
+  **or** Compliance approves (`zakah.distribution_approve`). Paid by
+  **bank transfer from the zakah account, never Paystack payouts**
+  (those draw on Birr's main balance), and booked only once a second
+  person — Compliance or the Audit Committee — confirms the bank
+  reference (`zakah.distribution_mark_paid`). *Al-'amilin* is closed in
+  code and by a database CHECK, following the 100%-to-recipients
+  decision. Committed zakah can never exceed zakah received (checked
+  under a lock). Known gap: registering a recipient is one person's
+  action; the second person reviews eligibility at each payment instead.
+
+Still to come: refunds (governed, like Vault's) and Zakah al-Fitr. The agency (wakalah) wording a payer
 accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
 Supervisory Board must approve before payments open.
 

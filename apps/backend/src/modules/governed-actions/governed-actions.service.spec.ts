@@ -32,6 +32,8 @@ import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { InvitationsService } from "../invitations/invitations.service";
 import { ResendInvitationEmailAdapter } from "../invitations/email/resend-invitation.adapter";
 import { ZakahService } from "../zakah/zakah.service";
+import { ZakahDistributionsService } from "../zakah/zakah-distributions.service";
+import { ZakahLedgerService } from "../zakah/zakah-ledger.service";
 import { draftRulesets } from "@birr/zakah";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
@@ -113,6 +115,7 @@ describe("GovernedActionsService", () => {
   // the current prices — see zakah.service.spec.ts's own note.
   const zakahService = new ZakahService();
   zakahService.now = () => new Date("2001-01-15T12:00:00Z");
+  const zakahDistributionsService = new ZakahDistributionsService(new EncryptionService(), new ZakahLedgerService());
   const service = new GovernedActionsService(
     new AssetsService(),
     beneficiariesService,
@@ -146,6 +149,7 @@ describe("GovernedActionsService", () => {
     new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService(), new FunnelEventsService()),
     new InvitationsService(invitationEmails as unknown as ResendInvitationEmailAdapter, notificationsService),
     zakahService,
+    zakahDistributionsService,
   );
 
   const governedActionIds: string[] = [];
@@ -2801,6 +2805,90 @@ describe("GovernedActionsService", () => {
       await service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: false });
 
       expect(await prisma.zakahMetalPrice.findUnique({ where: { governedActionId: action.id } })).toBeNull();
+    });
+
+    // Distribution. Funds itself first (a confirmed payment booked in the
+    // ledger), so the zakah it commits never drains what other runs need.
+    async function fundedRecipient() {
+      await prisma.$transaction(async (tx) => {
+        const id = randomUUID();
+        await tx.zakahPayment.create({
+          data: {
+            id, amount: "100000", currency: "NGN", provider: "paystack", providerReference: id, status: "confirmed",
+            confirmedAt: new Date(), settlementSubaccount: "ACCT_test_zakah", wakalahConsentVersion: "test",
+          },
+        });
+        const ledger = new ZakahLedgerService();
+        const bank = await ledger.getAccountByCode(tx, "1000");
+        const held = await ledger.getAccountByCode(tx, "2000");
+        await ledger.post(tx, {
+          description: "Test fixture zakah payment", currency: "NGN", source: "payment", sourceId: id, actorType: "system",
+          lines: [{ ledgerAccountId: bank.id, debit: "100000" }, { ledgerAccountId: held.id, credit: "100000" }],
+        });
+      });
+      return zakahDistributionsService.createRecipient(
+        { name: `GA Zakah Recipient ${run}`, categories: ["masakin"], eligibilityReason: "Verified by home visit: no regular income." },
+        makerUserId,
+      );
+    }
+
+    test("zakah.distribution_approve then zakah.distribution_mark_paid: each needs its own second person, then it's booked", async () => {
+      const r = await fundedRecipient();
+      const d = await zakahDistributionsService.create(
+        { recipientId: r.id, category: "masakin", amount: "15000", reason: "Food and rent support this month." },
+        makerUserId,
+      );
+
+      const approval = await service.propose({ permissionKey: "zakah.distribution_approve", payload: { distributionId: d.id }, makerUserId });
+      await service.decide({ governedActionId: approval.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+      expect(await prisma.zakahDistribution.findUniqueOrThrow({ where: { id: d.id } })).toMatchObject({
+        status: "approved",
+        approvalActionId: approval.id,
+      });
+
+      const paid = await service.propose({
+        permissionKey: "zakah.distribution_mark_paid",
+        payload: { distributionId: d.id, bankReference: `GA-${run}`, paidOn: new Date().toISOString().slice(0, 10) },
+        makerUserId,
+      });
+      await service.decide({ governedActionId: paid.id, checkerUserId: distributionCheckerUserId, approve: true });
+
+      expect(await prisma.zakahDistribution.findUniqueOrThrow({ where: { id: d.id } })).toMatchObject({ status: "paid", paymentActionId: paid.id });
+      expect(await prisma.zakahJournalEntry.count({ where: { source: "distribution", sourceId: d.id } })).toBe(1);
+      const logs = await prisma.auditLog.findMany({ where: { entityId: d.id, action: { in: ["zakah_distribution.approved", "zakah_distribution.paid"] } } });
+      expect(logs.map((l) => [l.action, l.actorUserId]).sort()).toEqual([
+        ["zakah_distribution.approved", beneficiaryCheckerUserId],
+        ["zakah_distribution.paid", distributionCheckerUserId],
+      ]);
+    });
+
+    test("zakah.distribution_approve: reject → rejected, audit-logged, and its amount is released", async () => {
+      const r = await fundedRecipient();
+      const d = await zakahDistributionsService.create(
+        { recipientId: r.id, category: "masakin", amount: "4000", reason: "Food support this month." },
+        makerUserId,
+      );
+      const action = await service.propose({ permissionKey: "zakah.distribution_approve", payload: { distributionId: d.id }, makerUserId });
+      await service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: false });
+
+      expect((await prisma.zakahDistribution.findUniqueOrThrow({ where: { id: d.id } })).status).toBe("rejected");
+      expect(await prisma.auditLog.count({ where: { entityId: d.id, action: "zakah_distribution.rejected" } })).toBe(1);
+    });
+
+    test("zakah.distribution_approve: the proposer can't approve it, and the database itself rejects checker = maker", async () => {
+      const r = await fundedRecipient();
+      const d = await zakahDistributionsService.create(
+        { recipientId: r.id, category: "masakin", amount: "1000", reason: "Food support this month." },
+        makerUserId,
+      );
+      const action = await service.propose({ permissionKey: "zakah.distribution_approve", payload: { distributionId: d.id }, makerUserId });
+      await expect(
+        service.propose({ permissionKey: "zakah.distribution_approve", payload: { distributionId: d.id }, makerUserId }),
+      ).rejects.toThrow(ConflictException);
+      await expect(service.decide({ governedActionId: action.id, checkerUserId: makerUserId, approve: true })).rejects.toThrow(ForbiddenException);
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+
+      await service.decide({ governedActionId: action.id, checkerUserId: beneficiaryCheckerUserId, approve: false });
     });
 
     test("zakah.metal_price_set: an invalid price can't even be proposed", async () => {

@@ -14,7 +14,9 @@ function respondWith(status: string, feeCover = "0.00") {
 }
 
 describe("Zakah payment status page", () => {
-  beforeEach(() => mockedApiFetchJson.mockReset());
+  beforeEach(() => {
+    mockedApiFetchJson.mockReset();
+  });
 
   test("checks with Paystack first, then shows a confirmed payment", async () => {
     respondWith("confirmed", "1548.23");

@@ -107,6 +107,13 @@ const governedPermissions = [
   // approved by compliance_officer only.
   { key: "zakah.ruleset_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a draft zakah ruleset, making it the version the zakah calculator applies." },
   { key: "zakah.metal_price_set", category: "zakah", requiresMakerChecker: true, description: "Set the gold and silver prices that fix the zakah nisab in Naira." },
+  // Distribution (2026-11-11). Owner's decisions: a Mutawalli Officer
+  // proposes; a Shariah board member or a Compliance officer approves. Zakah
+  // is paid by bank transfer from the zakah account, and a second person
+  // confirms that against the bank before it's booked — Compliance or the
+  // Audit Committee (the latter's financial-controls remit).
+  { key: "zakah.distribution_approve", category: "zakah", requiresMakerChecker: true, description: "Approve paying zakah to an eligible recipient or partner, in one of the eight categories." },
+  { key: "zakah.distribution_mark_paid", category: "zakah", requiresMakerChecker: true, description: "Confirm an approved zakah distribution was paid from the zakah bank account." },
 ] as const;
 
 // Plain access permissions (2026-10-18): who may perform an ungoverned
@@ -171,6 +178,8 @@ export const accessPermissions = [
   { key: "waqf.milestone_manage", category: "waqf", description: "Add waqf fund milestones, start them, and attach evidence (completion is waqf.milestone_complete).", roles: ["mutawalli_officer"] },
   { key: "waqf.proceeds_allocate", category: "investment", description: "Allocate a waqf fund's investment proceeds across its causes.", roles: ["investment_committee"] },
   { key: "waqf.proceeds_record", category: "investment", description: "Record investment proceeds on a waqf fund.", roles: ["investment_committee", "mutawalli_officer"] },
+  { key: "zakah.recipient_manage", category: "zakah", description: "Register and update people eligible for zakah, including their bank details.", roles: ["mutawalli_officer"] },
+  { key: "zakah.distribution_create", category: "zakah", description: "Create a zakah distribution for approval, and record a partner's report of who it reached.", roles: ["mutawalli_officer"] },
   { key: "zakah.ruleset_draft", category: "zakah", description: "Draft and edit zakah rulesets (approving one is zakah.ruleset_approve).", roles: ["mutawalli_officer"] },
   { key: "waqf_funding.configure", category: "platform", description: "Set contribution and corpus minimums and waqf funding settings.", roles: ["platform_admin"] },
 ] as const satisfies readonly { key: string; category: string; description: string; roles: readonly string[] }[];
@@ -205,6 +214,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "vault.milestone_complete": { canMaker: true },
     "blog.publish": { canMaker: true },
     "zakah.ruleset_approve": { canMaker: true },
+    "zakah.distribution_approve": { canMaker: true },
+    "zakah.distribution_mark_paid": { canMaker: true },
   },
   // Apex checker across every maker-checker gated permission — the Board
   // is the last line of sign-off, distinct from (and above) the
@@ -257,6 +268,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "vault.distribution_approve": { canChecker: true },
     "vault.milestone_complete": { canChecker: true },
     "zakah.ruleset_approve": { canChecker: true },
+    "zakah.distribution_approve": { canChecker: true },
   },
   audit_committee: {
     "asset.dispose": { canChecker: true },
@@ -265,6 +277,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "compliance.report_export": { canMaker: true },
     "waqf.view": { canMaker: true },
     "vault.investment_change": { canChecker: true },
+    "zakah.distribution_mark_paid": { canChecker: true },
   },
   compliance_officer: {
     "distribution.approve": { canChecker: true },
@@ -290,6 +303,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.role_add": { canChecker: true },
     "staff.role_remove": { canChecker: true },
     "zakah.metal_price_set": { canChecker: true },
+    "zakah.distribution_approve": { canChecker: true },
+    "zakah.distribution_mark_paid": { canChecker: true },
   },
   legal_adviser: {
     "waqf.view": { canMaker: true },

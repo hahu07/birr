@@ -24,6 +24,7 @@ import { WaqfMilestonesService } from "../waqf-ledger/waqf-milestones.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { InvitationsService, assertStaffInvitable, invitationAuditSnapshot } from "../invitations/invitations.service";
 import { ZakahService } from "../zakah/zakah.service";
+import { ZakahDistributionsService } from "../zakah/zakah-distributions.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
@@ -354,6 +355,7 @@ export class GovernedActionsService {
     private readonly foundersService: FoundersService,
     private readonly invitationsService: InvitationsService,
     private readonly zakahService: ZakahService,
+    private readonly zakahDistributionsService: ZakahDistributionsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1294,6 +1296,46 @@ export class GovernedActionsService {
           onApprove: async (payload, tx, ctx) => {
             const price = await this.zakahService.recordMetalPrice(payload, ctx.governedActionId, tx);
             return { auditAction: "zakah_metal_price.set", entityType: "ZakahMetalPrice", entityId: price.id, before: null, after: price };
+          },
+        },
+      ],
+      // Zakah distribution: approval (maker mutawalli_officer; checkers
+      // shariah_board_member / compliance_officer), then confirming it was
+      // paid from the zakah bank account (checkers compliance_officer /
+      // audit_committee). Rejecting an approval releases its amount.
+      [
+        "zakah.distribution_approve",
+        {
+          validatePropose: (payload) => this.zakahDistributionsService.validateApprovalProposal(payload),
+          checkDuplicate: (payload) => this.zakahDistributionsService.checkDuplicateApproval(payload),
+          describePayload: (payload) => this.zakahDistributionsService.describe(payload),
+          describeCurrentState: (payload) => this.zakahDistributionsService.currentState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahDistributionsService.approve(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_distribution.approved", entityType: "ZakahDistribution", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.zakahDistributionsService.reject(payload, tx);
+            const id = (payload as { distributionId: string }).distributionId;
+            return {
+              auditAction: "zakah_distribution.rejected",
+              entityType: "ZakahDistribution",
+              entityId: id,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "zakah.distribution_mark_paid",
+        {
+          validatePropose: (payload) => this.zakahDistributionsService.validatePaidProposalAsync(payload),
+          checkDuplicate: (payload) => this.zakahDistributionsService.checkDuplicatePaid(payload),
+          describePayload: (payload) => this.zakahDistributionsService.describePaid(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahDistributionsService.markPaid(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_distribution.paid", entityType: "ZakahDistribution", entityId: after.id, before, after };
           },
         },
       ],

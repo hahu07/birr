@@ -371,6 +371,8 @@ model User {
   fieldPhotosUploaded            VaultFieldPhoto[]               @relation("FieldPhotoUploader")
   fieldPhotosHidden              VaultFieldPhoto[]               @relation("FieldPhotoHider")
   zakahRulesetsCreated           ZakahRuleset[]                  @relation("ZakahRulesetCreator")
+  zakahRecipientsCreated         ZakahRecipient[]                @relation("ZakahRecipientCreator")
+  zakahDistributionsCreated      ZakahDistribution[]             @relation("ZakahDistributionCreator")
 
   @@map("users")
 }
@@ -1018,34 +1020,36 @@ model AiAgent {
 // There is deliberately no checkerAgentId field or relation anywhere in
 // this schema. An AI agent can never be the checker. Do not add one.
 model GovernedAction {
-  id                   String               @id @default(uuid())
+  id                        String               @id @default(uuid())
   // Nullable: a waqf.create action has no waqf yet to reference — that's
   // the whole point of the action. Every other governed action (asset
   // disposal, distribution approval, etc.) is expected to set this.
-  waqfId               String?
-  waqf                 Waqf?                @relation(fields: [waqfId], references: [id])
+  waqfId                    String?
+  waqf                      Waqf?                @relation(fields: [waqfId], references: [id])
   // Vault-scoped counterpart to waqfId above — nullable for the same
   // reason (a governed action might belong to neither, e.g. a legacy
   // waqf.create-shaped row), set by whichever handler in
   // GovernedActionsService's map actually resolves one (resolveVaultId,
   // mirroring resolveWaqfId).
-  vaultId              String?
-  vault                Vault?               @relation(fields: [vaultId], references: [id])
-  permissionId         String
-  permission           Permission           @relation(fields: [permissionId], references: [id])
-  makerType            MakerType
-  makerUserId          String?
-  makerUser            User?                @relation("GovernedActionMaker", fields: [makerUserId], references: [id])
-  makerAgentId         String?
-  makerAgent           AiAgent?             @relation(fields: [makerAgentId], references: [id])
-  checkerUserId        String?
-  checkerUser          User?                @relation("GovernedActionChecker", fields: [checkerUserId], references: [id])
-  status               GovernedActionStatus @default(proposed)
-  payload              Json
-  createdAt            DateTime             @default(now())
-  decidedAt            DateTime?
-  approvedZakahRuleset ZakahRuleset?
-  zakahMetalPrice      ZakahMetalPrice?
+  vaultId                   String?
+  vault                     Vault?               @relation(fields: [vaultId], references: [id])
+  permissionId              String
+  permission                Permission           @relation(fields: [permissionId], references: [id])
+  makerType                 MakerType
+  makerUserId               String?
+  makerUser                 User?                @relation("GovernedActionMaker", fields: [makerUserId], references: [id])
+  makerAgentId              String?
+  makerAgent                AiAgent?             @relation(fields: [makerAgentId], references: [id])
+  checkerUserId             String?
+  checkerUser               User?                @relation("GovernedActionChecker", fields: [checkerUserId], references: [id])
+  status                    GovernedActionStatus @default(proposed)
+  payload                   Json
+  createdAt                 DateTime             @default(now())
+  decidedAt                 DateTime?
+  approvedZakahRuleset      ZakahRuleset?
+  zakahMetalPrice           ZakahMetalPrice?
+  approvedZakahDistribution ZakahDistribution?   @relation("ZakahDistributionApproval")
+  paidZakahDistribution     ZakahDistribution?   @relation("ZakahDistributionPayment")
 
   @@index([waqfId])
   @@index([status])
@@ -1535,6 +1539,8 @@ model Counterparty {
   investmentPlacements InvestmentPlacement[]
   vaultInvestments     VaultInvestment[]
   vaultDistributions   VaultDistribution[]
+
+  zakahDistributions ZakahDistribution[]
 
   @@map("counterparties")
 }
@@ -3091,6 +3097,7 @@ model ZakahLedgerAccount {
 enum ZakahJournalEntrySource {
   payment
   manual_adjustment
+  distribution
 }
 
 model ZakahJournalEntry {
@@ -3124,4 +3131,93 @@ model ZakahJournalEntryLine {
   @@index([journalEntryId])
   @@index([ledgerAccountId])
   @@map("zakah_journal_entry_lines")
+}
+
+// The eight categories of people zakah may go to (Qur'an 9:60). amilin
+// (zakah administrators) is in the list for completeness but closed in
+// code: the owner decided 100% of zakah reaches recipients, so Birr
+// takes no administrator's share (2026-11-11).
+enum ZakahCategory {
+  fuqara // the poor
+  masakin // the needy
+  amilin // those who administer zakah — closed, see above
+  muallafah // those whose hearts are to be reconciled
+  riqab // freeing those in bondage
+  gharimin // those in debt
+  fi_sabilillah // in the cause of Allah
+  ibn_sabil // the stranded traveller
+}
+
+// A person Birr has verified as eligible for zakah, in one or more
+// categories. Registered by a Mutawalli Officer; each payment to them
+// is separately approved (zakah.distribution_approve), which is where a
+// second person reviews their eligibility. Bank details are encrypted,
+// the same as Waqf beneficiaries. Never deleted — deactivated instead.
+model ZakahRecipient {
+  id                   String          @id @default(uuid())
+  name                 String
+  categories           ZakahCategory[]
+  // Why they qualify, in plain words — what the approver reviews.
+  eligibilityReason    String
+  phone                String?
+  bankDetailsEncrypted String?
+  active               Boolean         @default(true)
+  createdByUserId      String
+  createdBy            User            @relation("ZakahRecipientCreator", fields: [createdByUserId], references: [id])
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  distributions ZakahDistribution[]
+
+  @@map("zakah_recipients")
+}
+
+enum ZakahDistributionStatus {
+  pending_approval
+  approved
+  paid
+  rejected
+}
+
+// One payment of zakah, to either a verified individual (recipientId) or
+// a vetted partner organisation (counterpartyId) — never both. Two
+// governed steps, each needing a second person (owner's decisions,
+// 2026-11-11): zakah.distribution_approve (Shariah board or Compliance)
+// before any money moves, then zakah.distribution_mark_paid once finance
+// has paid it by bank transfer from the zakah account — never through
+// Paystack, whose payouts draw on Birr's main balance. Only "paid" posts
+// to the zakah ledger. A partner must then report the individuals it
+// reached.
+model ZakahDistribution {
+  id                  String                  @id @default(uuid())
+  recipientId         String?
+  recipient           ZakahRecipient?         @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  counterpartyId      String?
+  counterparty        Counterparty?           @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+  category            ZakahCategory
+  amount              Decimal
+  currency            String
+  // Why this payment fits this category — required, and what the approver reads.
+  reason              String
+  status              ZakahDistributionStatus @default(pending_approval)
+  approvedAt          DateTime?
+  approvalActionId    String?                 @unique
+  approvalAction      GovernedAction?         @relation("ZakahDistributionApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  paidOn              DateTime?               @db.Date
+  bankReference       String?
+  paymentActionId     String?                 @unique
+  paymentAction       GovernedAction?         @relation("ZakahDistributionPayment", fields: [paymentActionId], references: [id], onDelete: Restrict)
+  // Partner distributions only: what the partner reported back.
+  partnerReachedCount Int?
+  partnerReport       String?
+  partnerReportedAt   DateTime?
+  createdByUserId     String
+  createdBy           User                    @relation("ZakahDistributionCreator", fields: [createdByUserId], references: [id])
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  @@index([status])
+  @@index([recipientId])
+  @@index([counterpartyId])
+  @@map("zakah_distributions")
 }

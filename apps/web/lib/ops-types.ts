@@ -1363,3 +1363,45 @@ export interface ZakahLedgerBalance {
   credit: string;
   balance: string;
 }
+
+/** A person verified as eligible for zakah (see ZakahRecipient). Lists carry only the last four account digits. */
+export interface ZakahRecipientRow {
+  id: string;
+  name: string;
+  categories: import("@birr/zakah").ZakahCategoryKey[];
+  eligibilityReason: string;
+  phone: string | null;
+  active: boolean;
+  bank: { bankName: string; accountLast4: string } | null;
+  createdAt: string;
+}
+
+/** One zakah payment to an individual or a partner (see ZakahDistribution). */
+export interface ZakahDistributionRow {
+  id: string;
+  recipient: { id: string; name: string } | null;
+  counterparty: { id: string; name: string } | null;
+  category: import("@birr/zakah").ZakahCategoryKey;
+  amount: string;
+  currency: string;
+  reason: string;
+  status: "pending_approval" | "approved" | "paid" | "rejected";
+  approvedAt: string | null;
+  paidOn: string | null;
+  bankReference: string | null;
+  partnerReachedCount: number | null;
+  partnerReport: string | null;
+  partnerReportedAt: string | null;
+  createdAt: string;
+}
+
+/** GET /zakah-distributions/summary — headline figures in Naira. */
+export interface ZakahDistributionSummary {
+  currency: string;
+  received: string;
+  committed: string;
+  paid: string;
+  available: string;
+  oldestUndistributedSince: string | null;
+  byCategory: { category: import("@birr/zakah").ZakahCategoryKey; status: string; amount: string }[];
+}
