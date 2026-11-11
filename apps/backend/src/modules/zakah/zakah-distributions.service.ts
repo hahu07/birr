@@ -363,7 +363,7 @@ export class ZakahDistributionsService {
    * first-out — zakah shouldn't wait long. `committed` includes refunds.
    */
   async summary(pool: ZakahPool = "mal") {
-    const { received, committed, paid, refunded } = await this.totals(prisma, pool);
+    const { received, committed, paid, refunded, held } = await this.totals(prisma, pool);
     const left = paid.plus(refunded);
     const byCategory = await prisma.zakahDistribution.groupBy({
       by: ["category", "status"],
@@ -391,6 +391,7 @@ export class ZakahDistributionsService {
       committed: committed.toFixed(2),
       paid: paid.toFixed(2),
       refunded: refunded.toFixed(2),
+      held: held.toFixed(2),
       available: received.minus(committed).toFixed(2),
       oldestUndistributedSince,
       byCategory: byCategory.map((c) => ({ category: c.category, status: c.status, amount: (c._sum.amount ?? 0).toString() })),

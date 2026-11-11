@@ -156,7 +156,7 @@ export class ZakahRefundsService {
    */
   private async assertWithinLimits(
     tx: Prisma.TransactionClient,
-    payment: { id: string; amount: Prisma.Decimal; currency: string; pool: ZakahPool },
+    payment: { id: string; amount: Prisma.Decimal; currency: string; pool: ZakahPool; heldAt: Date | null },
     amount: Prisma.Decimal,
     alreadyCounted = false,
   ) {
@@ -169,6 +169,10 @@ export class ZakahRefundsService {
     if (amount.gt(refundable)) {
       throw new BadRequestException(`At most ${naira(refundable)} of this payment's zakah can still be refunded.`);
     }
+    // A held payment's whole unrefunded zakah is already reserved by its
+    // hold, and the per-payment limit above keeps this refund within that,
+    // so refunding it only moves money from the hold to the refund.
+    if (payment.heldAt) return;
     const { received, committed } = await zakahTotals(tx, payment.currency, payment.pool);
     const available = received.minus(committed).plus(alreadyCounted ? amount : 0);
     if (amount.gt(available)) {

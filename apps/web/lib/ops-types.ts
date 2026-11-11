@@ -1343,6 +1343,10 @@ export interface ZakahMetalPriceRow {
 /** A zakah payment as the Ops Console lists it (see ZakahPayment). Amounts in Naira; never the payer's ID. */
 export interface ZakahPaymentRow {
   id: string;
+  /** AML hold (staff only — never shown to the payer). */
+  heldAt?: string | null;
+  heldReason?: string | null;
+  heldBy?: string | null;
   pool?: ZakahPool;
   fitrPeople?: number | null;
   amount: string;
@@ -1407,6 +1411,8 @@ export interface ZakahDistributionSummary {
   paid: string;
   /** Paid back to payers by refund. */
   refunded: string;
+  /** Frozen by AML holds (already counted as committed). */
+  held?: string;
   available: string;
   oldestUndistributedSince: string | null;
   byCategory: { category: import("@birr/zakah").ZakahCategoryKey; status: string; amount: string }[];

@@ -375,6 +375,7 @@ model User {
   zakahDistributionsCreated      ZakahDistribution[]             @relation("ZakahDistributionCreator")
   zakahRefundsCreated            ZakahRefund[]                   @relation("ZakahRefundCreator")
   zakahFitrCampaignsCreated      ZakahFitrCampaign[]             @relation("ZakahFitrCampaignCreator")
+  zakahPaymentsHeld              ZakahPayment[]                  @relation("ZakahPaymentHolder")
 
   @@map("users")
 }
@@ -3084,6 +3085,16 @@ model ZakahPayment {
   fitrCampaign   ZakahFitrCampaign? @relation(fields: [fitrCampaignId], references: [id], onDelete: Restrict)
   // Number of people the fitr is paid for (one sa' each).
   fitrPeople     Int?
+  // An AML hold (owner's decisions, 2026-11-11): a Compliance officer or
+  // Mutawalli Officer may hold a confirmed payment; only Compliance may
+  // release it. While held, its unrefunded amount is reserved out of its
+  // pool's spending limit, so it can't be distributed — and a hold is
+  // refused once that zakah is already committed to recipients. Never
+  // shown to the payer (that would be tipping off).
+  heldAt         DateTime?
+  heldReason     String?
+  heldByUserId   String?
+  heldBy         User?              @relation("ZakahPaymentHolder", fields: [heldByUserId], references: [id], onDelete: Restrict)
   refunds        ZakahRefund[]
 
   @@index([payerId])

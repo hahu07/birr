@@ -1,12 +1,14 @@
 import { randomUUID } from "crypto";
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
 import { ContributionProvider, IdType, prisma, Prisma, ZakahPool } from "@birr/db";
 import { processingFeeCover } from "@birr/zakah";
 import { EncryptionService } from "../../common/settings/encryption.service";
@@ -18,8 +20,16 @@ import { ResendZakahReceiptEmailAdapter } from "./zakah-receipt-email.adapter";
 import { HELD_ACCOUNT_BY_POOL, ZAKAH_BANK_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
 import { ZakahFitrService } from "./zakah-fitr.service";
 import { ZAKAH_MINIMUM_PAYMENT_NGN, ZAKAH_WAKALAH_TERMS } from "./zakah-terms";
+import { heldReservation, lockZakahCommitments, zakahTotals } from "./zakah-commitments";
 
 const CURRENCY = "NGN";
+
+export class HoldZakahPaymentInput {
+  @IsString()
+  @MinLength(10, { message: "reason must say, in a sentence, why this payment is being held." })
+  @MaxLength(2000)
+  reason!: string;
+}
 
 export class InitiateZakahPaymentInput {
   /** "mal" (zakah on wealth, the default) or "fitr" (Zakah al-Fitr). */
@@ -528,7 +538,7 @@ export class ZakahPaymentsService {
     const rows = await prisma.zakahPayment.findMany({
       orderBy: { createdAt: "desc" },
       take: 200,
-      include: { payer: { select: { email: true, fullName: true } } },
+      include: { payer: { select: { email: true, fullName: true } }, heldBy: { select: { fullName: true } } },
     });
     return rows.map((r) => ({
       id: r.id,
@@ -543,7 +553,60 @@ export class ZakahPaymentsService {
       createdAt: r.createdAt,
       confirmedAt: r.confirmedAt,
       payer: r.payer,
+      // Staff-only: never in publicView — showing a hold to its payer would be tipping off.
+      heldAt: r.heldAt,
+      heldReason: r.heldReason,
+      heldBy: r.heldBy?.fullName ?? null,
     }));
+  }
+
+  /**
+   * Put a confirmed payment on AML hold: its unrefunded zakah is reserved
+   * out of its pool's spending limit until released, so it can't be
+   * distributed. Refused once that zakah is already committed to
+   * recipients — a hold would freeze nothing then, and Compliance follows
+   * up off-platform instead (owner's decision, 2026-11-11).
+   */
+  async hold(id: string, input: HoldZakahPaymentInput, actorUserId: string) {
+    const reason = input.reason.trim();
+    return prisma.$transaction(async (tx) => {
+      await lockZakahCommitments(tx);
+      const before = await tx.zakahPayment.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException(`Zakah payment "${id}" not found.`);
+      if (before.status !== "confirmed") throw new BadRequestException("Only a confirmed payment can be held.");
+      if (before.heldAt) throw new ConflictException("This payment is already on hold.");
+
+      const reservation = await heldReservation(tx, { ...before, heldAt: new Date() });
+      if (reservation.lte(0)) throw new BadRequestException("This payment's zakah is already being refunded in full; there's nothing left to hold.");
+      const { received, committed } = await zakahTotals(tx, before.currency, before.pool);
+      if (reservation.gt(received.minus(committed))) {
+        throw new BadRequestException(
+          "This payment's zakah has already been committed to recipients, so a hold can't freeze it. Follow it up off-platform (e.g. a report to the NFIU).",
+        );
+      }
+      const after = await tx.zakahPayment.update({ where: { id }, data: { heldAt: new Date(), heldReason: reason, heldByUserId: actorUserId } });
+      await tx.auditLog.create({
+        data: { actorType: "birr_staff", actorUserId, action: "zakah_payment.held", entityType: "ZakahPayment", entityId: id, before: before as any, after: after as any },
+      });
+      return after;
+    });
+  }
+
+  /** Lift an AML hold; the zakah can then be distributed. Compliance only (see zakah.payment_release). */
+  async release(id: string, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.zakahPayment.findUnique({ where: { id } });
+      if (!before) throw new NotFoundException(`Zakah payment "${id}" not found.`);
+      if (!before.heldAt) throw new BadRequestException("This payment isn't on hold.");
+      const after = await tx.zakahPayment.update({ where: { id }, data: { heldAt: null, heldReason: null, heldByUserId: null } });
+      await tx.auditLog.create({
+        data: {
+          actorType: "birr_staff", actorUserId, action: "zakah_payment.hold_released", entityType: "ZakahPayment",
+          entityId: id, before: before as any, after: after as any,
+        },
+      });
+      return after;
+    });
   }
 
   ledgerBalances() {

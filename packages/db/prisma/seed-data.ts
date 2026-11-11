@@ -188,6 +188,11 @@ export const accessPermissions = [
   { key: "waqf.milestone_manage", category: "waqf", description: "Add waqf fund milestones, start them, and attach evidence (completion is waqf.milestone_complete).", roles: ["mutawalli_officer"] },
   { key: "waqf.proceeds_allocate", category: "investment", description: "Allocate a waqf fund's investment proceeds across its causes.", roles: ["investment_committee"] },
   { key: "waqf.proceeds_record", category: "investment", description: "Record investment proceeds on a waqf fund.", roles: ["investment_committee", "mutawalli_officer"] },
+  // AML holds on zakah payments (2026-11-11). Owner's decisions: a hold only
+  // freezes money, so a Compliance officer or Mutawalli Officer may place
+  // one alone; only Compliance may release it, also alone (as with Vault).
+  { key: "zakah.payment_hold", category: "zakah", description: "Put a confirmed zakah payment on hold for AML review, so it can't be distributed.", roles: ["compliance_officer", "mutawalli_officer"] },
+  { key: "zakah.payment_release", category: "zakah", description: "Release a zakah payment from an AML hold.", roles: ["compliance_officer"] },
   { key: "zakah.refund_request", category: "zakah", description: "Record a zakah refund request and the payer's bank details for it.", roles: ["compliance_officer"] },
   { key: "zakah.fitr_campaign_draft", category: "zakah", description: "Draft and edit a season's Zakah al-Fitr campaign (approving it is zakah.fitr_campaign_approve).", roles: ["mutawalli_officer"] },
   // Closing early only ever stops money coming in, so it needs no second person.

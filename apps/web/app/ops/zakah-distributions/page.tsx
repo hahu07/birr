@@ -131,6 +131,9 @@ function SummaryCards({ summary }: { summary: ZakahDistributionSummary }) {
         <StatCard label="Paid to recipients" value={formatMoney(summary.paid, summary.currency)} />
         <StatCard label="Oldest zakah waiting" value={waited === null ? "None" : `${waited} day${waited === 1 ? "" : "s"}`} />
       </div>
+      {Number(summary.held ?? 0) > 0 && (
+        <p className="mt-4 text-sm text-slate-600">On AML hold, not available to distribute: {formatMoney(summary.held!, summary.currency)}</p>
+      )}
       {Number(summary.refunded) > 0 && (
         <p className="mt-4 text-sm text-slate-600">Refunded to payers (mistaken payments): {formatMoney(summary.refunded, summary.currency)}</p>
       )}

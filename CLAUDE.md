@@ -486,8 +486,18 @@ extending Waqf or Vault ones. Owner's decisions so far:
   and their own spending limit, and never lend to each other; all three
   sit in the one zakah bank account (1000). A row's pool never changes.
 
-Still to come: AML holds on suspicious payments (Vault has these), and
-emailing payers about their refund. The agency (wakalah) wording a payer
+- **AML holds** on zakah payments, owner's decisions: a Compliance
+  officer **or** a Mutawalli Officer may hold a confirmed payment, with a
+  reason (`zakah.payment_hold`); **only Compliance** may release it, alone
+  (`zakah.payment_release`), as with Vault. A hold reserves the payment's
+  unrefunded zakah out of its pool's spending limit, so it can't be
+  distributed; it's **refused once that zakah is already committed to
+  recipients** (follow up off-platform, e.g. an NFIU report). A held
+  payment can still be refunded; the refund takes over the reservation.
+  The payer is never shown a hold (tipping off).
+
+Still to come: emailing payers about their refund, and a structuring
+review list for zakah like Vault's. The agency (wakalah) wording a payer
 accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
 Supervisory Board must approve before payments open.
 

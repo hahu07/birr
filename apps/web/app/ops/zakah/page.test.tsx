@@ -93,6 +93,7 @@ function setup(
     if (path === "/zakah-payments") return Promise.resolve(payments);
     if (path === "/zakah/fitr-campaigns" && !init?.method) return Promise.resolve(fitrCampaigns);
     if (path.startsWith("/zakah/fitr-campaigns/") && init?.method === "POST") return Promise.resolve({});
+    if (/^\/zakah-payments\/[^/]+\/(hold|release)$/.test(path) && init?.method === "POST") return Promise.resolve({});
     if (path === "/zakah-refunds" && !init?.method) return Promise.resolve(refunds);
     if (path === "/zakah-refunds" && init?.method === "POST") return Promise.resolve({ id: "rf-new" });
     if (path === "/zakah-payments/ledger") return Promise.resolve(ledger);
@@ -224,6 +225,45 @@ describe("Ops Console — Zakah", { timeout: 15_000 }, () => {
       permissionKey: "zakah.fitr_campaign_approve",
       payload: { campaignId: "fc-1", staple: "Rice", kgPerPerson: "2.5", amountPerPerson: "2500", opensOn: "2027-02-08", expectedEidOn: "2027-03-10" },
     });
+  });
+
+  test("an officer puts a confirmed payment on AML hold with a reason, but can't release it", async () => {
+    const user = userEvent.setup();
+    const confirmed: ZakahPaymentRow = {
+      id: "p-9", amount: "95000.00", feeCover: "0.00", currency: "NGN", status: "confirmed", rulesetKey: null, rulesetVersion: null,
+      createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: { email: "x@example.com", fullName: null },
+    };
+    setup(staffWith(["mutawalli_officer"], ["zakah.payment_hold"]), {
+      payments: [confirmed, { ...confirmed, id: "p-10", heldAt: "2027-02-11T00:00:00.000Z", heldReason: "Same card, five emails.", heldBy: "Test Officer" }],
+    });
+
+    expect(await screen.findByText("on AML hold")).toBeInTheDocument();
+    expect(screen.getByText(/Same card, five emails\. — Test Officer/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Release hold" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Hold" }));
+    await user.type(screen.getByLabelText("Why"), "Payer gave a different name on a second card.");
+    await user.click(screen.getByRole("button", { name: "Hold payment" }));
+
+    await waitFor(() => expect(postsTo("/zakah-payments/p-9/hold")).toHaveLength(1));
+    expect(JSON.parse(postsTo("/zakah-payments/p-9/hold")[0][1]!.body as string)).toEqual({ reason: "Payer gave a different name on a second card." });
+  });
+
+  test("Compliance releases a hold after confirming", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    setup(staffWith(["compliance_officer"], ["zakah.payment_hold", "zakah.payment_release"]), {
+      payments: [
+        {
+          id: "p-11", amount: "5000.00", feeCover: "0.00", currency: "NGN", status: "confirmed", rulesetKey: null, rulesetVersion: null,
+          createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: null,
+          heldAt: "2027-02-11T00:00:00.000Z", heldReason: "Checking identity documents.", heldBy: "Test Officer",
+        },
+      ],
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Release hold" }));
+    await waitFor(() => expect(postsTo("/zakah-payments/p-11/release")).toHaveLength(1));
   });
 
   test("Investment Committee proposes new prices as a governed action", async () => {

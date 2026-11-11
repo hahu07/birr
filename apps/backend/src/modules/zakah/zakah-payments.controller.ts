@@ -1,7 +1,9 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Req } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
-import { InitiateZakahPaymentInput, ZakahPaymentsService } from "./zakah-payments.service";
+import { HoldZakahPaymentInput, InitiateZakahPaymentInput, ZakahPaymentsService } from "./zakah-payments.service";
+import { RequiresAccess } from "../../common/guards/permission.guard";
+import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
 
 // Public routes for a payer (no account of any kind) plus staff-only
@@ -55,5 +57,20 @@ export class ZakahPaymentsController {
     const payment = await this.service.reconcile(id);
     if (!payment) throw new NotFoundException(`Zakah payment "${id}" not found.`);
     return payment;
+  }
+
+  // AML holds — staff only, never visible to the payer. Holding only
+  // freezes money (Compliance or a Mutawalli Officer); releasing is
+  // Compliance's alone (owner's decisions, 2026-11-11).
+  @Post(":id/hold")
+  @RequiresAccess("zakah.payment_hold")
+  hold(@Param("id") id: string, @Body() body: HoldZakahPaymentInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.service.hold(id, body, staff.userId);
+  }
+
+  @Post(":id/release")
+  @RequiresAccess("zakah.payment_release")
+  release(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.service.release(id, staff.userId);
   }
 }

@@ -30,6 +30,7 @@ import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../_components/ProposeGovernedAction";
 import { RefundButton, RefundsSection } from "./RefundsSection";
 import { FitrCampaignsSection } from "./FitrCampaignsSection";
+import { PaymentHoldActions } from "./PaymentHoldActions";
 
 const MADHHAB_LABELS: Record<ZakahRulesetRow["madhhab"], string> = {
   maliki: "Maliki",
@@ -88,7 +89,7 @@ function PaymentsSection({ onRefundRequested }: { onRefundRequested: () => void 
   const [ledger, setLedger] = useState<ZakahLedgerBalance[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     Promise.all([apiFetchJson<ZakahPaymentRow[]>("/zakah-payments"), apiFetchJson<ZakahLedgerBalance[]>("/zakah-payments/ledger")])
       .then(([p, l]) => {
         setPayments(p);
@@ -96,6 +97,7 @@ function PaymentsSection({ onRefundRequested }: { onRefundRequested: () => void 
       })
       .catch((err: unknown) => setError(errorText(err)));
   }, []);
+  useEffect(load, [load]);
 
   const held = ledger?.find((a) => a.code === "2000");
 
@@ -156,9 +158,21 @@ function PaymentsSection({ onRefundRequested }: { onRefundRequested: () => void 
                 </TableCell>
                 <TableCell>
                   <Badge tone={PAYMENT_TONE[p.status]}>{p.status}</Badge>
+                  {p.heldAt && (
+                    <div className="mt-1 max-w-xs">
+                      <Badge tone="danger">on AML hold</Badge>
+                      <p className="mt-1 text-xs text-slate-500" title={p.heldReason ?? undefined}>
+                        {p.heldReason}
+                        {p.heldBy && ` — ${p.heldBy}`}
+                      </p>
+                    </div>
+                  )}
                 </TableCell>
                 <TableCell>
-                  <RefundButton payment={p} onRequested={onRefundRequested} />
+                  <div className="flex flex-col items-end gap-2">
+                    <PaymentHoldActions payment={p} onChange={load} />
+                    <RefundButton payment={p} onRequested={onRefundRequested} />
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
