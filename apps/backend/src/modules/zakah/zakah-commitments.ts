@@ -1,4 +1,4 @@
-import { prisma, Prisma } from "@birr/db";
+import { prisma, Prisma, ZakahPool } from "@birr/db";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -14,17 +14,19 @@ export function lockZakahCommitments(tx: Prisma.TransactionClient) {
 }
 
 /**
- * The one spending limit distributions and refunds share: zakah received,
- * minus everything committed out of it (awaiting approval, approved or
- * paid — rejected releases), can never go below zero.
+ * The spending limit distributions and refunds share, per pool: zakah
+ * received into the pool, minus everything committed out of it (awaiting
+ * approval, approved or paid — rejected releases), can never go below
+ * zero. Pools never lend to each other: fitr can't pay out zakah on
+ * wealth, nor food fitr pay out cash.
  */
-export async function zakahTotals(db: Db, currency = "NGN") {
+export async function zakahTotals(db: Db, currency = "NGN", pool: ZakahPool = "mal") {
   const [received, distributed, refunded, distributedPaid, refundedPaid] = await Promise.all([
-    db.zakahPayment.aggregate({ where: { status: "confirmed", currency }, _sum: { amount: true } }),
-    db.zakahDistribution.aggregate({ where: { status: { in: [...LIVE] }, currency }, _sum: { amount: true } }),
-    db.zakahRefund.aggregate({ where: { status: { in: [...LIVE] }, currency }, _sum: { amount: true } }),
-    db.zakahDistribution.aggregate({ where: { status: "paid", currency }, _sum: { amount: true } }),
-    db.zakahRefund.aggregate({ where: { status: "paid", currency }, _sum: { amount: true } }),
+    db.zakahPayment.aggregate({ where: { status: "confirmed", currency, pool }, _sum: { amount: true } }),
+    db.zakahDistribution.aggregate({ where: { status: { in: [...LIVE] }, currency, pool }, _sum: { amount: true } }),
+    db.zakahRefund.aggregate({ where: { status: { in: [...LIVE] }, currency, pool }, _sum: { amount: true } }),
+    db.zakahDistribution.aggregate({ where: { status: "paid", currency, pool }, _sum: { amount: true } }),
+    db.zakahRefund.aggregate({ where: { status: "paid", currency, pool }, _sum: { amount: true } }),
   ]);
   const zero = new Prisma.Decimal(0);
   const distributionsCommitted = distributed._sum.amount ?? zero;

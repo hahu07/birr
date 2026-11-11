@@ -9,6 +9,8 @@ export interface ZakahReceipt {
   amount: string;
   feeCover: string;
   paymentId: string;
+  pool?: "mal" | "fitr_food" | "fitr_cash";
+  fitrPeople?: number | null;
 }
 
 function naira(amount: string): string {
@@ -36,9 +38,18 @@ export class ResendZakahReceiptEmailAdapter {
       Number(input.feeCover) > 0
         ? `<p>You also added ${naira(input.feeCover)} to cover the processing fee, so your zakah reaches recipients in full.</p>`
         : "";
+    const fitr = input.pool === "fitr_food" || input.pool === "fitr_cash";
+    const people = input.fitrPeople === 1 ? "1 person" : `${input.fitrPeople} people`;
+    const received = fitr
+      ? `<p>We've received your Zakah al-Fitr of <strong>${naira(input.amount)}</strong> for ${people}.</p>` +
+        (input.pool === "fitr_food"
+          ? `<p>As your agent, Birr will buy food with it and deliver it to people in need before the Eid prayer.</p>`
+          : `<p>As your agent, Birr will pass it on as cash to people in need before the Eid prayer.</p>`)
+      : `<p>We've received your zakah of <strong>${naira(input.amount)}</strong>.</p>` +
+        `<p>As your agent, Birr will pass it on only to people eligible to receive zakah.</p>`;
     const bodyHtml =
-      `<p>We've received your zakah of <strong>${naira(input.amount)}</strong>.</p>` +
-      `<p>As your agent, Birr will pass it on only to people eligible to receive zakah. None of it is used for Birr's own running costs.</p>` +
+      received +
+      `<p>None of it is used for Birr's own running costs.</p>` +
       feeLine +
       `<p>Keep this email as your record. Reference: ${input.paymentId}</p>`;
 
@@ -57,7 +68,7 @@ export class ResendZakahReceiptEmailAdapter {
     const { error } = await this.client.emails.send({
       from,
       to: input.to,
-      subject: "Your zakah payment to Birr",
+      subject: fitr ? "Your Zakah al-Fitr payment to Birr" : "Your zakah payment to Birr",
       html: renderEmailTemplate({ heading: "Your zakah has been received", bodyHtml }),
     });
     if (error) throw new Error(`Resend rejected the zakah receipt: ${error.message}`);

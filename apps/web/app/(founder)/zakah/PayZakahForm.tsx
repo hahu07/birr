@@ -32,11 +32,17 @@ export function PayZakahForm({
   zakahDue,
   ruleset,
   terms,
+  title = "Pay your zakah through Birr",
+  fitr,
   redirectTo = (url: string) => window.location.assign(url),
 }: {
   zakahDue: string;
-  ruleset: { key: string; version: number };
+  /** The ruleset that produced the figure, if any. */
+  ruleset: { key: string; version: number } | null;
   terms: ZakahPaymentTerms;
+  title?: string;
+  /** Zakah al-Fitr: the amount is fixed (people × the campaign's amount) and worked out again by the server. */
+  fitr?: { people: number; form: "food" | "cash" };
   /** Replaced in tests; sends the payer to Paystack's checkout. */
   redirectTo?: (url: string) => void;
 }) {
@@ -51,8 +57,9 @@ export function PayZakahForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cleanAmount = normaliseAmount(amount);
-  const validAmount = /^\d+(\.\d{1,2})?$/.test(cleanAmount) && Number(cleanAmount) >= Number(terms.minimumAmount);
+  const cleanAmount = fitr ? zakahDue : normaliseAmount(amount);
+  // Fitr's amount comes from the campaign, so the minimum doesn't apply to it.
+  const validAmount = /^\d+(\.\d{1,2})?$/.test(cleanAmount) && (fitr ? Number(cleanAmount) > 0 : Number(cleanAmount) >= Number(terms.minimumAmount));
   const fee = useMemo(() => (validAmount ? processingFeeCover(cleanAmount) : null), [validAmount, cleanAmount]);
   const total = validAmount ? Number(cleanAmount) + (coverFee && fee ? Number(fee) : 0) : null;
 
@@ -70,8 +77,8 @@ export function PayZakahForm({
           payerEmail: email.trim() || undefined,
           payerFullName: fullName.trim() || undefined,
           ...(needsIdentity && { idType, idNumber }),
-          rulesetKey: ruleset.key,
-          rulesetVersion: ruleset.version,
+          ...(ruleset && { rulesetKey: ruleset.key, rulesetVersion: ruleset.version }),
+          ...(fitr && { kind: "fitr", fitrPeople: fitr.people, fitrForm: fitr.form }),
         }),
       });
       redirectTo(clientPayload.checkoutUrl);
@@ -86,18 +93,20 @@ export function PayZakahForm({
 
   return (
     <form onSubmit={handleSubmit} className="mt-6 space-y-4 border-t border-slate-100 pt-5">
-      <p className="text-base font-semibold text-slate-900">Pay your zakah through Birr</p>
+      <p className="text-base font-semibold text-slate-900">{title}</p>
 
-      <div>
-        <label htmlFor="pay-amount" className="mb-1.5 block text-sm font-medium text-slate-700">
-          Amount to pay
-        </label>
-        <div className="relative">
-          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-500">₦</span>
-          <Input id="pay-amount" inputMode="decimal" className="pl-7 tabular-nums" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      {!fitr && (
+        <div>
+          <label htmlFor="pay-amount" className="mb-1.5 block text-sm font-medium text-slate-700">
+            Amount to pay
+          </label>
+          <div className="relative">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-500">₦</span>
+            <Input id="pay-amount" inputMode="decimal" className="pl-7 tabular-nums" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </div>
+          {!validAmount && <p className="mt-1 text-xs text-red-600">Enter at least ₦{terms.minimumAmount}, like 95000.</p>}
         </div>
-        {!validAmount && <p className="mt-1 text-xs text-red-600">Enter at least ₦{terms.minimumAmount}, like 95000.</p>}
-      </div>
+      )}
 
       {fee && (
         <label className="flex items-start gap-2 text-sm text-slate-700">

@@ -205,6 +205,40 @@ describe("ZakahDistributionsService", () => {
     });
   });
 
+  describe("Zakah al-Fitr pools", () => {
+    test("fitr goes only to the poor and the needy", async () => {
+      const r = await recipient(["gharimin"]);
+      await expect(
+        service.create({ pool: "fitr_food", recipientId: r.id, category: "gharimin", amount: "1000", reason: "Food parcel before Eid." }, officerUserId),
+      ).rejects.toThrow(/only to the poor/);
+    });
+
+    test("pools never lend to each other: fitr can't be paid from zakah on wealth", async () => {
+      const r = await recipient(["fuqara"]);
+      const { available } = await service.summary("fitr_cash");
+      const tooMuch = new Prisma.Decimal(available).plus("1000000000").toFixed(2);
+      await expect(
+        service.create({ pool: "fitr_cash", recipientId: r.id, category: "fuqara", amount: tooMuch, reason: "Cash for Eid." }, officerUserId),
+      ).rejects.toThrow(/of Zakah al-Fitr \(cash\) is available/);
+    });
+
+    test("summary() reports each pool separately", async () => {
+      const [mal, food] = await Promise.all([service.summary("mal"), service.summary("fitr_food")]);
+      expect(mal.pool).toBe("mal");
+      expect(food.pool).toBe("fitr_food");
+    });
+
+    // Straight to the database.
+    test("the database refuses fitr outside the poor and the needy", async () => {
+      const r = await recipient(["gharimin"]);
+      await expect(
+        prisma.zakahDistribution.create({
+          data: { pool: "fitr_food", recipientId: r.id, category: "gharimin", amount: "1", currency: "NGN", reason: "x", createdByUserId: officerUserId },
+        }),
+      ).rejects.toThrow();
+    });
+  });
+
   describe("approving and paying", () => {
     test("approve → paid books the zakah out of the account, tagged with its category", async () => {
       const r = await recipient(["gharimin"]);

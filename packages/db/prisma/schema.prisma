@@ -374,6 +374,7 @@ model User {
   zakahRecipientsCreated         ZakahRecipient[]                @relation("ZakahRecipientCreator")
   zakahDistributionsCreated      ZakahDistribution[]             @relation("ZakahDistributionCreator")
   zakahRefundsCreated            ZakahRefund[]                   @relation("ZakahRefundCreator")
+  zakahFitrCampaignsCreated      ZakahFitrCampaign[]             @relation("ZakahFitrCampaignCreator")
 
   @@map("users")
 }
@@ -1053,6 +1054,7 @@ model GovernedAction {
   paidZakahDistribution     ZakahDistribution?   @relation("ZakahDistributionPayment")
   approvedZakahRefund       ZakahRefund?         @relation("ZakahRefundApproval")
   paidZakahRefund           ZakahRefund?         @relation("ZakahRefundPayment")
+  approvedZakahFitrCampaign ZakahFitrCampaign?   @relation("ZakahFitrCampaignApproval")
 
   @@index([waqfId])
   @@index([status])
@@ -3073,7 +3075,16 @@ model ZakahPayment {
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 
-  refunds ZakahRefund[]
+  // Which pool this zakah belongs to. Zakah al-Fitr is kept apart from
+  // zakah on wealth, and its food and cash forms apart from each other
+  // (owner's decision, 2026-11-11: the payer chooses, cash only under the
+  // Hanafi ruleset) — each pool has its own ledger account and limit.
+  pool           ZakahPool          @default(mal)
+  fitrCampaignId String?
+  fitrCampaign   ZakahFitrCampaign? @relation(fields: [fitrCampaignId], references: [id], onDelete: Restrict)
+  // Number of people the fitr is paid for (one sa' each).
+  fitrPeople     Int?
+  refunds        ZakahRefund[]
 
   @@index([payerId])
   @@index([status])
@@ -3143,6 +3154,15 @@ model ZakahJournalEntryLine {
 // (zakah administrators) is in the list for completeness but closed in
 // code: the owner decided 100% of zakah reaches recipients, so Birr
 // takes no administrator's share (2026-11-11).
+// The separate pots zakah is held in. Each has its own "held for
+// recipients" ledger account and its own spending limit; all three sit in
+// the one zakah bank account.
+enum ZakahPool {
+  mal // zakah on wealth
+  fitr_food // Zakah al-Fitr to be delivered as food
+  fitr_cash // Zakah al-Fitr to be passed on as cash (Hanafi payers only)
+}
+
 enum ZakahCategory {
   fuqara // the poor
   masakin // the needy
@@ -3222,6 +3242,8 @@ model ZakahDistribution {
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
 
+  pool ZakahPool @default(mal)
+
   @@index([status])
   @@index([recipientId])
   @@index([counterpartyId])
@@ -3277,7 +3299,54 @@ model ZakahRefund {
   createdAt                 DateTime          @default(now())
   updatedAt                 DateTime          @updatedAt
 
+  // Always the refunded payment's own pool.
+  pool ZakahPool @default(mal)
+
   @@index([paymentId])
   @@index([status])
   @@map("zakah_refunds")
+}
+
+enum ZakahFitrCampaignStatus {
+  draft
+  approved
+  superseded
+}
+
+// One Ramadan's Zakah al-Fitr: the staple, how much of it is one sa' per
+// person, and its Naira value per person — which a payer pays either as
+// food (Birr buys and delivers it) or, for Hanafi payers, as cash.
+// Drafted by a Mutawalli Officer, approved by a Shariah board member
+// (zakah.fitr_campaign_approve; owner's decision, 2026-11-11). Versioned
+// like rulesets: if the moon sighting moves Eid, a revised version is
+// approved and supersedes the old one; an approved version never changes,
+// except that staff may close payments early (closedAt). Payments close
+// the day before Eid (owner's decision) so food can reach people before
+// the Eid prayer.
+model ZakahFitrCampaign {
+  id                       String                  @id @default(uuid())
+  // e.g. "1448" — one live version per season.
+  season                   String
+  version                  Int
+  staple                   String
+  kgPerPerson              Decimal
+  amountPerPerson          Decimal
+  opensOn                  DateTime                @db.Date
+  expectedEidOn            DateTime                @db.Date
+  // Always the day before expectedEidOn — stored so it's on the record.
+  closesOn                 DateTime                @db.Date
+  closedAt                 DateTime?
+  status                   ZakahFitrCampaignStatus @default(draft)
+  approvedAt               DateTime?
+  approvedGovernedActionId String?                 @unique
+  approvedGovernedAction   GovernedAction?         @relation("ZakahFitrCampaignApproval", fields: [approvedGovernedActionId], references: [id], onDelete: Restrict)
+  createdByUserId          String
+  createdBy                User                    @relation("ZakahFitrCampaignCreator", fields: [createdByUserId], references: [id])
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+
+  payments ZakahPayment[]
+
+  @@unique([season, version])
+  @@map("zakah_fitr_campaigns")
 }

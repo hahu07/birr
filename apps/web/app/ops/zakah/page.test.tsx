@@ -3,7 +3,15 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { draftRulesets } from "@birr/zakah";
 import { StaffSessionProvider } from "../../../lib/staff-session";
-import type { BirrStaff, ZakahLedgerBalance, ZakahMetalPriceRow, ZakahPaymentRow, ZakahRefundRow, ZakahRulesetRow } from "../../../lib/ops-types";
+import type {
+  BirrStaff,
+  ZakahFitrCampaignRow,
+  ZakahLedgerBalance,
+  ZakahMetalPriceRow,
+  ZakahPaymentRow,
+  ZakahRefundRow,
+  ZakahRulesetRow,
+} from "../../../lib/ops-types";
 import ZakahPage from "./page";
 
 vi.mock("../../../lib/api", () => ({
@@ -69,13 +77,22 @@ function setup(
     rulesets = [draft],
     payments = [],
     refunds = [],
-  }: { prices?: ZakahMetalPriceRow[]; rulesets?: ZakahRulesetRow[]; payments?: ZakahPaymentRow[]; refunds?: ZakahRefundRow[] } = {},
+    fitrCampaigns = [],
+  }: {
+    prices?: ZakahMetalPriceRow[];
+    rulesets?: ZakahRulesetRow[];
+    payments?: ZakahPaymentRow[];
+    refunds?: ZakahRefundRow[];
+    fitrCampaigns?: ZakahFitrCampaignRow[];
+  } = {},
 ) {
   mockedApiFetchJson.mockImplementation((path: string, init?: RequestInit) => {
     if (path === "/birr-staff/me") return Promise.resolve(staff);
     if (path === "/zakah/metal-prices") return Promise.resolve(prices);
     if (path === "/zakah/rulesets") return Promise.resolve(rulesets);
     if (path === "/zakah-payments") return Promise.resolve(payments);
+    if (path === "/zakah/fitr-campaigns" && !init?.method) return Promise.resolve(fitrCampaigns);
+    if (path.startsWith("/zakah/fitr-campaigns/") && init?.method === "POST") return Promise.resolve({});
     if (path === "/zakah-refunds" && !init?.method) return Promise.resolve(refunds);
     if (path === "/zakah-refunds" && init?.method === "POST") return Promise.resolve({ id: "rf-new" });
     if (path === "/zakah-payments/ledger") return Promise.resolve(ledger);
@@ -185,6 +202,27 @@ describe("Ops Console — Zakah", { timeout: 15_000 }, () => {
     expect(JSON.parse(postsTo("/governed-actions")[0][1]!.body as string)).toMatchObject({
       permissionKey: "zakah.refund_mark_paid",
       payload: { refundId: "rf-1", bankReference: "NIP-REF-77" },
+    });
+  });
+
+  test("a fitr campaign draft is proposed to the Shariah board with exactly its fields", async () => {
+    const user = userEvent.setup();
+    setup(staffWith(["mutawalli_officer"], ["zakah.fitr_campaign_draft", "zakah.fitr_campaign_approve"]), {
+      fitrCampaigns: [
+        {
+          id: "fc-1", season: "1448", version: 1, staple: "Rice", kgPerPerson: "2.5", amountPerPerson: "2500",
+          opensOn: "2027-02-08T00:00:00.000Z", expectedEidOn: "2027-03-10T00:00:00.000Z", closesOn: "2027-03-09T00:00:00.000Z",
+          closedAt: null, status: "draft", approvedAt: null, createdAt: "2027-01-20T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(await screen.findByText("Ramadan 1448")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Propose for Shariah approval" }));
+    await waitFor(() => expect(postsTo("/governed-actions")).toHaveLength(1));
+    expect(JSON.parse(postsTo("/governed-actions")[0][1]!.body as string)).toEqual({
+      permissionKey: "zakah.fitr_campaign_approve",
+      payload: { campaignId: "fc-1", staple: "Rice", kgPerPerson: "2.5", amountPerPerson: "2500", opensOn: "2027-02-08", expectedEidOn: "2027-03-10" },
     });
   });
 

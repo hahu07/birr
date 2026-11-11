@@ -1,10 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsEnum, IsNumberString, IsString, Matches, MaxLength, MinLength } from "class-validator";
-import { prisma, Prisma, ZakahRefund, ZakahRefundReason } from "@birr/db";
+import { prisma, Prisma, ZakahPool, ZakahRefund, ZakahRefundReason } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { lockZakahCommitments, zakahTotals } from "./zakah-commitments";
-import { ZAKAH_BANK_ACCOUNT_CODE, ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
+import { HELD_ACCOUNT_BY_POOL, ZAKAH_BANK_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
 import { lagosToday } from "./zakah.service";
 
 export const ZAKAH_REFUND_REASON_LABELS: Record<ZakahRefundReason, string> = {
@@ -127,6 +127,7 @@ export class ZakahRefundsService {
           paymentId: payment.id,
           amount,
           currency: payment.currency,
+          pool: payment.pool,
           reason: input.reason,
           details: input.details.trim(),
           payeeBankDetailsEncrypted,
@@ -155,7 +156,7 @@ export class ZakahRefundsService {
    */
   private async assertWithinLimits(
     tx: Prisma.TransactionClient,
-    payment: { id: string; amount: Prisma.Decimal; currency: string },
+    payment: { id: string; amount: Prisma.Decimal; currency: string; pool: ZakahPool },
     amount: Prisma.Decimal,
     alreadyCounted = false,
   ) {
@@ -168,7 +169,7 @@ export class ZakahRefundsService {
     if (amount.gt(refundable)) {
       throw new BadRequestException(`At most ${naira(refundable)} of this payment's zakah can still be refunded.`);
     }
-    const { received, committed } = await zakahTotals(tx, payment.currency);
+    const { received, committed } = await zakahTotals(tx, payment.currency, payment.pool);
     const available = received.minus(committed).plus(alreadyCounted ? amount : 0);
     if (amount.gt(available)) {
       throw new BadRequestException(
@@ -226,7 +227,7 @@ export class ZakahRefundsService {
 
   async currentState(payload: unknown): Promise<Record<string, unknown>> {
     const r = await this.findOrThrow((payload as RefundApprovalPayload).refundId);
-    const { received, committed } = await zakahTotals(prisma, r.currency);
+    const { received, committed } = await zakahTotals(prisma, r.currency, r.pool);
     return {
       status: r.status,
       paymentAmount: r.payment.amount.toFixed(2),
@@ -302,7 +303,7 @@ export class ZakahRefundsService {
       where: { id: before.id },
       data: { status: "paid", paidOn: new Date(`${p.paidOn}T00:00:00Z`), bankReference: p.bankReference, paymentActionId: governedActionId },
     });
-    const held = await this.ledger.getAccountByCode(tx, ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE);
+    const held = await this.ledger.getAccountByCode(tx, HELD_ACCOUNT_BY_POOL[after.pool]);
     const bank = await this.ledger.getAccountByCode(tx, ZAKAH_BANK_ACCOUNT_CODE);
     await this.ledger.post(tx, {
       description: `Zakah refunded — ${ZAKAH_REFUND_REASON_LABELS[after.reason]} (bank ref ${p.bankReference})`,

@@ -26,6 +26,7 @@ import { InvitationsService, assertStaffInvitable, invitationAuditSnapshot } fro
 import { ZakahService } from "../zakah/zakah.service";
 import { ZakahDistributionsService } from "../zakah/zakah-distributions.service";
 import { ZakahRefundsService } from "../zakah/zakah-refunds.service";
+import { ZakahFitrService } from "../zakah/zakah-fitr.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
@@ -358,6 +359,7 @@ export class GovernedActionsService {
     private readonly zakahService: ZakahService,
     private readonly zakahDistributionsService: ZakahDistributionsService,
     private readonly zakahRefundsService: ZakahRefundsService,
+    private readonly zakahFitrService: ZakahFitrService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1377,6 +1379,22 @@ export class GovernedActionsService {
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.zakahRefundsService.markPaid(payload, ctx.governedActionId, tx);
             return { auditAction: "zakah_refund.paid", entityType: "ZakahRefund", entityId: after.id, before, after };
+          },
+        },
+      ],
+      // Zakah al-Fitr campaign: a Mutawalli Officer proposes the season's
+      // staple, sa' and Naira amount; a Shariah board member approves. The
+      // proposal carries those fields, so the checker approves exactly them.
+      [
+        "zakah.fitr_campaign_approve",
+        {
+          validatePropose: (payload) => this.zakahFitrService.validateApprovalProposal(payload),
+          checkDuplicate: (payload) => this.zakahFitrService.checkDuplicateApproval(payload),
+          describePayload: (payload) => this.zakahFitrService.describe(payload),
+          describeCurrentState: (payload) => this.zakahFitrService.currentState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahFitrService.approve(payload, ctx.governedActionId, ctx.checkerUserId, tx);
+            return { auditAction: "zakah_fitr_campaign.approved", entityType: "ZakahFitrCampaign", entityId: after.id, before, after };
           },
         },
       ],

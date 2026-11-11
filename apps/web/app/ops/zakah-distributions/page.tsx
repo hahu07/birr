@@ -10,7 +10,7 @@ import { CLOSED_ZAKAH_CATEGORIES, ZAKAH_CATEGORIES, ZAKAH_CATEGORY_LABELS, type 
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate, formatMoney } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
-import type { Counterparty, ZakahDistributionRow, ZakahDistributionSummary, ZakahRecipientRow } from "../../../lib/ops-types";
+import type { Counterparty, ZakahDistributionRow, ZakahDistributionSummary, ZakahPool, ZakahRecipientRow } from "../../../lib/ops-types";
 import {
   Alert,
   Badge,
@@ -31,6 +31,14 @@ import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../_components/ProposeGovernedAction";
 
 const OPEN_CATEGORIES = ZAKAH_CATEGORIES.filter((c) => !CLOSED_ZAKAH_CATEGORIES.includes(c));
+// Zakah al-Fitr goes to the poor and the needy only.
+const FITR_CATEGORIES: ZakahCategoryKey[] = ["fuqara", "masakin"];
+const POOLS: { value: ZakahPool; label: string }[] = [
+  { value: "mal", label: "Zakah on wealth" },
+  { value: "fitr_food", label: "Zakah al-Fitr — food" },
+  { value: "fitr_cash", label: "Zakah al-Fitr — cash" },
+];
+const POOL_LABEL = Object.fromEntries(POOLS.map((p) => [p.value, p.label])) as Record<ZakahPool, string>;
 const STATUS_TONE = { pending_approval: "warning", approved: "info", paid: "success", rejected: "neutral" } as const;
 const STATUS_LABEL = { pending_approval: "awaiting approval", approved: "approved — to pay", paid: "paid", rejected: "rejected" } as const;
 
@@ -51,10 +59,12 @@ export default function ZakahDistributionsPage() {
   const [distributions, setDistributions] = useState<ZakahDistributionRow[] | null>(null);
   const [recipients, setRecipients] = useState<ZakahRecipientRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Each pool has its own limit; the page works on one at a time.
+  const [pool, setPool] = useState<ZakahPool>("mal");
 
   const load = useCallback(() => {
     Promise.all([
-      apiFetchJson<ZakahDistributionSummary>("/zakah-distributions/summary"),
+      apiFetchJson<ZakahDistributionSummary>(`/zakah-distributions/summary?pool=${pool}`),
       apiFetchJson<ZakahDistributionRow[]>("/zakah-distributions"),
       apiFetchJson<ZakahRecipientRow[]>("/zakah-distributions/recipients"),
     ])
@@ -65,7 +75,7 @@ export default function ZakahDistributionsPage() {
         setError(null);
       })
       .catch((err: unknown) => setError(errorText(err)));
-  }, []);
+  }, [pool]);
   useEffect(load, [load]);
 
   return (
@@ -89,8 +99,22 @@ export default function ZakahDistributionsPage() {
         </Alert>
       )}
 
+      <div className="mb-6 max-w-xs space-y-1.5">
+        <label htmlFor="dist-pool-view" className="text-sm font-medium text-slate-700">Pool</label>
+        <Select id="dist-pool-view" className="w-full" value={pool} onChange={(e) => setPool(e.target.value as ZakahPool)}>
+          {POOLS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </Select>
+      </div>
       {summary && <SummaryCards summary={summary} />}
-      <DistributionsSection distributions={distributions} recipients={recipients} available={summary?.available ?? null} onChange={load} />
+      <DistributionsSection
+        pool={pool}
+        distributions={distributions === null ? null : distributions.filter((d) => (d.pool ?? "mal") === pool)}
+        recipients={recipients}
+        available={summary?.available ?? null}
+        onChange={load}
+      />
       <RecipientsSection recipients={recipients} onChange={load} />
     </div>
   );
@@ -126,6 +150,7 @@ function SummaryCards({ summary }: { summary: ZakahDistributionSummary }) {
 }
 
 function DistributionsSection({
+  pool,
   distributions,
   recipients,
   available,
@@ -135,6 +160,7 @@ function DistributionsSection({
   recipients: ZakahRecipientRow[] | null;
   available: string | null;
   onChange: () => void;
+  pool: ZakahPool;
 }) {
   const { can } = useStaffSession();
   const canCreate = can("zakah.distribution_create");
@@ -150,6 +176,8 @@ function DistributionsSection({
       />
       {canCreate && showForm && (
         <DistributionForm
+          key={pool}
+          pool={pool}
           recipients={(recipients ?? []).filter((r) => r.active)}
           available={available}
           onCreated={() => {
@@ -352,7 +380,17 @@ function PartnerReportForm({ distributionId, onDone, onCancel }: { distributionI
   );
 }
 
-function DistributionForm({ recipients, available, onCreated }: { recipients: ZakahRecipientRow[]; available: string | null; onCreated: () => void }) {
+function DistributionForm({
+  pool,
+  recipients,
+  available,
+  onCreated,
+}: {
+  pool: ZakahPool;
+  recipients: ZakahRecipientRow[];
+  available: string | null;
+  onCreated: () => void;
+}) {
   const { can } = useStaffSession();
   const [payee, setPayee] = useState<"recipient" | "partner">("recipient");
   const [recipientId, setRecipientId] = useState("");
@@ -373,7 +411,8 @@ function DistributionForm({ recipients, available, onCreated }: { recipients: Za
   }, [payee, partners]);
 
   const recipient = recipients.find((r) => r.id === recipientId);
-  const categories = payee === "recipient" ? (recipient?.categories ?? []) : OPEN_CATEGORIES;
+  const allowed = pool === "mal" ? OPEN_CATEGORIES : FITR_CATEGORIES;
+  const categories = (payee === "recipient" ? (recipient?.categories ?? []) : OPEN_CATEGORIES).filter((c) => allowed.includes(c));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -384,6 +423,7 @@ function DistributionForm({ recipients, available, onCreated }: { recipients: Za
         method: "POST",
         body: JSON.stringify({
           ...(payee === "recipient" ? { recipientId } : { counterpartyId }),
+          pool,
           category,
           amount: amount.replace(/[,\s₦]/g, ""),
           reason,
@@ -452,7 +492,11 @@ function DistributionForm({ recipients, available, onCreated }: { recipients: Za
         <div className="space-y-1.5">
           <label htmlFor="dist-amount" className="text-sm font-medium text-slate-700">Amount (₦)</label>
           <Input id="dist-amount" required inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          {available !== null && <p className="text-xs text-slate-500">{formatMoney(available, "NGN")} available</p>}
+          {available !== null && (
+            <p className="text-xs text-slate-500">
+              {formatMoney(available, "NGN")} available in {POOL_LABEL[pool].toLowerCase()}
+            </p>
+          )}
         </div>
       </div>
       <div className="space-y-1.5">

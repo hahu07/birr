@@ -120,6 +120,10 @@ const governedPermissions = [
   // second person, exactly like a distribution's payment.
   { key: "zakah.refund_approve", category: "zakah", requiresMakerChecker: true, description: "Approve refunding a zakah payment made by mistake." },
   { key: "zakah.refund_mark_paid", category: "zakah", requiresMakerChecker: true, description: "Confirm an approved zakah refund was paid from the zakah bank account." },
+  // Zakah al-Fitr (2026-11-11). Owner's decision: a Mutawalli Officer
+  // proposes each season's staple, sa' and Naira amount; a Shariah board
+  // member approves — the same pattern as rulesets.
+  { key: "zakah.fitr_campaign_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a season's Zakah al-Fitr: the staple, the amount per person and the dates." },
 ] as const;
 
 // Plain access permissions (2026-10-18): who may perform an ungoverned
@@ -185,6 +189,9 @@ export const accessPermissions = [
   { key: "waqf.proceeds_allocate", category: "investment", description: "Allocate a waqf fund's investment proceeds across its causes.", roles: ["investment_committee"] },
   { key: "waqf.proceeds_record", category: "investment", description: "Record investment proceeds on a waqf fund.", roles: ["investment_committee", "mutawalli_officer"] },
   { key: "zakah.refund_request", category: "zakah", description: "Record a zakah refund request and the payer's bank details for it.", roles: ["compliance_officer"] },
+  { key: "zakah.fitr_campaign_draft", category: "zakah", description: "Draft and edit a season's Zakah al-Fitr campaign (approving it is zakah.fitr_campaign_approve).", roles: ["mutawalli_officer"] },
+  // Closing early only ever stops money coming in, so it needs no second person.
+  { key: "zakah.fitr_close", category: "zakah", description: "Close Zakah al-Fitr payments early, e.g. once Eid is announced.", roles: ["compliance_officer", "mutawalli_officer"] },
   { key: "zakah.recipient_manage", category: "zakah", description: "Register and update people eligible for zakah, including their bank details.", roles: ["mutawalli_officer"] },
   { key: "zakah.distribution_create", category: "zakah", description: "Create a zakah distribution for approval, and record a partner's report of who it reached.", roles: ["mutawalli_officer"] },
   { key: "zakah.ruleset_draft", category: "zakah", description: "Draft and edit zakah rulesets (approving one is zakah.ruleset_approve).", roles: ["mutawalli_officer"] },
@@ -224,6 +231,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.distribution_approve": { canMaker: true },
     "zakah.distribution_mark_paid": { canMaker: true },
     "zakah.refund_mark_paid": { canMaker: true },
+    "zakah.fitr_campaign_approve": { canMaker: true },
   },
   // Apex checker across every maker-checker gated permission — the Board
   // is the last line of sign-off, distinct from (and above) the
@@ -279,6 +287,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "vault.milestone_complete": { canChecker: true },
     "zakah.ruleset_approve": { canChecker: true },
     "zakah.distribution_approve": { canChecker: true },
+    "zakah.fitr_campaign_approve": { canChecker: true },
   },
   audit_committee: {
     "asset.dispose": { canChecker: true },

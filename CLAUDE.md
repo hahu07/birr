@@ -470,8 +470,24 @@ extending Waqf or Vault ones. Owner's decisions so far:
   (`zakah-commitments.ts`), so zakah already committed to recipients
   can't be refunded, and a payment's refunds never exceed its zakah.
 
-Still to come: Zakah al-Fitr, AML holds on suspicious payments (Vault
-has these), and emailing payers about their refund. The agency (wakalah) wording a payer
+- **Zakah al-Fitr** (`ZakahFitrCampaign`), owner's decisions: one sa'
+  of the season's staple per person, valued in Naira; a Mutawalli Officer
+  drafts each season and a Shariah board member approves
+  (`zakah.fitr_campaign_approve`), versioned so a moved Eid can be
+  re-approved. Payments close **the day before Eid** (a database CHECK);
+  staff may close earlier without a second person. The payer chooses
+  **food** (any school) or **cash** (only under an approved **Hanafi**
+  ruleset, checked server-side). The server always works the amount out
+  as people × the campaign's amount. Fitr goes to **the poor and the
+  needy only** (a database CHECK), through both partners and
+  individuals.
+- **Pools** (`ZakahPool`): zakah on wealth, fitr-food and fitr-cash each
+  have their own "held for recipients" ledger account (2000, 2100, 2200)
+  and their own spending limit, and never lend to each other; all three
+  sit in the one zakah bank account (1000). A row's pool never changes.
+
+Still to come: AML holds on suspicious payments (Vault has these), and
+emailing payers about their refund. The agency (wakalah) wording a payer
 accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
 Supervisory Board must approve before payments open.
 

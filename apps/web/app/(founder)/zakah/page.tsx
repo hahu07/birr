@@ -12,12 +12,15 @@ import { Alert, Button, Skeleton } from "@birr/ui";
 import { Reveal, SiteFooter, SiteHeader } from "../SiteChrome";
 import { ZakahCalculator } from "./ZakahCalculator";
 import type { ZakahPaymentTerms } from "./PayZakahForm";
+import { FitrSection, type FitrCampaignPublic } from "./FitrSection";
 
 type Loaded =
   | { state: "loading" }
   | { state: "error" }
   | { state: "unavailable"; reason: "no_rulesets" | "no_prices" }
   | { state: "ready"; rulesets: ZakahRuleset[]; prices: MetalPrices; paymentTerms: ZakahPaymentTerms | null };
+
+type FitrLoaded = { campaign: FitrCampaignPublic; rulesets: ZakahRuleset[]; paymentTerms: ZakahPaymentTerms | null } | null;
 
 /** Today in Nigeria, which is what Birr dates its prices by. */
 function lagosToday(): string {
@@ -26,6 +29,9 @@ function lagosToday(): string {
 
 export default function ZakahCalculatorPage() {
   const [loaded, setLoaded] = useState<Loaded>({ state: "loading" });
+  // Zakah al-Fitr doesn't depend on the calculator's prices, so it's loaded
+  // and shown on its own — it still works if prices are out of date.
+  const [fitr, setFitr] = useState<FitrLoaded>(null);
 
   const load = useCallback(() => {
     Promise.all([
@@ -54,6 +60,17 @@ export default function ZakahCalculatorPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    Promise.all([
+      apiFetchJson<FitrCampaignPublic>("/zakah/fitr-campaigns/current"),
+      apiFetchJson<ZakahRuleset[]>("/zakah/rulesets/current").catch(() => [] as ZakahRuleset[]),
+      apiFetchJson<ZakahPaymentTerms>("/zakah-payments/terms").catch(() => null),
+    ])
+      .then(([campaign, rulesets, paymentTerms]) => setFitr({ campaign, rulesets, paymentTerms }))
+      // No campaign approved yet (404) or unreachable: the section just isn't shown.
+      .catch(() => setFitr(null));
+  }, []);
 
   return (
     <div className="min-h-screen bg-white">
@@ -101,6 +118,8 @@ export default function ZakahCalculatorPage() {
             <ZakahCalculator rulesets={loaded.rulesets} prices={loaded.prices} today={lagosToday()} paymentTerms={loaded.paymentTerms} />
           )}
         </div>
+
+        {fitr && <FitrSection campaign={fitr.campaign} rulesets={fitr.rulesets} paymentTerms={fitr.paymentTerms} />}
 
         <p className="mx-auto mt-12 max-w-2xl text-center text-xs leading-relaxed text-slate-500">
           This calculator covers cash, savings, business stock, money owed to you, and gold and silver. Livestock, crops, shares,

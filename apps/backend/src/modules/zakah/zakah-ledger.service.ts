@@ -1,9 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { ActorType, prisma, Prisma, ZakahJournalEntrySource } from "@birr/db";
+import { ActorType, prisma, Prisma, ZakahJournalEntrySource, ZakahPool } from "@birr/db";
 
 // Created by the migration that adds the zakah ledger tables.
 export const ZAKAH_BANK_ACCOUNT_CODE = "1000";
 export const ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE = "2000";
+
+/** Each pool's own "held for recipients" account; all three share the bank account. */
+export const HELD_ACCOUNT_BY_POOL: Record<ZakahPool, string> = {
+  mal: ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE,
+  fitr_food: "2100",
+  fitr_cash: "2200",
+};
 
 export interface ZakahJournalLineInput {
   ledgerAccountId: string;

@@ -35,6 +35,8 @@ import { ZakahService } from "../zakah/zakah.service";
 import { ZakahDistributionsService } from "../zakah/zakah-distributions.service";
 import { ZakahLedgerService } from "../zakah/zakah-ledger.service";
 import { ZakahRefundsService } from "../zakah/zakah-refunds.service";
+import { ZakahFitrService } from "../zakah/zakah-fitr.service";
+import { unusedFitrSeason } from "../zakah/test-support-fitr";
 import { draftRulesets } from "@birr/zakah";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
@@ -118,6 +120,7 @@ describe("GovernedActionsService", () => {
   zakahService.now = () => new Date("2001-01-15T12:00:00Z");
   const zakahDistributionsService = new ZakahDistributionsService(new EncryptionService(), new ZakahLedgerService());
   const zakahRefundsService = new ZakahRefundsService(new EncryptionService(), new ZakahLedgerService());
+  const zakahFitrService = new ZakahFitrService();
   const service = new GovernedActionsService(
     new AssetsService(),
     beneficiariesService,
@@ -153,6 +156,7 @@ describe("GovernedActionsService", () => {
     zakahService,
     zakahDistributionsService,
     zakahRefundsService,
+    zakahFitrService,
   );
 
   const governedActionIds: string[] = [];
@@ -2946,6 +2950,25 @@ describe("GovernedActionsService", () => {
       await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: false });
       expect((await prisma.zakahRefund.findUniqueOrThrow({ where: { id: refund.id } })).status).toBe("rejected");
       expect(await prisma.auditLog.count({ where: { entityId: refund.id, action: "zakah_refund.rejected" } })).toBe(1);
+    });
+
+    test("zakah.fitr_campaign_approve: Shariah approves the exact proposal; the proposer can't; the database rejects checker = maker", async () => {
+      const fields = { staple: "Rice", kgPerPerson: "2.5", amountPerPerson: "2500", opensOn: "2001-09-01", expectedEidOn: "2001-09-20" };
+      const draft = await zakahFitrService.createDraft({ season: await unusedFitrSeason(), ...fields }, makerUserId);
+      await expect(
+        service.propose({ permissionKey: "zakah.fitr_campaign_approve", payload: { campaignId: draft.id, ...fields, amountPerPerson: "1" }, makerUserId }),
+      ).rejects.toThrow(ConflictException);
+
+      const action = await service.propose({ permissionKey: "zakah.fitr_campaign_approve", payload: { campaignId: draft.id, ...fields }, makerUserId });
+      await expect(service.decide({ governedActionId: action.id, checkerUserId: makerUserId, approve: true })).rejects.toThrow(ForbiddenException);
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+
+      await service.decide({ governedActionId: action.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+      expect(await prisma.zakahFitrCampaign.findUniqueOrThrow({ where: { id: draft.id } })).toMatchObject({
+        status: "approved",
+        approvedGovernedActionId: action.id,
+      });
+      expect(await prisma.auditLog.count({ where: { entityId: draft.id, action: "zakah_fitr_campaign.approved", actorUserId: beneficiaryCheckerUserId } })).toBe(1);
     });
 
     test("zakah.metal_price_set: an invalid price can't even be proposed", async () => {

@@ -6,8 +6,8 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { IsBoolean, IsEmail, IsEnum, IsInt, IsNumberString, IsOptional, IsString, MaxLength, Min } from "class-validator";
-import { ContributionProvider, IdType, prisma, Prisma } from "@birr/db";
+import { IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { ContributionProvider, IdType, prisma, Prisma, ZakahPool } from "@birr/db";
 import { processingFeeCover } from "@birr/zakah";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { SettingsService } from "../../common/settings/settings.service";
@@ -15,17 +15,37 @@ import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validat
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { ResendZakahReceiptEmailAdapter } from "./zakah-receipt-email.adapter";
-import { ZAKAH_BANK_ACCOUNT_CODE, ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
+import { HELD_ACCOUNT_BY_POOL, ZAKAH_BANK_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
+import { ZakahFitrService } from "./zakah-fitr.service";
 import { ZAKAH_MINIMUM_PAYMENT_NGN, ZAKAH_WAKALAH_TERMS } from "./zakah-terms";
 
 const CURRENCY = "NGN";
 
 export class InitiateZakahPaymentInput {
+  /** "mal" (zakah on wealth, the default) or "fitr" (Zakah al-Fitr). */
+  @IsOptional()
+  @IsIn(["mal", "fitr"])
+  kind?: "mal" | "fitr";
+
+  // Zakah on wealth only — fitr's amount is worked out from the campaign.
   // Public route: MaxDecimal is a blunt sanity ceiling, not a business rule.
+  @IsOptional()
   @IsNumberString()
   @MaxDecimal(MAX_PUBLIC_CONTRIBUTION_AMOUNT)
   @IsPositiveDecimal()
-  amount!: string;
+  amount?: string;
+
+  /** Fitr only: how many people it's paid for, one sa' each. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  fitrPeople?: number;
+
+  /** Fitr only: food, or cash (Hanafi ruleset only). */
+  @IsOptional()
+  @IsIn(["food", "cash"])
+  fitrForm?: "food" | "cash";
 
   /** Add the processing fee on top, so the zakah reaches recipients in full without Birr paying the fee. */
   @IsBoolean()
@@ -114,6 +134,7 @@ export class ZakahPaymentsService {
     private readonly paystack: PaystackAdapter,
     private readonly ledger: ZakahLedgerService,
     private readonly receiptEmail: ResendZakahReceiptEmailAdapter,
+    private readonly fitr: ZakahFitrService,
   ) {}
 
   private async zakahSubaccount(): Promise<string | undefined> {
@@ -145,12 +166,10 @@ export class ZakahPaymentsService {
         message: "The terms for paying zakah through Birr have changed. Please reload the page and read them again.",
       });
     }
-    const amount = new Prisma.Decimal(input.amount);
-    if (amount.lt(ZAKAH_MINIMUM_PAYMENT_NGN) || amount.decimalPlaces() > 2) {
-      throw new BadRequestException(`Please pay at least ₦${ZAKAH_MINIMUM_PAYMENT_NGN}, in naira and kobo.`);
-    }
-    const feeCover = new Prisma.Decimal(input.coverFee ? processingFeeCover(amount.toFixed(2)) : "0");
     const rulesetRef = await this.resolveRuleset(input);
+    const { amount, pool, fitrCampaignId, fitrPeople } =
+      input.kind === "fitr" ? await this.fitrAmount(input, rulesetRef) : this.malAmount(input);
+    const feeCover = new Prisma.Decimal(input.coverFee ? processingFeeCover(amount.toFixed(2)) : "0");
     const metalPrice = await prisma.zakahMetalPrice.findFirst({ orderBy: [{ asOf: "desc" }, { createdAt: "desc" }] });
 
     const payerEmail = normalizeEmail(input.payerEmail);
@@ -171,6 +190,9 @@ export class ZakahPaymentsService {
           provider: "paystack",
           providerReference: id,
           settlementSubaccount: subaccount,
+          pool,
+          fitrCampaignId,
+          fitrPeople,
           wakalahConsentVersion: input.wakalahConsentVersion,
           rulesetKey: rulesetRef?.key,
           rulesetVersion: rulesetRef?.version,
@@ -211,6 +233,43 @@ export class ZakahPaymentsService {
     return { payment: this.publicView(withReference), clientPayload: result.clientPayload };
   }
 
+  private malAmount(input: InitiateZakahPaymentInput) {
+    if (!input.amount) throw new BadRequestException("amount is required.");
+    const amount = new Prisma.Decimal(input.amount);
+    if (amount.lt(ZAKAH_MINIMUM_PAYMENT_NGN) || amount.decimalPlaces() > 2) {
+      throw new BadRequestException(`Please pay at least ₦${ZAKAH_MINIMUM_PAYMENT_NGN}, in naira and kobo.`);
+    }
+    return { amount, pool: "mal" as ZakahPool, fitrCampaignId: undefined, fitrPeople: undefined };
+  }
+
+  /**
+   * Zakah al-Fitr: the number of people times the approved campaign's
+   * amount per person — never a figure from the client. Taken only while
+   * the campaign is open (it closes the day before Eid). Cash only under
+   * an approved Hanafi ruleset (owner's decision, 2026-11-11); food is
+   * valid under every school.
+   */
+  private async fitrAmount(input: InitiateZakahPaymentInput, ruleset: { madhhab: string } | null) {
+    if (!input.fitrPeople || !input.fitrForm) throw new BadRequestException("Say how many people, and food or cash.");
+    const current = await this.fitr.current();
+    if (!current || current.state !== "open") {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: "FITR_CLOSED",
+        message: "Zakah al-Fitr payments aren't open right now.",
+      });
+    }
+    if (input.fitrForm === "cash" && ruleset?.madhhab !== "hanafi") {
+      throw new BadRequestException("Paying Zakah al-Fitr as cash is only offered under the Hanafi ruleset. Please choose food.");
+    }
+    return {
+      amount: current.campaign.amountPerPerson.times(input.fitrPeople),
+      pool: (input.fitrForm === "food" ? "fitr_food" : "fitr_cash") as ZakahPool,
+      fitrCampaignId: current.campaign.id,
+      fitrPeople: input.fitrPeople,
+    };
+  }
+
   private async resolveRuleset(input: InitiateZakahPaymentInput) {
     if (!input.rulesetKey || !input.rulesetVersion) return null;
     const ruleset = await prisma.zakahRuleset.findUnique({
@@ -220,7 +279,7 @@ export class ZakahPaymentsService {
     if (!ruleset || ruleset.status === "draft") {
       throw new BadRequestException("That ruleset version isn't one the calculator has used. Please reload the page.");
     }
-    return { key: ruleset.key, version: ruleset.version };
+    return { key: ruleset.key, version: ruleset.version, madhhab: ruleset.madhhab };
   }
 
   /**
@@ -386,9 +445,9 @@ export class ZakahPaymentsService {
         // Only the zakah itself: the fee cover settled to Birr's main
         // account, not the zakah one, so it isn't zakah money.
         const bank = await this.ledger.getAccountByCode(tx, ZAKAH_BANK_ACCOUNT_CODE);
-        const held = await this.ledger.getAccountByCode(tx, ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE);
+        const held = await this.ledger.getAccountByCode(tx, HELD_ACCOUNT_BY_POOL[after.pool]);
         await this.ledger.post(tx, {
-          description: "Zakah payment received (Paystack)",
+          description: after.pool === "mal" ? "Zakah payment received (Paystack)" : `Zakah al-Fitr received for ${after.fitrPeople} (Paystack, ${after.pool === "fitr_food" ? "food" : "cash"})`,
           currency: after.currency,
           source: "payment",
           sourceId: after.id,
@@ -412,6 +471,8 @@ export class ZakahPaymentsService {
           amount: outcome.amount.toFixed(2),
           feeCover: outcome.feeCover.toFixed(2),
           paymentId: outcome.id,
+          pool: outcome.pool,
+          fitrPeople: outcome.fitrPeople,
         })
         .catch((err) => this.logger.error(`Failed to send the receipt for zakah payment "${outcome.id}":`, err instanceof Error ? err.stack : String(err)));
     }
@@ -433,9 +494,21 @@ export class ZakahPaymentsService {
 
   // The id travels in the payer's return URL, so only an allow-list of
   // fields — never the payer, IP or settlement details.
-  private publicView(p: { id: string; amount: Prisma.Decimal; feeCover: Prisma.Decimal; currency: string; status: string; createdAt: Date; confirmedAt: Date | null }) {
+  private publicView(p: {
+    id: string;
+    amount: Prisma.Decimal;
+    feeCover: Prisma.Decimal;
+    currency: string;
+    status: string;
+    pool: ZakahPool;
+    fitrPeople: number | null;
+    createdAt: Date;
+    confirmedAt: Date | null;
+  }) {
     return {
       id: p.id,
+      pool: p.pool,
+      fitrPeople: p.fitrPeople,
       amount: p.amount.toFixed(2),
       feeCover: p.feeCover.toFixed(2),
       currency: p.currency,
@@ -463,6 +536,8 @@ export class ZakahPaymentsService {
       feeCover: r.feeCover.toFixed(2),
       currency: r.currency,
       status: r.status,
+      pool: r.pool,
+      fitrPeople: r.fitrPeople,
       rulesetKey: r.rulesetKey,
       rulesetVersion: r.rulesetVersion,
       createdAt: r.createdAt,

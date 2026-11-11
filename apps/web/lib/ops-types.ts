@@ -1343,6 +1343,8 @@ export interface ZakahMetalPriceRow {
 /** A zakah payment as the Ops Console lists it (see ZakahPayment). Amounts in Naira; never the payer's ID. */
 export interface ZakahPaymentRow {
   id: string;
+  pool?: ZakahPool;
+  fitrPeople?: number | null;
   amount: string;
   feeCover: string;
   currency: string;
@@ -1379,6 +1381,7 @@ export interface ZakahRecipientRow {
 /** One zakah payment to an individual or a partner (see ZakahDistribution). */
 export interface ZakahDistributionRow {
   id: string;
+  pool?: ZakahPool;
   recipient: { id: string; name: string } | null;
   counterparty: { id: string; name: string } | null;
   category: import("@birr/zakah").ZakahCategoryKey;
@@ -1397,6 +1400,7 @@ export interface ZakahDistributionRow {
 
 /** GET /zakah-distributions/summary — headline figures in Naira. */
 export interface ZakahDistributionSummary {
+  pool?: ZakahPool;
   currency: string;
   received: string;
   committed: string;
@@ -1423,3 +1427,22 @@ export interface ZakahRefundRow {
   createdAt: string;
   payment: { id: string; amount: string; createdAt: string; payer: { email: string; fullName: string | null } | null };
 }
+
+/** One version of a season's Zakah al-Fitr campaign (see ZakahFitrCampaign). */
+export interface ZakahFitrCampaignRow {
+  id: string;
+  season: string;
+  version: number;
+  staple: string;
+  kgPerPerson: string;
+  amountPerPerson: string;
+  opensOn: string;
+  expectedEidOn: string;
+  closesOn: string;
+  closedAt: string | null;
+  status: "draft" | "approved" | "superseded";
+  approvedAt: string | null;
+  createdAt: string;
+}
+
+export type ZakahPool = "mal" | "fitr_food" | "fitr_cash";

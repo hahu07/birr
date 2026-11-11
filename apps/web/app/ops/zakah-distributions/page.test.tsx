@@ -77,7 +77,7 @@ function distribution(overrides: Partial<ZakahDistributionRow>): ZakahDistributi
 function setup(staff: BirrStaff, distributions: ZakahDistributionRow[] = []) {
   mockedApiFetchJson.mockImplementation((path: string, init?: RequestInit) => {
     if (path === "/birr-staff/me") return Promise.resolve(staff);
-    if (path === "/zakah-distributions/summary") return Promise.resolve(summary);
+    if (path.startsWith("/zakah-distributions/summary?pool=")) return Promise.resolve({ ...summary, pool: path.split("=")[1] });
     if (path === "/zakah-distributions" && !init?.method) return Promise.resolve(distributions);
     if (path === "/zakah-distributions/recipients" && !init?.method) return Promise.resolve([musa]);
     if (path === "/zakah-distributions" && init?.method === "POST") return Promise.resolve({ id: "d-new" });
@@ -132,9 +132,28 @@ describe("Ops Console — Zakah distributions", { timeout: 15_000 }, () => {
 
     await waitFor(() => expect(bodiesSentTo("/governed-actions")).toHaveLength(1));
     expect(bodiesSentTo("/zakah-distributions")).toEqual([
-      { recipientId: "rec-1", category: "gharimin", amount: "25000", reason: "Clearing a debt for his children's school fees." },
+      { recipientId: "rec-1", pool: "mal", category: "gharimin", amount: "25000", reason: "Clearing a debt for his children's school fees." },
     ]);
     expect(bodiesSentTo("/governed-actions")[0]).toEqual({ permissionKey: "zakah.distribution_approve", payload: { distributionId: "d-new" } });
+  });
+
+  test("in a Zakah al-Fitr pool, only the poor and the needy can be chosen, and the pool is sent", async () => {
+    const user = setup(officer);
+    await user.selectOptions(await screen.findByLabelText("Pool"), "fitr_food");
+    await waitFor(() => expect(mockedApiFetchJson.mock.calls.some(([p]) => p === "/zakah-distributions/summary?pool=fitr_food")).toBe(true));
+
+    await user.click(screen.getByRole("button", { name: "New distribution" }));
+    await user.selectOptions(screen.getByLabelText("Recipient"), "rec-1");
+    // Musa is registered as fuqara and gharimin; fitr only allows fuqara.
+    expect([...(screen.getByLabelText("Category") as HTMLSelectElement).options].map((o) => o.value)).toEqual(["", "fuqara"]);
+
+    await user.selectOptions(screen.getByLabelText("Category"), "fuqara");
+    await user.type(screen.getByLabelText("Amount (₦)"), "10000");
+    await user.type(screen.getByLabelText("Why this payment fits this category"), "Rice for his family of four before Eid.");
+    await user.click(screen.getByRole("button", { name: "Create and send for approval" }));
+
+    await waitFor(() => expect(bodiesSentTo("/zakah-distributions")).toHaveLength(1));
+    expect(bodiesSentTo("/zakah-distributions")[0]).toMatchObject({ pool: "fitr_food", category: "fuqara" });
   });
 
   test("an approved distribution's payment goes to a second person to confirm", async () => {

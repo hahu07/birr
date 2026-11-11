@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Put } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query } from "@nestjs/common";
+import { ZakahPool } from "@birr/db";
 import {
   CreateZakahDistributionInput,
   CreateZakahRecipientInput,
@@ -43,8 +44,9 @@ export class ZakahDistributionsController {
   }
 
   @Get("summary")
-  summary() {
-    return this.service.summary();
+  summary(@Query("pool") pool?: string) {
+    if (pool !== undefined && !(pool in ZakahPool)) throw new BadRequestException(`Unknown pool "${pool}".`);
+    return this.service.summary((pool as ZakahPool | undefined) ?? "mal");
   }
 
   @Get()

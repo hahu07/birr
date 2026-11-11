@@ -9,6 +9,8 @@ import { ZakahLedgerService } from "./zakah-ledger.service";
 import { ZakahPaymentsService } from "./zakah-payments.service";
 import type { ResendZakahReceiptEmailAdapter, ZakahReceipt } from "./zakah-receipt-email.adapter";
 import { ZAKAH_WAKALAH_TERMS } from "./zakah-terms";
+import { ZakahFitrService } from "./zakah-fitr.service";
+import { unusedFitrSeason } from "./test-support-fitr";
 
 // A fake Paystack: records what would be sent, and lets each test decide
 // what the "webhook" or "verify" call reports. Nothing reaches Paystack.
@@ -48,12 +50,17 @@ describe("ZakahPaymentsService", () => {
   const paystack = new FakePaystack();
   const receipts = new FakeReceipts();
   const encryption = new EncryptionService();
+  const fitr = new ZakahFitrService();
+  // Fitr campaigns here sit in January 2001 (see zakah-fitr.service.spec.ts).
+  let fitrToday = "2001-01-15";
+  fitr.now = () => new Date(`${fitrToday}T12:00:00Z`);
   const service = new ZakahPaymentsService(
     encryption,
     settings,
     paystack as unknown as PaystackAdapter,
     new ZakahLedgerService(),
     receipts as unknown as ResendZakahReceiptEmailAdapter,
+    fitr,
   );
 
   const base = { amount: "95000", coverFee: false, wakalahConsentVersion: ZAKAH_WAKALAH_TERMS.version };
@@ -166,7 +173,7 @@ describe("ZakahPaymentsService", () => {
       );
       expect(await prisma.auditLog.count({ where: { entityId: payment.id, action: "zakah_payment.confirmed" } })).toBe(1);
       await new Promise((r) => setImmediate(r));
-      expect(receipts.sent).toContainEqual({ to: email("confirm"), amount: "95000.00", feeCover: "1548.23", paymentId: payment.id });
+      expect(receipts.sent).toContainEqual({ to: email("confirm"), amount: "95000.00", feeCover: "1548.23", paymentId: payment.id, pool: "mal", fitrPeople: null });
     });
 
     test("a retried webhook never posts the money twice", async () => {
@@ -212,6 +219,76 @@ describe("ZakahPaymentsService", () => {
       paystack.nextVerify = { status: "confirmed", amountMinorUnits: 9654823, currency: "NGN", providerPaymentId: "ps-2" };
       expect(await service.reconcile(payment.id)).toMatchObject({ status: "confirmed" });
       expect(await prisma.zakahJournalEntry.count({ where: { source: "payment", sourceId: payment.id } })).toBe(1);
+    });
+  });
+
+  describe("Zakah al-Fitr", () => {
+    let hanafiKey: string;
+
+    beforeAll(async () => {
+      const officer = await prisma.user.create({ data: { email: email("fitr-officer"), fullName: "Fitr Officer" } });
+      const shariah = await prisma.user.create({ data: { email: email("fitr-shariah"), fullName: "Fitr Shariah" } });
+      const governed = async (key: string) => {
+        const permission = await prisma.permission.findUniqueOrThrow({ where: { key } });
+        return prisma.governedAction.create({
+          data: { permissionId: permission.id, makerType: "human", makerUserId: officer.id, checkerUserId: shariah.id, status: "approved", decidedAt: new Date(), payload: {} },
+        });
+      };
+      // A season's campaign: ₦2,500 a person, payments close 2001-01-19.
+      const fields = { staple: "Rice", kgPerPerson: "2.5", amountPerPerson: "2500", opensOn: "2001-01-01", expectedEidOn: "2001-01-20" };
+      const draft = await fitr.createDraft({ season: await unusedFitrSeason(), ...fields }, officer.id);
+      const action = await governed("zakah.fitr_campaign_approve");
+      await prisma.$transaction((tx) => fitr.approve({ campaignId: draft.id, ...fields }, action.id, shariah.id, tx));
+      // An approved Hanafi ruleset, for paying fitr as cash.
+      hanafiKey = `test-${run}-hanafi`;
+      await prisma.zakahRuleset.create({
+        data: {
+          key: hanafiKey, madhhab: "hanafi", version: 1, label: "Hanafi", status: "approved", approvedAt: new Date(),
+          approvedGovernedActionId: (await governed("zakah.ruleset_approve")).id, createdByUserId: officer.id,
+          rulings: { personalJewellery: "zakatable", debts: "deduct", nisabBasis: "silver", nisabGoldGrams: "85", nisabSilverGrams: "595" },
+        },
+      });
+    });
+
+    afterEach(() => {
+      fitrToday = "2001-01-15";
+    });
+
+    test("food: people × the campaign's amount — never a figure from the client — booked to the food pool", async () => {
+      const { payment } = await service.initiate({ ...base, kind: "fitr", amount: "1", fitrPeople: 4, fitrForm: "food" });
+      expect(payment).toMatchObject({ amount: "10000.00", pool: "fitr_food", fitrPeople: 4 });
+      expect(paystack.created.at(-1)).toMatchObject({ amount: "10000.00", split: { subaccount: "ACCT_test_zakah" } });
+
+      await confirmViaWebhook(payment.id);
+      const entry = await prisma.zakahJournalEntry.findFirstOrThrow({
+        where: { source: "payment", sourceId: payment.id },
+        include: { lines: { include: { ledgerAccount: true } } },
+      });
+      expect(entry.lines.map((l) => l.ledgerAccount.code).sort()).toEqual(["1000", "2100"]);
+    });
+
+    test("cash only under an approved Hanafi ruleset, booked to the cash pool", async () => {
+      await expect(service.initiate({ ...base, kind: "fitr", fitrPeople: 2, fitrForm: "cash" })).rejects.toThrow(/only offered under the Hanafi ruleset/);
+      const { payment } = await service.initiate({ ...base, kind: "fitr", fitrPeople: 2, fitrForm: "cash", rulesetKey: hanafiKey, rulesetVersion: 1 });
+      expect(payment).toMatchObject({ amount: "5000.00", pool: "fitr_cash" });
+
+      await confirmViaWebhook(payment.id);
+      const entry = await prisma.zakahJournalEntry.findFirstOrThrow({
+        where: { source: "payment", sourceId: payment.id },
+        include: { lines: { include: { ledgerAccount: true } } },
+      });
+      expect(entry.lines.map((l) => l.ledgerAccount.code).sort()).toEqual(["1000", "2200"]);
+    });
+
+    test("refused once payments have closed, the day before Eid", async () => {
+      fitrToday = "2001-01-20";
+      await expect(service.initiate({ ...base, kind: "fitr", fitrPeople: 1, fitrForm: "food" })).rejects.toThrow(
+        expect.objectContaining({ response: expect.objectContaining({ code: "FITR_CLOSED" }) }),
+      );
+    });
+
+    test("needs the number of people and the form", async () => {
+      await expect(service.initiate({ ...base, kind: "fitr", fitrForm: "food" })).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -279,12 +356,14 @@ describe("ZakahPaymentsService", () => {
       );
     });
 
-    test("ledger balances show the zakah held for recipients equal to the zakah in the bank", async () => {
+    test("the zakah bank account holds exactly what's held for recipients across all three pools", async () => {
       const balances = await service.ledgerBalances();
       const bank = balances.find((b) => b.code === "1000")!;
-      const held = balances.find((b) => b.code === "2000")!;
-      expect(bank.balance).toBe(held.balance);
-      expect(Number(held.balance)).toBeGreaterThan(0);
+      const held = balances.filter((b) => ["2000", "2100", "2200"].includes(b.code));
+      expect(held).toHaveLength(3);
+      const totalHeld = held.reduce((sum, b) => sum.plus(b.balance), new Prisma.Decimal(0));
+      expect(totalHeld.toFixed(2)).toBe(bank.balance);
+      expect(Number(bank.balance)).toBeGreaterThan(0);
     });
   });
 });

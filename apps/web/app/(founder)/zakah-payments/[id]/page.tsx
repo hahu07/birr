@@ -13,6 +13,8 @@ import { Alert, Button, Card, IconCheckCircle, IconClock, IconXCircle, Skeleton 
 
 interface ZakahPaymentStatus {
   id: string;
+  pool?: "mal" | "fitr_food" | "fitr_cash";
+  fitrPeople?: number | null;
   amount: string;
   feeCover: string;
   currency: string;
@@ -126,10 +128,16 @@ export default function ZakahPaymentStatusPage() {
           <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
             <IconCheckCircle className="h-5 w-5" />
           </span>
-          <p className="mt-4 text-sm font-medium text-slate-900">Your zakah has been received</p>
+          <p className="mt-4 text-sm font-medium text-slate-900">
+            {payment.pool && payment.pool !== "mal" ? "Your Zakah al-Fitr has been received" : "Your zakah has been received"}
+          </p>
           <p className="mt-1 text-sm text-slate-500">
-            {formatMoney(payment.amount, payment.currency)} — Birr will pass it on, as your agent, only to people eligible to receive
-            zakah.
+            {formatMoney(payment.amount, payment.currency)}
+            {payment.pool === "fitr_food"
+              ? ` for ${payment.fitrPeople === 1 ? "1 person" : `${payment.fitrPeople} people`} — as your agent, Birr will buy food with it and deliver it to people in need before the Eid prayer.`
+              : payment.pool === "fitr_cash"
+                ? ` for ${payment.fitrPeople === 1 ? "1 person" : `${payment.fitrPeople} people`} — as your agent, Birr will pass it on to people in need before the Eid prayer.`
+                : " — Birr will pass it on, as your agent, only to people eligible to receive zakah."}
             {Number(payment.feeCover) > 0 && ` Thank you for also covering the ${formatMoney(payment.feeCover, payment.currency)} processing fee.`}
           </p>
           <p className="mt-2 text-xs text-slate-500">If you gave your email, a receipt is on its way. May Allah accept it from you.</p>

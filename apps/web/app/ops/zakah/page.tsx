@@ -29,6 +29,7 @@ import {
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../_components/ProposeGovernedAction";
 import { RefundButton, RefundsSection } from "./RefundsSection";
+import { FitrCampaignsSection } from "./FitrCampaignsSection";
 
 const MADHHAB_LABELS: Record<ZakahRulesetRow["madhhab"], string> = {
   maliki: "Maliki",
@@ -75,6 +76,7 @@ export default function ZakahPage() {
       </header>
       <PaymentsSection onRefundRequested={() => setRefundsKey((n) => n + 1)} />
       <RefundsSection refreshKey={refundsKey} />
+      <FitrCampaignsSection />
       <MetalPricesSection />
       <RulesetsSection />
     </div>
@@ -145,6 +147,11 @@ function PaymentsSection({ onRefundRequested }: { onRefundRequested: () => void 
                 </TableCell>
                 <TableCell className="tabular-nums">
                   {formatMoney(p.amount, p.currency)}
+                  {p.pool && p.pool !== "mal" && (
+                    <div className="text-xs text-slate-500">
+                      Zakah al-Fitr · {p.fitrPeople} {p.fitrPeople === 1 ? "person" : "people"} · {p.pool === "fitr_food" ? "food" : "cash"}
+                    </div>
+                  )}
                   {Number(p.feeCover) > 0 && <div className="text-xs text-slate-500">+ {formatMoney(p.feeCover, p.currency)} fee cover</div>}
                 </TableCell>
                 <TableCell>

@@ -14,15 +14,21 @@ import {
   Min,
   MinLength,
 } from "class-validator";
-import { prisma, Prisma, ZakahCategory, ZakahDistribution } from "@birr/db";
+import { prisma, Prisma, ZakahCategory, ZakahDistribution, ZakahPool } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
-import { ZAKAH_BANK_ACCOUNT_CODE, ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
+import { HELD_ACCOUNT_BY_POOL, ZAKAH_BANK_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
 import { lagosToday } from "./zakah.service";
 import { lockZakahCommitments, zakahTotals } from "./zakah-commitments";
 import { CLOSED_ZAKAH_CATEGORIES, ZAKAH_CATEGORY_LABELS } from "@birr/zakah";
 
 const CURRENCY = "NGN";
+
+export const POOL_LABELS: Record<ZakahPool, string> = {
+  mal: "zakah",
+  fitr_food: "Zakah al-Fitr (food)",
+  fitr_cash: "Zakah al-Fitr (cash)",
+};
 
 export { CLOSED_ZAKAH_CATEGORIES, ZAKAH_CATEGORY_LABELS };
 
@@ -70,7 +76,15 @@ export class UpdateZakahRecipientInput extends CreateZakahRecipientInput {
   active?: boolean;
 }
 
+/** Zakah al-Fitr goes to the poor and the needy only (the majority view); also a database CHECK. */
+export const FITR_CATEGORIES: readonly ZakahCategory[] = ["fuqara", "masakin"];
+
 export class CreateZakahDistributionInput {
+  /** Which pool it's paid from — zakah on wealth unless said otherwise. */
+  @IsOptional()
+  @IsEnum(ZakahPool)
+  pool?: ZakahPool;
+
   @IsOptional()
   @IsString()
   recipientId?: string;
@@ -266,8 +280,8 @@ export class ZakahDistributionsService {
     return lockZakahCommitments(tx);
   }
 
-  private totals(db: Db) {
-    return zakahTotals(db, CURRENCY);
+  private totals(db: Db, pool: ZakahPool = "mal") {
+    return zakahTotals(db, CURRENCY, pool);
   }
 
   // ---- Distributions ----
@@ -277,6 +291,10 @@ export class ZakahDistributionsService {
       throw new BadRequestException("Choose either one recipient or one partner organisation.");
     }
     this.assertCategoriesOpen([input.category]);
+    const pool = input.pool ?? "mal";
+    if (pool !== "mal" && !FITR_CATEGORIES.includes(input.category)) {
+      throw new BadRequestException("Zakah al-Fitr goes only to the poor (al-fuqara) and the needy (al-masakin).");
+    }
     const amount = new Prisma.Decimal(input.amount);
     if (amount.decimalPlaces() > 2) throw new BadRequestException("Enter the amount in naira and kobo.");
 
@@ -299,16 +317,17 @@ export class ZakahDistributionsService {
 
     return prisma.$transaction(async (tx) => {
       await this.lockCommitments(tx);
-      const { received, committed } = await this.totals(tx);
+      const { received, committed } = await this.totals(tx, pool);
       const available = received.minus(committed);
       if (amount.gt(available)) {
-        throw new BadRequestException(`Only ${naira(available)} of zakah is available to distribute.`);
+        throw new BadRequestException(`Only ${naira(available)} of ${POOL_LABELS[pool]} is available to distribute.`);
       }
       const created = await tx.zakahDistribution.create({
         data: {
           recipientId: input.recipientId,
           counterpartyId: input.counterpartyId,
           category: input.category,
+          pool,
           amount,
           currency: CURRENCY,
           reason: input.reason.trim(),
@@ -343,16 +362,16 @@ export class ZakahDistributionsService {
    * money that has left (paid to recipients or refunded) first-in,
    * first-out — zakah shouldn't wait long. `committed` includes refunds.
    */
-  async summary() {
-    const { received, committed, paid, refunded } = await this.totals(prisma);
+  async summary(pool: ZakahPool = "mal") {
+    const { received, committed, paid, refunded } = await this.totals(prisma, pool);
     const left = paid.plus(refunded);
     const byCategory = await prisma.zakahDistribution.groupBy({
       by: ["category", "status"],
-      where: { status: { in: ["pending_approval", "approved", "paid"] }, currency: CURRENCY },
+      where: { status: { in: ["pending_approval", "approved", "paid"] }, currency: CURRENCY, pool },
       _sum: { amount: true },
     });
     const payments = await prisma.zakahPayment.findMany({
-      where: { status: "confirmed", currency: CURRENCY },
+      where: { status: "confirmed", currency: CURRENCY, pool },
       orderBy: { confirmedAt: "asc" },
       select: { amount: true, confirmedAt: true },
     });
@@ -366,6 +385,7 @@ export class ZakahDistributionsService {
       }
     }
     return {
+      pool,
       currency: CURRENCY,
       received: received.toFixed(2),
       committed: committed.toFixed(2),
@@ -435,15 +455,16 @@ export class ZakahDistributionsService {
   async describe(payload: unknown): Promise<string> {
     const d = await this.findOrThrow((payload as DistributionApprovalPayload).distributionId);
     const payee = d.recipient ? d.recipient.name : `${d.counterparty!.name} (partner, to pass on)`;
-    return `${naira(d.amount)} of zakah to ${payee}, under ${ZAKAH_CATEGORY_LABELS[d.category]}. Why: ${d.reason}`;
+    return `${naira(d.amount)} of ${POOL_LABELS[d.pool]} to ${payee}, under ${ZAKAH_CATEGORY_LABELS[d.category]}. Why: ${d.reason}`;
   }
 
   /** What the approver weighs: who it's for, why they qualify, and how much zakah is left. */
   async currentState(payload: unknown): Promise<Record<string, unknown>> {
     const d = await this.findOrThrow((payload as DistributionApprovalPayload).distributionId);
-    const { received, committed } = await this.totals(prisma);
+    const { received, committed } = await this.totals(prisma, d.pool);
     return {
       status: d.status,
+      pool: POOL_LABELS[d.pool],
       category: ZAKAH_CATEGORY_LABELS[d.category],
       recipientEligibility: d.recipient ? { categories: d.recipient.categories, reason: d.recipient.eligibilityReason } : null,
       partnerStatus: d.counterparty?.status ?? null,
@@ -462,7 +483,7 @@ export class ZakahDistributionsService {
     }
     // This row is already counted as committed; re-check nothing has
     // pushed commitments past what was received since it was proposed.
-    const { received, committed } = await this.totals(tx);
+    const { received, committed } = await this.totals(tx, before.pool);
     if (committed.gt(received)) {
       throw new BadRequestException(`Approving this would commit more zakah than has been received (${naira(received)}).`);
     }
@@ -530,10 +551,10 @@ export class ZakahDistributionsService {
       where: { id: before.id },
       data: { status: "paid", paidOn: new Date(`${p.paidOn}T00:00:00Z`), bankReference: p.bankReference, paymentActionId: governedActionId },
     });
-    const held = await this.ledger.getAccountByCode(tx, ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE);
+    const held = await this.ledger.getAccountByCode(tx, HELD_ACCOUNT_BY_POOL[after.pool]);
     const bank = await this.ledger.getAccountByCode(tx, ZAKAH_BANK_ACCOUNT_CODE);
     await this.ledger.post(tx, {
-      description: `Zakah paid — ${ZAKAH_CATEGORY_LABELS[after.category]} (bank ref ${p.bankReference})`,
+      description: `${after.pool === "mal" ? "Zakah" : POOL_LABELS[after.pool]} paid — ${ZAKAH_CATEGORY_LABELS[after.category]} (bank ref ${p.bankReference})`,
       currency: after.currency,
       source: "distribution",
       sourceId: after.id,
