@@ -376,6 +376,7 @@ model User {
   zakahRefundsCreated            ZakahRefund[]                   @relation("ZakahRefundCreator")
   zakahFitrCampaignsCreated      ZakahFitrCampaign[]             @relation("ZakahFitrCampaignCreator")
   zakahPaymentsHeld              ZakahPayment[]                  @relation("ZakahPaymentHolder")
+  zakahRecipientChangesRequested ZakahRecipient[]                @relation("ZakahRecipientChangeRequester")
 
   @@map("users")
 }
@@ -1056,6 +1057,7 @@ model GovernedAction {
   approvedZakahRefund       ZakahRefund?         @relation("ZakahRefundApproval")
   paidZakahRefund           ZakahRefund?         @relation("ZakahRefundPayment")
   approvedZakahFitrCampaign ZakahFitrCampaign?   @relation("ZakahFitrCampaignApproval")
+  approvedZakahRecipient    ZakahRecipient?      @relation("ZakahRecipientApproval")
 
   @@index([waqfId])
   @@index([status])
@@ -3204,9 +3206,36 @@ model ZakahRecipient {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
+  // Two-person registration (owner's decision, 2026-11-11): a recipient
+  // can't be paid until a Shariah board member or Compliance officer —
+  // never the person who registered them — approves them
+  // (zakah.recipient_approve). Enforced in the database too (see the
+  // migration): status only moves forward, and an approved recipient's
+  // categories and bank details change only via an approved change.
+  status                      ZakahRecipientStatus @default(pending_approval)
+  approvedAt                  DateTime?
+  approvalActionId            String?              @unique
+  approvalAction              GovernedAction?      @relation("ZakahRecipientApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  // A requested change to where the money goes or what they're eligible
+  // for, waiting for a second person (zakah.recipient_change) — the live
+  // categories and bank details above never change before that. Present
+  // exactly when pendingChangeAt is set. New bank details stay encrypted
+  // here, never in the governed action's payload or the audit trail.
+  pendingCategories           ZakahCategory[]      @default([])
+  pendingBankDetailsEncrypted String?
+  pendingChangeAt             DateTime?
+  pendingChangeByUserId       String?
+  pendingChangeBy             User?                @relation("ZakahRecipientChangeRequester", fields: [pendingChangeByUserId], references: [id], onDelete: Restrict)
+
   distributions ZakahDistribution[]
 
   @@map("zakah_recipients")
+}
+
+enum ZakahRecipientStatus {
+  pending_approval
+  approved
+  rejected
 }
 
 enum ZakahDistributionStatus {

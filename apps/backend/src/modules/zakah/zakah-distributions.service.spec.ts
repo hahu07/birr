@@ -1,5 +1,5 @@
 import { prisma, Prisma } from "@birr/db";
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { ZAKAH_BANK_ACCOUNT_CODE, ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
@@ -67,8 +67,9 @@ describe("ZakahDistributionsService", () => {
     });
   }
 
-  async function recipient(categories: ("fuqara" | "gharimin" | "ibn_sabil")[] = ["fuqara"]) {
-    return service.createRecipient(
+  /** Registers a recipient and, unless told not to, has a second person approve them. */
+  async function recipient(categories: ("fuqara" | "gharimin" | "ibn_sabil" | "masakin")[] = ["fuqara"], { approved = true } = {}) {
+    const created = await service.createRecipient(
       {
         name: `Test Recipient ${run}`,
         categories,
@@ -79,6 +80,10 @@ describe("ZakahDistributionsService", () => {
       },
       officerUserId,
     );
+    if (!approved) return created;
+    const action = await governedAction("zakah.recipient_approve", { recipientId: created.id });
+    await prisma.$transaction((tx) => service.approveRecipient({ recipientId: created.id }, action.id, checkerUserId, tx));
+    return { ...created, status: "approved" as const };
   }
 
   async function approve(distributionId: string) {
@@ -160,6 +165,93 @@ describe("ZakahDistributionsService", () => {
       await expect(
         service.create({ recipientId: r.id, category: "fuqara", amount: "1000", reason: "Monthly support for food." }, officerUserId),
       ).rejects.toThrow(/no longer an active recipient/);
+    });
+  });
+
+  describe("two-person registration", () => {
+    test("a new recipient waits for approval and can't be paid until then", async () => {
+      const r = await recipient(["fuqara"], { approved: false });
+      expect(r.status).toBe("pending_approval");
+      await expect(
+        service.create({ recipientId: r.id, category: "fuqara", amount: "1000", reason: "Food for the month." }, officerUserId),
+      ).rejects.toThrow(/hasn't been approved as a recipient yet/);
+    });
+
+    test("whoever registered them can never approve them, even if someone else proposed it", async () => {
+      const r = await recipient(["fuqara"], { approved: false });
+      const action = await governedAction("zakah.recipient_approve", { recipientId: r.id });
+      await expect(
+        prisma.$transaction((tx) => service.approveRecipient({ recipientId: r.id }, action.id, officerUserId, tx)),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    test("a rejected registration can't be paid or edited", async () => {
+      const r = await recipient(["fuqara"], { approved: false });
+      await prisma.$transaction((tx) => service.rejectRecipient({ recipientId: r.id }, tx));
+      await expect(
+        service.updateRecipient(r.id, { name: r.name, categories: ["fuqara"], eligibilityReason: r.eligibilityReason }, officerUserId),
+      ).rejects.toThrow(/was rejected/);
+    });
+
+    test("after approval, new bank details wait for a second person; the live ones don't change until then", async () => {
+      const r = await recipient(["fuqara"]);
+      const pending = await service.updateRecipient(
+        r.id,
+        { name: r.name, categories: ["fuqara", "gharimin"], eligibilityReason: r.eligibilityReason, bankName: "New Bank", accountNumber: "9999991111", accountName: "Test Recipient" },
+        officerUserId,
+      );
+      expect(pending.bank).toEqual({ bankName: "Test Bank", accountLast4: "6789" });
+      expect(pending.categories).toEqual(["fuqara"]);
+      expect(pending.pendingChange).toEqual({ categories: ["fuqara", "gharimin"], bank: { bankName: "New Bank", accountLast4: "1111" } });
+      expect(await prisma.auditLog.count({ where: { entityId: r.id, action: "zakah_recipient.change_requested" } })).toBe(1);
+      // Can't yet be paid under the new category.
+      await expect(
+        service.create({ recipientId: r.id, category: "gharimin", amount: "1000", reason: "Clearing a school-fees debt." }, officerUserId),
+      ).rejects.toThrow(/isn't registered as eligible/);
+
+      const row = await prisma.zakahRecipient.findUniqueOrThrow({ where: { id: r.id } });
+      const payload = { recipientId: r.id, requestedAt: row.pendingChangeAt!.toISOString() };
+      await expect(prisma.$transaction((tx) => service.approveRecipientChange(payload, officerUserId, tx))).rejects.toThrow(ForbiddenException);
+      await prisma.$transaction((tx) => service.approveRecipientChange(payload, checkerUserId, tx));
+
+      expect(await service.bankDetails(r.id, checkerUserId)).toMatchObject({ bankName: "New Bank", accountNumber: "9999991111" });
+      const after = await prisma.zakahRecipient.findUniqueOrThrow({ where: { id: r.id } });
+      expect(after).toMatchObject({ categories: ["fuqara", "gharimin"], pendingChangeAt: null, pendingBankDetailsEncrypted: null });
+    });
+
+    test("name, phone, reason and deactivating take effect at once; a rejected change is simply dropped", async () => {
+      const r = await recipient(["fuqara"]);
+      const renamed = await service.updateRecipient(r.id, { name: "New Name", categories: ["fuqara"], eligibilityReason: "Updated after a second home visit." }, officerUserId);
+      expect(renamed).toMatchObject({ name: "New Name", pendingChange: null });
+
+      await service.updateRecipient(r.id, { name: "New Name", categories: ["fuqara", "masakin"], eligibilityReason: renamed.eligibilityReason }, officerUserId);
+      await prisma.$transaction((tx) => service.rejectRecipientChange({ recipientId: r.id }, tx));
+      expect(await prisma.zakahRecipient.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ categories: ["fuqara"], pendingChangeAt: null });
+    });
+
+    test("nothing can be edited while a decision about the recipient is waiting", async () => {
+      const r = await recipient(["fuqara"], { approved: false });
+      const permission = await prisma.permission.findUniqueOrThrow({ where: { key: "zakah.recipient_approve" } });
+      await prisma.governedAction.create({
+        data: { permissionId: permission.id, makerType: "human", makerUserId: officerUserId, status: "proposed", payload: { recipientId: r.id } },
+      });
+      await expect(
+        service.updateRecipient(r.id, { name: "Changed", categories: ["fuqara"], eligibilityReason: r.eligibilityReason }, officerUserId),
+      ).rejects.toThrow(/waiting for approval/);
+    });
+
+    // Straight to the database.
+    test("the database refuses changing an approved recipient's bank details or categories directly, or un-approving them", async () => {
+      const r = await recipient(["fuqara"]);
+      await expect(prisma.zakahRecipient.update({ where: { id: r.id }, data: { categories: ["fuqara", "gharimin"] } })).rejects.toThrow(
+        /only through an approved change request/,
+      );
+      await expect(prisma.zakahRecipient.update({ where: { id: r.id }, data: { bankDetailsEncrypted: "x" } })).rejects.toThrow(
+        /only through an approved change request/,
+      );
+      await expect(
+        prisma.zakahRecipient.update({ where: { id: r.id }, data: { status: "pending_approval", approvedAt: null, approvalActionId: null } }),
+      ).rejects.toThrow(/can't go from approved/);
     });
   });
 

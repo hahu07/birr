@@ -2837,10 +2837,14 @@ describe("GovernedActionsService", () => {
           lines: [{ ledgerAccountId: bank.id, debit: "100000" }, { ledgerAccountId: held.id, credit: "100000" }],
         });
       });
-      return zakahDistributionsService.createRecipient(
+      const r = await zakahDistributionsService.createRecipient(
         { name: `GA Zakah Recipient ${run}`, categories: ["masakin"], eligibilityReason: "Verified by home visit: no regular income." },
         makerUserId,
       );
+      // Two-person registration, through the real engine.
+      const approval = await service.propose({ permissionKey: "zakah.recipient_approve", payload: { recipientId: r.id }, makerUserId });
+      await service.decide({ governedActionId: approval.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+      return r;
     }
 
     test("zakah.distribution_approve then zakah.distribution_mark_paid: each needs its own second person, then it's booked", async () => {
@@ -2871,6 +2875,36 @@ describe("GovernedActionsService", () => {
         ["zakah_distribution.approved", beneficiaryCheckerUserId],
         ["zakah_distribution.paid", distributionCheckerUserId],
       ]);
+    });
+
+    test("zakah.recipient_approve and zakah.recipient_change: approved by a second person, audited; the database rejects checker = maker", async () => {
+      const r = await zakahDistributionsService.createRecipient(
+        { name: `GA Recipient ${run}`, categories: ["fuqara"], eligibilityReason: "Widow with four children; verified by home visit.", bankName: "Test Bank", accountNumber: "0123456789", accountName: "GA Recipient" },
+        makerUserId,
+      );
+      const approval = await service.propose({ permissionKey: "zakah.recipient_approve", payload: { recipientId: r.id }, makerUserId });
+      await expect(service.decide({ governedActionId: approval.id, checkerUserId: makerUserId, approve: true })).rejects.toThrow(ForbiddenException);
+      await expect(prisma.governedAction.update({ where: { id: approval.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+      await service.decide({ governedActionId: approval.id, checkerUserId: distributionCheckerUserId, approve: true });
+      expect(await prisma.zakahRecipient.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ status: "approved", approvalActionId: approval.id });
+      expect(await prisma.auditLog.count({ where: { entityId: r.id, action: "zakah_recipient.approved", actorUserId: distributionCheckerUserId } })).toBe(1);
+
+      await zakahDistributionsService.updateRecipient(
+        r.id,
+        { name: r.name, categories: ["fuqara"], eligibilityReason: r.eligibilityReason, bankName: "Other Bank", accountNumber: "5555551234", accountName: "GA Recipient" },
+        makerUserId,
+      );
+      const row = await prisma.zakahRecipient.findUniqueOrThrow({ where: { id: r.id } });
+      const change = await service.propose({
+        permissionKey: "zakah.recipient_change",
+        payload: { recipientId: r.id, requestedAt: row.pendingChangeAt!.toISOString() },
+        makerUserId,
+      });
+      // The approval request carries no bank details — they stay encrypted on the recipient.
+      expect(JSON.stringify(change.payload)).not.toContain("5555551234");
+      await service.decide({ governedActionId: change.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+      expect(await zakahDistributionsService.bankDetails(r.id, beneficiaryCheckerUserId)).toMatchObject({ accountNumber: "5555551234" });
+      expect(await prisma.auditLog.count({ where: { entityId: r.id, action: "zakah_recipient.change_approved" } })).toBe(1);
     });
 
     test("zakah.distribution_approve: reject → rejected, audit-logged, and its amount is released", async () => {

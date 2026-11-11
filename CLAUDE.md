@@ -456,8 +456,18 @@ extending Waqf or Vault ones. Owner's decisions so far:
   reference (`zakah.distribution_mark_paid`). *Al-'amilin* is closed in
   code and by a database CHECK, following the 100%-to-recipients
   decision. Committed zakah can never exceed zakah received (checked
-  under a lock). Known gap: registering a recipient is one person's
-  action; the second person reviews eligibility at each payment instead.
+  under a lock).
+- **Two-person recipient registration**, owner's decisions: a recipient
+  can't be paid until a Shariah board member or Compliance officer
+  approves them (`zakah.recipient_approve`), and changing an approved
+  recipient's **bank details or categories** needs the same
+  (`zakah.recipient_change`); name, phone, the written reason and
+  deactivating take effect at once. The approver is never the person who
+  registered them or asked for the change, even if someone else proposed
+  it. New bank details wait encrypted on the recipient, never in the
+  approval request. The database refuses changing an approved
+  recipient's bank details or categories except by applying an approved
+  change.
 
 - **Refunds** (`ZakahRefund`), owner's decisions: for **mistakes only**
   (paid twice, wrong amount, not authorised by the payer), never a change

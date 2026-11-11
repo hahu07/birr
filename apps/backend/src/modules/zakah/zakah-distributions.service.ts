@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import {
   ArrayMinSize,
   ArrayUnique,
@@ -117,6 +117,22 @@ export class RecordPartnerReportInput {
   report!: string;
 }
 
+/** zakah.recipient_approve's payload. */
+export interface RecipientApprovalPayload {
+  recipientId: string;
+}
+
+/** zakah.recipient_change's payload: which change, by when it was requested. */
+export interface RecipientChangePayload {
+  recipientId: string;
+  requestedAt: string;
+}
+
+interface RecipientBankFields {
+  bankDetailsEncrypted: string | null;
+  pendingBankDetailsEncrypted: string | null;
+}
+
 /** zakah.distribution_approve's payload. */
 export interface DistributionApprovalPayload {
   distributionId: string;
@@ -177,18 +193,28 @@ export class ZakahDistributionsService {
     }
   }
 
+  private last4(encrypted: string | null): { bankName: string; accountLast4: string } | null {
+    if (!encrypted) return null;
+    const d = JSON.parse(this.encryption.decrypt(encrypted)) as BankDetails;
+    return { bankName: d.bankName, accountLast4: d.accountNumber.slice(-4) };
+  }
+
   // Lists show only the last four digits; the full details are a separate,
-  // audited read (bankDetails below).
-  private recipientView<T extends { bankDetailsEncrypted: string | null }>(row: T) {
-    const { bankDetailsEncrypted, ...rest } = row;
-    const details = bankDetailsEncrypted ? (JSON.parse(this.encryption.decrypt(bankDetailsEncrypted)) as BankDetails) : null;
-    return { ...rest, bank: details ? { bankName: details.bankName, accountLast4: details.accountNumber.slice(-4) } : null };
+  // audited read (bankDetails below). A pending change shows what would
+  // change, the same way.
+  private recipientView<T extends RecipientBankFields & { pendingCategories: ZakahCategory[]; pendingChangeAt: Date | null }>(row: T) {
+    const { bankDetailsEncrypted, pendingBankDetailsEncrypted, pendingCategories, ...rest } = row;
+    return {
+      ...rest,
+      bank: this.last4(bankDetailsEncrypted),
+      pendingChange: row.pendingChangeAt ? { categories: pendingCategories, bank: this.last4(pendingBankDetailsEncrypted) } : null,
+    };
   }
 
   // Never write (encrypted) bank details into the audit trail — only that they exist.
-  private recipientSnapshot<T extends { bankDetailsEncrypted: string | null }>(row: T) {
-    const { bankDetailsEncrypted, ...rest } = row;
-    return { ...rest, bankDetailsOnFile: bankDetailsEncrypted != null };
+  private recipientSnapshot<T extends RecipientBankFields>(row: T) {
+    const { bankDetailsEncrypted, pendingBankDetailsEncrypted, ...rest } = row;
+    return { ...rest, bankDetailsOnFile: bankDetailsEncrypted != null, newBankDetailsPending: pendingBankDetailsEncrypted != null };
   }
 
   async listRecipients() {
@@ -196,6 +222,7 @@ export class ZakahDistributionsService {
     return rows.map((r) => this.recipientView(r));
   }
 
+  /** Registers a recipient awaiting a second person's approval (zakah.recipient_approve); they can't be paid until then. */
   async createRecipient(input: CreateZakahRecipientInput, actorUserId: string) {
     this.assertCategoriesOpen(input.categories);
     const bankDetailsEncrypted = this.packBankDetails(input);
@@ -224,29 +251,54 @@ export class ZakahDistributionsService {
     });
   }
 
+  /**
+   * Name, phone, the written reason and deactivating take effect at once.
+   * Before approval, everything can be edited (it's all reviewed at
+   * approval). After approval, new bank details or a different set of
+   * categories becomes a pending change for a second person to approve
+   * (zakah.recipient_change) — the live ones stay as they are until then
+   * (owner's decision, 2026-11-11). Nothing can be edited while a proposal
+   * about this recipient is waiting for a decision.
+   */
   async updateRecipient(id: string, input: UpdateZakahRecipientInput, actorUserId: string) {
     this.assertCategoriesOpen(input.categories);
     const bankDetailsEncrypted = this.packBankDetails(input);
     return prisma.$transaction(async (tx) => {
       const before = await tx.zakahRecipient.findUnique({ where: { id } });
       if (!before) throw new NotFoundException(`Zakah recipient "${id}" not found.`);
-      const updated = await tx.zakahRecipient.update({
-        where: { id },
-        data: {
-          name: input.name.trim(),
-          categories: input.categories,
-          eligibilityReason: input.eligibilityReason.trim(),
-          phone: input.phone?.trim() || null,
-          // Blank keeps what's on file; it's only ever replaced, never shown back.
-          ...(bankDetailsEncrypted && { bankDetailsEncrypted }),
-          ...(input.active !== undefined && { active: input.active }),
-        },
-      });
+      if (before.status === "rejected") throw new BadRequestException("This registration was rejected. Register them again if they now qualify.");
+      if (await this.pendingRecipientAction(id, tx)) {
+        throw new ConflictException("A decision about this recipient is waiting for approval. Ask for it to be rejected before editing.");
+      }
+
+      const direct = {
+        name: input.name.trim(),
+        eligibilityReason: input.eligibilityReason.trim(),
+        phone: input.phone?.trim() || null,
+        ...(input.active !== undefined && { active: input.active }),
+      };
+      const sameCategories = [...input.categories].sort().join() === [...before.categories].sort().join();
+      let change: Prisma.ZakahRecipientUpdateInput = {};
+      if (before.status === "pending_approval") {
+        change = { categories: input.categories, ...(bankDetailsEncrypted && { bankDetailsEncrypted }) };
+      } else if (!sameCategories || bankDetailsEncrypted) {
+        if (before.pendingChangeAt) {
+          throw new ConflictException("A change to this recipient's bank details or categories is already waiting to be approved.");
+        }
+        change = {
+          pendingCategories: input.categories,
+          pendingBankDetailsEncrypted: bankDetailsEncrypted,
+          pendingChangeAt: new Date(),
+          pendingChangeBy: { connect: { id: actorUserId } },
+        };
+      }
+
+      const updated = await tx.zakahRecipient.update({ where: { id }, data: { ...direct, ...change } });
       await tx.auditLog.create({
         data: {
           actorType: "birr_staff",
           actorUserId,
-          action: "zakah_recipient.updated",
+          action: updated.pendingChangeAt && !before.pendingChangeAt ? "zakah_recipient.change_requested" : "zakah_recipient.updated",
           entityType: "ZakahRecipient",
           entityId: id,
           before: this.recipientSnapshot(before) as any,
@@ -255,6 +307,131 @@ export class ZakahDistributionsService {
       });
       return this.recipientView(updated);
     });
+  }
+
+  private pendingRecipientAction(recipientId: string, db: Db = prisma) {
+    return db.governedAction.findFirst({
+      where: {
+        status: "proposed",
+        permission: { key: { in: ["zakah.recipient_approve", "zakah.recipient_change"] } },
+        payload: { path: ["recipientId"], equals: recipientId },
+      },
+    });
+  }
+
+  // ---- zakah.recipient_approve and zakah.recipient_change ----
+
+  private async findRecipientOrThrow(id: unknown, db: Db = prisma) {
+    if (typeof id !== "string") throw new BadRequestException("payload.recipientId is required.");
+    const r = await db.zakahRecipient.findUnique({ where: { id }, include: { createdBy: { select: { fullName: true } } } });
+    if (!r) throw new NotFoundException(`Zakah recipient "${id}" not found.`);
+    return r;
+  }
+
+  private categoriesText(categories: ZakahCategory[]) {
+    return categories.map((c) => ZAKAH_CATEGORY_LABELS[c]).join("; ");
+  }
+
+  async validateRecipientApproval(payload: unknown) {
+    const r = await this.findRecipientOrThrow((payload as Partial<RecipientApprovalPayload>)?.recipientId);
+    if (r.status !== "pending_approval") throw new BadRequestException(`${r.name} is already ${r.status.replace("_", " ")}.`);
+  }
+
+  async checkDuplicateRecipientAction(payload: unknown) {
+    if (await this.pendingRecipientAction((payload as RecipientApprovalPayload).recipientId)) {
+      throw new ConflictException("A decision about this recipient is already waiting — check the Approvals queue.");
+    }
+  }
+
+  async describeRecipientApproval(payload: unknown): Promise<string> {
+    const r = await this.findRecipientOrThrow((payload as RecipientApprovalPayload).recipientId);
+    const bank = this.last4(r.bankDetailsEncrypted);
+    return (
+      `Approve ${r.name} as eligible for zakah as ${this.categoriesText(r.categories)}. Why: ${r.eligibilityReason} ` +
+      `${bank ? `Paid to ${bank.bankName} ····${bank.accountLast4}.` : "No bank details on file."} Registered by ${r.createdBy.fullName}.`
+    );
+  }
+
+  /** Approving a registration: never by the person who registered them, even if someone else proposed it. */
+  async approveRecipient(payload: unknown, governedActionId: string, checkerUserId: string, tx: Prisma.TransactionClient) {
+    const { createdBy: _c, ...before } = await this.findRecipientOrThrow((payload as RecipientApprovalPayload).recipientId, tx);
+    if (before.status !== "pending_approval") throw new BadRequestException(`${before.name} is already ${before.status}.`);
+    if (before.createdByUserId === checkerUserId) {
+      throw new ForbiddenException("You registered this recipient, so someone else must approve them.");
+    }
+    const after = await tx.zakahRecipient.update({
+      where: { id: before.id },
+      data: { status: "approved", approvedAt: new Date(), approvalActionId: governedActionId },
+    });
+    return { before: this.recipientSnapshot(before), after: this.recipientSnapshot(after) };
+  }
+
+  async rejectRecipient(payload: unknown, tx: Prisma.TransactionClient) {
+    const { createdBy: _c, ...before } = await this.findRecipientOrThrow((payload as RecipientApprovalPayload).recipientId, tx);
+    if (before.status !== "pending_approval") return null;
+    const after = await tx.zakahRecipient.update({ where: { id: before.id }, data: { status: "rejected" } });
+    return { before: this.recipientSnapshot(before), after: this.recipientSnapshot(after) };
+  }
+
+  async validateRecipientChange(payload: unknown) {
+    const p = (payload ?? {}) as Partial<RecipientChangePayload>;
+    const r = await this.findRecipientOrThrow(p.recipientId);
+    if (!r.pendingChangeAt) throw new BadRequestException(`${r.name} has no change waiting to be approved.`);
+    this.assertSameChange(r, p);
+  }
+
+  /** The proposal names the change it's about, so a later change can't ride on an earlier approval. */
+  private assertSameChange(r: { name: string; pendingChangeAt: Date | null }, p: Partial<RecipientChangePayload>) {
+    if (!r.pendingChangeAt || p.requestedAt !== r.pendingChangeAt.toISOString()) {
+      throw new ConflictException(`The change waiting for ${r.name} isn't the one that was proposed — reload and propose again.`);
+    }
+  }
+
+  async describeRecipientChange(payload: unknown): Promise<string> {
+    const r = await this.findRecipientOrThrow((payload as RecipientChangePayload).recipientId);
+    const parts: string[] = [];
+    if ([...r.pendingCategories].sort().join() !== [...r.categories].sort().join()) {
+      parts.push(`eligible as ${this.categoriesText(r.categories)} → ${this.categoriesText(r.pendingCategories)}`);
+    }
+    if (r.pendingBankDetailsEncrypted) {
+      const from = this.last4(r.bankDetailsEncrypted);
+      const to = this.last4(r.pendingBankDetailsEncrypted)!;
+      parts.push(`paid to ${from ? `${from.bankName} ····${from.accountLast4}` : "no account"} → ${to.bankName} ····${to.accountLast4}`);
+    }
+    return `Change ${r.name}: ${parts.join("; ")}. Why they qualify: ${r.eligibilityReason}`;
+  }
+
+  /** Applies the approved change; never approved by the person who asked for it. */
+  async approveRecipientChange(payload: unknown, checkerUserId: string, tx: Prisma.TransactionClient) {
+    const p = payload as RecipientChangePayload;
+    const { createdBy: _c, ...before } = await this.findRecipientOrThrow(p.recipientId, tx);
+    this.assertSameChange(before, p);
+    if (before.pendingChangeByUserId === checkerUserId) {
+      throw new ForbiddenException("You asked for this change, so someone else must approve it.");
+    }
+    const after = await tx.zakahRecipient.update({
+      where: { id: before.id },
+      data: {
+        categories: before.pendingCategories,
+        bankDetailsEncrypted: before.pendingBankDetailsEncrypted ?? before.bankDetailsEncrypted,
+        pendingCategories: [],
+        pendingBankDetailsEncrypted: null,
+        pendingChangeAt: null,
+        pendingChangeByUserId: null,
+      },
+    });
+    return { before: this.recipientSnapshot(before), after: this.recipientSnapshot(after) };
+  }
+
+  /** A rejected change is dropped; the recipient stays exactly as they were. */
+  async rejectRecipientChange(payload: unknown, tx: Prisma.TransactionClient) {
+    const { createdBy: _c, ...before } = await this.findRecipientOrThrow((payload as RecipientChangePayload).recipientId, tx);
+    if (!before.pendingChangeAt) return null;
+    const after = await tx.zakahRecipient.update({
+      where: { id: before.id },
+      data: { pendingCategories: [], pendingBankDetailsEncrypted: null, pendingChangeAt: null, pendingChangeByUserId: null },
+    });
+    return { before: this.recipientSnapshot(before), after: this.recipientSnapshot(after) };
   }
 
   /** Full bank details, for the person making the transfer. Every read is audited. */
@@ -301,6 +478,9 @@ export class ZakahDistributionsService {
     if (input.recipientId) {
       const recipient = await prisma.zakahRecipient.findUnique({ where: { id: input.recipientId } });
       if (!recipient) throw new NotFoundException(`Zakah recipient "${input.recipientId}" not found.`);
+      if (recipient.status !== "approved") {
+        throw new BadRequestException(`${recipient.name} hasn't been approved as a recipient yet, so can't be paid.`);
+      }
       if (!recipient.active) throw new BadRequestException(`${recipient.name} is no longer an active recipient.`);
       if (!recipient.categories.includes(input.category)) {
         throw new BadRequestException(
@@ -478,7 +658,9 @@ export class ZakahDistributionsService {
     await this.lockCommitments(tx);
     const before = await this.findOrThrow((payload as DistributionApprovalPayload).distributionId, tx);
     if (before.status !== "pending_approval") throw new BadRequestException(`This distribution is already ${before.status}.`);
-    if (before.recipient && !before.recipient.active) throw new BadRequestException(`${before.recipient.name} is no longer active.`);
+    if (before.recipient && (before.recipient.status !== "approved" || !before.recipient.active)) {
+      throw new BadRequestException(`${before.recipient.name} is no longer an approved, active recipient.`);
+    }
     if (before.counterparty && before.counterparty.status !== "active") {
       throw new BadRequestException(`${before.counterparty.name} is no longer an active partner.`);
     }

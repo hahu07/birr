@@ -1379,6 +1379,12 @@ export interface ZakahRecipientRow {
   phone: string | null;
   active: boolean;
   bank: { bankName: string; accountLast4: string } | null;
+  /** Two-person registration: can't be paid until a second person approves. */
+  status: "pending_approval" | "approved" | "rejected";
+  approvedAt: string | null;
+  /** A bank-detail or category change waiting for a second person; the live ones apply until then. */
+  pendingChange: { categories: import("@birr/zakah").ZakahCategoryKey[]; bank: { bankName: string; accountLast4: string } | null } | null;
+  pendingChangeAt: string | null;
   createdAt: string;
 }
 

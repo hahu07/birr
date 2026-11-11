@@ -26,6 +26,8 @@ function staffWith(roles: string[], permissions: string[]): BirrStaff {
 
 const officer = staffWith(["mutawalli_officer"], [
   "zakah.recipient_manage",
+  "zakah.recipient_approve",
+  "zakah.recipient_change",
   "zakah.distribution_create",
   "zakah.distribution_approve",
   "zakah.distribution_mark_paid",
@@ -50,7 +52,20 @@ const musa: ZakahRecipientRow = {
   phone: null,
   active: true,
   bank: { bankName: "Test Bank", accountLast4: "6789" },
+  status: "approved",
+  approvedAt: "2027-02-02T00:00:00.000Z",
+  pendingChange: null,
+  pendingChangeAt: null,
   createdAt: "2027-02-01T00:00:00.000Z",
+};
+
+const hauwa: ZakahRecipientRow = {
+  ...musa,
+  id: "rec-2",
+  name: "Hauwa Sani",
+  categories: ["masakin"],
+  status: "pending_approval",
+  approvedAt: null,
 };
 
 function distribution(overrides: Partial<ZakahDistributionRow>): ZakahDistributionRow {
@@ -74,14 +89,18 @@ function distribution(overrides: Partial<ZakahDistributionRow>): ZakahDistributi
   };
 }
 
-function setup(staff: BirrStaff, distributions: ZakahDistributionRow[] = []) {
+function setup(staff: BirrStaff, distributions: ZakahDistributionRow[] = [], recipients: ZakahRecipientRow[] = [musa]) {
   mockedApiFetchJson.mockImplementation((path: string, init?: RequestInit) => {
     if (path === "/birr-staff/me") return Promise.resolve(staff);
     if (path.startsWith("/zakah-distributions/summary?pool=")) return Promise.resolve({ ...summary, pool: path.split("=")[1] });
     if (path === "/zakah-distributions" && !init?.method) return Promise.resolve(distributions);
-    if (path === "/zakah-distributions/recipients" && !init?.method) return Promise.resolve([musa]);
+    if (path === "/zakah-distributions/recipients" && !init?.method) return Promise.resolve(recipients);
+    if (path === "/zakah-distributions/recipients/rec-1" && init?.method === "PUT") {
+      return Promise.resolve({ ...musa, pendingChangeAt: "2027-02-12T10:00:00.000Z", pendingChange: { categories: ["fuqara", "gharimin"], bank: { bankName: "New Bank", accountLast4: "1111" } } });
+    }
     if (path === "/zakah-distributions" && init?.method === "POST") return Promise.resolve({ id: "d-new" });
-    if (path === "/governed-actions" || path === "/zakah-distributions/recipients") return Promise.resolve({});
+    if (path === "/governed-actions") return Promise.resolve({});
+    if (path === "/zakah-distributions/recipients" && init?.method === "POST") return Promise.resolve({ ...hauwa, id: "rec-new" });
     return Promise.reject(new Error(`Unhandled path in test: ${path}`));
   });
   render(
@@ -169,6 +188,41 @@ describe("Ops Console — Zakah distributions", { timeout: 15_000 }, () => {
     });
   });
 
+  test("a recipient awaiting approval can't be chosen for a distribution, and can be proposed for approval", async () => {
+    const user = setup(officer, [], [musa, hauwa]);
+    expect(await screen.findByText("awaiting approval")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "New distribution" }));
+    const options = [...(screen.getByLabelText("Recipient") as HTMLSelectElement).options].map((o) => o.value);
+    expect(options).toEqual(["", "rec-1"]);
+
+    await user.click(screen.getByRole("button", { name: "Propose for approval" }));
+    await waitFor(() => expect(bodiesSentTo("/governed-actions")).toHaveLength(1));
+    expect(bodiesSentTo("/governed-actions")[0]).toEqual({ permissionKey: "zakah.recipient_approve", payload: { recipientId: "rec-2" } });
+  });
+
+  test("editing an approved recipient's bank details sends the change for approval, naming which change it is", async () => {
+    const user = setup(officer);
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    expect(screen.getByText(/New bank details or categories go to a second person for approval first/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Bank"), "New Bank");
+    await user.type(screen.getByLabelText("Account number"), "9999991111");
+    await user.type(screen.getByLabelText("Account name"), "Musa Ibrahim");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(bodiesSentTo("/governed-actions")).toHaveLength(1));
+    expect(bodiesSentTo("/governed-actions")[0]).toEqual({
+      permissionKey: "zakah.recipient_change",
+      payload: { recipientId: "rec-1", requestedAt: "2027-02-12T10:00:00.000Z" },
+    });
+  });
+
+  test("shows a change waiting for approval", async () => {
+    setup(staffWith(["audit_committee"], []), [], [
+      { ...musa, pendingChangeAt: "2027-02-12T10:00:00.000Z", pendingChange: { categories: ["fuqara", "gharimin"], bank: { bankName: "New Bank", accountLast4: "1111" } } },
+    ]);
+    expect(await screen.findByText(/Change awaiting approval: .*new account New Bank ····1111/)).toBeInTheDocument();
+  });
+
   test("registering a recipient never offers the closed administrators' category", async () => {
     const user = setup(officer);
     await user.click(await screen.findByRole("button", { name: "Register a recipient" }));
@@ -177,7 +231,7 @@ describe("Ops Console — Zakah distributions", { timeout: 15_000 }, () => {
     await user.type(screen.getByLabelText("Full name"), "Hauwa Sani");
     await user.click(screen.getByLabelText("the needy (al-masakin)"));
     await user.type(screen.getByLabelText("Why they qualify"), "Widow with four children; no regular income.");
-    await user.click(screen.getByRole("button", { name: "Register recipient" }));
+    await user.click(screen.getByRole("button", { name: "Register and send for approval" }));
 
     await waitFor(() => expect(bodiesSentTo("/zakah-distributions/recipients")).toHaveLength(1));
     expect(bodiesSentTo("/zakah-distributions/recipients")[0]).toMatchObject({
@@ -185,5 +239,8 @@ describe("Ops Console — Zakah distributions", { timeout: 15_000 }, () => {
       categories: ["masakin"],
       eligibilityReason: "Widow with four children; no regular income.",
     });
+    // Registering sends the new recipient straight for a second person's approval.
+    await waitFor(() => expect(bodiesSentTo("/governed-actions")).toHaveLength(1));
+    expect(bodiesSentTo("/governed-actions")[0]).toEqual({ permissionKey: "zakah.recipient_approve", payload: { recipientId: "rec-new" } });
   });
 });

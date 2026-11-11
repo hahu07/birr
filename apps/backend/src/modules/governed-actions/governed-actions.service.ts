@@ -1343,6 +1343,54 @@ export class GovernedActionsService {
           },
         },
       ],
+      // Zakah recipients (two-person registration): a Mutawalli Officer
+      // registers or changes; a Shariah board member or Compliance officer
+      // approves — never the person who registered them or asked for the
+      // change, even if someone else proposed it.
+      [
+        "zakah.recipient_approve",
+        {
+          validatePropose: (payload) => this.zakahDistributionsService.validateRecipientApproval(payload),
+          checkDuplicate: (payload) => this.zakahDistributionsService.checkDuplicateRecipientAction(payload),
+          describePayload: (payload) => this.zakahDistributionsService.describeRecipientApproval(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahDistributionsService.approveRecipient(payload, ctx.governedActionId, ctx.checkerUserId, tx);
+            return { auditAction: "zakah_recipient.approved", entityType: "ZakahRecipient", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.zakahDistributionsService.rejectRecipient(payload, tx);
+            return {
+              auditAction: "zakah_recipient.rejected",
+              entityType: "ZakahRecipient",
+              entityId: (payload as { recipientId: string }).recipientId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "zakah.recipient_change",
+        {
+          validatePropose: (payload) => this.zakahDistributionsService.validateRecipientChange(payload),
+          checkDuplicate: (payload) => this.zakahDistributionsService.checkDuplicateRecipientAction(payload),
+          describePayload: (payload) => this.zakahDistributionsService.describeRecipientChange(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahDistributionsService.approveRecipientChange(payload, ctx.checkerUserId, tx);
+            return { auditAction: "zakah_recipient.change_approved", entityType: "ZakahRecipient", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.zakahDistributionsService.rejectRecipientChange(payload, tx);
+            return {
+              auditAction: "zakah_recipient.change_rejected",
+              entityType: "ZakahRecipient",
+              entityId: (payload as { recipientId: string }).recipientId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
       // Zakah refunds, for mistakes only: Compliance proposes, the Board
       // approves; then confirming it was paid from the zakah account
       // (checkers compliance_officer / audit_committee). Rejecting

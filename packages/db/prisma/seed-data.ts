@@ -123,6 +123,12 @@ const governedPermissions = [
   // Zakah al-Fitr (2026-11-11). Owner's decision: a Mutawalli Officer
   // proposes each season's staple, sa' and Naira amount; a Shariah board
   // member approves — the same pattern as rulesets.
+  // Two-person recipient registration (2026-11-11). Owner's decisions: a
+  // Mutawalli Officer registers; a Shariah board member or Compliance
+  // officer approves — never the person who registered them. Changing an
+  // approved recipient's bank details or categories needs the same.
+  { key: "zakah.recipient_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a newly registered zakah recipient as eligible, so they can be paid." },
+  { key: "zakah.recipient_change", category: "zakah", requiresMakerChecker: true, description: "Approve a change to a zakah recipient's bank details or eligible categories." },
   { key: "zakah.fitr_campaign_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a season's Zakah al-Fitr: the staple, the amount per person and the dates." },
 ] as const;
 
@@ -242,6 +248,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.distribution_mark_paid": { canMaker: true },
     "zakah.refund_mark_paid": { canMaker: true },
     "zakah.fitr_campaign_approve": { canMaker: true },
+    "zakah.recipient_approve": { canMaker: true },
+    "zakah.recipient_change": { canMaker: true },
   },
   // Apex checker across every maker-checker gated permission — the Board
   // is the last line of sign-off, distinct from (and above) the
@@ -298,6 +306,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.ruleset_approve": { canChecker: true },
     "zakah.distribution_approve": { canChecker: true },
     "zakah.fitr_campaign_approve": { canChecker: true },
+    "zakah.recipient_approve": { canChecker: true },
+    "zakah.recipient_change": { canChecker: true },
   },
   audit_committee: {
     "asset.dispose": { canChecker: true },
@@ -335,6 +345,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.metal_price_set": { canChecker: true },
     "zakah.distribution_approve": { canChecker: true },
     "zakah.distribution_mark_paid": { canChecker: true },
+    "zakah.recipient_approve": { canChecker: true },
+    "zakah.recipient_change": { canChecker: true },
     "zakah.refund_approve": { canMaker: true },
     "zakah.refund_mark_paid": { canChecker: true },
   },
