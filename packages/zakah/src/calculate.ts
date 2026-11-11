@@ -1,30 +1,10 @@
-import DecimalJs from "decimal.js";
-import type {
-  CalculationLine,
-  MetalPrices,
-  NairaAmount,
-  ZakahInput,
-  ZakahResult,
-  ZakahRuleset,
-} from "./types";
-
-// A private Decimal constructor, so this package never changes the
-// global decimal.js configuration another library (e.g. Prisma) relies on.
-const Decimal = DecimalJs.clone({ precision: 40, rounding: DecimalJs.ROUND_HALF_UP });
-type Decimal = InstanceType<typeof Decimal>;
+import { Decimal, format, parseAmount, parsePositive, toKobo, ZakahInputError } from "./internal";
+import { priceFreshness } from "./freshness";
+import { validateRulings } from "./validate";
+import type { CalculationLine, MetalPrices, ZakahInput, ZakahResult, ZakahRuleset } from "./types";
 
 const ZAKAH_RATE = new Decimal("0.025");
 const ZERO = new Decimal(0);
-
-export class ZakahInputError extends Error {
-  constructor(
-    readonly field: string,
-    message: string,
-  ) {
-    super(`${field}: ${message}`);
-    this.name = "ZakahInputError";
-  }
-}
 
 export class DraftRulesetError extends Error {
   constructor(readonly rulesetId: string) {
@@ -36,33 +16,21 @@ export class DraftRulesetError extends Error {
   }
 }
 
+export class PricesExpiredError extends Error {
+  constructor(
+    readonly asOf: string,
+    readonly ageDays: number,
+  ) {
+    super(`Metal prices dated ${asOf} are ${ageDays} days old — too old to calculate zakah with until Birr approves new ones.`);
+    this.name = "PricesExpiredError";
+  }
+}
+
 export interface CalculateOptions {
+  /** Today's date (ISO), used to judge how old the prices are. */
+  today: string;
   /** Permit a draft ruleset. Never set this for a payer-facing result. */
   allowDraftRuleset?: boolean;
-}
-
-const PLAIN_DECIMAL = /^\d+(\.\d+)?$/;
-
-function parseAmount(field: string, raw: string): Decimal {
-  if (typeof raw !== "string" || !PLAIN_DECIMAL.test(raw)) {
-    throw new ZakahInputError(field, `must be a non-negative decimal string like "1500" or "1500.50", got ${JSON.stringify(raw)}`);
-  }
-  return new Decimal(raw);
-}
-
-function parsePositive(field: string, raw: string): Decimal {
-  const value = parseAmount(field, raw);
-  if (value.lessThanOrEqualTo(0)) throw new ZakahInputError(field, "must be greater than zero");
-  return value;
-}
-
-/** Rounds to the kobo, half-up — used for every displayed value. */
-function toKobo(value: Decimal): Decimal {
-  return value.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-}
-
-function format(value: Decimal): NairaAmount {
-  return value.toFixed(2);
 }
 
 /** 24k is pure gold: 18k → "0.75", 21k → "0.875". */
@@ -84,12 +52,16 @@ export function calculateZakah(
   input: ZakahInput,
   ruleset: ZakahRuleset,
   prices: MetalPrices,
-  options: CalculateOptions = {},
+  options: CalculateOptions,
 ): ZakahResult {
   if (ruleset.approval.status === "draft" && !options.allowDraftRuleset) {
     throw new DraftRulesetError(ruleset.id);
   }
-  const { rulings } = ruleset;
+  const freshness = priceFreshness(prices.asOf, options.today);
+  if (freshness.status === "expired") throw new PricesExpiredError(prices.asOf, freshness.ageDays);
+  // Rulesets usually come from a database JSON column; re-check rather
+  // than trust the shape.
+  const rulings = validateRulings(ruleset.rulings);
 
   const goldPrice = parsePositive("prices.goldPerGram", prices.goldPerGram);
   const silverPrice = parsePositive("prices.silverPerGram", prices.silverPerGram);
@@ -157,6 +129,7 @@ export function calculateZakah(
   return {
     ruleset: { id: ruleset.id, version: ruleset.version, madhhab: ruleset.madhhab, status: ruleset.approval.status },
     prices: { ...prices },
+    priceFreshness: freshness,
     lines,
     totalAssets: format(totalAssets),
     deductedDebts: format(deductedDebts),

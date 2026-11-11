@@ -13,6 +13,7 @@ const result = calculateZakah(
   { cash: "3000000", tradeGoods: "1200000", receivables: "0", metals: [], debtsDueNow: "400000" },
   approvedMalikiRuleset, // loaded from the database, approved by the Shariah Supervisory Board
   { goldPerGram: "…", silverPerGram: "…", asOf: "2027-02-08", source: "Birr staff" },
+  { today: "2027-02-10" }, // prices over 7 days old are flagged stale; over 31, refused
 );
 // result.netZakatableWealth === "3800000.00"
 // result.zakahDue === "95000.00" (if the nisab is met)
@@ -30,6 +31,9 @@ const result = calculateZakah(
   throws `DraftRulesetError` for a draft unless the caller passes
   `{ allowDraftRuleset: true }`, which is for tests and internal
   previews only.
+- **Old prices are flagged, then refused.** `result.priceFreshness` is
+  `stale` once prices are over 7 days old (warn the payer), and
+  `calculateZakah` throws `PricesExpiredError` past 31 days.
 - **Every result records what it used**: ruleset id, version and
   approval status, plus the prices, so a stored calculation or receipt
   can always be explained later.
@@ -37,7 +41,13 @@ const result = calculateZakah(
 ## Status
 
 `draftRulesets` (Maliki, Hanafi, Shafi'i, Hanbali) are starting
-proposals for the Board, not approved rulings. Decisions still open
+proposals for the Board, not approved rulings. Approved rulesets and
+prices live in the database (`zakah_rulesets`, `zakah_metal_prices`),
+set through the governed actions `zakah.ruleset_approve` (proposed by a
+Mutawalli Officer, approved by a Shariah board member) and
+`zakah.metal_price_set` (proposed by the Investment Committee, approved
+by Compliance), and are served publicly at `GET /zakah/rulesets/current`
+and `GET /zakah/metal-prices/current`. Decisions still open
 for the Board:
 
 1. **Nisab basis: gold, silver or lower-of.** The most consequential

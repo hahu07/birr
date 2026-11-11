@@ -1316,3 +1316,26 @@ export interface VaultFieldPhoto {
   waitingFor: string | null;
   createdAt: string;
 }
+
+/** A version of a zakah ruleset (see ZakahRuleset): the madhhab rulings the calculator applies once approved. */
+export interface ZakahRulesetRow {
+  id: string;
+  key: string;
+  madhhab: "maliki" | "hanafi" | "shafii" | "hanbali";
+  version: number;
+  label: string;
+  rulings: import("@birr/zakah").ZakahRulings;
+  status: "draft" | "approved" | "superseded";
+  approvedAt: string | null;
+  createdAt: string;
+}
+
+/** An approved gold/silver price (see ZakahMetalPrice). Amounts are Naira per gram of pure metal. */
+export interface ZakahMetalPriceRow {
+  id: string;
+  goldPerGram: string;
+  silverPerGram: string;
+  asOf: string;
+  source: string;
+  createdAt: string;
+}

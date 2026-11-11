@@ -1,0 +1,12 @@
+{
+  // CommonJS output for apps/backend, which plain-require()s workspace
+  // packages with no bundler in between — same reason as @birr/db's
+  // tsconfig.json. Tests are left out of dist.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist"
+  },
+  "exclude": ["node_modules", "src/**/*.test.ts"]
+}

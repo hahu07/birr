@@ -31,6 +31,7 @@ import {
   IconMenu,
   IconMessageCircle,
   IconSettings,
+  IconShieldCheck,
   IconShieldAlert,
   IconSparkle,
   IconUsers,
@@ -79,6 +80,7 @@ const NAV_GROUPS: {
       { href: "/ops/foundations", label: "Foundations", icon: IconLandmark },
       { href: "/ops/waqfs", label: "Waqf Funds", icon: IconBriefcase },
       { href: "/ops/vaults", label: "Vaults", icon: IconArchive },
+      { href: "/ops/zakah", label: "Zakah", icon: IconShieldCheck },
       { href: "/ops/counterparties", label: "Counterparties", icon: IconLandmark },
       { href: "/ops/cause-categories", label: "Cause Categories", icon: IconSparkle },
       // Public blog articles — shown to whoever holds blog.manage, the same

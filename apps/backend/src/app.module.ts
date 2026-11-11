@@ -48,6 +48,7 @@ import { WaqfLedgerModule } from "./modules/waqf-ledger/waqf-ledger.module";
 import { FunnelEventsModule } from "./modules/funnel-events/funnel-events.module";
 import { BlogModule } from "./modules/blog/blog.module";
 import { ImpactModule } from "./modules/impact/impact.module";
+import { ZakahModule } from "./modules/zakah/zakah.module";
 import { StorageModule } from "./common/storage/storage.module";
 import { PermissionGuard } from "./common/guards/permission.guard";
 import { SessionAuthGuard } from "./common/guards/session-auth.guard";
@@ -101,6 +102,7 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     FunnelEventsModule,
     BlogModule,
     ImpactModule,
+    ZakahModule,
     StorageModule,
   ],
   providers: [

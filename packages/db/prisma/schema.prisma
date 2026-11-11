@@ -370,6 +370,7 @@ model User {
   blogArticlesReviewed           BlogArticle[]                   @relation("BlogArticleReviewer")
   fieldPhotosUploaded            VaultFieldPhoto[]               @relation("FieldPhotoUploader")
   fieldPhotosHidden              VaultFieldPhoto[]               @relation("FieldPhotoHider")
+  zakahRulesetsCreated           ZakahRuleset[]                  @relation("ZakahRulesetCreator")
 
   @@map("users")
 }
@@ -1017,32 +1018,34 @@ model AiAgent {
 // There is deliberately no checkerAgentId field or relation anywhere in
 // this schema. An AI agent can never be the checker. Do not add one.
 model GovernedAction {
-  id            String               @id @default(uuid())
+  id                   String               @id @default(uuid())
   // Nullable: a waqf.create action has no waqf yet to reference — that's
   // the whole point of the action. Every other governed action (asset
   // disposal, distribution approval, etc.) is expected to set this.
-  waqfId        String?
-  waqf          Waqf?                @relation(fields: [waqfId], references: [id])
+  waqfId               String?
+  waqf                 Waqf?                @relation(fields: [waqfId], references: [id])
   // Vault-scoped counterpart to waqfId above — nullable for the same
   // reason (a governed action might belong to neither, e.g. a legacy
   // waqf.create-shaped row), set by whichever handler in
   // GovernedActionsService's map actually resolves one (resolveVaultId,
   // mirroring resolveWaqfId).
-  vaultId       String?
-  vault         Vault?               @relation(fields: [vaultId], references: [id])
-  permissionId  String
-  permission    Permission           @relation(fields: [permissionId], references: [id])
-  makerType     MakerType
-  makerUserId   String?
-  makerUser     User?                @relation("GovernedActionMaker", fields: [makerUserId], references: [id])
-  makerAgentId  String?
-  makerAgent    AiAgent?             @relation(fields: [makerAgentId], references: [id])
-  checkerUserId String?
-  checkerUser   User?                @relation("GovernedActionChecker", fields: [checkerUserId], references: [id])
-  status        GovernedActionStatus @default(proposed)
-  payload       Json
-  createdAt     DateTime             @default(now())
-  decidedAt     DateTime?
+  vaultId              String?
+  vault                Vault?               @relation(fields: [vaultId], references: [id])
+  permissionId         String
+  permission           Permission           @relation(fields: [permissionId], references: [id])
+  makerType            MakerType
+  makerUserId          String?
+  makerUser            User?                @relation("GovernedActionMaker", fields: [makerUserId], references: [id])
+  makerAgentId         String?
+  makerAgent           AiAgent?             @relation(fields: [makerAgentId], references: [id])
+  checkerUserId        String?
+  checkerUser          User?                @relation("GovernedActionChecker", fields: [checkerUserId], references: [id])
+  status               GovernedActionStatus @default(proposed)
+  payload              Json
+  createdAt            DateTime             @default(now())
+  decidedAt            DateTime?
+  approvedZakahRuleset ZakahRuleset?
+  zakahMetalPrice      ZakahMetalPrice?
 
   @@index([waqfId])
   @@index([status])
@@ -2926,4 +2929,77 @@ model VaultFieldPhoto {
   @@index([vaultDistributionId])
   @@index([vaultMilestoneId])
   @@map("vault_field_photos")
+}
+
+// ---- Zakah (2026-11-11) — a third product alongside Waqf and Vault. Zakah
+// is obligatory, goes only to the eight eligible categories, and Birr acts
+// as each payer's agent (wakil), not as trustee — so it gets its own tables
+// rather than extending either of the others. The calculation itself lives
+// in packages/zakah; these tables hold the two inputs Birr staff control.
+
+enum ZakahMadhhab {
+  maliki
+  hanafi
+  shafii
+  hanbali
+}
+
+enum ZakahRulesetStatus {
+  draft
+  approved
+  superseded
+}
+
+// The madhhab rulings the calculator applies (packages/zakah's
+// ZakahRulings, validated by its validateRulings()). Drafted by a
+// mutawalli_officer from the Shariah Supervisory Board's position,
+// approved only by a shariah_board_member through the governed
+// zakah.ruleset_approve (owner's decision, 2026-11-11). A change is a new
+// version, never an edit, so a stored calculation or receipt can always
+// be explained by the exact rulings it used. Enforced in the database
+// (see the migration): approved and superseded rows can't be edited, no
+// row is ever deleted, at most one draft and one approved version per key.
+//
+// `key` (e.g. "maliki") rather than madhhab alone identifies a ruleset,
+// so the Board can keep more than one for a madhhab if it ever wants to.
+model ZakahRuleset {
+  id                       String             @id @default(uuid())
+  key                      String
+  madhhab                  ZakahMadhhab
+  version                  Int
+  label                    String
+  rulings                  Json
+  status                   ZakahRulesetStatus @default(draft)
+  createdByUserId          String
+  createdBy                User               @relation("ZakahRulesetCreator", fields: [createdByUserId], references: [id])
+  approvedAt               DateTime?
+  approvedGovernedActionId String?            @unique
+  approvedGovernedAction   GovernedAction?    @relation(fields: [approvedGovernedActionId], references: [id], onDelete: Restrict)
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+
+  @@unique([key, version])
+  @@index([status])
+  @@map("zakah_rulesets")
+}
+
+// Gold and silver prices in Naira per gram of pure metal, which set the
+// Naira nisab — and so decide who owes zakah at all. Proposed by
+// investment_committee, approved by compliance_officer through the
+// governed zakah.metal_price_set (owner's decision, 2026-11-11); a row only
+// exists once approved. Append-only, enforced in the database. The
+// current price is the latest asOf. Payers are warned after 7 days and
+// refused a figure after 31 (packages/zakah's priceFreshness).
+model ZakahMetalPrice {
+  id               String         @id @default(uuid())
+  goldPerGram      Decimal
+  silverPerGram    Decimal
+  asOf             DateTime       @db.Date
+  source           String
+  governedActionId String         @unique
+  governedAction   GovernedAction @relation(fields: [governedActionId], references: [id])
+  createdAt        DateTime       @default(now())
+
+  @@index([asOf])
+  @@map("zakah_metal_prices")
 }

@@ -43,6 +43,21 @@ describe("seed role data — segregation of duties", () => {
     }
   });
 
+  // Owner's decisions, 2026-11-11: Shariah rulings are approved by the
+  // Shariah board alone, and the prices that set the nisab by Compliance
+  // alone — not the Board of Trustees, unlike most governed actions.
+  it("gives each zakah governed action exactly the proposer and approver the owner chose", () => {
+    const holders = (key: string, side: "canMaker" | "canChecker") =>
+      Object.entries(rolePermissions)
+        .filter(([, grants]) => grants[key]?.[side])
+        .map(([role]) => role)
+        .sort();
+    expect(holders("zakah.ruleset_approve", "canMaker")).toEqual(["mutawalli_officer"]);
+    expect(holders("zakah.ruleset_approve", "canChecker")).toEqual(["shariah_board_member"]);
+    expect(holders("zakah.metal_price_set", "canMaker")).toEqual(["investment_committee"]);
+    expect(holders("zakah.metal_price_set", "canChecker")).toEqual(["compliance_officer"]);
+  });
+
   // The permanent version of what the two tests above check by hand for
   // two specific roles — every role, every governed permission. Since
   // BirrStaff.staffRole is a single field (one role per person, enforced

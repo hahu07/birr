@@ -23,6 +23,7 @@ import { VaultMilestonesService } from "../vaults/vault-milestones.service";
 import { WaqfMilestonesService } from "../waqf-ledger/waqf-milestones.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { InvitationsService, assertStaffInvitable, invitationAuditSnapshot } from "../invitations/invitations.service";
+import { ZakahService } from "../zakah/zakah.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
@@ -304,12 +305,13 @@ interface GovernedActionHandler {
    * public "Reviewed by". Every earlier handler ignores it, which is
    * why it's a trailing parameter they can simply omit. `makerUserId`
    * (2026-10-18, staff.invite) is who proposed it — null for an
-   * agent-proposed action.
+   * agent-proposed action. `governedActionId` (2026-11-11, zakah.*) is
+   * this action itself, for a row that records which approval created it.
    */
   onApprove(
     payload: unknown,
     tx: Prisma.TransactionClient,
-    ctx: { checkerUserId: string; makerUserId: string | null },
+    ctx: { checkerUserId: string; makerUserId: string | null; governedActionId: string },
   ): Promise<FulfillmentResult>;
   /**
    * decide()-time, on rejection, inside the same transaction. Optional
@@ -351,6 +353,7 @@ export class GovernedActionsService {
     private readonly birrStaffService: BirrStaffService,
     private readonly foundersService: FoundersService,
     private readonly invitationsService: InvitationsService,
+    private readonly zakahService: ZakahService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1254,6 +1257,46 @@ export class GovernedActionsService {
           },
         },
       ],
+      // ---- Zakah (2026-11-11). Not scoped to a Waqf or Vault. A ruleset is
+      // proposed by mutawalli_officer and approved by shariah_board_member
+      // only; metal prices by investment_committee, approved by
+      // compliance_officer only (see seed-data.ts). ZakahService holds the
+      // rules; these entries only connect them to the engine. ----
+      [
+        "zakah.ruleset_approve",
+        {
+          validatePropose: async (payload) => {
+            await this.zakahService.validateRulesetProposal(payload);
+          },
+          checkDuplicate: (payload) => this.zakahService.checkDuplicateRulesetProposal(payload),
+          describePayload: (payload) => this.zakahService.describeRulesetProposal(payload),
+          describeCurrentState: (payload) => this.zakahService.currentRulesetState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahService.approveRuleset(
+              payload,
+              ctx.governedActionId,
+              ctx.checkerUserId,
+              tx,
+            );
+            return { auditAction: "zakah_ruleset.approved", entityType: "ZakahRuleset", entityId: after.id, before, after };
+          },
+        },
+      ],
+      [
+        "zakah.metal_price_set",
+        {
+          validatePropose: async (payload) => {
+            this.zakahService.validateMetalPriceProposal(payload);
+          },
+          checkDuplicate: () => this.zakahService.checkDuplicateMetalPriceProposal(),
+          describePayload: (payload) => this.zakahService.describeMetalPriceProposal(payload),
+          describeCurrentState: () => this.zakahService.currentMetalPriceState(),
+          onApprove: async (payload, tx, ctx) => {
+            const price = await this.zakahService.recordMetalPrice(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_metal_price.set", entityType: "ZakahMetalPrice", entityId: price.id, before: null, after: price };
+          },
+        },
+      ],
       // ---- Staff security. Not scoped to a Waqf or Vault. Resetting a
       // staff member's two-factor authentication used to be one Platform
       // Admin's unilateral action; it's maker-checker now (maker:
@@ -1840,7 +1883,11 @@ export class GovernedActionsService {
         // required, so approval always has a handler to call once
         // `handler` itself resolved.
         if (input.approve) {
-          fulfillment = await handler.onApprove(action.payload, tx, { checkerUserId: input.checkerUserId, makerUserId: action.makerUserId });
+          fulfillment = await handler.onApprove(action.payload, tx, {
+            checkerUserId: input.checkerUserId,
+            makerUserId: action.makerUserId,
+            governedActionId: action.id,
+          });
         } else if (handler.onReject) {
           fulfillment = await handler.onReject(action.payload, tx);
         }

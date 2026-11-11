@@ -31,6 +31,8 @@ import { createFakeNotificationsService } from "../notifications/test-support/fa
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { InvitationsService } from "../invitations/invitations.service";
 import { ResendInvitationEmailAdapter } from "../invitations/email/resend-invitation.adapter";
+import { ZakahService } from "../zakah/zakah.service";
+import { draftRulesets } from "@birr/zakah";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
 // local FakeAdapter/FakeReceiptEmailAdapter — duplicated rather than
@@ -107,6 +109,10 @@ describe("GovernedActionsService", () => {
       ),
     };
   }
+  // Dates metal-price fixtures in January 2001, so they can never become
+  // the current prices — see zakah.service.spec.ts's own note.
+  const zakahService = new ZakahService();
+  zakahService.now = () => new Date("2001-01-15T12:00:00Z");
   const service = new GovernedActionsService(
     new AssetsService(),
     beneficiariesService,
@@ -139,6 +145,7 @@ describe("GovernedActionsService", () => {
     new BirrStaffService(new EncryptionService(), new MfaService()),
     new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService(), new FunnelEventsService()),
     new InvitationsService(invitationEmails as unknown as ResendInvitationEmailAdapter, notificationsService),
+    zakahService,
   );
 
   const governedActionIds: string[] = [];
@@ -2683,6 +2690,127 @@ describe("GovernedActionsService", () => {
       const first = await propose(user.id);
       governedActionIds.push(first.id);
       await expect(propose(user.id)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  // zakah.ruleset_approve / zakah.metal_price_set (2026-11-11). Rulesets:
+  // maker mutawalli_officer (makerUserId), checker shariah_board_member
+  // (beneficiaryCheckerUserId). Prices: maker investment_committee
+  // (investmentMakerUserId), checker compliance_officer
+  // (distributionCheckerUserId). Deliberately not added to
+  // governedActionIds: an approved zakah row references its governed
+  // action (ON DELETE RESTRICT), and both zakah tables are append-only, so
+  // these fixtures stay behind — harmless, per zakah.service.spec.ts.
+  describe("zakah", () => {
+    const run = Date.now().toString(36);
+    let n = 0;
+
+    async function draftRuleset() {
+      return zakahService.createDraft(
+        { key: `test-${run}-ga-${n++}`, madhhab: "maliki", label: "Maliki", rulings: draftRulesets.maliki.rulings },
+        makerUserId,
+      );
+    }
+    const snapshot = (draft: { id: string; label: string; rulings: unknown }) => ({
+      rulesetId: draft.id,
+      label: draft.label,
+      rulings: draft.rulings,
+    });
+
+    test("zakah.ruleset_approve: approve → the draft is live, audit-logged against the checker", async () => {
+      const draft = await draftRuleset();
+      const action = await service.propose({ permissionKey: "zakah.ruleset_approve", payload: snapshot(draft), makerUserId });
+
+      await service.decide({ governedActionId: action.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+
+      const live = await prisma.zakahRuleset.findUniqueOrThrow({ where: { id: draft.id } });
+      expect(live).toMatchObject({ status: "approved", approvedGovernedActionId: action.id });
+      const logs = await prisma.auditLog.findMany({ where: { entityId: draft.id, action: "zakah_ruleset.approved" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0].actorUserId).toBe(beneficiaryCheckerUserId);
+    });
+
+    test("zakah.ruleset_approve: reject → the draft stays a draft and can be edited again", async () => {
+      const draft = await draftRuleset();
+      const action = await service.propose({ permissionKey: "zakah.ruleset_approve", payload: snapshot(draft), makerUserId });
+
+      await service.decide({ governedActionId: action.id, checkerUserId: beneficiaryCheckerUserId, approve: false });
+
+      expect((await prisma.zakahRuleset.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe("draft");
+      await expect(
+        zakahService.updateDraft(draft.id, { label: "Maliki (revised)", rulings: draftRulesets.maliki.rulings }, makerUserId),
+      ).resolves.toMatchObject({ label: "Maliki (revised)" });
+    });
+
+    test("zakah.ruleset_approve: a proposal must match the draft exactly", async () => {
+      const draft = await draftRuleset();
+      await expect(
+        service.propose({
+          permissionKey: "zakah.ruleset_approve",
+          payload: { ...snapshot(draft), rulings: { ...draftRulesets.maliki.rulings, debts: "none" } },
+          makerUserId,
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    test("zakah.ruleset_approve: a draft can only be proposed once at a time", async () => {
+      const draft = await draftRuleset();
+      const first = await service.propose({ permissionKey: "zakah.ruleset_approve", payload: snapshot(draft), makerUserId });
+      await expect(
+        service.propose({ permissionKey: "zakah.ruleset_approve", payload: snapshot(draft), makerUserId }),
+      ).rejects.toThrow(ConflictException);
+      await service.decide({ governedActionId: first.id, checkerUserId: beneficiaryCheckerUserId, approve: false });
+    });
+
+    test("zakah.ruleset_approve: the proposer cannot approve it, and the database itself rejects checker = maker", async () => {
+      const draft = await draftRuleset();
+      const action = await service.propose({ permissionKey: "zakah.ruleset_approve", payload: snapshot(draft), makerUserId });
+
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: makerUserId, approve: true }),
+      ).rejects.toThrow(ForbiddenException);
+      // Bypasses decide()'s app-layer check: the checker_not_maker constraint.
+      await expect(
+        prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } }),
+      ).rejects.toThrow();
+
+      await service.decide({ governedActionId: action.id, checkerUserId: beneficiaryCheckerUserId, approve: false });
+      expect((await prisma.zakahRuleset.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe("draft");
+    });
+
+    test("zakah.metal_price_set: approve → a price row linked to the action, audit-logged", async () => {
+      const payload = { goldPerGram: "150000", silverPerGram: "2000", asOf: "2001-01-12", source: "Governed fixture" };
+      const action = await service.propose({ permissionKey: "zakah.metal_price_set", payload, makerUserId: investmentMakerUserId });
+      await expect(
+        service.propose({ permissionKey: "zakah.metal_price_set", payload, makerUserId: investmentMakerUserId }),
+      ).rejects.toThrow(ConflictException);
+
+      await service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true });
+
+      const price = await prisma.zakahMetalPrice.findUniqueOrThrow({ where: { governedActionId: action.id } });
+      expect(price.goldPerGram.toFixed()).toBe("150000");
+      const logs = await prisma.auditLog.findMany({ where: { entityId: price.id, action: "zakah_metal_price.set" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0].actorUserId).toBe(distributionCheckerUserId);
+    });
+
+    test("zakah.metal_price_set: reject → no price is recorded", async () => {
+      const payload = { goldPerGram: "151000", silverPerGram: "2010", asOf: "2001-01-13", source: "Governed fixture" };
+      const action = await service.propose({ permissionKey: "zakah.metal_price_set", payload, makerUserId: investmentMakerUserId });
+
+      await service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: false });
+
+      expect(await prisma.zakahMetalPrice.findUnique({ where: { governedActionId: action.id } })).toBeNull();
+    });
+
+    test("zakah.metal_price_set: an invalid price can't even be proposed", async () => {
+      await expect(
+        service.propose({
+          permissionKey: "zakah.metal_price_set",
+          payload: { goldPerGram: "150000", silverPerGram: "2000", asOf: "2001-02-01", source: "Future" },
+          makerUserId: investmentMakerUserId,
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

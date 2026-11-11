@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { calculateZakah, DraftRulesetError, karatToPurity, ZakahInputError } from "./calculate";
+import { calculateZakah, DraftRulesetError, karatToPurity, PricesExpiredError } from "./calculate";
+import { ZakahInputError } from "./internal";
 import { draftRulesets } from "./rulesets";
 import type { MetalPrices, ZakahInput, ZakahRuleset, ZakahRulings } from "./types";
 
@@ -12,7 +13,8 @@ const prices: MetalPrices = {
   source: "test fixture",
 };
 
-const allowDraft = { allowDraftRuleset: true };
+const today = "2027-02-08";
+const allowDraft = { today, allowDraftRuleset: true };
 
 function withRulings(ruleset: ZakahRuleset, rulings: Partial<ZakahRulings>): ZakahRuleset {
   return { ...ruleset, rulings: { ...ruleset.rulings, ...rulings } };
@@ -158,7 +160,7 @@ describe("calculateZakah", () => {
 
   describe("draft rulesets", () => {
     it("refuses a draft ruleset unless explicitly allowed", () => {
-      expect(() => calculateZakah(amina, maliki, prices)).toThrow(DraftRulesetError);
+      expect(() => calculateZakah(amina, maliki, prices, { today })).toThrow(DraftRulesetError);
     });
 
     it("accepts an approved ruleset without the opt-in", () => {
@@ -166,10 +168,41 @@ describe("calculateZakah", () => {
         ...malikiSilver,
         approval: { status: "approved", approvedAt: "2027-01-15", governedActionId: "ga_test" },
       };
-      const result = calculateZakah(amina, approved, prices);
+      const result = calculateZakah(amina, approved, prices, { today });
       expect(result.ruleset.status).toBe("approved");
       expect(result.zakahDue).toBe("95000.00");
     });
+  });
+
+  describe("price age", () => {
+    it("reports fresh prices for the first week", () => {
+      const result = calculateZakah(amina, malikiSilver, prices, { ...allowDraft, today: "2027-02-15" });
+      expect(result.priceFreshness).toEqual({ ageDays: 7, status: "fresh" });
+    });
+
+    it("flags prices older than a week as stale but still calculates", () => {
+      const result = calculateZakah(amina, malikiSilver, prices, { ...allowDraft, today: "2027-02-16" });
+      expect(result.priceFreshness).toEqual({ ageDays: 8, status: "stale" });
+      expect(result.zakahDue).toBe("95000.00");
+    });
+
+    it("still calculates on day 31", () => {
+      const result = calculateZakah(amina, malikiSilver, prices, { ...allowDraft, today: "2027-03-11" });
+      expect(result.priceFreshness).toEqual({ ageDays: 31, status: "stale" });
+    });
+
+    it("refuses to calculate with prices more than 31 days old", () => {
+      expect(() => calculateZakah(amina, malikiSilver, prices, { ...allowDraft, today: "2027-03-12" })).toThrow(
+        PricesExpiredError,
+      );
+    });
+  });
+
+  it("re-checks rulings that came from storage", () => {
+    const tampered = { ...maliki, rulings: { ...maliki.rulings, debts: "sometimes" } } as unknown as ZakahRuleset;
+    expect(() => calculateZakah(amina, tampered, prices, allowDraft)).toThrow(
+      expect.objectContaining({ field: "rulings.debts" }),
+    );
   });
 
   describe("input validation", () => {

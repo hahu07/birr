@@ -13,6 +13,7 @@ import { BirrStaffModule } from "../birr-staff/birr-staff.module";
 import { FoundersModule } from "../founders/founders.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { InvitationsModule } from "../invitations/invitations.module";
+import { ZakahModule } from "../zakah/zakah.module";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { InvitationsModule } from "../invitations/invitations.module";
     WaqfLedgerModule,
     NotificationsModule,
     InvitationsModule,
+    ZakahModule,
   ],
   controllers: [GovernedActionsController],
   providers: [GovernedActionsService],

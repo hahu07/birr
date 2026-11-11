@@ -1,3 +1,5 @@
+import type { PriceFreshness } from "./freshness";
+
 /**
  * Every amount crossing this package's boundary is a decimal *string*
  * in Naira ("3000000", "1250.50"), never a JS number — the same reason
@@ -123,6 +125,8 @@ export interface CalculationLine {
 export interface ZakahResult {
   ruleset: { id: string; version: number; madhhab: Madhhab; status: RulesetApproval["status"] };
   prices: MetalPrices;
+  /** "stale" means the payer should be warned the prices are over a week old. */
+  priceFreshness: PriceFreshness;
   lines: CalculationLine[];
   /** Sum of counted assets. */
   totalAssets: NairaAmount;
