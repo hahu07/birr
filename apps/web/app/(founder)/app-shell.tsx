@@ -83,7 +83,8 @@ const NAV_GROUPS = [
 // and /terms-of-service (2026-09-26) are footer links reachable from
 // anywhere on the public site, same posture as /waqf-types/. /blog and
 // /blog/ (2026-10-01) are the public educational articles — same
-// posture again, no Founder session involved.
+// posture again, no Founder session involved. /zakah (2026-11-11) is the
+// public zakah calculator — same again.
 const PUBLIC_ROUTES = [
   "/sign-in",
   "/sign-up",
@@ -94,6 +95,7 @@ const PUBLIC_ROUTES = [
   "/privacy-policy",
   "/terms-of-service",
   "/blog",
+  "/zakah",
 ];
 const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/", "/blog/"];
 function isPublicRoutePath(pathname: string) {

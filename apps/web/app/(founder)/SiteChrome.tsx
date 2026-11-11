@@ -100,6 +100,7 @@ const NAV_LINKS = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#waqf-types", label: "Waqf funds" },
   { href: "/vaults", label: "Support a cause" },
+  { href: "/zakah", label: "Zakah" },
   { href: "/#governance", label: "Governance" },
   { href: "/blog", label: "Learn" },
 ];
@@ -176,6 +177,7 @@ const FOOTER_PLATFORM_LINKS = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#waqf-types", label: "Waqf funds" },
   { href: "/vaults", label: "Support a cause" },
+  { href: "/zakah", label: "Zakah" },
   { href: "/#governance", label: "Governance" },
   { href: "/blog", label: "Learn" },
 ];
