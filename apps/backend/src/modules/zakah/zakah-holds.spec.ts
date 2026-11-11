@@ -26,7 +26,7 @@ describe("AML holds on zakah payments", () => {
     {} as ResendZakahReceiptEmailAdapter,
     new ZakahFitrService(),
   );
-  const refunds = new ZakahRefundsService(encryption, ledger);
+  const refunds = new ZakahRefundsService(encryption, ledger, {} as ResendZakahReceiptEmailAdapter);
   const run = Date.now().toString(36).toUpperCase();
   const currency = `H${run}`;
 

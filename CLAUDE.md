@@ -496,8 +496,12 @@ extending Waqf or Vault ones. Owner's decisions so far:
   payment can still be refunded; the refund takes over the reservation.
   The payer is never shown a hold (tipping off).
 
-Still to come: emailing payers about their refund, and a structuring
-review list for zakah like Vault's. The agency (wakalah) wording a payer
+- **Refund emails**: a payer who gave an email is told when their refund
+  is approved and when it's paid (amount, account's last four digits,
+  bank reference), sent only after the decision commits. A rejection is
+  never emailed, and no email says why — Compliance tells the payer.
+
+Still to come: a structuring review list for zakah like Vault's. The agency (wakalah) wording a payer
 accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
 Supervisory Board must approve before payments open.
 

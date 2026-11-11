@@ -119,7 +119,11 @@ describe("GovernedActionsService", () => {
   const zakahService = new ZakahService();
   zakahService.now = () => new Date("2001-01-15T12:00:00Z");
   const zakahDistributionsService = new ZakahDistributionsService(new EncryptionService(), new ZakahLedgerService());
-  const zakahRefundsService = new ZakahRefundsService(new EncryptionService(), new ZakahLedgerService());
+  // Records the payer emails a refund decision triggers after it commits.
+  const refundNotices: { refundId: string; stage: string }[] = [];
+  const zakahRefundsService = new ZakahRefundsService(new EncryptionService(), new ZakahLedgerService(), {
+    sendRefundNotice: async (n: { refundId: string; stage: string }) => void refundNotices.push(n),
+  } as never);
   const zakahFitrService = new ZakahFitrService();
   const service = new GovernedActionsService(
     new AssetsService(),
@@ -2903,9 +2907,10 @@ describe("GovernedActionsService", () => {
     async function refundRequest(amount: string) {
       const currency = `G${run}`.toUpperCase();
       const id = randomUUID();
+      const payer = await prisma.zakahPayer.create({ data: { email: `ga-refund-payer-${id}@example.com` } });
       await prisma.zakahPayment.create({
         data: {
-          id, amount, currency, provider: "paystack", providerReference: id, status: "confirmed", confirmedAt: new Date(),
+          id, amount, currency, payerId: payer.id, provider: "paystack", providerReference: id, status: "confirmed", confirmedAt: new Date(),
           settlementSubaccount: "ACCT_test_zakah", wakalahConsentVersion: "test",
         },
       });
@@ -2930,6 +2935,9 @@ describe("GovernedActionsService", () => {
 
       expect(await prisma.zakahRefund.findUniqueOrThrow({ where: { id: refund.id } })).toMatchObject({ status: "paid", paymentActionId: paid.id });
       expect(await prisma.zakahJournalEntry.count({ where: { source: "refund", sourceId: refund.id } })).toBe(1);
+      // Each decision emails the payer once it has committed.
+      await new Promise((r) => setTimeout(r, 200));
+      expect(refundNotices.filter((n) => n.refundId === refund.id).map((n) => n.stage)).toEqual(["approved", "paid"]);
       const logs = await prisma.auditLog.findMany({ where: { entityId: refund.id, action: { in: ["zakah_refund.approved", "zakah_refund.paid"] } } });
       expect(logs.map((l) => [l.action, l.actorUserId]).sort()).toEqual([
         ["zakah_refund.approved", boardCheckerUserId],
@@ -2949,6 +2957,9 @@ describe("GovernedActionsService", () => {
 
       await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: false });
       expect((await prisma.zakahRefund.findUniqueOrThrow({ where: { id: refund.id } })).status).toBe("rejected");
+      // A rejection isn't emailed: its reason may be sensitive, so Compliance tells the payer.
+      await new Promise((r) => setTimeout(r, 200));
+      expect(refundNotices.some((n) => n.refundId === refund.id)).toBe(false);
       expect(await prisma.auditLog.count({ where: { entityId: refund.id, action: "zakah_refund.rejected" } })).toBe(1);
     });
 

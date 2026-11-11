@@ -2042,6 +2042,16 @@ export class GovernedActionsService {
         );
       });
     }
+    // Zakah refunds: the payer is emailed once the refund is approved and
+    // again once it's paid, only after the deciding transaction commits.
+    // A failed email never undoes the decision; it's logged.
+    if (input.approve && result.fulfillment?.entityType === "ZakahRefund") {
+      const stage = result.fulfillment.auditAction === "zakah_refund.paid" ? "paid" : "approved";
+      const refundId = result.fulfillment.entityId;
+      this.zakahRefundsService.notifyPayer(refundId, stage).catch((err: unknown) => {
+        this.logger.error(`Failed to email the payer about zakah refund "${refundId}":`, err instanceof Error ? err.stack : String(err));
+      });
+    }
     if (input.approve && result.fulfillment?.entityType === "Distribution") {
       this.distributionsService.initiateDisbursement(result.fulfillment.entityId).catch((err) => {
         this.logger.error(

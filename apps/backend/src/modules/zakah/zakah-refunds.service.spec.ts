@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { ZAKAH_BANK_ACCOUNT_CODE, ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
 import { ZakahRefundsService } from "./zakah-refunds.service";
+import type { ResendZakahReceiptEmailAdapter, ZakahRefundNotice } from "./zakah-receipt-email.adapter";
 
 // Fixture payments here use a made-up per-run currency. The spending limit
 // is per currency, so this suite gets its own pool: "can't refund what's
@@ -13,7 +14,9 @@ import { ZakahRefundsService } from "./zakah-refunds.service";
 describe("ZakahRefundsService", () => {
   const encryption = new EncryptionService();
   const ledger = new ZakahLedgerService();
-  const service = new ZakahRefundsService(encryption, ledger);
+  const notices: ZakahRefundNotice[] = [];
+  const email = { sendRefundNotice: async (n: ZakahRefundNotice) => void notices.push(n) } as unknown as ResendZakahReceiptEmailAdapter;
+  const service = new ZakahRefundsService(encryption, ledger, email);
   const run = Date.now().toString(36).toUpperCase();
   const currency = `T${run}`;
 
@@ -22,12 +25,12 @@ describe("ZakahRefundsService", () => {
 
   const bank = { bankName: "Test Bank", accountNumber: "0123456789", accountName: "Amina Bello" };
 
-  async function confirmedPayment(amount: string, feeCover = "0") {
+  async function confirmedPayment(amount: string, feeCover = "0", payerId?: string) {
     return prisma.$transaction(async (tx) => {
       const id = randomUUID();
       const payment = await tx.zakahPayment.create({
         data: {
-          id, amount, feeCover, currency, provider: "paystack", providerReference: id, status: "confirmed",
+          id, amount, feeCover, currency, payerId, provider: "paystack", providerReference: id, status: "confirmed",
           confirmedAt: new Date(), settlementSubaccount: "ACCT_test_zakah", wakalahConsentVersion: "test",
         },
       });
@@ -164,6 +167,33 @@ describe("ZakahRefundsService", () => {
       /Only an approved refund/,
     );
     expect(() => service.validatePaidProposal({ refundId: refund.id, bankReference: "RF-1", paidOn: "2999-01-01" })).toThrow(/future/);
+  });
+
+  test("the payer is emailed when the refund is approved and when it's paid — never why", async () => {
+    const payer = await prisma.zakahPayer.create({ data: { email: `zakah-refund-payer-${run}@example.com` } });
+    const payment = await confirmedPayment("12000", "0", payer.id);
+    const refund = await request(payment.id, "12000");
+    await approve(refund.id);
+    await service.notifyPayer(refund.id, "approved");
+
+    const payload = { refundId: refund.id, bankReference: `RN-${run}`, paidOn: new Date().toISOString().slice(0, 10) };
+    const paidAction = await governedAction("zakah.refund_mark_paid", payload);
+    await prisma.$transaction((tx) => service.markPaid(payload, paidAction.id, tx));
+    await service.notifyPayer(refund.id, "paid");
+
+    const sent = notices.filter((n) => n.refundId === refund.id);
+    expect(sent).toEqual([
+      expect.objectContaining({ to: payer.email, stage: "approved", amount: "12000.00", accountLast4: "6789" }),
+      expect.objectContaining({ stage: "paid", bankReference: `RN-${run}`, paidOn: payload.paidOn }),
+    ]);
+    expect(JSON.stringify(sent)).not.toMatch(/duplicate|twice|unauthori[sz]ed|wrong/i);
+  });
+
+  test("a payer who gave no email isn't emailed", async () => {
+    const payment = await confirmedPayment("3000");
+    const refund = await request(payment.id, "3000");
+    await service.notifyPayer(refund.id, "approved");
+    expect(notices.some((n) => n.refundId === refund.id)).toBe(false);
   });
 
   // Straight to the database: it enforces these itself.

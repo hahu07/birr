@@ -6,6 +6,7 @@ import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { lockZakahCommitments, zakahTotals } from "./zakah-commitments";
 import { HELD_ACCOUNT_BY_POOL, ZAKAH_BANK_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
 import { lagosToday } from "./zakah.service";
+import { ResendZakahReceiptEmailAdapter } from "./zakah-receipt-email.adapter";
 
 export const ZAKAH_REFUND_REASON_LABELS: Record<ZakahRefundReason, string> = {
   duplicate_payment: "paid twice by mistake",
@@ -81,7 +82,30 @@ export class ZakahRefundsService {
   constructor(
     private readonly encryption: EncryptionService,
     private readonly ledger: ZakahLedgerService,
+    private readonly email: ResendZakahReceiptEmailAdapter,
   ) {}
+
+  /**
+   * Emails the payer once a refund is approved, and again once it's paid —
+   * called after the deciding transaction commits (GovernedActionsService
+   * .decide), never inside it. A payer who gave no email gets nothing, as
+   * with receipts. Never says why the refund was made.
+   */
+  async notifyPayer(refundId: string, stage: "approved" | "paid"): Promise<void> {
+    const refund = await prisma.zakahRefund.findUnique({ where: { id: refundId }, include: { payment: { include: { payer: true } } } });
+    if (!refund?.payment.payer) return;
+    const bank = JSON.parse(this.encryption.decrypt(refund.payeeBankDetailsEncrypted)) as BankDetails;
+    const date = (d: Date) => d.toISOString().slice(0, 10);
+    await this.email.sendRefundNotice({
+      to: refund.payment.payer.email,
+      stage,
+      amount: refund.amount.toFixed(2),
+      paymentDate: date(refund.payment.confirmedAt ?? refund.payment.createdAt),
+      accountLast4: bank.accountNumber.slice(-4),
+      refundId: refund.id,
+      ...(stage === "paid" && { paidOn: refund.paidOn ? date(refund.paidOn) : undefined, bankReference: refund.bankReference ?? undefined }),
+    });
+  }
 
   private view<T extends { payeeBankDetailsEncrypted: string }>(row: T) {
     const { payeeBankDetailsEncrypted, ...rest } = row;
