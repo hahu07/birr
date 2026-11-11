@@ -36,6 +36,7 @@ const summary: ZakahDistributionSummary = {
   received: "500000.00",
   committed: "120000.00",
   paid: "50000.00",
+  refunded: "0.00",
   available: "380000.00",
   oldestUndistributedSince: new Date(Date.now() - 12 * 86_400_000).toISOString(),
   byCategory: [{ category: "gharimin", status: "paid", amount: "50000" }],

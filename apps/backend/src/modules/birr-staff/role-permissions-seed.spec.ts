@@ -60,6 +60,10 @@ describe("seed role data — segregation of duties", () => {
     expect(holders("zakah.distribution_approve", "canChecker")).toEqual(["compliance_officer", "shariah_board_member"]);
     expect(holders("zakah.distribution_mark_paid", "canMaker")).toEqual(["mutawalli_officer"]);
     expect(holders("zakah.distribution_mark_paid", "canChecker")).toEqual(["audit_committee", "compliance_officer"]);
+    expect(holders("zakah.refund_approve", "canMaker")).toEqual(["compliance_officer"]);
+    expect(holders("zakah.refund_approve", "canChecker")).toEqual(["board_of_trustees"]);
+    expect(holders("zakah.refund_mark_paid", "canMaker")).toEqual(["mutawalli_officer"]);
+    expect(holders("zakah.refund_mark_paid", "canChecker")).toEqual(["audit_committee", "compliance_officer"]);
   });
 
   // The permanent version of what the two tests above check by hand for

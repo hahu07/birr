@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { draftRulesets } from "@birr/zakah";
 import { StaffSessionProvider } from "../../../lib/staff-session";
-import type { BirrStaff, ZakahLedgerBalance, ZakahMetalPriceRow, ZakahPaymentRow, ZakahRulesetRow } from "../../../lib/ops-types";
+import type { BirrStaff, ZakahLedgerBalance, ZakahMetalPriceRow, ZakahPaymentRow, ZakahRefundRow, ZakahRulesetRow } from "../../../lib/ops-types";
 import ZakahPage from "./page";
 
 vi.mock("../../../lib/api", () => ({
@@ -64,13 +64,20 @@ const ledger: ZakahLedgerBalance[] = [
 
 function setup(
   staff: BirrStaff,
-  { prices = [price], rulesets = [draft], payments = [] }: { prices?: ZakahMetalPriceRow[]; rulesets?: ZakahRulesetRow[]; payments?: ZakahPaymentRow[] } = {},
+  {
+    prices = [price],
+    rulesets = [draft],
+    payments = [],
+    refunds = [],
+  }: { prices?: ZakahMetalPriceRow[]; rulesets?: ZakahRulesetRow[]; payments?: ZakahPaymentRow[]; refunds?: ZakahRefundRow[] } = {},
 ) {
-  mockedApiFetchJson.mockImplementation((path: string) => {
+  mockedApiFetchJson.mockImplementation((path: string, init?: RequestInit) => {
     if (path === "/birr-staff/me") return Promise.resolve(staff);
     if (path === "/zakah/metal-prices") return Promise.resolve(prices);
     if (path === "/zakah/rulesets") return Promise.resolve(rulesets);
     if (path === "/zakah-payments") return Promise.resolve(payments);
+    if (path === "/zakah-refunds" && !init?.method) return Promise.resolve(refunds);
+    if (path === "/zakah-refunds" && init?.method === "POST") return Promise.resolve({ id: "rf-new" });
     if (path === "/zakah-payments/ledger") return Promise.resolve(ledger);
     if (path === "/governed-actions" || path.startsWith("/zakah/rulesets")) return Promise.resolve({});
     return Promise.reject(new Error(`Unhandled path in test: ${path}`));
@@ -86,7 +93,8 @@ function postsTo(path: string) {
   return mockedApiFetchJson.mock.calls.filter(([p, init]) => p === path && init?.method);
 }
 
-describe("Ops Console — Zakah", () => {
+// Typing-heavy, so allow more than the 5s default on a busy machine.
+describe("Ops Console — Zakah", { timeout: 15_000 }, () => {
   beforeEach(() => {
     mockedApiFetchJson.mockReset();
   });
@@ -118,6 +126,66 @@ describe("Ops Console — Zakah", () => {
     expect(screen.getByText("Anonymous")).toBeInTheDocument();
     expect(screen.getByText(/\+ ₦1,548.23 fee cover/)).toBeInTheDocument();
     expect(screen.getByText("Held for recipients, not yet distributed:")).toBeInTheDocument();
+  });
+
+  test("Compliance requests a refund on a confirmed payment and sends it to the Board", async () => {
+    const user = userEvent.setup();
+    setup(staffWith(["compliance_officer"], ["zakah.refund_request", "zakah.refund_approve"]), {
+      payments: [
+        { id: "p-1", amount: "95000.00", feeCover: "0.00", currency: "NGN", status: "confirmed", rulesetKey: null, rulesetVersion: null, createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: { email: "amina@example.com", fullName: "Amina Bello" } },
+        { id: "p-2", amount: "5000.00", feeCover: "0.00", currency: "NGN", status: "pending", rulesetKey: null, rulesetVersion: null, createdAt: "2027-02-11T00:00:00.000Z", confirmedAt: null, payer: null },
+      ],
+    });
+
+    // Only the confirmed payment can be refunded.
+    expect(await screen.findAllByRole("button", { name: "Refund" })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Refund" }));
+    expect(screen.getByLabelText("Zakah to refund (₦)")).toHaveValue("95000.00");
+    await user.type(screen.getByLabelText("What happened"), "Amina paid the same zakah twice in one minute.");
+    await user.type(screen.getByLabelText("Bank"), "Test Bank");
+    await user.type(screen.getByLabelText("Account number"), "0123456789");
+    await user.type(screen.getByLabelText("Account name"), "Amina Bello");
+    await user.click(screen.getByRole("button", { name: "Send to the Board" }));
+
+    await waitFor(() => expect(postsTo("/governed-actions")).toHaveLength(1));
+    expect(JSON.parse(postsTo("/zakah-refunds")[0][1]!.body as string)).toEqual({
+      paymentId: "p-1",
+      amount: "95000.00",
+      reason: "duplicate_payment",
+      details: "Amina paid the same zakah twice in one minute.",
+      bankName: "Test Bank",
+      accountNumber: "0123456789",
+      accountName: "Amina Bello",
+    });
+    expect(JSON.parse(postsTo("/governed-actions")[0][1]!.body as string)).toEqual({
+      permissionKey: "zakah.refund_approve",
+      payload: { refundId: "rf-new" },
+    });
+  });
+
+  test("an officer records an approved refund's bank payment for a second person to confirm", async () => {
+    const user = userEvent.setup();
+    setup(staffWith(["mutawalli_officer"], ["zakah.refund_mark_paid"]), {
+      refunds: [
+        {
+          id: "rf-1", amount: "95000", currency: "NGN", reason: "duplicate_payment", details: "Paid twice.", status: "approved",
+          approvedAt: "2027-02-12T00:00:00.000Z", paidOn: null, bankReference: null, payeeBank: { bankName: "Test Bank", accountLast4: "6789" },
+          createdAt: "2027-02-11T00:00:00.000Z", payment: { id: "p-1", amount: "95000", createdAt: "2027-02-10T00:00:00.000Z", payer: null },
+        },
+      ],
+    });
+
+    expect(await screen.findByText("approved — to pay")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Refund" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Record refund payment" }));
+    await user.type(screen.getByLabelText("Bank reference"), "NIP-REF-77");
+    await user.click(screen.getByRole("button", { name: "Send for confirmation" }));
+
+    await waitFor(() => expect(postsTo("/governed-actions")).toHaveLength(1));
+    expect(JSON.parse(postsTo("/governed-actions")[0][1]!.body as string)).toMatchObject({
+      permissionKey: "zakah.refund_mark_paid",
+      payload: { refundId: "rf-1", bankReference: "NIP-REF-77" },
+    });
   });
 
   test("Investment Committee proposes new prices as a governed action", async () => {

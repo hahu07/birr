@@ -34,6 +34,7 @@ import { ResendInvitationEmailAdapter } from "../invitations/email/resend-invita
 import { ZakahService } from "../zakah/zakah.service";
 import { ZakahDistributionsService } from "../zakah/zakah-distributions.service";
 import { ZakahLedgerService } from "../zakah/zakah-ledger.service";
+import { ZakahRefundsService } from "../zakah/zakah-refunds.service";
 import { draftRulesets } from "@birr/zakah";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
@@ -116,6 +117,7 @@ describe("GovernedActionsService", () => {
   const zakahService = new ZakahService();
   zakahService.now = () => new Date("2001-01-15T12:00:00Z");
   const zakahDistributionsService = new ZakahDistributionsService(new EncryptionService(), new ZakahLedgerService());
+  const zakahRefundsService = new ZakahRefundsService(new EncryptionService(), new ZakahLedgerService());
   const service = new GovernedActionsService(
     new AssetsService(),
     beneficiariesService,
@@ -150,6 +152,7 @@ describe("GovernedActionsService", () => {
     new InvitationsService(invitationEmails as unknown as ResendInvitationEmailAdapter, notificationsService),
     zakahService,
     zakahDistributionsService,
+    zakahRefundsService,
   );
 
   const governedActionIds: string[] = [];
@@ -2889,6 +2892,60 @@ describe("GovernedActionsService", () => {
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
 
       await service.decide({ governedActionId: action.id, checkerUserId: beneficiaryCheckerUserId, approve: false });
+    });
+
+    // Refunds. Fixture payment in a per-run currency, so this suite's
+    // spending limit is its own (see zakah-refunds.service.spec.ts).
+    async function refundRequest(amount: string) {
+      const currency = `G${run}`.toUpperCase();
+      const id = randomUUID();
+      await prisma.zakahPayment.create({
+        data: {
+          id, amount, currency, provider: "paystack", providerReference: id, status: "confirmed", confirmedAt: new Date(),
+          settlementSubaccount: "ACCT_test_zakah", wakalahConsentVersion: "test",
+        },
+      });
+      return zakahRefundsService.create(
+        { paymentId: id, amount, reason: "duplicate_payment", details: "Paid the same zakah twice in one minute.", bankName: "Test Bank", accountNumber: "0123456789", accountName: "Test Payer" },
+        distributionCheckerUserId,
+      );
+    }
+
+    test("zakah.refund_approve (Compliance → Board) then zakah.refund_mark_paid: approved, then paid and booked", async () => {
+      const refund = await refundRequest("8000");
+      const approval = await service.propose({ permissionKey: "zakah.refund_approve", payload: { refundId: refund.id }, makerUserId: distributionCheckerUserId });
+      await service.decide({ governedActionId: approval.id, checkerUserId: boardCheckerUserId, approve: true });
+      expect(await prisma.zakahRefund.findUniqueOrThrow({ where: { id: refund.id } })).toMatchObject({ status: "approved", approvalActionId: approval.id });
+
+      const paid = await service.propose({
+        permissionKey: "zakah.refund_mark_paid",
+        payload: { refundId: refund.id, bankReference: `GR-${run}`, paidOn: new Date().toISOString().slice(0, 10) },
+        makerUserId,
+      });
+      await service.decide({ governedActionId: paid.id, checkerUserId: assetCheckerUserId, approve: true });
+
+      expect(await prisma.zakahRefund.findUniqueOrThrow({ where: { id: refund.id } })).toMatchObject({ status: "paid", paymentActionId: paid.id });
+      expect(await prisma.zakahJournalEntry.count({ where: { source: "refund", sourceId: refund.id } })).toBe(1);
+      const logs = await prisma.auditLog.findMany({ where: { entityId: refund.id, action: { in: ["zakah_refund.approved", "zakah_refund.paid"] } } });
+      expect(logs.map((l) => [l.action, l.actorUserId]).sort()).toEqual([
+        ["zakah_refund.approved", boardCheckerUserId],
+        ["zakah_refund.paid", assetCheckerUserId],
+      ]);
+      // The audit trail never carries the payer's bank details.
+      expect(logs.every((l) => !JSON.stringify(l.after).includes("payeeBankDetailsEncrypted"))).toBe(true);
+    });
+
+    test("zakah.refund_approve: reject → rejected and audit-logged; the proposer can't approve; the database rejects checker = maker", async () => {
+      const refund = await refundRequest("2000");
+      const action = await service.propose({ permissionKey: "zakah.refund_approve", payload: { refundId: refund.id }, makerUserId: distributionCheckerUserId });
+      await expect(
+        service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true }),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: distributionCheckerUserId } })).rejects.toThrow();
+
+      await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: false });
+      expect((await prisma.zakahRefund.findUniqueOrThrow({ where: { id: refund.id } })).status).toBe("rejected");
+      expect(await prisma.auditLog.count({ where: { entityId: refund.id, action: "zakah_refund.rejected" } })).toBe(1);
     });
 
     test("zakah.metal_price_set: an invalid price can't even be proposed", async () => {

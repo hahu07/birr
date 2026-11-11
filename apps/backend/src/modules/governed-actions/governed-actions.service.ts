@@ -25,6 +25,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { InvitationsService, assertStaffInvitable, invitationAuditSnapshot } from "../invitations/invitations.service";
 import { ZakahService } from "../zakah/zakah.service";
 import { ZakahDistributionsService } from "../zakah/zakah-distributions.service";
+import { ZakahRefundsService } from "../zakah/zakah-refunds.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
@@ -356,6 +357,7 @@ export class GovernedActionsService {
     private readonly invitationsService: InvitationsService,
     private readonly zakahService: ZakahService,
     private readonly zakahDistributionsService: ZakahDistributionsService,
+    private readonly zakahRefundsService: ZakahRefundsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1336,6 +1338,45 @@ export class GovernedActionsService {
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.zakahDistributionsService.markPaid(payload, ctx.governedActionId, tx);
             return { auditAction: "zakah_distribution.paid", entityType: "ZakahDistribution", entityId: after.id, before, after };
+          },
+        },
+      ],
+      // Zakah refunds, for mistakes only: Compliance proposes, the Board
+      // approves; then confirming it was paid from the zakah account
+      // (checkers compliance_officer / audit_committee). Rejecting
+      // releases the amount.
+      [
+        "zakah.refund_approve",
+        {
+          validatePropose: (payload) => this.zakahRefundsService.validateApprovalProposal(payload),
+          checkDuplicate: (payload) => this.zakahRefundsService.checkDuplicateApproval(payload),
+          describePayload: (payload) => this.zakahRefundsService.describe(payload),
+          describeCurrentState: (payload) => this.zakahRefundsService.currentState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahRefundsService.approve(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_refund.approved", entityType: "ZakahRefund", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.zakahRefundsService.reject(payload, tx);
+            return {
+              auditAction: "zakah_refund.rejected",
+              entityType: "ZakahRefund",
+              entityId: (payload as { refundId: string }).refundId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "zakah.refund_mark_paid",
+        {
+          validatePropose: (payload) => this.zakahRefundsService.validatePaidProposalAsync(payload),
+          checkDuplicate: (payload) => this.zakahRefundsService.checkDuplicatePaid(payload),
+          describePayload: (payload) => this.zakahRefundsService.describePaid(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahRefundsService.markPaid(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_refund.paid", entityType: "ZakahRefund", entityId: after.id, before, after };
           },
         },
       ],

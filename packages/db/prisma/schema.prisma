@@ -373,6 +373,7 @@ model User {
   zakahRulesetsCreated           ZakahRuleset[]                  @relation("ZakahRulesetCreator")
   zakahRecipientsCreated         ZakahRecipient[]                @relation("ZakahRecipientCreator")
   zakahDistributionsCreated      ZakahDistribution[]             @relation("ZakahDistributionCreator")
+  zakahRefundsCreated            ZakahRefund[]                   @relation("ZakahRefundCreator")
 
   @@map("users")
 }
@@ -1050,6 +1051,8 @@ model GovernedAction {
   zakahMetalPrice           ZakahMetalPrice?
   approvedZakahDistribution ZakahDistribution?   @relation("ZakahDistributionApproval")
   paidZakahDistribution     ZakahDistribution?   @relation("ZakahDistributionPayment")
+  approvedZakahRefund       ZakahRefund?         @relation("ZakahRefundApproval")
+  paidZakahRefund           ZakahRefund?         @relation("ZakahRefundPayment")
 
   @@index([waqfId])
   @@index([status])
@@ -3070,6 +3073,8 @@ model ZakahPayment {
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 
+  refunds ZakahRefund[]
+
   @@index([payerId])
   @@index([status])
   @@map("zakah_payments")
@@ -3098,6 +3103,7 @@ enum ZakahJournalEntrySource {
   payment
   manual_adjustment
   distribution
+  refund
 }
 
 model ZakahJournalEntry {
@@ -3220,4 +3226,58 @@ model ZakahDistribution {
   @@index([recipientId])
   @@index([counterpartyId])
   @@map("zakah_distributions")
+}
+
+// Refunds are for mistakes only (owner's decision, 2026-11-11): a
+// payment made twice, the wrong amount, or one the payer didn't
+// authorise. Not a change of mind.
+enum ZakahRefundReason {
+  duplicate_payment
+  wrong_amount
+  unauthorised_payment
+}
+
+enum ZakahRefundStatus {
+  pending_approval
+  approved
+  paid
+  rejected
+}
+
+// Paying back some or all of a confirmed zakah payment. Owner's
+// decisions, 2026-11-11: Compliance proposes and the Board of Trustees
+// approves (zakah.refund_approve, as with Vault refunds); it is paid by
+// bank transfer from the zakah account — never a Paystack refund, which
+// would come out of Birr's main balance — and booked only once a second
+// person confirms the bank reference (zakah.refund_mark_paid). Only the
+// zakah itself is refunded, never the fee cover a payer added. A refund
+// counts against the same spending limit as distributions, so zakah
+// already committed to recipients can't be refunded. The payer's bank
+// details for the transfer are encrypted.
+model ZakahRefund {
+  id                        String            @id @default(uuid())
+  paymentId                 String
+  payment                   ZakahPayment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  amount                    Decimal
+  currency                  String
+  reason                    ZakahRefundReason
+  // What happened, in plain words — what the approver reads.
+  details                   String
+  payeeBankDetailsEncrypted String
+  status                    ZakahRefundStatus @default(pending_approval)
+  approvedAt                DateTime?
+  approvalActionId          String?           @unique
+  approvalAction            GovernedAction?   @relation("ZakahRefundApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  paidOn                    DateTime?         @db.Date
+  bankReference             String?
+  paymentActionId           String?           @unique
+  paymentAction             GovernedAction?   @relation("ZakahRefundPayment", fields: [paymentActionId], references: [id], onDelete: Restrict)
+  createdByUserId           String
+  createdBy                 User              @relation("ZakahRefundCreator", fields: [createdByUserId], references: [id])
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+
+  @@index([paymentId])
+  @@index([status])
+  @@map("zakah_refunds")
 }

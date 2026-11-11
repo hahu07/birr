@@ -1401,7 +1401,25 @@ export interface ZakahDistributionSummary {
   received: string;
   committed: string;
   paid: string;
+  /** Paid back to payers by refund. */
+  refunded: string;
   available: string;
   oldestUndistributedSince: string | null;
   byCategory: { category: import("@birr/zakah").ZakahCategoryKey; status: string; amount: string }[];
+}
+
+/** A refund of zakah paid by mistake (see ZakahRefund). Lists carry only the last four account digits. */
+export interface ZakahRefundRow {
+  id: string;
+  amount: string;
+  currency: string;
+  reason: "duplicate_payment" | "wrong_amount" | "unauthorised_payment";
+  details: string;
+  status: "pending_approval" | "approved" | "paid" | "rejected";
+  approvedAt: string | null;
+  paidOn: string | null;
+  bankReference: string | null;
+  payeeBank: { bankName: string; accountLast4: string };
+  createdAt: string;
+  payment: { id: string; amount: string; createdAt: string; payer: { email: string; fullName: string | null } | null };
 }

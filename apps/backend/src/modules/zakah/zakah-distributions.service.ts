@@ -19,6 +19,7 @@ import { EncryptionService } from "../../common/settings/encryption.service";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { ZAKAH_BANK_ACCOUNT_CODE, ZAKAH_HELD_FOR_RECIPIENTS_ACCOUNT_CODE, ZakahLedgerService } from "./zakah-ledger.service";
 import { lagosToday } from "./zakah.service";
+import { lockZakahCommitments, zakahTotals } from "./zakah-commitments";
 import { CLOSED_ZAKAH_CATEGORIES, ZAKAH_CATEGORY_LABELS } from "@birr/zakah";
 
 const CURRENCY = "NGN";
@@ -261,26 +262,12 @@ export class ZakahDistributionsService {
 
   // ---- The spending limit ----
 
-  /** Serialises everything that can change how much zakah is committed. */
   private lockCommitments(tx: Prisma.TransactionClient) {
-    return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('zakah_distribution_commitments'))`;
+    return lockZakahCommitments(tx);
   }
 
-  private async totals(db: Db) {
-    const [received, committed, paid] = await Promise.all([
-      db.zakahPayment.aggregate({ where: { status: "confirmed", currency: CURRENCY }, _sum: { amount: true } }),
-      db.zakahDistribution.aggregate({
-        where: { status: { in: ["pending_approval", "approved", "paid"] }, currency: CURRENCY },
-        _sum: { amount: true },
-      }),
-      db.zakahDistribution.aggregate({ where: { status: "paid", currency: CURRENCY }, _sum: { amount: true } }),
-    ]);
-    const zero = new Prisma.Decimal(0);
-    return {
-      received: received._sum.amount ?? zero,
-      committed: committed._sum.amount ?? zero,
-      paid: paid._sum.amount ?? zero,
-    };
+  private totals(db: Db) {
+    return zakahTotals(db, CURRENCY);
   }
 
   // ---- Distributions ----
@@ -353,10 +340,12 @@ export class ZakahDistributionsService {
   /**
    * The Ops Console's headline figures. `oldestUndistributedSince` is when
    * the oldest zakah not yet paid out was received, matching payments to
-   * payouts first-in, first-out — zakah shouldn't wait long.
+   * money that has left (paid to recipients or refunded) first-in,
+   * first-out — zakah shouldn't wait long. `committed` includes refunds.
    */
   async summary() {
-    const { received, committed, paid } = await this.totals(prisma);
+    const { received, committed, paid, refunded } = await this.totals(prisma);
+    const left = paid.plus(refunded);
     const byCategory = await prisma.zakahDistribution.groupBy({
       by: ["category", "status"],
       where: { status: { in: ["pending_approval", "approved", "paid"] }, currency: CURRENCY },
@@ -371,7 +360,7 @@ export class ZakahDistributionsService {
     let oldestUndistributedSince: Date | null = null;
     for (const p of payments) {
       cumulative = cumulative.plus(p.amount);
-      if (cumulative.gt(paid)) {
+      if (cumulative.gt(left)) {
         oldestUndistributedSince = p.confirmedAt;
         break;
       }
@@ -381,6 +370,7 @@ export class ZakahDistributionsService {
       received: received.toFixed(2),
       committed: committed.toFixed(2),
       paid: paid.toFixed(2),
+      refunded: refunded.toFixed(2),
       available: received.minus(committed).toFixed(2),
       oldestUndistributedSince,
       byCategory: byCategory.map((c) => ({ category: c.category, status: c.status, amount: (c._sum.amount ?? 0).toString() })),

@@ -28,6 +28,7 @@ import {
 } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../_components/ProposeGovernedAction";
+import { RefundButton, RefundsSection } from "./RefundsSection";
 
 const MADHHAB_LABELS: Record<ZakahRulesetRow["madhhab"], string> = {
   maliki: "Maliki",
@@ -58,6 +59,7 @@ function describeRulings(r: ZakahRulings): string {
 }
 
 export default function ZakahPage() {
+  const [refundsKey, setRefundsKey] = useState(0);
   return (
     <div>
       <header className="mb-8 flex items-center gap-3">
@@ -71,14 +73,15 @@ export default function ZakahPage() {
           </p>
         </div>
       </header>
-      <PaymentsSection />
+      <PaymentsSection onRefundRequested={() => setRefundsKey((n) => n + 1)} />
+      <RefundsSection refreshKey={refundsKey} />
       <MetalPricesSection />
       <RulesetsSection />
     </div>
   );
 }
 
-function PaymentsSection() {
+function PaymentsSection({ onRefundRequested }: { onRefundRequested: () => void }) {
   const [payments, setPayments] = useState<ZakahPaymentRow[] | null>(null);
   const [ledger, setLedger] = useState<ZakahLedgerBalance[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +126,7 @@ function PaymentsSection() {
               <TableHeaderCell>Payer</TableHeaderCell>
               <TableHeaderCell>Zakah</TableHeaderCell>
               <TableHeaderCell>Status</TableHeaderCell>
+              <TableHeaderCell />
             </TableRow>
           </TableHead>
           <TableBody>
@@ -145,6 +149,9 @@ function PaymentsSection() {
                 </TableCell>
                 <TableCell>
                   <Badge tone={PAYMENT_TONE[p.status]}>{p.status}</Badge>
+                </TableCell>
+                <TableCell>
+                  <RefundButton payment={p} onRequested={onRefundRequested} />
                 </TableCell>
               </TableRow>
             ))}

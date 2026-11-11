@@ -459,7 +459,19 @@ extending Waqf or Vault ones. Owner's decisions so far:
   under a lock). Known gap: registering a recipient is one person's
   action; the second person reviews eligibility at each payment instead.
 
-Still to come: refunds (governed, like Vault's) and Zakah al-Fitr. The agency (wakalah) wording a payer
+- **Refunds** (`ZakahRefund`), owner's decisions: for **mistakes only**
+  (paid twice, wrong amount, not authorised by the payer), never a change
+  of mind. Compliance proposes; the **Board of Trustees** approves
+  (`zakah.refund_approve`, as with Vault refunds). Paid by **bank transfer
+  from the zakah account** (never a Paystack refund, which would come out
+  of Birr's main balance) and booked only once a second person confirms
+  the reference (`zakah.refund_mark_paid`). Only the zakah is refunded,
+  never the fee cover. Refunds share the distributions' spending limit
+  (`zakah-commitments.ts`), so zakah already committed to recipients
+  can't be refunded, and a payment's refunds never exceed its zakah.
+
+Still to come: Zakah al-Fitr, AML holds on suspicious payments (Vault
+has these), and emailing payers about their refund. The agency (wakalah) wording a payer
 accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
 Supervisory Board must approve before payments open.
 
