@@ -501,7 +501,16 @@ extending Waqf or Vault ones. Owner's decisions so far:
   bank reference), sent only after the decision commits. A rejection is
   never emailed, and no email says why — Compliance tells the payer.
 
-Still to come: a structuring review list for zakah like Vault's. The agency (wakalah) wording a payer
+- **AML review list** (`zakah.structuring_review`; Ops Console → Zakah
+  Giving Review), owner's decisions: visible to Compliance, the Audit
+  Committee, the Board of Trustees and Mutawalli Officers — deliberately
+  **not** Platform Admin, unlike Vault's. Purely observational, like
+  Vault's: payers paying close to the NGN threshold into one pool,
+  different payers sharing a network, and **giving that spans Vault and
+  zakah** (same email with combined NGN totals reaching the threshold, or
+  a network both products' givers used under different emails) — the gap
+  the threshold check leaves open. Holding a flagged payment is the
+  separate Hold action. The agency (wakalah) wording a payer
 accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
 Supervisory Board must approve before payments open.
 

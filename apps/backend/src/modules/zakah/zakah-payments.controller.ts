@@ -1,8 +1,9 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, NotFoundException, Param, Post, Query, Req } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
 import { HoldZakahPaymentInput, InitiateZakahPaymentInput, ZakahPaymentsService } from "./zakah-payments.service";
 import { RequiresAccess } from "../../common/guards/permission.guard";
+import { ZakahStructuringReviewService } from "./zakah-structuring-review.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { Public } from "../../common/guards/public.decorator";
 
@@ -11,7 +12,10 @@ import { Public } from "../../common/guards/public.decorator";
 // route, which hands zakah references on to ZakahPaymentsService.
 @Controller("zakah-payments")
 export class ZakahPaymentsController {
-  constructor(private readonly service: ZakahPaymentsService) {}
+  constructor(
+    private readonly service: ZakahPaymentsService,
+    private readonly review: ZakahStructuringReviewService,
+  ) {}
 
   // Declared before ":id", or Nest would match it as an id.
   @Public()
@@ -38,6 +42,15 @@ export class ZakahPaymentsController {
   @Get("ledger")
   ledger() {
     return this.service.ledgerBalances();
+  }
+
+  // The AML review list (declared before ":id"). Patterns for a person to
+  // judge, never a block; holds are a separate, deliberate step.
+  @Get("structuring-review")
+  @RequiresAccess("zakah.structuring_review")
+  structuringReview(@Query("minFraction") minFraction?: string) {
+    const parsed = minFraction ? Number(minFraction) : undefined;
+    return this.review.review(parsed !== undefined && parsed > 0 && parsed <= 1 ? parsed : undefined);
   }
 
   @Public()

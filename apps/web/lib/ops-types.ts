@@ -1452,3 +1452,40 @@ export interface ZakahFitrCampaignRow {
 }
 
 export type ZakahPool = "mal" | "fitr_food" | "fitr_cash";
+
+/** A zakah payment as the AML review list shows it. */
+export interface ZakahReviewPayment {
+  id: string;
+  pool: ZakahPool;
+  amount: string;
+  createdAt: string;
+  heldAt: string | null;
+  payerId: string | null;
+  payerEmail: string | null;
+  payerFullName: string | null;
+  payerIdCaptured: boolean;
+  fractionOfThreshold?: number;
+}
+
+/** A Vault gift as the zakah review list shows it, for giving that spans both products. */
+export interface ZakahReviewVaultGift {
+  id: string;
+  vaultName: string;
+  amount: string;
+  createdAt: string;
+  donorEmail: string;
+  donorFullName: string | null;
+  donorIdCaptured: boolean;
+}
+
+/** GET /zakah-payments/structuring-review — patterns for a person to judge, never a block. */
+export interface ZakahStructuringReview {
+  currency: string;
+  thresholdAmount: string | null;
+  nearThreshold: { pool: ZakahPool; distinctPayerCount: number; payments: ZakahReviewPayment[] }[];
+  ipClusters: { ipAddress: string; distinctPayerCount: number; payments: ZakahReviewPayment[] }[];
+  acrossVault: {
+    sameEmail: { email: string; zakahTotal: string; vaultTotal: string; combinedTotal: string; zakah: ZakahReviewPayment[]; vault: ZakahReviewVaultGift[] }[];
+    sharedNetworks: { ipAddress: string; distinctEmailCount: number; zakah: ZakahReviewPayment[]; vault: ZakahReviewVaultGift[] }[];
+  };
+}

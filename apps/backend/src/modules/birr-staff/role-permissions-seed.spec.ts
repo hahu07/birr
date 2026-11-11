@@ -69,6 +69,13 @@ describe("seed role data — segregation of duties", () => {
     // AML holds: either may freeze; only Compliance may release.
     expect(holders("zakah.payment_hold", "canMaker")).toEqual(["compliance_officer", "mutawalli_officer"]);
     expect(holders("zakah.payment_release", "canMaker")).toEqual(["compliance_officer"]);
+    // The review list: these four, deliberately not platform_admin.
+    expect(holders("zakah.structuring_review", "canMaker")).toEqual([
+      "audit_committee",
+      "board_of_trustees",
+      "compliance_officer",
+      "mutawalli_officer",
+    ]);
   });
 
   // The permanent version of what the two tests above check by hand for

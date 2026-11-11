@@ -193,6 +193,11 @@ export const accessPermissions = [
   // one alone; only Compliance may release it, also alone (as with Vault).
   { key: "zakah.payment_hold", category: "zakah", description: "Put a confirmed zakah payment on hold for AML review, so it can't be distributed.", roles: ["compliance_officer", "mutawalli_officer"] },
   { key: "zakah.payment_release", category: "zakah", description: "Release a zakah payment from an AML hold.", roles: ["compliance_officer"] },
+  // The zakah structuring review list (2026-11-11): payers' names, emails,
+  // IP addresses and giving patterns, including people who give to both
+  // Vault and zakah. Owner's decision: these four roles, deliberately not
+  // platform_admin (unlike vault.structuring_review).
+  { key: "zakah.structuring_review", category: "zakah", description: "See the zakah AML review list, including giving that spans Vault and zakah.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "mutawalli_officer"] },
   { key: "zakah.refund_request", category: "zakah", description: "Record a zakah refund request and the payer's bank details for it.", roles: ["compliance_officer"] },
   { key: "zakah.fitr_campaign_draft", category: "zakah", description: "Draft and edit a season's Zakah al-Fitr campaign (approving it is zakah.fitr_campaign_approve).", roles: ["mutawalli_officer"] },
   // Closing early only ever stops money coming in, so it needs no second person.

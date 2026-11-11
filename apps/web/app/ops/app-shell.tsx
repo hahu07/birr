@@ -104,6 +104,7 @@ const NAV_GROUPS: {
       { href: "/ops/shariah-prohibited-sectors", label: "Shariah Prohibited Sectors", icon: IconShieldAlert },
       { href: "/ops/audit-logs", label: "Audit Log", icon: IconFileText },
       { href: "/ops/vault-compliance-review", label: "Vault Giving Review", icon: IconShieldAlert },
+      { href: "/ops/zakah-review", label: "Zakah Giving Review", icon: IconShieldAlert, requiresPermission: "zakah.structuring_review" },
     ],
   },
   {
