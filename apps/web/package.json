@@ -16,7 +16,7 @@
     "@birr/db": "workspace:^",
     "@birr/ui": "workspace:*",
     "@birr/zakah": "workspace:*",
-    "@sentry/nextjs": "^11.9.0",
+    "@sentry/nextjs": "^11.11.0",
     "bcryptjs": "^3.0.3",
     "next": "^16.4.3",
     "react": "^19.3.1",
