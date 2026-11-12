@@ -43,6 +43,45 @@ describe("seed role data — segregation of duties", () => {
     }
   });
 
+  // Owner's decisions, 2026-11-11: Shariah rulings are approved by the
+  // Shariah board alone, and the prices that set the nisab by Compliance
+  // alone — not the Board of Trustees, unlike most governed actions.
+  it("gives each zakah governed action exactly the proposer and approver the owner chose", () => {
+    const holders = (key: string, side: "canMaker" | "canChecker") =>
+      Object.entries(rolePermissions)
+        .filter(([, grants]) => grants[key]?.[side])
+        .map(([role]) => role)
+        .sort();
+    expect(holders("zakah.ruleset_approve", "canMaker")).toEqual(["mutawalli_officer"]);
+    expect(holders("zakah.ruleset_approve", "canChecker")).toEqual(["shariah_board_member"]);
+    expect(holders("zakah.metal_price_set", "canMaker")).toEqual(["investment_committee"]);
+    expect(holders("zakah.metal_price_set", "canChecker")).toEqual(["compliance_officer"]);
+    expect(holders("zakah.distribution_approve", "canMaker")).toEqual(["mutawalli_officer"]);
+    expect(holders("zakah.distribution_approve", "canChecker")).toEqual(["compliance_officer", "shariah_board_member"]);
+    expect(holders("zakah.distribution_mark_paid", "canMaker")).toEqual(["mutawalli_officer"]);
+    expect(holders("zakah.distribution_mark_paid", "canChecker")).toEqual(["audit_committee", "compliance_officer"]);
+    expect(holders("zakah.refund_approve", "canMaker")).toEqual(["compliance_officer"]);
+    expect(holders("zakah.refund_approve", "canChecker")).toEqual(["board_of_trustees"]);
+    expect(holders("zakah.refund_mark_paid", "canMaker")).toEqual(["mutawalli_officer"]);
+    expect(holders("zakah.refund_mark_paid", "canChecker")).toEqual(["audit_committee", "compliance_officer"]);
+    expect(holders("zakah.fitr_campaign_approve", "canMaker")).toEqual(["mutawalli_officer"]);
+    expect(holders("zakah.fitr_campaign_approve", "canChecker")).toEqual(["shariah_board_member"]);
+    for (const key of ["zakah.recipient_approve", "zakah.recipient_change"]) {
+      expect(holders(key, "canMaker")).toEqual(["mutawalli_officer"]);
+      expect(holders(key, "canChecker")).toEqual(["compliance_officer", "shariah_board_member"]);
+    }
+    // AML holds: either may freeze; only Compliance may release.
+    expect(holders("zakah.payment_hold", "canMaker")).toEqual(["compliance_officer", "mutawalli_officer"]);
+    expect(holders("zakah.payment_release", "canMaker")).toEqual(["compliance_officer"]);
+    // The review list: these four, deliberately not platform_admin.
+    expect(holders("zakah.structuring_review", "canMaker")).toEqual([
+      "audit_committee",
+      "board_of_trustees",
+      "compliance_officer",
+      "mutawalli_officer",
+    ]);
+  });
+
   // The permanent version of what the two tests above check by hand for
   // two specific roles — every role, every governed permission. Since
   // BirrStaff.staffRole is a single field (one role per person, enforced

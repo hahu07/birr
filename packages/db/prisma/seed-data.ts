@@ -99,6 +99,37 @@ const governedPermissions = [
   // both proposes and approves, external_auditor stays read-only).
   { key: "role.permission_change", category: "staff", requiresMakerChecker: true, description: "Change what a staff role may propose, approve, or do." },
   { key: "waqf.milestone_complete", category: "distribution", requiresMakerChecker: true, description: "Mark a project waqf fund's milestone as completed, unlocking its distribution tranche." },
+  // Zakah (2026-11-11). Owner's decisions: a ruleset (the madhhab rulings
+  // the calculator applies) is proposed by mutawalli_officer and approved
+  // by shariah_board_member only — deliberately not the Board of Trustees,
+  // since these are Shariah rulings. Metal prices set the Naira nisab, so
+  // decide who owes zakah at all: proposed by investment_committee,
+  // approved by compliance_officer only.
+  { key: "zakah.ruleset_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a draft zakah ruleset, making it the version the zakah calculator applies." },
+  { key: "zakah.metal_price_set", category: "zakah", requiresMakerChecker: true, description: "Set the gold and silver prices that fix the zakah nisab in Naira." },
+  // Distribution (2026-11-11). Owner's decisions: a Mutawalli Officer
+  // proposes; a Shariah board member or a Compliance officer approves. Zakah
+  // is paid by bank transfer from the zakah account, and a second person
+  // confirms that against the bank before it's booked — Compliance or the
+  // Audit Committee (the latter's financial-controls remit).
+  { key: "zakah.distribution_approve", category: "zakah", requiresMakerChecker: true, description: "Approve paying zakah to an eligible recipient or partner, in one of the eight categories." },
+  { key: "zakah.distribution_mark_paid", category: "zakah", requiresMakerChecker: true, description: "Confirm an approved zakah distribution was paid from the zakah bank account." },
+  // Refunds (2026-11-11), for mistakes only. Owner's decisions: Compliance
+  // proposes and the Board of Trustees approves, as with Vault refunds;
+  // paid by bank transfer from the zakah account and confirmed by a
+  // second person, exactly like a distribution's payment.
+  { key: "zakah.refund_approve", category: "zakah", requiresMakerChecker: true, description: "Approve refunding a zakah payment made by mistake." },
+  { key: "zakah.refund_mark_paid", category: "zakah", requiresMakerChecker: true, description: "Confirm an approved zakah refund was paid from the zakah bank account." },
+  // Zakah al-Fitr (2026-11-11). Owner's decision: a Mutawalli Officer
+  // proposes each season's staple, sa' and Naira amount; a Shariah board
+  // member approves — the same pattern as rulesets.
+  // Two-person recipient registration (2026-11-11). Owner's decisions: a
+  // Mutawalli Officer registers; a Shariah board member or Compliance
+  // officer approves — never the person who registered them. Changing an
+  // approved recipient's bank details or categories needs the same.
+  { key: "zakah.recipient_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a newly registered zakah recipient as eligible, so they can be paid." },
+  { key: "zakah.recipient_change", category: "zakah", requiresMakerChecker: true, description: "Approve a change to a zakah recipient's bank details or eligible categories." },
+  { key: "zakah.fitr_campaign_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a season's Zakah al-Fitr: the staple, the amount per person and the dates." },
 ] as const;
 
 // Plain access permissions (2026-10-18): who may perform an ungoverned
@@ -163,6 +194,23 @@ export const accessPermissions = [
   { key: "waqf.milestone_manage", category: "waqf", description: "Add waqf fund milestones, start them, and attach evidence (completion is waqf.milestone_complete).", roles: ["mutawalli_officer"] },
   { key: "waqf.proceeds_allocate", category: "investment", description: "Allocate a waqf fund's investment proceeds across its causes.", roles: ["investment_committee"] },
   { key: "waqf.proceeds_record", category: "investment", description: "Record investment proceeds on a waqf fund.", roles: ["investment_committee", "mutawalli_officer"] },
+  // AML holds on zakah payments (2026-11-11). Owner's decisions: a hold only
+  // freezes money, so a Compliance officer or Mutawalli Officer may place
+  // one alone; only Compliance may release it, also alone (as with Vault).
+  { key: "zakah.payment_hold", category: "zakah", description: "Put a confirmed zakah payment on hold for AML review, so it can't be distributed.", roles: ["compliance_officer", "mutawalli_officer"] },
+  { key: "zakah.payment_release", category: "zakah", description: "Release a zakah payment from an AML hold.", roles: ["compliance_officer"] },
+  // The zakah structuring review list (2026-11-11): payers' names, emails,
+  // IP addresses and giving patterns, including people who give to both
+  // Vault and zakah. Owner's decision: these four roles, deliberately not
+  // platform_admin (unlike vault.structuring_review).
+  { key: "zakah.structuring_review", category: "zakah", description: "See the zakah AML review list, including giving that spans Vault and zakah.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "mutawalli_officer"] },
+  { key: "zakah.refund_request", category: "zakah", description: "Record a zakah refund request and the payer's bank details for it.", roles: ["compliance_officer"] },
+  { key: "zakah.fitr_campaign_draft", category: "zakah", description: "Draft and edit a season's Zakah al-Fitr campaign (approving it is zakah.fitr_campaign_approve).", roles: ["mutawalli_officer"] },
+  // Closing early only ever stops money coming in, so it needs no second person.
+  { key: "zakah.fitr_close", category: "zakah", description: "Close Zakah al-Fitr payments early, e.g. once Eid is announced.", roles: ["compliance_officer", "mutawalli_officer"] },
+  { key: "zakah.recipient_manage", category: "zakah", description: "Register and update people eligible for zakah, including their bank details.", roles: ["mutawalli_officer"] },
+  { key: "zakah.distribution_create", category: "zakah", description: "Create a zakah distribution for approval, and record a partner's report of who it reached.", roles: ["mutawalli_officer"] },
+  { key: "zakah.ruleset_draft", category: "zakah", description: "Draft and edit zakah rulesets (approving one is zakah.ruleset_approve).", roles: ["mutawalli_officer"] },
   { key: "waqf_funding.configure", category: "platform", description: "Set contribution and corpus minimums and waqf funding settings.", roles: ["platform_admin"] },
 ] as const satisfies readonly { key: string; category: string; description: string; roles: readonly string[] }[];
 
@@ -195,11 +243,21 @@ const governedRolePermissions: Record<string, Grants> = {
     "vault.distribution_approve": { canMaker: true },
     "vault.milestone_complete": { canMaker: true },
     "blog.publish": { canMaker: true },
+    "zakah.ruleset_approve": { canMaker: true },
+    "zakah.distribution_approve": { canMaker: true },
+    "zakah.distribution_mark_paid": { canMaker: true },
+    "zakah.refund_mark_paid": { canMaker: true },
+    "zakah.fitr_campaign_approve": { canMaker: true },
+    "zakah.recipient_approve": { canMaker: true },
+    "zakah.recipient_change": { canMaker: true },
   },
   // Apex checker across every maker-checker gated permission — the Board
   // is the last line of sign-off, distinct from (and above) the
   // committee-level checkers below. Never a maker: the Board approves
-  // proposals, it doesn't originate them.
+  // proposals, it doesn't originate them. Two deliberate exceptions: the
+  // zakah.* permissions, which the owner gave to the Shariah board,
+  // Compliance and the Audit Committee (see their definitions above) —
+  // except zakah.refund_approve, which the Board approves.
   board_of_trustees: {
     "asset.dispose": { canChecker: true },
     "distribution.approve": { canChecker: true },
@@ -222,6 +280,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.role_add": { canChecker: true },
     "staff.role_remove": { canChecker: true },
     "role.permission_change": { canChecker: true },
+    "zakah.refund_approve": { canChecker: true },
   },
   investment_committee: {
     "asset.dispose": { canChecker: true },
@@ -235,6 +294,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "waqf.view": { canMaker: true },
     "vault.proceeds_allocate": { canMaker: true },
     "vault.investment_change": { canMaker: true },
+    "zakah.metal_price_set": { canMaker: true },
   },
   shariah_board_member: {
     "beneficiary.criteria_update": { canChecker: true },
@@ -243,6 +303,11 @@ const governedRolePermissions: Record<string, Grants> = {
     "waqf.view": { canMaker: true },
     "vault.distribution_approve": { canChecker: true },
     "vault.milestone_complete": { canChecker: true },
+    "zakah.ruleset_approve": { canChecker: true },
+    "zakah.distribution_approve": { canChecker: true },
+    "zakah.fitr_campaign_approve": { canChecker: true },
+    "zakah.recipient_approve": { canChecker: true },
+    "zakah.recipient_change": { canChecker: true },
   },
   audit_committee: {
     "asset.dispose": { canChecker: true },
@@ -251,6 +316,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "compliance.report_export": { canMaker: true },
     "waqf.view": { canMaker: true },
     "vault.investment_change": { canChecker: true },
+    "zakah.distribution_mark_paid": { canChecker: true },
+    "zakah.refund_mark_paid": { canChecker: true },
   },
   compliance_officer: {
     "distribution.approve": { canChecker: true },
@@ -275,6 +342,13 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.invite": { canChecker: true },
     "staff.role_add": { canChecker: true },
     "staff.role_remove": { canChecker: true },
+    "zakah.metal_price_set": { canChecker: true },
+    "zakah.distribution_approve": { canChecker: true },
+    "zakah.distribution_mark_paid": { canChecker: true },
+    "zakah.recipient_approve": { canChecker: true },
+    "zakah.recipient_change": { canChecker: true },
+    "zakah.refund_approve": { canMaker: true },
+    "zakah.refund_mark_paid": { canChecker: true },
   },
   legal_adviser: {
     "waqf.view": { canMaker: true },

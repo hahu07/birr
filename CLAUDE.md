@@ -412,6 +412,118 @@ in keeping this ledger current, not a functional gap. Noted here so a
 future session doesn't re-do already-finished work on the strength of
 the stale note above.
 
+**Update, 2026-11-11 — Zakah, a third product alongside Waqf and Vault.**
+Zakah is obligatory, goes only to the eight eligible categories (Qur'an
+9:60), and Birr receives it as each payer's **agent (wakil)** — not as
+trustee and not as its own money — so it has its own tables, ledger and
+module (`packages/zakah`, `apps/backend/src/modules/zakah`), never
+extending Waqf or Vault ones. Owner's decisions so far:
+- **Web first, mobile later.** A public calculator at `/zakah` now; an
+  Expo app afterwards, sharing `@birr/zakah` (the pure-TypeScript
+  calculation engine) with the web app and backend.
+- **Flexible madhhab.** Madhhab rulings are data (`ZakahRuleset`), one
+  ruleset per calculation. A ruleset goes live only through the governed
+  `zakah.ruleset_approve`: proposed by `mutawalli_officer`, approved by
+  `shariah_board_member` **only** (not the Board of Trustees — these are
+  Shariah rulings). The bundled four are drafts; the calculator refuses
+  a draft. The nisab basis (gold vs silver) is still the Board's open
+  decision and moves the threshold roughly tenfold.
+- **Metal prices set the nisab, so two people set them.** Governed
+  `zakah.metal_price_set`: proposed by `investment_committee`, approved by
+  `compliance_officer` **only**. Payers are warned once prices are over 7
+  days old and refused a figure after 31.
+- **Zakah settles into a separate bank account**, through a Paystack
+  subaccount (Platform Settings → `ZAKAH_SUBACCOUNT_CODE`); no zakah
+  payment is taken until it's configured. It is booked in zakah's own
+  ledger as a **liability (held for recipients)**, never revenue.
+- **100% of zakah reaches recipients.** The payer may add the processing
+  fee on top; otherwise Birr pays it from operating funds. Never deducted
+  from the zakah.
+- **Email optional, like Vault**, with the same accepted AML gaps — plus
+  one more: the threshold check never adds a person's Vault and zakah
+  giving together. Left to Compliance's off-platform review.
+- The calculator's wealth figures stay on the payer's device; a payment
+  stores only the amount and which ruleset version and prices produced it.
+
+- **Distribution to the eight categories** (`ZakahDistribution`),
+  owner's decisions: to verified individuals (`ZakahRecipient`) **and**
+  to active, vetted partners (`Counterparty`), who must report back the
+  people reached. A Mutawalli Officer proposes; a Shariah board member
+  **or** Compliance approves (`zakah.distribution_approve`). Paid by
+  **bank transfer from the zakah account, never Paystack payouts**
+  (those draw on Birr's main balance), and booked only once a second
+  person — Compliance or the Audit Committee — confirms the bank
+  reference (`zakah.distribution_mark_paid`). *Al-'amilin* is closed in
+  code and by a database CHECK, following the 100%-to-recipients
+  decision. Committed zakah can never exceed zakah received (checked
+  under a lock).
+- **Two-person recipient registration**, owner's decisions: a recipient
+  can't be paid until a Shariah board member or Compliance officer
+  approves them (`zakah.recipient_approve`), and changing an approved
+  recipient's **bank details or categories** needs the same
+  (`zakah.recipient_change`); name, phone, the written reason and
+  deactivating take effect at once. The approver is never the person who
+  registered them or asked for the change, even if someone else proposed
+  it. New bank details wait encrypted on the recipient, never in the
+  approval request. The database refuses changing an approved
+  recipient's bank details or categories except by applying an approved
+  change.
+
+- **Refunds** (`ZakahRefund`), owner's decisions: for **mistakes only**
+  (paid twice, wrong amount, not authorised by the payer), never a change
+  of mind. Compliance proposes; the **Board of Trustees** approves
+  (`zakah.refund_approve`, as with Vault refunds). Paid by **bank transfer
+  from the zakah account** (never a Paystack refund, which would come out
+  of Birr's main balance) and booked only once a second person confirms
+  the reference (`zakah.refund_mark_paid`). Only the zakah is refunded,
+  never the fee cover. Refunds share the distributions' spending limit
+  (`zakah-commitments.ts`), so zakah already committed to recipients
+  can't be refunded, and a payment's refunds never exceed its zakah.
+
+- **Zakah al-Fitr** (`ZakahFitrCampaign`), owner's decisions: one sa'
+  of the season's staple per person, valued in Naira; a Mutawalli Officer
+  drafts each season and a Shariah board member approves
+  (`zakah.fitr_campaign_approve`), versioned so a moved Eid can be
+  re-approved. Payments close **the day before Eid** (a database CHECK);
+  staff may close earlier without a second person. The payer chooses
+  **food** (any school) or **cash** (only under an approved **Hanafi**
+  ruleset, checked server-side). The server always works the amount out
+  as people × the campaign's amount. Fitr goes to **the poor and the
+  needy only** (a database CHECK), through both partners and
+  individuals.
+- **Pools** (`ZakahPool`): zakah on wealth, fitr-food and fitr-cash each
+  have their own "held for recipients" ledger account (2000, 2100, 2200)
+  and their own spending limit, and never lend to each other; all three
+  sit in the one zakah bank account (1000). A row's pool never changes.
+
+- **AML holds** on zakah payments, owner's decisions: a Compliance
+  officer **or** a Mutawalli Officer may hold a confirmed payment, with a
+  reason (`zakah.payment_hold`); **only Compliance** may release it, alone
+  (`zakah.payment_release`), as with Vault. A hold reserves the payment's
+  unrefunded zakah out of its pool's spending limit, so it can't be
+  distributed; it's **refused once that zakah is already committed to
+  recipients** (follow up off-platform, e.g. an NFIU report). A held
+  payment can still be refunded; the refund takes over the reservation.
+  The payer is never shown a hold (tipping off).
+
+- **Refund emails**: a payer who gave an email is told when their refund
+  is approved and when it's paid (amount, account's last four digits,
+  bank reference), sent only after the decision commits. A rejection is
+  never emailed, and no email says why — Compliance tells the payer.
+
+- **AML review list** (`zakah.structuring_review`; Ops Console → Zakah
+  Giving Review), owner's decisions: visible to Compliance, the Audit
+  Committee, the Board of Trustees and Mutawalli Officers — deliberately
+  **not** Platform Admin, unlike Vault's. Purely observational, like
+  Vault's: payers paying close to the NGN threshold into one pool,
+  different payers sharing a network, and **giving that spans Vault and
+  zakah** (same email with combined NGN totals reaching the threshold, or
+  a network both products' givers used under different emails) — the gap
+  the threshold check leaves open. Holding a flagged payment is the
+  separate Hold action. The agency (wakalah) wording a payer
+accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
+Supervisory Board must approve before payments open.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

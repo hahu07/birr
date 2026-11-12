@@ -18,6 +18,11 @@ export const PROVIDER_FIELDS: Record<string, ProviderFieldSpec[]> = {
   paystack: [
     { key: "SECRET_KEY", label: "Secret key", secret: true },
     { key: "WEBHOOK_SECRET", label: "Webhook signing secret", secret: true },
+    // The Paystack subaccount (ACCT_...) tied to Birr's separate zakah
+    // bank account. Zakah payments are refused until this is set, so
+    // zakah never settles into the main account (owner's decision,
+    // 2026-11-11).
+    { key: "ZAKAH_SUBACCOUNT_CODE", label: "Zakah subaccount code (ACCT_…)", secret: false },
   ],
   // Env var prefix is COINBASE_COMMERCE_ (matches .env's existing
   // COINBASE_COMMERCE_API_KEY/COINBASE_COMMERCE_WEBHOOK_SECRET), not

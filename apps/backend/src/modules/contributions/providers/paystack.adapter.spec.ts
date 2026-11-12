@@ -66,3 +66,56 @@ describe("PaystackAdapter.verifyPayment()", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+// createPayment()'s subaccount split — what keeps zakah out of Birr's
+// main account. fetch is stubbed; nothing reaches Paystack.
+describe("PaystackAdapter.createPayment() with a split", () => {
+  const realFetch = global.fetch;
+  const settingsWithKey = { get: async () => "sk_test_fake" } as unknown as SettingsService;
+  let sentBody: Record<string, unknown>;
+
+  beforeEach(() => {
+    global.fetch = (async (_url: string, init: RequestInit) => {
+      sentBody = JSON.parse(init.body as string);
+      return {
+        ok: true,
+        status: 200,
+        statusText: "stub",
+        json: async () => ({ status: true, data: { reference: "ref-z", authorization_url: "https://checkout.paystack.com/x" } }),
+      } as Response;
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
+  test("sends the subaccount, the main account's flat share, and makes the main account bear the fee", async () => {
+    const adapter = new PaystackAdapter(settingsWithKey);
+    await adapter.createPayment({
+      amount: "96548.23",
+      currency: "NGN",
+      reference: "ref-z",
+      returnPath: "zakah-payments",
+      split: { subaccount: "ACCT_zakah", mainAccountShareMinorUnits: 154823 },
+    });
+
+    expect(sentBody).toMatchObject({
+      amount: 9654823,
+      currency: "NGN",
+      subaccount: "ACCT_zakah",
+      transaction_charge: 154823,
+      bearer: "account",
+    });
+    expect(sentBody.callback_url).toMatch(/\/zakah-payments\/ref-z$/);
+  });
+
+  test("sends no split fields when none is asked for", async () => {
+    const adapter = new PaystackAdapter(settingsWithKey);
+    await adapter.createPayment({ amount: "500", currency: "NGN", reference: "ref-v" });
+
+    expect(sentBody).not.toHaveProperty("subaccount");
+    expect(sentBody).not.toHaveProperty("transaction_charge");
+    expect(sentBody).not.toHaveProperty("bearer");
+  });
+});

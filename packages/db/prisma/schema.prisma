@@ -370,6 +370,13 @@ model User {
   blogArticlesReviewed           BlogArticle[]                   @relation("BlogArticleReviewer")
   fieldPhotosUploaded            VaultFieldPhoto[]               @relation("FieldPhotoUploader")
   fieldPhotosHidden              VaultFieldPhoto[]               @relation("FieldPhotoHider")
+  zakahRulesetsCreated           ZakahRuleset[]                  @relation("ZakahRulesetCreator")
+  zakahRecipientsCreated         ZakahRecipient[]                @relation("ZakahRecipientCreator")
+  zakahDistributionsCreated      ZakahDistribution[]             @relation("ZakahDistributionCreator")
+  zakahRefundsCreated            ZakahRefund[]                   @relation("ZakahRefundCreator")
+  zakahFitrCampaignsCreated      ZakahFitrCampaign[]             @relation("ZakahFitrCampaignCreator")
+  zakahPaymentsHeld              ZakahPayment[]                  @relation("ZakahPaymentHolder")
+  zakahRecipientChangesRequested ZakahRecipient[]                @relation("ZakahRecipientChangeRequester")
 
   @@map("users")
 }
@@ -1017,32 +1024,40 @@ model AiAgent {
 // There is deliberately no checkerAgentId field or relation anywhere in
 // this schema. An AI agent can never be the checker. Do not add one.
 model GovernedAction {
-  id            String               @id @default(uuid())
+  id                        String               @id @default(uuid())
   // Nullable: a waqf.create action has no waqf yet to reference — that's
   // the whole point of the action. Every other governed action (asset
   // disposal, distribution approval, etc.) is expected to set this.
-  waqfId        String?
-  waqf          Waqf?                @relation(fields: [waqfId], references: [id])
+  waqfId                    String?
+  waqf                      Waqf?                @relation(fields: [waqfId], references: [id])
   // Vault-scoped counterpart to waqfId above — nullable for the same
   // reason (a governed action might belong to neither, e.g. a legacy
   // waqf.create-shaped row), set by whichever handler in
   // GovernedActionsService's map actually resolves one (resolveVaultId,
   // mirroring resolveWaqfId).
-  vaultId       String?
-  vault         Vault?               @relation(fields: [vaultId], references: [id])
-  permissionId  String
-  permission    Permission           @relation(fields: [permissionId], references: [id])
-  makerType     MakerType
-  makerUserId   String?
-  makerUser     User?                @relation("GovernedActionMaker", fields: [makerUserId], references: [id])
-  makerAgentId  String?
-  makerAgent    AiAgent?             @relation(fields: [makerAgentId], references: [id])
-  checkerUserId String?
-  checkerUser   User?                @relation("GovernedActionChecker", fields: [checkerUserId], references: [id])
-  status        GovernedActionStatus @default(proposed)
-  payload       Json
-  createdAt     DateTime             @default(now())
-  decidedAt     DateTime?
+  vaultId                   String?
+  vault                     Vault?               @relation(fields: [vaultId], references: [id])
+  permissionId              String
+  permission                Permission           @relation(fields: [permissionId], references: [id])
+  makerType                 MakerType
+  makerUserId               String?
+  makerUser                 User?                @relation("GovernedActionMaker", fields: [makerUserId], references: [id])
+  makerAgentId              String?
+  makerAgent                AiAgent?             @relation(fields: [makerAgentId], references: [id])
+  checkerUserId             String?
+  checkerUser               User?                @relation("GovernedActionChecker", fields: [checkerUserId], references: [id])
+  status                    GovernedActionStatus @default(proposed)
+  payload                   Json
+  createdAt                 DateTime             @default(now())
+  decidedAt                 DateTime?
+  approvedZakahRuleset      ZakahRuleset?
+  zakahMetalPrice           ZakahMetalPrice?
+  approvedZakahDistribution ZakahDistribution?   @relation("ZakahDistributionApproval")
+  paidZakahDistribution     ZakahDistribution?   @relation("ZakahDistributionPayment")
+  approvedZakahRefund       ZakahRefund?         @relation("ZakahRefundApproval")
+  paidZakahRefund           ZakahRefund?         @relation("ZakahRefundPayment")
+  approvedZakahFitrCampaign ZakahFitrCampaign?   @relation("ZakahFitrCampaignApproval")
+  approvedZakahRecipient    ZakahRecipient?      @relation("ZakahRecipientApproval")
 
   @@index([waqfId])
   @@index([status])
@@ -1532,6 +1547,8 @@ model Counterparty {
   investmentPlacements InvestmentPlacement[]
   vaultInvestments     VaultInvestment[]
   vaultDistributions   VaultDistribution[]
+
+  zakahDistributions ZakahDistribution[]
 
   @@map("counterparties")
 }
@@ -2926,4 +2943,450 @@ model VaultFieldPhoto {
   @@index([vaultDistributionId])
   @@index([vaultMilestoneId])
   @@map("vault_field_photos")
+}
+
+// ---- Zakah (2026-11-11) — a third product alongside Waqf and Vault. Zakah
+// is obligatory, goes only to the eight eligible categories, and Birr acts
+// as each payer's agent (wakil), not as trustee — so it gets its own tables
+// rather than extending either of the others. The calculation itself lives
+// in packages/zakah; these tables hold the two inputs Birr staff control.
+
+enum ZakahMadhhab {
+  maliki
+  hanafi
+  shafii
+  hanbali
+}
+
+enum ZakahRulesetStatus {
+  draft
+  approved
+  superseded
+}
+
+// The madhhab rulings the calculator applies (packages/zakah's
+// ZakahRulings, validated by its validateRulings()). Drafted by a
+// mutawalli_officer from the Shariah Supervisory Board's position,
+// approved only by a shariah_board_member through the governed
+// zakah.ruleset_approve (owner's decision, 2026-11-11). A change is a new
+// version, never an edit, so a stored calculation or receipt can always
+// be explained by the exact rulings it used. Enforced in the database
+// (see the migration): approved and superseded rows can't be edited, no
+// row is ever deleted, at most one draft and one approved version per key.
+//
+// `key` (e.g. "maliki") rather than madhhab alone identifies a ruleset,
+// so the Board can keep more than one for a madhhab if it ever wants to.
+model ZakahRuleset {
+  id                       String             @id @default(uuid())
+  key                      String
+  madhhab                  ZakahMadhhab
+  version                  Int
+  label                    String
+  rulings                  Json
+  status                   ZakahRulesetStatus @default(draft)
+  createdByUserId          String
+  createdBy                User               @relation("ZakahRulesetCreator", fields: [createdByUserId], references: [id])
+  approvedAt               DateTime?
+  approvedGovernedActionId String?            @unique
+  approvedGovernedAction   GovernedAction?    @relation(fields: [approvedGovernedActionId], references: [id], onDelete: Restrict)
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+
+  @@unique([key, version])
+  @@index([status])
+  @@map("zakah_rulesets")
+}
+
+// Gold and silver prices in Naira per gram of pure metal, which set the
+// Naira nisab — and so decide who owes zakah at all. Proposed by
+// investment_committee, approved by compliance_officer through the
+// governed zakah.metal_price_set (owner's decision, 2026-11-11); a row only
+// exists once approved. Append-only, enforced in the database. The
+// current price is the latest asOf. Payers are warned after 7 days and
+// refused a figure after 31 (packages/zakah's priceFreshness).
+model ZakahMetalPrice {
+  id               String         @id @default(uuid())
+  goldPerGram      Decimal
+  silverPerGram    Decimal
+  asOf             DateTime       @db.Date
+  source           String
+  governedActionId String         @unique
+  governedAction   GovernedAction @relation(fields: [governedActionId], references: [id])
+  createdAt        DateTime       @default(now())
+  payments         ZakahPayment[]
+
+  @@index([asOf])
+  @@map("zakah_metal_prices")
+}
+
+// Someone who has paid zakah through Birr, known only by the email they
+// typed — the same identity model, and the same accepted gaps, as
+// VaultDonor (owner's decision, 2026-11-11: email optional, like Vault).
+// Kept separate from VaultDonor because zakah is its own product; one
+// consequence is that the AML threshold check never adds a person's
+// Vault and zakah giving together — left, like the different-emails gap,
+// to Compliance's off-platform review (see CLAUDE.md's 2026-09-15 note).
+model ZakahPayer {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  fullName          String?
+  idType            IdType?
+  idNumberEncrypted String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  payments ZakahPayment[]
+
+  @@map("zakah_payers")
+}
+
+// One zakah payment. Birr receives it as the payer's agent (wakil), so it
+// settles into a separate zakah bank account through a Paystack
+// subaccount (owner's decision, 2026-11-11) and is booked in its own
+// ledger as money held for recipients, never as Birr's revenue.
+//
+// Deliberately does NOT store the wealth figures the payer entered in the
+// calculator — that page promises they stay on the payer's device. Only
+// the amount paid, plus which ruleset version and prices produced it.
+model ZakahPayment {
+  id                    String               @id @default(uuid())
+  payerId               String?
+  payer                 ZakahPayer?          @relation(fields: [payerId], references: [id], onDelete: Restrict)
+  // The zakah itself — what reaches recipients, in full.
+  amount                Decimal
+  // What the payer chose to add so the processing fee is covered too
+  // (0 if they didn't, in which case Birr pays the fee from its own
+  // operating funds). Settles to Birr's main account, never the zakah one.
+  feeCover              Decimal              @default(0)
+  currency              String
+  provider              ContributionProvider
+  providerReference     String               @unique
+  providerPaymentId     String?
+  status                ContributionStatus   @default(pending)
+  confirmedAt           DateTime?
+  // The Paystack subaccount the zakah was routed to — proof of where it settled.
+  settlementSubaccount  String
+  // Which wording of the agency (wakalah) appointment the payer accepted.
+  wakalahConsentVersion String
+  rulesetKey            String?
+  rulesetVersion        Int?
+  metalPriceId          String?
+  metalPrice            ZakahMetalPrice?     @relation(fields: [metalPriceId], references: [id], onDelete: Restrict)
+  // Captured server-side for Compliance's off-platform AML review only,
+  // same as VaultContribution.ipAddress; never gates a payment.
+  ipAddress             String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  // Which pool this zakah belongs to. Zakah al-Fitr is kept apart from
+  // zakah on wealth, and its food and cash forms apart from each other
+  // (owner's decision, 2026-11-11: the payer chooses, cash only under the
+  // Hanafi ruleset) — each pool has its own ledger account and limit.
+  pool           ZakahPool          @default(mal)
+  fitrCampaignId String?
+  fitrCampaign   ZakahFitrCampaign? @relation(fields: [fitrCampaignId], references: [id], onDelete: Restrict)
+  // Number of people the fitr is paid for (one sa' each).
+  fitrPeople     Int?
+  // An AML hold (owner's decisions, 2026-11-11): a Compliance officer or
+  // Mutawalli Officer may hold a confirmed payment; only Compliance may
+  // release it. While held, its unrefunded amount is reserved out of its
+  // pool's spending limit, so it can't be distributed — and a hold is
+  // refused once that zakah is already committed to recipients. Never
+  // shown to the payer (that would be tipping off).
+  heldAt         DateTime?
+  heldReason     String?
+  heldByUserId   String?
+  heldBy         User?              @relation("ZakahPaymentHolder", fields: [heldByUserId], references: [id], onDelete: Restrict)
+  refunds        ZakahRefund[]
+
+  @@index([payerId])
+  @@index([status])
+  @@map("zakah_payments")
+}
+
+// Zakah's own double-entry ledger, never shared with Vault or Waqf. The
+// two system accounts are created by the migration that adds these
+// tables: 1000 Zakah bank account (asset) and 2000 Zakah held for
+// recipients (liability). A confirmed payment debits the first and
+// credits the second; distributing to recipients will later debit the
+// liability. Journal rows are append-only, enforced in the database.
+model ZakahLedgerAccount {
+  id              String            @id @default(uuid())
+  code            String            @unique
+  name            String
+  type            LedgerAccountType
+  isSystemDefault Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+
+  lines ZakahJournalEntryLine[]
+
+  @@map("zakah_ledger_accounts")
+}
+
+enum ZakahJournalEntrySource {
+  payment
+  manual_adjustment
+  distribution
+  refund
+}
+
+model ZakahJournalEntry {
+  id          String                  @id @default(uuid())
+  entryDate   DateTime                @default(now())
+  description String
+  currency    String
+  source      ZakahJournalEntrySource
+  // The ZakahPayment (etc.) that triggered this entry. Unique per source,
+  // so a provider retrying the same webhook can't post the money twice.
+  sourceId    String?
+  actorType   ActorType
+  actorUserId String?
+  createdAt   DateTime                @default(now())
+
+  lines ZakahJournalEntryLine[]
+
+  @@unique([source, sourceId])
+  @@map("zakah_journal_entries")
+}
+
+model ZakahJournalEntryLine {
+  id              String             @id @default(uuid())
+  journalEntryId  String
+  journalEntry    ZakahJournalEntry  @relation(fields: [journalEntryId], references: [id])
+  ledgerAccountId String
+  ledgerAccount   ZakahLedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+  debit           Decimal            @default(0)
+  credit          Decimal            @default(0)
+
+  @@index([journalEntryId])
+  @@index([ledgerAccountId])
+  @@map("zakah_journal_entry_lines")
+}
+
+// The eight categories of people zakah may go to (Qur'an 9:60). amilin
+// (zakah administrators) is in the list for completeness but closed in
+// code: the owner decided 100% of zakah reaches recipients, so Birr
+// takes no administrator's share (2026-11-11).
+// The separate pots zakah is held in. Each has its own "held for
+// recipients" ledger account and its own spending limit; all three sit in
+// the one zakah bank account.
+enum ZakahPool {
+  mal // zakah on wealth
+  fitr_food // Zakah al-Fitr to be delivered as food
+  fitr_cash // Zakah al-Fitr to be passed on as cash (Hanafi payers only)
+}
+
+enum ZakahCategory {
+  fuqara // the poor
+  masakin // the needy
+  amilin // those who administer zakah — closed, see above
+  muallafah // those whose hearts are to be reconciled
+  riqab // freeing those in bondage
+  gharimin // those in debt
+  fi_sabilillah // in the cause of Allah
+  ibn_sabil // the stranded traveller
+}
+
+// A person Birr has verified as eligible for zakah, in one or more
+// categories. Registered by a Mutawalli Officer; each payment to them
+// is separately approved (zakah.distribution_approve), which is where a
+// second person reviews their eligibility. Bank details are encrypted,
+// the same as Waqf beneficiaries. Never deleted — deactivated instead.
+model ZakahRecipient {
+  id                   String          @id @default(uuid())
+  name                 String
+  categories           ZakahCategory[]
+  // Why they qualify, in plain words — what the approver reviews.
+  eligibilityReason    String
+  phone                String?
+  bankDetailsEncrypted String?
+  active               Boolean         @default(true)
+  createdByUserId      String
+  createdBy            User            @relation("ZakahRecipientCreator", fields: [createdByUserId], references: [id])
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  // Two-person registration (owner's decision, 2026-11-11): a recipient
+  // can't be paid until a Shariah board member or Compliance officer —
+  // never the person who registered them — approves them
+  // (zakah.recipient_approve). Enforced in the database too (see the
+  // migration): status only moves forward, and an approved recipient's
+  // categories and bank details change only via an approved change.
+  status                      ZakahRecipientStatus @default(pending_approval)
+  approvedAt                  DateTime?
+  approvalActionId            String?              @unique
+  approvalAction              GovernedAction?      @relation("ZakahRecipientApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  // A requested change to where the money goes or what they're eligible
+  // for, waiting for a second person (zakah.recipient_change) — the live
+  // categories and bank details above never change before that. Present
+  // exactly when pendingChangeAt is set. New bank details stay encrypted
+  // here, never in the governed action's payload or the audit trail.
+  pendingCategories           ZakahCategory[]      @default([])
+  pendingBankDetailsEncrypted String?
+  pendingChangeAt             DateTime?
+  pendingChangeByUserId       String?
+  pendingChangeBy             User?                @relation("ZakahRecipientChangeRequester", fields: [pendingChangeByUserId], references: [id], onDelete: Restrict)
+
+  distributions ZakahDistribution[]
+
+  @@map("zakah_recipients")
+}
+
+enum ZakahRecipientStatus {
+  pending_approval
+  approved
+  rejected
+}
+
+enum ZakahDistributionStatus {
+  pending_approval
+  approved
+  paid
+  rejected
+}
+
+// One payment of zakah, to either a verified individual (recipientId) or
+// a vetted partner organisation (counterpartyId) — never both. Two
+// governed steps, each needing a second person (owner's decisions,
+// 2026-11-11): zakah.distribution_approve (Shariah board or Compliance)
+// before any money moves, then zakah.distribution_mark_paid once finance
+// has paid it by bank transfer from the zakah account — never through
+// Paystack, whose payouts draw on Birr's main balance. Only "paid" posts
+// to the zakah ledger. A partner must then report the individuals it
+// reached.
+model ZakahDistribution {
+  id                  String                  @id @default(uuid())
+  recipientId         String?
+  recipient           ZakahRecipient?         @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  counterpartyId      String?
+  counterparty        Counterparty?           @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+  category            ZakahCategory
+  amount              Decimal
+  currency            String
+  // Why this payment fits this category — required, and what the approver reads.
+  reason              String
+  status              ZakahDistributionStatus @default(pending_approval)
+  approvedAt          DateTime?
+  approvalActionId    String?                 @unique
+  approvalAction      GovernedAction?         @relation("ZakahDistributionApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  paidOn              DateTime?               @db.Date
+  bankReference       String?
+  paymentActionId     String?                 @unique
+  paymentAction       GovernedAction?         @relation("ZakahDistributionPayment", fields: [paymentActionId], references: [id], onDelete: Restrict)
+  // Partner distributions only: what the partner reported back.
+  partnerReachedCount Int?
+  partnerReport       String?
+  partnerReportedAt   DateTime?
+  createdByUserId     String
+  createdBy           User                    @relation("ZakahDistributionCreator", fields: [createdByUserId], references: [id])
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  pool ZakahPool @default(mal)
+
+  @@index([status])
+  @@index([recipientId])
+  @@index([counterpartyId])
+  @@map("zakah_distributions")
+}
+
+// Refunds are for mistakes only (owner's decision, 2026-11-11): a
+// payment made twice, the wrong amount, or one the payer didn't
+// authorise. Not a change of mind.
+enum ZakahRefundReason {
+  duplicate_payment
+  wrong_amount
+  unauthorised_payment
+}
+
+enum ZakahRefundStatus {
+  pending_approval
+  approved
+  paid
+  rejected
+}
+
+// Paying back some or all of a confirmed zakah payment. Owner's
+// decisions, 2026-11-11: Compliance proposes and the Board of Trustees
+// approves (zakah.refund_approve, as with Vault refunds); it is paid by
+// bank transfer from the zakah account — never a Paystack refund, which
+// would come out of Birr's main balance — and booked only once a second
+// person confirms the bank reference (zakah.refund_mark_paid). Only the
+// zakah itself is refunded, never the fee cover a payer added. A refund
+// counts against the same spending limit as distributions, so zakah
+// already committed to recipients can't be refunded. The payer's bank
+// details for the transfer are encrypted.
+model ZakahRefund {
+  id                        String            @id @default(uuid())
+  paymentId                 String
+  payment                   ZakahPayment      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  amount                    Decimal
+  currency                  String
+  reason                    ZakahRefundReason
+  // What happened, in plain words — what the approver reads.
+  details                   String
+  payeeBankDetailsEncrypted String
+  status                    ZakahRefundStatus @default(pending_approval)
+  approvedAt                DateTime?
+  approvalActionId          String?           @unique
+  approvalAction            GovernedAction?   @relation("ZakahRefundApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  paidOn                    DateTime?         @db.Date
+  bankReference             String?
+  paymentActionId           String?           @unique
+  paymentAction             GovernedAction?   @relation("ZakahRefundPayment", fields: [paymentActionId], references: [id], onDelete: Restrict)
+  createdByUserId           String
+  createdBy                 User              @relation("ZakahRefundCreator", fields: [createdByUserId], references: [id])
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+
+  // Always the refunded payment's own pool.
+  pool ZakahPool @default(mal)
+
+  @@index([paymentId])
+  @@index([status])
+  @@map("zakah_refunds")
+}
+
+enum ZakahFitrCampaignStatus {
+  draft
+  approved
+  superseded
+}
+
+// One Ramadan's Zakah al-Fitr: the staple, how much of it is one sa' per
+// person, and its Naira value per person — which a payer pays either as
+// food (Birr buys and delivers it) or, for Hanafi payers, as cash.
+// Drafted by a Mutawalli Officer, approved by a Shariah board member
+// (zakah.fitr_campaign_approve; owner's decision, 2026-11-11). Versioned
+// like rulesets: if the moon sighting moves Eid, a revised version is
+// approved and supersedes the old one; an approved version never changes,
+// except that staff may close payments early (closedAt). Payments close
+// the day before Eid (owner's decision) so food can reach people before
+// the Eid prayer.
+model ZakahFitrCampaign {
+  id                       String                  @id @default(uuid())
+  // e.g. "1448" — one live version per season.
+  season                   String
+  version                  Int
+  staple                   String
+  kgPerPerson              Decimal
+  amountPerPerson          Decimal
+  opensOn                  DateTime                @db.Date
+  expectedEidOn            DateTime                @db.Date
+  // Always the day before expectedEidOn — stored so it's on the record.
+  closesOn                 DateTime                @db.Date
+  closedAt                 DateTime?
+  status                   ZakahFitrCampaignStatus @default(draft)
+  approvedAt               DateTime?
+  approvedGovernedActionId String?                 @unique
+  approvedGovernedAction   GovernedAction?         @relation("ZakahFitrCampaignApproval", fields: [approvedGovernedActionId], references: [id], onDelete: Restrict)
+  createdByUserId          String
+  createdBy                User                    @relation("ZakahFitrCampaignCreator", fields: [createdByUserId], references: [id])
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+
+  payments ZakahPayment[]
+
+  @@unique([season, version])
+  @@map("zakah_fitr_campaigns")
 }

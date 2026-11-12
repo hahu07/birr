@@ -71,6 +71,9 @@ COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
 # nothing had actually run this image's real CMD end to end.
 RUN pnpm --filter @birr/db exec prisma generate
 RUN pnpm --filter @birr/db build
+# @birr/zakah has the same shape (main: "dist/index.js"), so it needs its
+# own build too, or the container fails with MODULE_NOT_FOUND at boot.
+RUN pnpm --filter @birr/zakah build
 RUN pnpm --filter @birr/backend build
 
 # ---- Runtime image ----

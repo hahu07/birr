@@ -23,6 +23,10 @@ import { VaultMilestonesService } from "../vaults/vault-milestones.service";
 import { WaqfMilestonesService } from "../waqf-ledger/waqf-milestones.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { InvitationsService, assertStaffInvitable, invitationAuditSnapshot } from "../invitations/invitations.service";
+import { ZakahService } from "../zakah/zakah.service";
+import { ZakahDistributionsService } from "../zakah/zakah-distributions.service";
+import { ZakahRefundsService } from "../zakah/zakah-refunds.service";
+import { ZakahFitrService } from "../zakah/zakah-fitr.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
@@ -304,12 +308,13 @@ interface GovernedActionHandler {
    * public "Reviewed by". Every earlier handler ignores it, which is
    * why it's a trailing parameter they can simply omit. `makerUserId`
    * (2026-10-18, staff.invite) is who proposed it — null for an
-   * agent-proposed action.
+   * agent-proposed action. `governedActionId` (2026-11-11, zakah.*) is
+   * this action itself, for a row that records which approval created it.
    */
   onApprove(
     payload: unknown,
     tx: Prisma.TransactionClient,
-    ctx: { checkerUserId: string; makerUserId: string | null },
+    ctx: { checkerUserId: string; makerUserId: string | null; governedActionId: string },
   ): Promise<FulfillmentResult>;
   /**
    * decide()-time, on rejection, inside the same transaction. Optional
@@ -351,6 +356,10 @@ export class GovernedActionsService {
     private readonly birrStaffService: BirrStaffService,
     private readonly foundersService: FoundersService,
     private readonly invitationsService: InvitationsService,
+    private readonly zakahService: ZakahService,
+    private readonly zakahDistributionsService: ZakahDistributionsService,
+    private readonly zakahRefundsService: ZakahRefundsService,
+    private readonly zakahFitrService: ZakahFitrService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1254,6 +1263,189 @@ export class GovernedActionsService {
           },
         },
       ],
+      // ---- Zakah (2026-11-11). Not scoped to a Waqf or Vault. A ruleset is
+      // proposed by mutawalli_officer and approved by shariah_board_member
+      // only; metal prices by investment_committee, approved by
+      // compliance_officer only (see seed-data.ts). ZakahService holds the
+      // rules; these entries only connect them to the engine. ----
+      [
+        "zakah.ruleset_approve",
+        {
+          validatePropose: async (payload) => {
+            await this.zakahService.validateRulesetProposal(payload);
+          },
+          checkDuplicate: (payload) => this.zakahService.checkDuplicateRulesetProposal(payload),
+          describePayload: (payload) => this.zakahService.describeRulesetProposal(payload),
+          describeCurrentState: (payload) => this.zakahService.currentRulesetState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahService.approveRuleset(
+              payload,
+              ctx.governedActionId,
+              ctx.checkerUserId,
+              tx,
+            );
+            return { auditAction: "zakah_ruleset.approved", entityType: "ZakahRuleset", entityId: after.id, before, after };
+          },
+        },
+      ],
+      [
+        "zakah.metal_price_set",
+        {
+          validatePropose: async (payload) => {
+            this.zakahService.validateMetalPriceProposal(payload);
+          },
+          checkDuplicate: () => this.zakahService.checkDuplicateMetalPriceProposal(),
+          describePayload: (payload) => this.zakahService.describeMetalPriceProposal(payload),
+          describeCurrentState: () => this.zakahService.currentMetalPriceState(),
+          onApprove: async (payload, tx, ctx) => {
+            const price = await this.zakahService.recordMetalPrice(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_metal_price.set", entityType: "ZakahMetalPrice", entityId: price.id, before: null, after: price };
+          },
+        },
+      ],
+      // Zakah distribution: approval (maker mutawalli_officer; checkers
+      // shariah_board_member / compliance_officer), then confirming it was
+      // paid from the zakah bank account (checkers compliance_officer /
+      // audit_committee). Rejecting an approval releases its amount.
+      [
+        "zakah.distribution_approve",
+        {
+          validatePropose: (payload) => this.zakahDistributionsService.validateApprovalProposal(payload),
+          checkDuplicate: (payload) => this.zakahDistributionsService.checkDuplicateApproval(payload),
+          describePayload: (payload) => this.zakahDistributionsService.describe(payload),
+          describeCurrentState: (payload) => this.zakahDistributionsService.currentState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahDistributionsService.approve(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_distribution.approved", entityType: "ZakahDistribution", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.zakahDistributionsService.reject(payload, tx);
+            const id = (payload as { distributionId: string }).distributionId;
+            return {
+              auditAction: "zakah_distribution.rejected",
+              entityType: "ZakahDistribution",
+              entityId: id,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "zakah.distribution_mark_paid",
+        {
+          validatePropose: (payload) => this.zakahDistributionsService.validatePaidProposalAsync(payload),
+          checkDuplicate: (payload) => this.zakahDistributionsService.checkDuplicatePaid(payload),
+          describePayload: (payload) => this.zakahDistributionsService.describePaid(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahDistributionsService.markPaid(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_distribution.paid", entityType: "ZakahDistribution", entityId: after.id, before, after };
+          },
+        },
+      ],
+      // Zakah recipients (two-person registration): a Mutawalli Officer
+      // registers or changes; a Shariah board member or Compliance officer
+      // approves — never the person who registered them or asked for the
+      // change, even if someone else proposed it.
+      [
+        "zakah.recipient_approve",
+        {
+          validatePropose: (payload) => this.zakahDistributionsService.validateRecipientApproval(payload),
+          checkDuplicate: (payload) => this.zakahDistributionsService.checkDuplicateRecipientAction(payload),
+          describePayload: (payload) => this.zakahDistributionsService.describeRecipientApproval(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahDistributionsService.approveRecipient(payload, ctx.governedActionId, ctx.checkerUserId, tx);
+            return { auditAction: "zakah_recipient.approved", entityType: "ZakahRecipient", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.zakahDistributionsService.rejectRecipient(payload, tx);
+            return {
+              auditAction: "zakah_recipient.rejected",
+              entityType: "ZakahRecipient",
+              entityId: (payload as { recipientId: string }).recipientId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "zakah.recipient_change",
+        {
+          validatePropose: (payload) => this.zakahDistributionsService.validateRecipientChange(payload),
+          checkDuplicate: (payload) => this.zakahDistributionsService.checkDuplicateRecipientAction(payload),
+          describePayload: (payload) => this.zakahDistributionsService.describeRecipientChange(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahDistributionsService.approveRecipientChange(payload, ctx.checkerUserId, tx);
+            return { auditAction: "zakah_recipient.change_approved", entityType: "ZakahRecipient", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.zakahDistributionsService.rejectRecipientChange(payload, tx);
+            return {
+              auditAction: "zakah_recipient.change_rejected",
+              entityType: "ZakahRecipient",
+              entityId: (payload as { recipientId: string }).recipientId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      // Zakah refunds, for mistakes only: Compliance proposes, the Board
+      // approves; then confirming it was paid from the zakah account
+      // (checkers compliance_officer / audit_committee). Rejecting
+      // releases the amount.
+      [
+        "zakah.refund_approve",
+        {
+          validatePropose: (payload) => this.zakahRefundsService.validateApprovalProposal(payload),
+          checkDuplicate: (payload) => this.zakahRefundsService.checkDuplicateApproval(payload),
+          describePayload: (payload) => this.zakahRefundsService.describe(payload),
+          describeCurrentState: (payload) => this.zakahRefundsService.currentState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahRefundsService.approve(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_refund.approved", entityType: "ZakahRefund", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.zakahRefundsService.reject(payload, tx);
+            return {
+              auditAction: "zakah_refund.rejected",
+              entityType: "ZakahRefund",
+              entityId: (payload as { refundId: string }).refundId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "zakah.refund_mark_paid",
+        {
+          validatePropose: (payload) => this.zakahRefundsService.validatePaidProposalAsync(payload),
+          checkDuplicate: (payload) => this.zakahRefundsService.checkDuplicatePaid(payload),
+          describePayload: (payload) => this.zakahRefundsService.describePaid(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahRefundsService.markPaid(payload, ctx.governedActionId, tx);
+            return { auditAction: "zakah_refund.paid", entityType: "ZakahRefund", entityId: after.id, before, after };
+          },
+        },
+      ],
+      // Zakah al-Fitr campaign: a Mutawalli Officer proposes the season's
+      // staple, sa' and Naira amount; a Shariah board member approves. The
+      // proposal carries those fields, so the checker approves exactly them.
+      [
+        "zakah.fitr_campaign_approve",
+        {
+          validatePropose: (payload) => this.zakahFitrService.validateApprovalProposal(payload),
+          checkDuplicate: (payload) => this.zakahFitrService.checkDuplicateApproval(payload),
+          describePayload: (payload) => this.zakahFitrService.describe(payload),
+          describeCurrentState: (payload) => this.zakahFitrService.currentState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.zakahFitrService.approve(payload, ctx.governedActionId, ctx.checkerUserId, tx);
+            return { auditAction: "zakah_fitr_campaign.approved", entityType: "ZakahFitrCampaign", entityId: after.id, before, after };
+          },
+        },
+      ],
       // ---- Staff security. Not scoped to a Waqf or Vault. Resetting a
       // staff member's two-factor authentication used to be one Platform
       // Admin's unilateral action; it's maker-checker now (maker:
@@ -1840,7 +2032,11 @@ export class GovernedActionsService {
         // required, so approval always has a handler to call once
         // `handler` itself resolved.
         if (input.approve) {
-          fulfillment = await handler.onApprove(action.payload, tx, { checkerUserId: input.checkerUserId, makerUserId: action.makerUserId });
+          fulfillment = await handler.onApprove(action.payload, tx, {
+            checkerUserId: input.checkerUserId,
+            makerUserId: action.makerUserId,
+            governedActionId: action.id,
+          });
         } else if (handler.onReject) {
           fulfillment = await handler.onReject(action.payload, tx);
         }
@@ -1892,6 +2088,16 @@ export class GovernedActionsService {
           `Failed to deliver staff invitation "${invitationId}":`,
           err instanceof Error ? err.stack : String(err),
         );
+      });
+    }
+    // Zakah refunds: the payer is emailed once the refund is approved and
+    // again once it's paid, only after the deciding transaction commits.
+    // A failed email never undoes the decision; it's logged.
+    if (input.approve && result.fulfillment?.entityType === "ZakahRefund") {
+      const stage = result.fulfillment.auditAction === "zakah_refund.paid" ? "paid" : "approved";
+      const refundId = result.fulfillment.entityId;
+      this.zakahRefundsService.notifyPayer(refundId, stage).catch((err: unknown) => {
+        this.logger.error(`Failed to email the payer about zakah refund "${refundId}":`, err instanceof Error ? err.stack : String(err));
       });
     }
     if (input.approve && result.fulfillment?.entityType === "Distribution") {

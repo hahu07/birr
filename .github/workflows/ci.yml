@@ -172,6 +172,9 @@ jobs:
       # apps/backend/Dockerfile's own comment already documents for the
       # container build; this job needed the identical fix.
       - run: pnpm --filter @birr/db build
+      # @birr/zakah (main: dist/index.js) has the same gap: the zakah
+      # module's specs require its compiled CommonJS.
+      - run: pnpm --filter @birr/zakah build
       - run: pnpm --filter @birr/db exec prisma migrate deploy
       # Several specs (e.g. governed-actions.service.spec.ts, see its own
       # beforeAll comment) reuse the seeded roles/permissions/
@@ -264,6 +267,9 @@ jobs:
       # ... from "@birr/db"` needs this package's own compiled JS, not
       # just the generated Prisma Client.
       - run: pnpm --filter @birr/db build
+      # Same for @birr/zakah: the backend Playwright starts requires its
+      # compiled JS, and the web app imports it.
+      - run: pnpm --filter @birr/zakah build
       - run: pnpm --filter @birr/db exec prisma migrate deploy
       - run: pnpm --filter @birr/db exec prisma db seed
         env:
@@ -273,7 +279,16 @@ jobs:
       # the browser binary itself, which a local run without sudo access
       # can't do (falls back to a browser-only install there instead;
       # see apps/web/e2e's own notes on that gap).
-      - run: pnpm --filter @birr/web exec playwright install --with-deps chromium
+      # If apt can't reach Ubuntu's mirrors (seen three runs in a row on
+      # 2026-11-11: "Temporary failure resolving archive.ubuntu.com"), fall
+      # back to the browser alone: the runner image already has the shared
+      # libraries Chromium needs ("already the newest version" in those
+      # logs) — only extra font packages failed to download. A browser that
+      # truly can't start still fails the e2e step below.
+      - run: |
+          pnpm --filter @birr/web exec playwright install --with-deps chromium \
+            || { echo "::warning::apt couldn't install Chromium's system packages; installing the browser alone"; \
+                 pnpm --filter @birr/web exec playwright install chromium; }
       # The real login-endpoint rate limit (10 per 10 min — see
       # apps/backend/src/common/auth/login-throttle.ts) is raised for
       # this run via apps/web/playwright.config.ts's own backend
@@ -302,6 +317,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The zakah pages import @birr/zakah, whose main is its compiled
+      # dist/ — built here for the same reason the test job builds
+      # @birr/db. Its own tests run here too: pure TypeScript, no
+      # database, so this is the natural home for them.
+      - run: pnpm --filter @birr/zakah build
+      - run: pnpm --filter @birr/zakah test
       # Vitest + React Testing Library — jsdom-based, no Postgres/backend
       # needed (every API call the tested components make is mocked at
       # the lib/api.ts boundary).

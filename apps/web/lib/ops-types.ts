@@ -1316,3 +1316,182 @@ export interface VaultFieldPhoto {
   waitingFor: string | null;
   createdAt: string;
 }
+
+/** A version of a zakah ruleset (see ZakahRuleset): the madhhab rulings the calculator applies once approved. */
+export interface ZakahRulesetRow {
+  id: string;
+  key: string;
+  madhhab: "maliki" | "hanafi" | "shafii" | "hanbali";
+  version: number;
+  label: string;
+  rulings: import("@birr/zakah").ZakahRulings;
+  status: "draft" | "approved" | "superseded";
+  approvedAt: string | null;
+  createdAt: string;
+}
+
+/** An approved gold/silver price (see ZakahMetalPrice). Amounts are Naira per gram of pure metal. */
+export interface ZakahMetalPriceRow {
+  id: string;
+  goldPerGram: string;
+  silverPerGram: string;
+  asOf: string;
+  source: string;
+  createdAt: string;
+}
+
+/** A zakah payment as the Ops Console lists it (see ZakahPayment). Amounts in Naira; never the payer's ID. */
+export interface ZakahPaymentRow {
+  id: string;
+  /** AML hold (staff only — never shown to the payer). */
+  heldAt?: string | null;
+  heldReason?: string | null;
+  heldBy?: string | null;
+  pool?: ZakahPool;
+  fitrPeople?: number | null;
+  amount: string;
+  feeCover: string;
+  currency: string;
+  status: "pending" | "confirmed" | "failed";
+  rulesetKey: string | null;
+  rulesetVersion: number | null;
+  createdAt: string;
+  confirmedAt: string | null;
+  payer: { email: string; fullName: string | null } | null;
+}
+
+/** One account in zakah's own ledger, with its balance. */
+export interface ZakahLedgerBalance {
+  code: string;
+  name: string;
+  type: string;
+  debit: string;
+  credit: string;
+  balance: string;
+}
+
+/** A person verified as eligible for zakah (see ZakahRecipient). Lists carry only the last four account digits. */
+export interface ZakahRecipientRow {
+  id: string;
+  name: string;
+  categories: import("@birr/zakah").ZakahCategoryKey[];
+  eligibilityReason: string;
+  phone: string | null;
+  active: boolean;
+  bank: { bankName: string; accountLast4: string } | null;
+  /** Two-person registration: can't be paid until a second person approves. */
+  status: "pending_approval" | "approved" | "rejected";
+  approvedAt: string | null;
+  /** A bank-detail or category change waiting for a second person; the live ones apply until then. */
+  pendingChange: { categories: import("@birr/zakah").ZakahCategoryKey[]; bank: { bankName: string; accountLast4: string } | null } | null;
+  pendingChangeAt: string | null;
+  createdAt: string;
+}
+
+/** One zakah payment to an individual or a partner (see ZakahDistribution). */
+export interface ZakahDistributionRow {
+  id: string;
+  pool?: ZakahPool;
+  recipient: { id: string; name: string } | null;
+  counterparty: { id: string; name: string } | null;
+  category: import("@birr/zakah").ZakahCategoryKey;
+  amount: string;
+  currency: string;
+  reason: string;
+  status: "pending_approval" | "approved" | "paid" | "rejected";
+  approvedAt: string | null;
+  paidOn: string | null;
+  bankReference: string | null;
+  partnerReachedCount: number | null;
+  partnerReport: string | null;
+  partnerReportedAt: string | null;
+  createdAt: string;
+}
+
+/** GET /zakah-distributions/summary — headline figures in Naira. */
+export interface ZakahDistributionSummary {
+  pool?: ZakahPool;
+  currency: string;
+  received: string;
+  committed: string;
+  paid: string;
+  /** Paid back to payers by refund. */
+  refunded: string;
+  /** Frozen by AML holds (already counted as committed). */
+  held?: string;
+  available: string;
+  oldestUndistributedSince: string | null;
+  byCategory: { category: import("@birr/zakah").ZakahCategoryKey; status: string; amount: string }[];
+}
+
+/** A refund of zakah paid by mistake (see ZakahRefund). Lists carry only the last four account digits. */
+export interface ZakahRefundRow {
+  id: string;
+  amount: string;
+  currency: string;
+  reason: "duplicate_payment" | "wrong_amount" | "unauthorised_payment";
+  details: string;
+  status: "pending_approval" | "approved" | "paid" | "rejected";
+  approvedAt: string | null;
+  paidOn: string | null;
+  bankReference: string | null;
+  payeeBank: { bankName: string; accountLast4: string };
+  createdAt: string;
+  payment: { id: string; amount: string; createdAt: string; payer: { email: string; fullName: string | null } | null };
+}
+
+/** One version of a season's Zakah al-Fitr campaign (see ZakahFitrCampaign). */
+export interface ZakahFitrCampaignRow {
+  id: string;
+  season: string;
+  version: number;
+  staple: string;
+  kgPerPerson: string;
+  amountPerPerson: string;
+  opensOn: string;
+  expectedEidOn: string;
+  closesOn: string;
+  closedAt: string | null;
+  status: "draft" | "approved" | "superseded";
+  approvedAt: string | null;
+  createdAt: string;
+}
+
+export type ZakahPool = "mal" | "fitr_food" | "fitr_cash";
+
+/** A zakah payment as the AML review list shows it. */
+export interface ZakahReviewPayment {
+  id: string;
+  pool: ZakahPool;
+  amount: string;
+  createdAt: string;
+  heldAt: string | null;
+  payerId: string | null;
+  payerEmail: string | null;
+  payerFullName: string | null;
+  payerIdCaptured: boolean;
+  fractionOfThreshold?: number;
+}
+
+/** A Vault gift as the zakah review list shows it, for giving that spans both products. */
+export interface ZakahReviewVaultGift {
+  id: string;
+  vaultName: string;
+  amount: string;
+  createdAt: string;
+  donorEmail: string;
+  donorFullName: string | null;
+  donorIdCaptured: boolean;
+}
+
+/** GET /zakah-payments/structuring-review — patterns for a person to judge, never a block. */
+export interface ZakahStructuringReview {
+  currency: string;
+  thresholdAmount: string | null;
+  nearThreshold: { pool: ZakahPool; distinctPayerCount: number; payments: ZakahReviewPayment[] }[];
+  ipClusters: { ipAddress: string; distinctPayerCount: number; payments: ZakahReviewPayment[] }[];
+  acrossVault: {
+    sameEmail: { email: string; zakahTotal: string; vaultTotal: string; combinedTotal: string; zakah: ZakahReviewPayment[]; vault: ZakahReviewVaultGift[] }[];
+    sharedNetworks: { ipAddress: string; distinctEmailCount: number; zakah: ZakahReviewPayment[]; vault: ZakahReviewVaultGift[] }[];
+  };
+}

@@ -79,6 +79,8 @@ const UNGATED_WRITE_ROUTES: Record<string, string> = {
 
   "POST /vault-contributions": PUBLIC_GIVING,
   "POST /vault-contributions/:id/verify": PUBLIC_GIVING,
+  "POST /zakah-payments": PUBLIC_GIVING,
+  "POST /zakah-payments/:id/verify": PUBLIC_GIVING,
   "POST /webhooks/stripe": PROVIDER_WEBHOOK,
   "POST /webhooks/paystack": PROVIDER_WEBHOOK,
   "POST /webhooks/stablecoin": PROVIDER_WEBHOOK,
