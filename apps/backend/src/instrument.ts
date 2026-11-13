@@ -4,7 +4,9 @@
 // them; calling Sentry.init() from inside bootstrap() would be too late
 // for most of it. No-op when SENTRY_DSN is unset (local dev, and any
 // deployment that hasn't configured one yet) — never a hard requirement
-// to boot.
+// to boot. load-env only reads a file (fs/path), so loading it first
+// doesn't get ahead of anything Sentry patches.
+import "./load-env";
 import * as Sentry from "@sentry/nestjs";
 
 Sentry.init({
