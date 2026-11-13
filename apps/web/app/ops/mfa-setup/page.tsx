@@ -5,7 +5,7 @@
 // and SessionAuthGuard backs that up server-side by rejecting every
 // other route until enrollment is confirmed. MFA is mandatory here, not
 // opt-in — see BirrStaffService.login's own comment.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import type { MfaEnrollmentConfirm, MfaEnrollmentStart } from "../../../lib/ops-types";
 import { Alert, Button, Card, IconMark, Input } from "@birr/ui";
@@ -19,8 +19,15 @@ export default function MfaSetupPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  // Each enroll call replaces the pending secret, so it must run once per
+  // mount. Without this, React's dev-mode double effect sent two, and the
+  // QR shown could be a secret the second call had already replaced —
+  // every code from it was then rejected.
+  const enrollStartedRef = useRef(false);
 
   useEffect(() => {
+    if (enrollStartedRef.current) return;
+    enrollStartedRef.current = true;
     apiFetchJson<MfaEnrollmentStart>("/birr-staff/me/mfa/enroll", { method: "POST" })
       .then((data) => {
         setEnrollment(data);

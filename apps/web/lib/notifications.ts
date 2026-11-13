@@ -31,6 +31,7 @@ export function useNotifications(enabled: boolean) {
       .then((data) => {
         if (!cancelled) setNotifications(data);
       })
+      .catch(() => {})
       .finally(() => {
         if (!cancelled) setLoading(false);
       });

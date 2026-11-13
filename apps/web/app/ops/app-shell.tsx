@@ -146,8 +146,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // check is enough even for /accept-invitation?token=....
   const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
   const isMfaExemptRoute = MFA_EXEMPT_ROUTES.includes(pathname);
+  // Not until MFA is enrolled — see hasCaseload's comment below.
   const { notifications, unreadCount, loading: notificationsLoading, refresh, markRead, markAllRead } =
-    useNotifications(!loading && Boolean(staff));
+    useNotifications(!loading && Boolean(staff?.user.mfaEnabled));
 
   // Drives the "My Desk" nav item's visibility (see NAV_GROUPS'
   // requiresCaseload) — a staff member with nothing currently on their
@@ -159,10 +160,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   // something to look at right now," not "did this staff member ever
   // touch a case." Fetched once per session here, not inside
   // my-desk/page.tsx itself, since the nav needs to know this before
-  // that page is ever visited.
+  // that page is ever visited. Like every staff fetch here, it waits for
+  // MFA enrollment: until then the backend refuses staff routes, and the
+  // shell is only redirecting to /ops/mfa-setup.
   const [hasCaseload, setHasCaseload] = useState(false);
   useEffect(() => {
-    if (!staff) return;
+    if (!staff?.user.mfaEnabled) return;
     let cancelled = false;
     apiFetchJson<WaqfCaseAssignment[]>(`/waqf-case-assignments?birrStaffId=${staff.id}`)
       .then((data) => {
@@ -184,7 +187,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   // page itself is).
   const [pendingApprovals, setPendingApprovals] = useState<number | null>(null);
   useEffect(() => {
-    if (!staff) return;
+    if (!staff?.user.mfaEnabled) return;
     let cancelled = false;
     apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed")
       .then((actions) => {
