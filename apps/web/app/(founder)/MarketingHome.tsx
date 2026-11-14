@@ -117,7 +117,7 @@ const FAQ_ITEMS = [
   {
     question: "Who manages my Waqf Fund once it's established?",
     answer:
-      "Ongoing governance — asset disposal, distribution approval, investment changes — moves to Birr's own staff under dual authorisation: every action is proposed by one person and approved by a different one, enforced by the database itself, not just policy. You keep the purpose — which causes it supports and how its endowment is earmarked between them.",
+      "Ongoing governance — asset disposal, distribution approval, investment changes — goes through Birr's governance as trustee: every action is proposed by a Birr officer and approved by a different person from the body responsible for it — the Board of Trustees, Investment Committee, Audit Committee, Shariah Supervisory Board or Compliance — enforced by the database itself, not just policy. You keep the purpose — which causes it supports and how its endowment is earmarked between them.",
   },
   {
     question: "What's the difference between a Waqf Fund and a Vault?",
@@ -230,7 +230,7 @@ export default function MarketingHome({
                 tone="primary"
                 title="Distribution approved"
                 line="₦620,000 to Education"
-                note="Proposed by one officer, approved by another"
+                note="Proposed by an officer, approved by a Board member"
                 icon={<IconCheckCircle className="h-4 w-4" />}
               />
               <FloatingNote
@@ -711,7 +711,7 @@ function DualAuthorisationDiagram() {
       viewBox="0 0 360 134"
       className="block h-auto w-full"
       role="img"
-      aria-label="Officer A proposes, a different Officer B approves, and only then is the action carried out and recorded. If Officer A tries to approve their own proposal, the system refuses to record it."
+      aria-label="A Birr officer proposes, a different person from the responsible board or committee approves, and only then is the action carried out and recorded. If the officer tries to approve their own proposal, the system refuses to record it."
     >
       <defs>
         <marker id="home-auth-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
@@ -722,19 +722,19 @@ function DualAuthorisationDiagram() {
         </marker>
       </defs>
       <rect x="1" y="10" width="92" height="50" rx="7" fill="#eff9f6" stroke="#aee1d1" />
-      <text x="47" y="31" textAnchor="middle" style={b}>Officer A</text>
+      <text x="47" y="31" textAnchor="middle" style={b}>Officer</text>
       <text x="47" y="46" textAnchor="middle" style={s}>proposes</text>
       <path d="M96 35H130" fill="none" stroke="#17755d" strokeWidth="1.4" markerEnd="url(#home-auth-arrow)" />
       <rect x="134" y="10" width="92" height="50" rx="7" fill="#eff9f6" stroke="#aee1d1" />
-      <text x="180" y="31" textAnchor="middle" style={b}>Officer B</text>
-      <text x="180" y="46" textAnchor="middle" style={s}>reviews &amp; approves</text>
+      <text x="180" y="31" textAnchor="middle" style={b}>Approver</text>
+      <text x="180" y="46" textAnchor="middle" style={s}>board or committee</text>
       <path d="M229 35H263" fill="none" stroke="#17755d" strokeWidth="1.4" markerEnd="url(#home-auth-arrow)" />
       <rect x="267" y="10" width="92" height="50" rx="7" fill="#113f33" />
       <text x="313" y="31" textAnchor="middle" style={{ ...b, fill: "#fff" }}>Carried out</text>
       <text x="313" y="46" textAnchor="middle" style={{ ...s, fill: "#d7f0e8" }}>and recorded</text>
       <path d="M47 62V107H130" fill="none" stroke="#a23b2a" strokeWidth="1.3" strokeDasharray="3 2.6" markerEnd="url(#home-auth-refused)" />
       <rect x="134" y="84" width="225" height="46" rx="7" fill="#fbeeeb" stroke="#e7b4aa" />
-      <text x="246.5" y="103" textAnchor="middle" style={s}>Officer A tries to approve their own proposal</text>
+      <text x="246.5" y="103" textAnchor="middle" style={s}>The officer tries to approve their own proposal</text>
       <text x="246.5" y="119" textAnchor="middle" style={{ ...b, fill: "#a23b2a" }}>The system refuses to record it</text>
     </svg>
   );
