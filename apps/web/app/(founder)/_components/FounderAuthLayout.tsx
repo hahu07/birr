@@ -12,7 +12,7 @@ import { GeometricPattern } from "./ui";
 
 const POINTS = [
   "Establish a Foundation and Waqf Fund yourself — no approval gate.",
-  "Every governance decision needs two different people: a Birr officer proposes it, and a member of the responsible board or committee approves it.",
+  "Every governance decision is made by a member of the responsible board or committee, never by the person who proposed it.",
   "Every action is recorded in an immutable audit trail.",
 ];
 
