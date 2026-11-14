@@ -23,8 +23,11 @@ person exists before anything can be established.
 **2. Founder & Foundation.**
 One form (`onboarding/founder-foundation`), submitted together:
 - **Who's establishing**: an institution (bank, university, corporate
-  foundation, NGO, family office, government, awqaf authority, other)
-  or an individual.
+  foundation, NGO, family office, government, awqaf authority, other),
+  an individual, or **jointly, with family or friends** (2026-11-14).
+  "Jointly" is recorded as an individual founder on a Foundation with
+  `establishedJointly`, and opens the co-founder invites straight away;
+  an informal group is never an institution.
 - **The Foundation itself**: name, purpose, jurisdiction, optional logo.
 
 The **Purpose** field has a "✦ Help me write this" button — **Rafiq**
@@ -40,18 +43,28 @@ whatever gets established under it.
 **3. Waqf Fund.**
 The first Waqf Fund under that Foundation — one of three types
 (Investment / Asset / Project) — then a real contribution
-(Stripe, Paystack, or a stablecoin) to fund it. The fund's status only
+(Paystack in Naira, or a stablecoin; Stripe was removed on 2026-09-19,
+see CLAUDE.md) to fund it. The fund's status only
 flips to `active` once that first contribution actually confirms; step 4
 isn't reachable before that.
 
 **4. Sign deed.**
-A typed-name e-signature on the real Deed of Waqf — the legal instrument
-that irrevocably dedicates the endowed assets and formally appoints Birr
-as Mutawalli. The rendered `deedText` (see
-`waqf-deeds/deed-template.ts`) is a fixed legal template interpolated
-with the actual fund facts, snapshotted verbatim onto the `WaqfDeed` row
-at signing time — never regenerated or reinterpreted later, even if the
-template itself changes afterward.
+A typed-name e-signature on the Foundation's Deed of Waqf — one deed per
+Foundation, covering every Waqf Fund under it, present and future (the
+per-fund `WaqfDeed` is superseded; see CLAUDE.md). The page shows the
+full deed text exactly as it will be stored
+(`GET /foundation-deeds/:foundationId/preview`), and signing is refused
+if that text changed after it was shown. The rendered `deedText`
+(`foundation-deeds/foundation-deed-template.ts`) is snapshotted verbatim
+onto the `FoundationDeed` row and never regenerated.
+
+For a joint Foundation (established jointly, or with more than one
+founder by signing time) the deed is the joint variant: the signer signs
+for themselves and every co-founder, present and future, and the deed
+lists the current co-founders. Each co-founder, when accepting their
+invitation (`/ops/accept-invitation?kind=co_founder`), accepts a
+statement — authorizing the signer if the deed isn't signed yet, adopting
+it if it is — stored as an immutable `CoFounderDeedConsent`.
 
 Once all four are done, the Founder lands on the real dashboard —
 Overview, Portfolio, Impact, Team.

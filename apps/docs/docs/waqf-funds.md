@@ -18,8 +18,8 @@ involvement or approval step:
 3. **Establish one or more Waqf Funds** under that Foundation. Creating
    a Waqf Fund *is itself* the Founder's agreement that Birr becomes
    Mutawalli over it — there's no separate sign-off step.
-4. **Fund it** — accept contributions through card payments (Stripe),
-   regional payment rails (Paystack), or stablecoin.
+4. **Fund it** — pay in through Paystack in Naira (bank transfer or
+   local card), or in stablecoin.
 5. **Generate a waqf deed** — the founding legal document, drafted from
    jurisdiction-specific templates. One deed, signed once, covers a
    Foundation and every Waqf Fund established under it, present and
@@ -30,6 +30,20 @@ involvement or approval step:
    after establishment is Birr's fiduciary responsibility, not the
    Founder's to operate.
 
+### Establishing jointly, with family or friends
+
+A married couple, siblings or a group of friends can establish a
+Foundation together without being a registered organization. One of
+them chooses **Jointly, with family or friends** and invites the others
+as co-founders. Each co-founder has their own account, with full and
+equal access, and can pay in their own money.
+
+The deed is still signed once. The founder who signs it signs for
+themselves and for every co-founder, present and future. Each
+co-founder agrees to the deed in their own name when they accept their
+invitation, and Birr keeps a dated record of that agreement. Anyone
+signing sees the full text of the deed before they sign it.
+
 ## The three types of Waqf Fund
 
 A Founder chooses one of three types when establishing a Waqf Fund,
@@ -39,7 +53,7 @@ depending on what they're endowing and how they want it to work:
 |---|---|---|---|
 | **Investment** | Liquid capital | The capital is invested in a Shariah-compliant portfolio; only the *returns* fund the cause — the principal is preserved indefinitely (the classical waqf principle of perpetuity) | A family endows $50,000 into a diversified halal portfolio; yearly returns fund scholarships indefinitely |
 | **Asset** | A physical, income-producing property | The property itself, or the income it produces (rent, usage fees), funds the cause directly — there's no investment layer | A donated apartment building whose rental income pays a mosque's utilities and imam's stipend |
-| **Project** | Funds committed to a specific initiative | Contributions fund the initiative directly, start to finish. This is the one type more than one Founder can establish jointly | Several institutions jointly fund a well-drilling program across rural villages |
+| **Project** | Funds committed to a specific initiative | Contributions fund the initiative directly, start to finish | Several institutions jointly fund a well-drilling program across rural villages |
 
 A Founder can establish as many Waqf Funds, of any mix of types, under
 one Foundation as they like.

@@ -524,6 +524,36 @@ extending Waqf or Vault ones. Owner's decisions so far:
 accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
 Supervisory Board must approve before payments open.
 
+**Update, 2026-11-14 — joint waqf: one founder signs for all, each
+co-founder adopts the deed.** Families, couples and friends establishing
+a Foundation together had no path: they aren't an Institution, and the
+one-per-Foundation deed (see the Foundation Deed note above) was signed
+by whoever signed first, so another co-founder's money was dedicated on
+someone else's signature with no record they agreed. Owner's decisions
+("A2" in the Board note *Joint Waqf: Who Signs the Deed*):
+- A third founder type, **"Jointly, with family or friends"**: recorded
+  as an individual founder on a Foundation with `establishedJointly`. An
+  informal group is never an institution — establishing or joining a
+  joint Foundation as one is refused.
+- The deed then uses a **joint variant**
+  (`JOINT_FOUNDATION_DEED_TEMPLATE_VERSION`): the first founder signs for
+  themselves and every co-founder, present and future, and the deed
+  lists the co-founders as of signing. It also applies when a
+  single-founder Foundation has gained a co-founder before signing.
+  Single-founder deeds are byte-identical to v1.
+- **Every co-founder accepts a statement when accepting their
+  invitation** (`co-founder-consent.ts`): authorizing the signer if the
+  deed isn't signed yet, adopting it if it is. Stored as an immutable
+  `CoFounderDeedConsent` with the exact text and version, plus an audit
+  row; acceptance is refused without the current version.
+- The signing page now shows **the full deed text** that will be
+  stored (`GET /foundation-deeds/:foundationId/preview`), not only a
+  summary, and signing is refused if the text changed since it was shown.
+- **Went live at the owner's direction before Legal or the Shariah
+  Supervisory Board reviewed the joint wording or the statements** — the
+  Board note asks them to. A revision they approve gets a new version.
+- Co-founders who joined before this change were left as they are.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

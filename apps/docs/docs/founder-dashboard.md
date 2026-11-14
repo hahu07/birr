@@ -144,12 +144,19 @@ Only a Primary contact sees the "Invite someone" button — everyone else
 just doesn't see it, since they wouldn't be allowed to use it anyway.
 Inviting a colleague sends them an email with a link to join; if the
 email can't be sent automatically, Amina gets a copy of that link to
-send herself (by WhatsApp, for example) — that's exactly the situation
-shown in the second screenshot earlier in this conversation, where the
-system says *"Couldn't send the email automatically — copy this link
-and send it yourself."* Pending invitations that haven't been accepted
+send herself (by WhatsApp, for example): the system says *"Couldn't
+send the email automatically — copy this link and send it yourself."*
+Pending invitations that haven't been accepted
 yet are listed separately, and Amina can cancel one if she invited the
 wrong person.
+
+Teammates are different from **co-founders**. A teammate helps run
+Amina's account; a co-founder is someone establishing the Foundation
+with her, such as her husband or a sibling, with their own account and
+their own money in it. Co-founders are invited from the Foundation's
+page (or while setting it up, by choosing "Jointly, with family or
+friends"). Each one agrees to the Foundation's deed in their own name
+when they join, and the deed page lists who agreed and when.
 
 ## Activity — her own history book
 
