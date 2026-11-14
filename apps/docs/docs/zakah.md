@@ -162,8 +162,8 @@ Birr delivers zakah in two ways:
 - **Through vetted partner organizations**, for example a food bank.
   Partners have to report back on the people they reached.
 
-Every payment out is approved by someone other than the person who
-proposed it. It's paid by bank transfer from Birr's separate zakah
+Every payment out is decided by members of the responsible board or
+committee. It's paid by bank transfer from Birr's separate zakah
 account, and only recorded as paid once another person has checked the
 bank's reference. Birr can never commit more zakah than it has
 received.

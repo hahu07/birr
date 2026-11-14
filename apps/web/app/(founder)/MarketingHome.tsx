@@ -117,7 +117,7 @@ const FAQ_ITEMS = [
   {
     question: "Who manages my Waqf Fund once it's established?",
     answer:
-      "Ongoing governance — asset disposal, distribution approval, investment changes — goes through Birr's governance as trustee: every action is proposed by a Birr officer and approved by a different person from the body responsible for it — the Board of Trustees, Investment Committee, Audit Committee, Shariah Supervisory Board or Compliance — enforced by the database itself, not just policy. You keep the purpose — which causes it supports and how its endowment is earmarked between them.",
+      "Ongoing governance — asset disposal, distribution approval, investment changes — is decided by members of the responsible Birr board or committee — the Board of Trustees, Investment Committee, Audit Committee or Shariah Supervisory Board. You keep the purpose — which causes it supports and how its endowment is earmarked between them.",
   },
   {
     question: "What's the difference between a Waqf Fund and a Vault?",
@@ -230,7 +230,7 @@ export default function MarketingHome({
                 tone="primary"
                 title="Distribution approved"
                 line="₦620,000 to Education"
-                note="Proposed by an officer, approved by a Board member"
+                note="Decided by members of the Board of Trustees"
                 icon={<IconCheckCircle className="h-4 w-4" />}
               />
               <FloatingNote

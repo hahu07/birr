@@ -27,13 +27,10 @@ One rule applies to the *entire* dashboard, so it's worth saying up
 front: **Amina can look at everything and ask for things, but she can
 never personally approve or make a "real" change herself.** Anything
 that actually moves money or changes how a waqf is run — paying out to
-someone, changing an investment, disposing of an asset — goes through
-Birr's governance as trustee, and always involves *two different*
-people: an officer of Birr proposes it, and a member of the body
-responsible for that kind of decision approves it before anything
-happens. Depending on the decision, that's Birr's Board of Trustees,
-Investment Committee, Audit Committee, Shariah Supervisory Board or
-Compliance function. Think of it like a bank: you can see your balance and ask for
+someone, changing an investment, disposing of an asset — is decided by
+members of the responsible Birr board or committee: depending on the
+decision, the Board of Trustees, Investment Committee, Audit Committee
+or Shariah Supervisory Board. Think of it like a bank: you can see your balance and ask for
 a transfer, but you can't edit the bank's own ledger yourself. That's
 what keeps the money safe.
 
@@ -82,7 +79,7 @@ funds as examples:
 | **Project Progress** *(Clean Water Project only)* | The actual milestones — e.g. "Well #1: Drilled ✅ — cost ₦3,150,000 of the ₦3,000,000 budgeted," with photos/evidence attached. | No, just for viewing |
 | **Contributions** | How much has been donated so far, and the history of who gave what and when. | **Yes** — she can add more money here, in Naira via Paystack (bank transfer or local card) or in stablecoin |
 | **Causes** | The specific purposes her fund supports — e.g. "Scholarships" or "Clean Water Access" — picked from Birr's standard list, and how much money is earmarked for each. | **Yes** — she can pick, unpick, and set the amount for each cause herself, no approval needed |
-| **Assets** | Any physical property backing the fund (e.g. a building). | No — Birr registers assets, and selling one needs a Birr officer's proposal and a second person's approval from the Board of Trustees, Investment Committee or Audit Committee |
+| **Assets** | Any physical property backing the fund (e.g. a building). | No — Birr registers assets, and selling one is decided by members of the Board of Trustees, Investment Committee or Audit Committee |
 | **Investments** *(Scholarship Waqf only)* | What the ₦75,000,000 is actually invested in, and whether it's been checked for Shariah compliance. | No, just for viewing |
 | **Proceeds** *(Scholarship Waqf only)* | The profit the investment has earned so far, as recorded by Birr's Investment Committee or a Mutawalli Officer. | No, just for viewing |
 | **Distributions** | A summary of payouts already made, grouped by cause (e.g. "₦4,800,000 paid out for Scholarships so far") — not a list of who received what. | No, just for viewing |
