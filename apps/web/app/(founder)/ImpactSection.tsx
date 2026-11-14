@@ -207,7 +207,7 @@ function impactStats(impact: ImpactSummary): { lead: Stat; row: Stat[] } {
     ...(given.lead ? [gifts] : []),
     { value: impact.fundsAndCampaigns.toLocaleString("en-NG"), label: "Waqf Funds & campaigns", detail: "Active endowments and Birr-run Vaults" },
     ...(paid.lead
-      ? [{ value: formatCompactMoney(paid.lead), label: "Paid out to causes", detail: "Released under dual authorisation", others: paid.others }]
+      ? [{ value: formatCompactMoney(paid.lead), label: "Paid out to causes", detail: "Released under board authorisation", others: paid.others }]
       : []),
   ];
   return { lead, row };

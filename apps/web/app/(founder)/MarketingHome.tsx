@@ -10,9 +10,10 @@
 // 2026-10 redesign: the hero leads with the product itself (the Founder
 // Portal overview on a desktop monitor, sample data), and the two products
 // are laid side by side rather than behind tabs. Copy stays to what the
-// platform actually enforces — "dual authorisation" rather than "Board
-// approval", because a payout's checker may be a Board member or a
-// Compliance Officer; "Shariah advisory" is the owner's chosen public name.
+// platform actually enforces. "Board authorisation" is the owner's
+// chosen public name (2026-11-14) for the two-person rule: decisions are
+// made by members of the responsible board or committee. "Shariah
+// advisory" is likewise the owner's chosen public name.
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -63,7 +64,7 @@ const VAULT_TEASER_LIMIT = 3;
 const TRUST_POINTS = [
   { icon: IconLandmark, title: "Registered trustee", body: "Incorporated Trustee under the Corporate Affairs Commission" },
   { icon: IconShieldCheck, title: "Shariah advisory", body: "Investments screened against prohibited sectors" },
-  { icon: IconUsers, title: "Dual authorisation", body: "Every payout approved by a second person" },
+  { icon: IconUsers, title: "Board authorisation", body: "Every payout approved by a second person" },
   { icon: IconFileText, title: "Permanent record", body: "Every action logged — nothing edited or deleted" },
 ];
 
@@ -71,7 +72,7 @@ const GOVERNANCE_POINTS = [
   {
     id: undefined,
     icon: IconUsers,
-    title: "Dual authorisation on every consequential act",
+    title: "Board authorisation on every consequential act",
     body: "Distributions, investment changes, asset disposals and beneficiary criteria each need two different people. The system itself refuses an approval by the person who proposed it.",
   },
   {
@@ -122,7 +123,7 @@ const FAQ_ITEMS = [
   {
     question: "What's the difference between a Waqf Fund and a Vault?",
     answer:
-      "A Waqf Fund is an endowment you establish; its corpus is preserved and Birr becomes its trustee. A Vault is a Birr-curated campaign anyone can give to, with no account needed; the gift is spent on the need it was given for. Both run under the same dual authorisation once money moves.",
+      "A Waqf Fund is an endowment you establish; its corpus is preserved and Birr becomes its trustee. A Vault is a Birr-curated campaign anyone can give to, with no account needed; the gift is spent on the need it was given for. Both run under the same board authorisation once money moves.",
   },
   {
     question: "How is Shariah compliance ensured?",
@@ -196,7 +197,7 @@ export default function MarketingHome({
               </span>
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-primary-100/85 text-pretty sm:text-lg lg:mx-0">
-              Establish your own Waqf Fund in minutes. Birr becomes your Mutawalli — investing, distributing and reporting under dual
+              Establish your own Waqf Fund in minutes. Birr becomes your Mutawalli — investing, distributing and reporting under board
               authorisation and an audit trail no one can edit.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
@@ -214,7 +215,7 @@ export default function MarketingHome({
               </Link>
             </div>
             <ul className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-primary-200 lg:justify-start">
-              {["CAC-registered trustee", "Shariah advisory", "Dual authorisation"].map((t) => (
+              {["CAC-registered trustee", "Shariah advisory", "Board authorisation"].map((t) => (
                 <li key={t} className="flex items-center gap-1.5">
                   <IconCheckCircle className="h-4 w-4 text-accent-300" />
                   {t}
@@ -619,7 +620,7 @@ function CheckList({ items, tone }: { items: string[]; tone: "dark" | "light" })
 }
 
 // A card overlapping the monitor's edge — two of them narrate the two
-// promises the product makes (dual authorisation; a preserved corpus).
+// promises the product makes (board authorisation; a preserved corpus).
 // Wide screens only: on narrower ones they would cover the dashboard.
 function FloatingNote({
   className,
@@ -701,7 +702,7 @@ function WaqfDiagram() {
   );
 }
 
-// Dual authorisation: proposer, a different approver, then the action —
+// Board authorisation: proposer, a different approver, then the action —
 // and the refused path when the proposer tries to approve their own.
 function DualAuthorisationDiagram() {
   const b = { fontSize: 9.5, fontWeight: 600, fill: "#113f33" };
