@@ -5,6 +5,9 @@ module.exports = {
   rootDir: "src",
   testRegex: ".*\\.spec\\.ts$",
   setupFiles: ["<rootDir>/../jest.setup.ts"],
+  // Suspends the staff fixtures each run creates; see jest.global-teardown.ts.
+  globalSetup: "<rootDir>/../jest.global-setup.ts",
+  globalTeardown: "<rootDir>/../jest.global-teardown.ts",
   // rootDir is "src" above, so the default coverageDirectory would
   // otherwise land inside src/ itself.
   coverageDirectory: "<rootDir>/../coverage",

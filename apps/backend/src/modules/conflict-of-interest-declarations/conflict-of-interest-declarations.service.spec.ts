@@ -17,11 +17,11 @@ describe("ConflictOfInterestDeclarationsService", () => {
 
   let declarantStaffId: string;
   let declarantUserId: string;
-  let reviewerStaffId: string;
   let reviewerUserId: string;
 
   beforeAll(async () => {
-    // Fixture Users/BirrStaff are not cleaned up in afterAll — same
+    // Fixture Users/BirrStaff are not deleted in afterAll (jest.global-teardown.ts
+    // suspends them once the whole run is done) — same
     // reasoning as governed-actions.service.spec.ts (they end up
     // referenced via audit_logs.actorUserId, and that table is
     // insert-only at the DB role level, so deleting them would require
@@ -39,21 +39,14 @@ describe("ConflictOfInterestDeclarationsService", () => {
       data: { email: `coi-reviewer-${Date.now()}@example.com`, fullName: "Test Reviewer" },
     });
     reviewerUserId = reviewerUser.id;
-    const reviewerStaff = await prisma.birrStaff.create({
+    await prisma.birrStaff.create({
       data: { userId: reviewerUser.id, roles: { create: { role: "audit_committee" } } },
     });
-    reviewerStaffId = reviewerStaff.id;
   });
 
   afterAll(async () => {
     await prisma.conflictOfInterestDeclaration.deleteMany({
       where: { id: { in: declarationIds } },
-    });
-    // They can't be deleted (see beforeAll), but suspending them keeps them
-    // out of every later run's reviewer lists.
-    await prisma.birrStaff.updateMany({
-      where: { id: { in: [declarantStaffId, reviewerStaffId] } },
-      data: { status: "suspended" },
     });
     await prisma.$disconnect();
   });
