@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { hash, compare } from "bcryptjs";
-import { IsEnum, IsOptional, IsString, Matches, MinLength } from "class-validator";
+import { IsEnum, IsIn, IsOptional, IsString, Matches, MinLength } from "class-validator";
 import { prisma, Prisma, FounderKind, InstitutionType } from "@birr/db";
 import { assertUserEmailVerified, assertUserWhatsAppVerified } from "../../common/auth/current-founder";
 import { ResendVerificationEmailAdapter } from "./email/resend.adapter";
@@ -93,6 +93,15 @@ export class EstablishFounderAndFoundationInput {
   @IsOptional()
   @IsString()
   rafiqDraftId?: string;
+
+  // "Jointly, with family or friends" (2026-11-14): the Foundation's deed
+  // is then signed by one founder for every co-founder, each of whom
+  // adopts it on joining (see CoFounderDeedConsent). A string because
+  // this endpoint takes multipart form data. Individuals only: an
+  // informal group isn't an institution.
+  @IsOptional()
+  @IsIn(["true", "false"])
+  establishedJointly?: "true" | "false";
 }
 
 // Step 2's own fields, minus the ones Rafiq has no use for (logo) —
@@ -532,6 +541,10 @@ export class FoundersService {
     if (!input.purpose?.trim()) {
       throw new BadRequestException("purpose is required.");
     }
+    const establishedJointly = input.establishedJointly === "true";
+    if (establishedJointly && input.kind !== "individual") {
+      throw new BadRequestException("A Foundation established jointly with family or friends is set up by individuals, not an institution.");
+    }
 
     // Saved before the transaction — a filesystem write can't
     // participate in a Postgres transaction anyway, and validating the
@@ -568,6 +581,7 @@ export class FoundersService {
           purpose: input.purpose,
           jurisdiction: input.jurisdiction,
           logoUrl: logo?.url,
+          establishedJointly,
         },
       });
       await tx.foundationFounder.create({ data: { foundationId: foundation.id, founderId: founder.id } });

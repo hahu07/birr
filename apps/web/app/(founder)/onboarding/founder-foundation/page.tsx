@@ -15,7 +15,7 @@ import { ROUTE_FOR_STEP } from "../../../../lib/onboarding";
 import type { Invitation } from "../../../../lib/types";
 import { Alert, Button, IconArrowRight, IconImage, IconShieldCheck, IconSparkle, Select } from "@birr/ui";
 import { ChoiceCard, Field, FormSection, inputClass } from "../../_components/form";
-import { FounderFoundationGuide, INSTITUTION_TYPE_GUIDE, KIND_GUIDE } from "./FounderFoundationGuide";
+import { FOUNDER_TYPE_GUIDE, FounderFoundationGuide, type FounderType, INSTITUTION_TYPE_GUIDE } from "./FounderFoundationGuide";
 
 interface PurposeSuggestion {
   suggestedPurpose: string;
@@ -43,7 +43,9 @@ const INSTITUTION_TYPES = [
 ] as const;
 
 export default function OnboardingFounderFoundationPage() {
-  const [kind, setKind] = useState<"institution" | "individual">("institution");
+  const [founderType, setFounderType] = useState<FounderType>("institution");
+  // Joint founders are individuals: an informal group isn't an institution.
+  const kind = founderType === "institution" ? "institution" : "individual";
   const [founderName, setFounderName] = useState("");
   const [institutionType, setInstitutionType] = useState<(typeof INSTITUTION_TYPES)[number]>("ngo");
   const [homeJurisdiction, setHomeJurisdiction] = useState("");
@@ -197,6 +199,7 @@ export default function OnboardingFounderFoundationPage() {
       formData.set("founderName", founderName);
       formData.set("kind", kind);
       if (kind === "institution") formData.set("institutionType", institutionType);
+      if (founderType === "joint") formData.set("establishedJointly", "true");
       if (homeJurisdiction) formData.set("homeJurisdiction", homeJurisdiction);
       formData.set("foundationName", foundationName);
       formData.set("purpose", purpose);
@@ -206,7 +209,7 @@ export default function OnboardingFounderFoundationPage() {
 
       const result = await apiFetchJson<EstablishResult>("/founders/establish", { method: "POST", body: formData });
 
-      const emails = isJoint ? [...new Set(coFounderEmails.map((email) => email.trim()).filter(Boolean))] : [];
+      const emails = invitingCoFounders ? [...new Set(coFounderEmails.map((email) => email.trim()).filter(Boolean))] : [];
       if (emails.length === 0) {
         // Full navigation straight to step 3's own route, not a reload
         // of this one — app-shell's onboarding gate deliberately leaves
@@ -244,6 +247,9 @@ export default function OnboardingFounderFoundationPage() {
       setSubmitting(false);
     }
   }
+
+  // Choosing "Jointly" opens the co-founder invites without the extra tick.
+  const invitingCoFounders = founderType === "joint" || isJoint;
 
   const canSubmit =
     founderName.trim().length > 0 && foundationName.trim().length > 0 && purpose.trim().length > 0 && !submitting;
@@ -353,24 +359,18 @@ export default function OnboardingFounderFoundationPage() {
               <div className="space-y-5">
                 <fieldset>
                   <legend className="mb-2 block text-sm font-medium text-slate-800">Founder type</legend>
-                  <div className="grid gap-2.5 sm:grid-cols-2">
-                    {(["institution", "individual"] as const).map((k) => (
+                  <div className="grid gap-2.5 sm:grid-cols-3">
+                    {(["institution", "individual", "joint"] as const).map((t) => (
                       <ChoiceCard
-                        key={k}
-                        name="kind"
-                        checked={kind === k}
-                        onChange={() => setKind(k)}
-                        title={KIND_GUIDE[k].label}
-                        body={KIND_GUIDE[k].description}
+                        key={t}
+                        name="founderType"
+                        checked={founderType === t}
+                        onChange={() => setFounderType(t)}
+                        title={FOUNDER_TYPE_GUIDE[t].label}
+                        body={FOUNDER_TYPE_GUIDE[t].description}
                       />
                     ))}
                   </div>
-                  {/* An informal group isn't a legal entity, so it isn't an Institution: each
-                      member is their own Individual founder, joined through co-founder invites. */}
-                  <p className="mt-2.5 text-xs leading-relaxed text-slate-500">
-                    Setting this up with family or friends? Choose <span className="font-medium text-slate-700">Individual</span>, then
-                    invite them as co-founders in step 3.
-                  </p>
                 </fieldset>
                 <Field label={kind === "institution" ? "Institution name" : "Your full name"} htmlFor="founderName">
                   <input
@@ -528,8 +528,13 @@ export default function OnboardingFounderFoundationPage() {
             <FormSection
               step={3}
               title="Co-founders"
-              description="Optional. Establishing this jointly? Invite them now, or later from your Foundation's page."
+              description={
+                founderType === "joint"
+                  ? "Invite the family or friends establishing this with you. You can also invite them later, from your Foundation's page."
+                  : "Optional. Establishing this jointly? Invite them now, or later from your Foundation's page."
+              }
             >
+              {founderType !== "joint" && (
               <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3.5 transition-colors hover:border-slate-300 has-[:checked]:border-primary-500 has-[:checked]:bg-primary-50/70">
                 <input
                   type="checkbox"
@@ -544,8 +549,9 @@ export default function OnboardingFounderFoundationPage() {
                   </span>
                 </span>
               </label>
-              {isJoint && (
-                <div className="mt-4 space-y-2.5">
+              )}
+              {invitingCoFounders && (
+                <div className={`space-y-2.5 ${founderType === "joint" ? "" : "mt-4"}`}>
                   {coFounderEmails.map((email, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <input
@@ -596,7 +602,7 @@ export default function OnboardingFounderFoundationPage() {
             </div>
           </div>
 
-          <FounderFoundationGuide kind={kind} institutionType={institutionType} />
+          <FounderFoundationGuide founderType={founderType} institutionType={institutionType} />
         </form>
       )}
     </div>

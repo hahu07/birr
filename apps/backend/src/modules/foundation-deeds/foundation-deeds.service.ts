@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger } from "@nestjs/common";
+import { createHash } from "crypto";
 import { prisma } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
-import { FOUNDATION_DEED_TEMPLATE_VERSION, renderFoundationDeedText } from "./foundation-deed-template";
+import { foundationDeedTemplateVersion, renderFoundationDeedText } from "./foundation-deed-template";
 import { NotificationsService } from "../notifications/notifications.service";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
@@ -11,7 +12,30 @@ export interface SignFoundationDeedInput {
   founderId: string;
   typedLegalName: string;
   affirmed: boolean;
+  /** textHash from the preview the signer was shown — see FoundationDeedsService.preview. */
+  textHash: string;
   ipAddress?: string;
+}
+
+/** Who else agreed to the deed, and how — see CoFounderDeedConsent. Oldest first. */
+async function coFounderConsentsFor(db: Pick<typeof prisma, "coFounderDeedConsent">, foundationId: string) {
+  const rows = await db.coFounderDeedConsent.findMany({
+    where: { foundationId },
+    orderBy: { consentedAt: "asc" },
+    include: { founder: { select: { name: true } } },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    founderName: r.founder.name,
+    kind: r.kind,
+    statementText: r.statementText,
+    statementVersion: r.statementVersion,
+    consentedAt: r.consentedAt,
+  }));
+}
+
+function hashDeedText(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
 @Injectable()
@@ -40,14 +64,7 @@ export class FoundationDeedsService {
   async sign(input: SignFoundationDeedInput) {
     await assertFounderVerified(prisma, input.founderId);
 
-    const foundation = await prisma.foundation.findFirst({
-      where: { id: input.foundationId, foundationFounders: { some: { founderId: input.founderId } } },
-      include: { foundationDeed: true, waqfs: true },
-    });
-    if (!foundation) {
-      throw new ForbiddenException("This foundation doesn't belong to you.");
-    }
-    const activeWaqfs = foundation.waqfs.filter((w) => w.status === "active");
+    const { foundation, activeWaqfs, deedText, templateVersion } = await this.render(input.foundationId, input.founderId);
     if (activeWaqfs.length === 0) {
       throw new BadRequestException("Fund and confirm your first waqf contribution before signing the deed.");
     }
@@ -56,6 +73,11 @@ export class FoundationDeedsService {
     }
     if (!input.affirmed) {
       throw new BadRequestException("You must affirm the declaration to sign.");
+    }
+    // The signer must have seen exactly the text being stored: a fund
+    // activated or a co-founder joined after their preview changes it.
+    if (input.textHash !== hashDeedText(deedText)) {
+      throw new ConflictException("The deed changed since you opened it — review it again before signing.");
     }
 
     const membership = await prisma.founderMembership.findFirst({
@@ -69,8 +91,6 @@ export class FoundationDeedsService {
       throw new BadRequestException("The typed name must match your account's registered full name.");
     }
 
-    const founder = await prisma.founder.findUniqueOrThrow({ where: { id: input.founderId } });
-
     const deed = await prisma.$transaction(async (tx) => {
       const deed = await tx.foundationDeed.create({
         data: {
@@ -78,8 +98,8 @@ export class FoundationDeedsService {
           signedByUserId: membership.user.id,
           signedByFounderId: input.founderId,
           typedLegalName: input.typedLegalName,
-          deedTemplateVersion: FOUNDATION_DEED_TEMPLATE_VERSION,
-          deedText: renderFoundationDeedText(foundation, founder, activeWaqfs),
+          deedTemplateVersion: templateVersion,
+          deedText,
           affirmed: true,
           ipAddress: input.ipAddress,
         },
@@ -136,11 +156,55 @@ export class FoundationDeedsService {
     return deed;
   }
 
+  /**
+   * The deed exactly as sign() would store it for this founder right now
+   * — shown in full before signing, with a hash the signature must echo
+   * back. Any founder of the Foundation may look; only a primary contact
+   * may sign (FoundationDeedsController).
+   */
+  async preview(foundationId: string, founderId: string) {
+    const { deedText, templateVersion, joint, foundation } = await this.render(foundationId, founderId);
+    return {
+      deedText,
+      templateVersion,
+      textHash: hashDeedText(deedText),
+      joint: Boolean(joint),
+      coFounders: joint?.coFounders.map((c) => c.name) ?? [],
+      alreadySigned: Boolean(foundation.foundationDeed),
+    };
+  }
+
+  // The one place the deed's text is decided, for both preview() and
+  // sign(). Joint when the Foundation was established jointly, or has
+  // more than one founder by the time it's signed: every other founder
+  // is then named as a co-founder the signer signs for.
+  private async render(foundationId: string, founderId: string) {
+    const foundation = await prisma.foundation.findFirst({
+      where: { id: foundationId, foundationFounders: { some: { founderId } } },
+      include: { foundationDeed: true, waqfs: true, foundationFounders: { include: { founder: true } } },
+    });
+    if (!foundation) {
+      throw new ForbiddenException("This foundation doesn't belong to you.");
+    }
+    const founder = foundation.foundationFounders.find((ff) => ff.founderId === founderId)!.founder;
+    const activeWaqfs = foundation.waqfs.filter((w) => w.status === "active");
+    const coFounders = foundation.foundationFounders.filter((ff) => ff.founderId !== founderId).map((ff) => ff.founder);
+    const joint = foundation.establishedJointly || coFounders.length > 0 ? { coFounders } : null;
+    return {
+      foundation,
+      activeWaqfs,
+      joint,
+      deedText: renderFoundationDeedText(foundation, founder, activeWaqfs, joint),
+      templateVersion: foundationDeedTemplateVersion(joint),
+    };
+  }
+
   // Staff-side / internal — unrestricted. Never expose this behind a
   // controller route reachable by a Founder session; see
   // findByFoundationIdForFounder below for that path.
-  findByFoundationId(foundationId: string) {
-    return prisma.foundationDeed.findUnique({ where: { foundationId } });
+  async findByFoundationId(foundationId: string) {
+    const deed = await prisma.foundationDeed.findUnique({ where: { foundationId } });
+    return deed && { ...deed, coFounderConsents: await coFounderConsentsFor(prisma, foundationId) };
   }
 
   // Founder-Portal read-only visibility into their own Foundation's
@@ -156,7 +220,8 @@ export class FoundationDeedsService {
         select: { id: true },
       });
       if (!foundation) return null;
-      return tx.foundationDeed.findUnique({ where: { foundationId } });
+      const deed = await tx.foundationDeed.findUnique({ where: { foundationId } });
+      return deed && { ...deed, coFounderConsents: await coFounderConsentsFor(tx, foundationId) };
     });
   }
 }

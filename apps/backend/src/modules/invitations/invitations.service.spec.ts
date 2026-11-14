@@ -4,6 +4,7 @@ import { InvitationsService } from "./invitations.service";
 import { ResendInvitationEmailAdapter } from "./email/resend-invitation.adapter";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import { FoundationsService } from "../foundations/foundations.service";
+import { CO_FOUNDER_STATEMENT_VERSION } from "../foundation-deeds/co-founder-consent";
 
 // Same fake-adapter pattern as founders.service.spec.ts's FakeEmailAdapter
 // — no real Resend call in tests, and shouldFail lets the "email didn't
@@ -411,6 +412,7 @@ describe("InvitationsService", () => {
         founderName: "Co-Founder Spec Founder B",
         kind: "institution",
         institutionType: "ngo",
+        deedConsentVersion: CO_FOUNDER_STATEMENT_VERSION,
       });
       userIds.push(result.user.id);
       const newFounderId = result.newFounderId!;
@@ -472,6 +474,7 @@ describe("InvitationsService", () => {
         password: "correct-horse-battery",
         founderName: "Co-Founder Spec Founder C",
         kind: "individual",
+        deedConsentVersion: CO_FOUNDER_STATEMENT_VERSION,
       });
       userIds.push(result.user.id);
       founderIds.push(result.newFounderId!);
@@ -479,6 +482,180 @@ describe("InvitationsService", () => {
       const foundation = await foundationsService.findByIdForFounder(coFounderFoundationId, result.newFounderId!);
       expect(foundation?.id).toBe(coFounderFoundationId);
       expect(foundation?._count.waqfs).toBeGreaterThanOrEqual(1);
+    });
+
+    function inviteCoFounder(foundationId: string, label: string) {
+      return service
+        .invite({
+          inviteeKind: "co_founder",
+          email: `co-founder-${label}-${Date.now()}-${Math.random()}@example.com`,
+          foundationId,
+          roleKey: "",
+          invitedByUserId: coFounderInviterUserId,
+          invitedByActorType: "founder_user",
+          invitedByFounderId: coFounderFounderAId,
+        })
+        .then((invitation) => {
+          invitationIds.push(invitation.id);
+          return invitation;
+        });
+    }
+
+    // null = the statement wasn't accepted at all (undefined would take the default).
+    function acceptAsCoFounder(token: string, name: string, deedConsentVersion: string | null = CO_FOUNDER_STATEMENT_VERSION) {
+      return service.accept(
+        {
+          token,
+          fullName: name,
+          password: "correct-horse-battery",
+          founderName: name,
+          kind: "individual",
+          deedConsentVersion: deedConsentVersion ?? undefined,
+        },
+        "198.51.100.4",
+      );
+    }
+
+    // A Foundation of Founder A's whose deed is already signed.
+    async function foundationWithSignedDeed() {
+      const foundation = await foundationsService.create({
+        name: `Co-Founder Spec Signed Foundation ${Date.now()}`,
+        purpose: "Testing adoption of a signed deed",
+        founderIds: [coFounderFounderAId],
+      });
+      const deed = await prisma.foundationDeed.create({
+        data: {
+          foundationId: foundation.id,
+          signedByUserId: coFounderInviterUserId,
+          signedByFounderId: coFounderFounderAId,
+          typedLegalName: "Founder A Primary Contact",
+          deedTemplateVersion: "spec",
+          deedText: "Spec deed",
+          affirmed: true,
+          signedAt: new Date("2026-11-14T09:00:00Z"),
+        },
+      });
+      return { foundation, deed };
+    }
+
+    test("accept() refuses a co_founder who hasn't accepted the current deed statement, and creates nothing", async () => {
+      const missing = await inviteCoFounder(coFounderFoundationId, "no-consent");
+      await expect(acceptAsCoFounder(missing.token, "No Consent", null)).rejects.toThrow(BadRequestException);
+      const stale = await inviteCoFounder(coFounderFoundationId, "old-consent");
+      await expect(acceptAsCoFounder(stale.token, "Old Consent", "2000-01-01-old")).rejects.toThrow(BadRequestException);
+
+      expect(await prisma.user.findUnique({ where: { email: missing.email } })).toBeNull();
+      expect(await prisma.user.findUnique({ where: { email: stale.email } })).toBeNull();
+    });
+
+    test("accept() before the deed is signed records the co-founder's authorization of the signer, with an audit log", async () => {
+      const invitation = await inviteCoFounder(coFounderFoundationId, "authorize");
+      const preview = await service.previewCoFounderInvitation(invitation.token);
+      expect(preview.statement.kind).toBe("authorize_signer");
+      expect(preview.deed).toBeNull();
+      expect(preview.establishedJointly).toBe(false);
+
+      const result = await acceptAsCoFounder(invitation.token, "Authorizing Co-Founder");
+      userIds.push(result.user.id);
+      founderIds.push(result.newFounderId!);
+
+      const consent = await prisma.coFounderDeedConsent.findUniqueOrThrow({
+        where: { foundationId_founderId: { foundationId: coFounderFoundationId, founderId: result.newFounderId! } },
+      });
+      expect(consent).toMatchObject({
+        kind: "authorize_signer",
+        foundationDeedId: null,
+        userId: result.user.id,
+        statementVersion: CO_FOUNDER_STATEMENT_VERSION,
+        statementText: preview.statement.text,
+        ipAddress: "198.51.100.4",
+      });
+      expect(consent.statementText).toContain("I authorize the founder who signs its Deed of Waqf to sign it for me");
+
+      const logs = await auditLogsFor(consent.id);
+      expect(logs).toEqual([expect.objectContaining({ action: "co_founder.deed_consented", actorFounderId: result.newFounderId })]);
+    });
+
+    test("accept() after the deed is signed records the co-founder adopting that deed", async () => {
+      const { foundation, deed } = await foundationWithSignedDeed();
+      const invitation = await inviteCoFounder(foundation.id, "adopt");
+      const preview = await service.previewCoFounderInvitation(invitation.token);
+      expect(preview.statement.kind).toBe("adopt_signed_deed");
+      expect(preview.deed).toMatchObject({ signerName: "Founder A Primary Contact" });
+
+      const result = await acceptAsCoFounder(invitation.token, "Adopting Co-Founder");
+      userIds.push(result.user.id);
+      founderIds.push(result.newFounderId!);
+
+      const consent = await prisma.coFounderDeedConsent.findUniqueOrThrow({
+        where: { foundationId_founderId: { foundationId: foundation.id, founderId: result.newFounderId! } },
+      });
+      expect(consent).toMatchObject({ kind: "adopt_signed_deed", foundationDeedId: deed.id });
+      expect(consent.statementText).toContain("I adopt its Deed of Waqf, signed by Founder A Primary Contact on 14 November 2026");
+    });
+
+    test("a jointly established Foundation is joined as an individual, never an institution", async () => {
+      const foundation = await foundationsService.create({
+        name: `Co-Founder Spec Joint Foundation ${Date.now()}`,
+        purpose: "Testing joint co-founders",
+        founderIds: [coFounderFounderAId],
+      });
+      await prisma.foundation.update({ where: { id: foundation.id }, data: { establishedJointly: true } });
+      const invitation = await inviteCoFounder(foundation.id, "joint-institution");
+      expect((await service.previewCoFounderInvitation(invitation.token)).establishedJointly).toBe(true);
+
+      await expect(
+        service.accept({
+          token: invitation.token,
+          fullName: "Joint Institution",
+          password: "correct-horse-battery",
+          founderName: "Some Organization",
+          kind: "institution",
+          institutionType: "ngo",
+          deedConsentVersion: CO_FOUNDER_STATEMENT_VERSION,
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(await prisma.user.findUnique({ where: { email: invitation.email } })).toBeNull();
+    });
+
+    test("co_founder_deed_consents is immutable at the DB level — UPDATE and DELETE are both rejected by a trigger", async () => {
+      const invitation = await inviteCoFounder(coFounderFoundationId, "immutable");
+      const result = await acceptAsCoFounder(invitation.token, "Immutable Co-Founder");
+      userIds.push(result.user.id);
+      founderIds.push(result.newFounderId!);
+      const consent = await prisma.coFounderDeedConsent.findUniqueOrThrow({
+        where: { foundationId_founderId: { foundationId: coFounderFoundationId, founderId: result.newFounderId! } },
+      });
+
+      await expect(
+        prisma.coFounderDeedConsent.update({ where: { id: consent.id }, data: { statementText: "Tampered" } }),
+      ).rejects.toThrow(/immutable once written/i);
+      await expect(prisma.coFounderDeedConsent.delete({ where: { id: consent.id } })).rejects.toThrow(/immutable once written/i);
+    });
+
+    test("previewCoFounderInvitation() is not found for anything but a pending, unexpired co_founder invitation", async () => {
+      await expect(service.previewCoFounderInvitation("no-such-token")).rejects.toThrow(NotFoundException);
+
+      const accepted = await inviteCoFounder(coFounderFoundationId, "preview-accepted");
+      const result = await acceptAsCoFounder(accepted.token, "Preview Accepted Co-Founder");
+      userIds.push(result.user.id);
+      founderIds.push(result.newFounderId!);
+      await expect(service.previewCoFounderInvitation(accepted.token)).rejects.toThrow(NotFoundException);
+
+      const expired = await inviteCoFounder(coFounderFoundationId, "preview-expired");
+      await prisma.invitation.update({ where: { id: expired.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+      await expect(service.previewCoFounderInvitation(expired.token)).rejects.toThrow(NotFoundException);
+
+      const founderUser = await service.invite({
+        inviteeKind: "founder_user",
+        email: `preview-founder-user-${Date.now()}@example.com`,
+        founderId: existingFounderId,
+        roleKey: "viewer",
+        invitedByUserId: inviterUserId,
+        invitedByActorType: "birr_staff",
+      });
+      invitationIds.push(founderUser.id);
+      await expect(service.previewCoFounderInvitation(founderUser.token)).rejects.toThrow(NotFoundException);
     });
 
     test("revoke(): an existing co-founder can revoke a pending co_founder invitation for their own Foundation, but an unrelated founder gets 404", async () => {

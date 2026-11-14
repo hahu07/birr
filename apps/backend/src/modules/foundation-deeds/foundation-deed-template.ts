@@ -7,6 +7,22 @@ import { Foundation, Founder, Waqf } from "@birr/db";
 // changes a past signature's meaning.
 export const FOUNDATION_DEED_TEMPLATE_VERSION = "v1-2026-08";
 
+// The joint variant: one founder signs for every co-founder, present and
+// future, each of whom adopts the deed through a CoFounderDeedConsent
+// (owner's decision, 2026-11-14 — "A2" in the Board note "Joint Waqf:
+// Who Signs the Deed"). This wording went live at the owner's direction
+// before Legal or the Shariah Supervisory Board reviewed it; a revision
+// they approve gets a new version here. The single-founder text above
+// is unchanged by it.
+export const JOINT_FOUNDATION_DEED_TEMPLATE_VERSION = "v2-2026-11-joint";
+
+/** The other founders of a jointly established Foundation, as of signing. Null for a single-founder deed. */
+export type JointDeedParties = { coFounders: Pick<Founder, "name">[] } | null;
+
+export function foundationDeedTemplateVersion(joint: JointDeedParties): string {
+  return joint ? JOINT_FOUNDATION_DEED_TEMPLATE_VERSION : FOUNDATION_DEED_TEMPLATE_VERSION;
+}
+
 // Small and local rather than a shared package export — same posture as
 // InvitationsService's own humanizeRoleKey (the only other place on the
 // backend that turns an enum key into display text).
@@ -26,7 +42,12 @@ function humanize(key: string): string {
  * changes again, even as more Waqf Funds are established under the
  * Foundation afterward.
  */
-export function renderFoundationDeedText(foundation: Foundation, founder: Founder, activeWaqfs: Waqf[]): string {
+export function renderFoundationDeedText(
+  foundation: Foundation,
+  founder: Founder,
+  activeWaqfs: Waqf[],
+  joint: JointDeedParties = null,
+): string {
   const founderDescription =
     founder.kind === "individual"
       ? "an individual"
@@ -41,13 +62,43 @@ export function renderFoundationDeedText(foundation: Foundation, founder: Founde
       ? activeWaqfs.map((w) => `  - ${w.name} — ${humanize(w.type)} — ${w.jurisdiction}`).join("\n")
       : "  None yet — this Deed takes effect prospectively as each Waqf Fund is established and funded.";
 
+  // Built so a single-founder deed renders exactly as v1 did.
+  const opening = joint
+    ? `This Deed is made by ${founder.name} (the "Signing Founder"), ${founderDescription},
+for themselves and on behalf of each co-founder, present and future, of
+the foundation known as "${foundation.name}" (the "Foundation")${jurisdictionClause}.
+In this Deed, "the Founder" means the Signing Founder and each such
+co-founder, each in respect of their own contributions.`
+    : `This Deed is made by ${founder.name} (the "Founder"), ${founderDescription},
+in respect of the foundation known as "${foundation.name}" (the
+"Foundation")${jurisdictionClause}.`;
+
+  const coFoundersSchedule =
+    joint && joint.coFounders.length > 0
+      ? joint.coFounders.map((c) => `  - ${c.name}`).join("\n")
+      : "  None yet — each co-founder is bound from the day they accept the statement described above.";
+
+  const closing = joint
+    ? `7. CO-FOUNDERS
+The Signing Founder signs this Deed for themselves and on behalf of each
+co-founder of the Foundation, present and future. Each co-founder adopts
+this Deed, and dedicates their own contributions to any Waqf Fund under
+the Foundation on its terms, by the statement they accept when joining
+the Foundation, which Birr records with the date it was given. The
+co-founders of the Foundation as of the date of this Deed are:
+${coFoundersSchedule}
+
+IN WITNESS WHEREOF, the Signing Founder has caused this Deed to be signed
+below, for themselves and on behalf of each co-founder, this appointment
+taking effect upon signature.`
+    : `IN WITNESS WHEREOF, the Founder has caused this Deed to be signed below,
+this appointment taking effect upon signature.`;
+
   return `
 DEED OF WAQF (ISLAMIC ENDOWMENT)
 DECLARATION OF TRUST AND APPOINTMENT OF MUTAWALLI
 
-This Deed is made by ${founder.name} (the "Founder"), ${founderDescription},
-in respect of the foundation known as "${foundation.name}" (the
-"Foundation")${jurisdictionClause}.
+${opening}
 
 RECITALS
 
@@ -100,7 +151,6 @@ This Deed and each Waqf Fund it covers shall be governed by Shariah
 principles applicable to waqf, and by the laws and regulations of the
 jurisdiction stated for that Waqf Fund.
 
-IN WITNESS WHEREOF, the Founder has caused this Deed to be signed below,
-this appointment taking effect upon signature.
+${closing}
 `.trim();
 }

@@ -16,6 +16,10 @@ class SignFoundationDeedBody {
 
   @IsBoolean()
   affirmed!: boolean;
+
+  // From GET :foundationId/preview — proves the signer saw the text stored.
+  @IsString()
+  textHash!: string;
 }
 
 // @Public() — Founder-Portal self-service surface, same reasoning as
@@ -39,8 +43,18 @@ export class FoundationDeedsController {
       founderId: founder.id,
       typedLegalName: body.typedLegalName,
       affirmed: body.affirmed,
+      textHash: body.textHash,
       ipAddress: request.ip,
     });
+  }
+
+  // The full deed text as it would be signed now. Declared before
+  // :foundationId so "preview" is never read as an id. Founder-only:
+  // staff read signed deeds below, and have nothing to sign.
+  @Get(":foundationId/preview")
+  async preview(@Param("foundationId") foundationId: string, @Req() request: Request) {
+    const founder = await resolveFounderFromSession(request);
+    return this.service.preview(foundationId, founder.id);
   }
 
   // A signed deed's deedText/typedLegalName/ipAddress is real legal and

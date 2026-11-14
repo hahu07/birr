@@ -493,6 +493,36 @@ describe("FoundersService.establishFounderAndFoundation", () => {
     expect(foundationLogs).toHaveLength(1);
   });
 
+  test("an individual can establish jointly, recorded on the Foundation and in its audit snapshot", async () => {
+    const { userId } = await createVerifiedUser("establish-jointly");
+    const { foundation } = await service.establishFounderAndFoundation(userId, {
+      founderName: "Joint Spec Founder",
+      kind: "individual",
+      foundationName: "Joint Spec Family Foundation",
+      purpose: "Testing joint establishment",
+      establishedJointly: "true",
+    });
+
+    expect(foundation.establishedJointly).toBe(true);
+    const [log] = await prisma.auditLog.findMany({ where: { entityId: foundation.id, action: "foundation.created" } });
+    expect(log.after).toMatchObject({ establishedJointly: true });
+  });
+
+  test("refuses establishing jointly as an institution — an informal group isn't one", async () => {
+    const { userId } = await createVerifiedUser("establish-jointly-institution");
+    await expect(
+      service.establishFounderAndFoundation(userId, {
+        founderName: "Joint Spec Institution",
+        kind: "institution",
+        institutionType: "ngo",
+        foundationName: "Joint Spec Institution Foundation",
+        purpose: "Testing",
+        establishedJointly: "true",
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(await prisma.founderMembership.findFirst({ where: { userId } })).toBeNull();
+  });
+
   test("rejects establishing a second Founder for the same user", async () => {
     const { userId } = await createVerifiedUser("establish-duplicate");
     await service.establishFounderAndFoundation(userId, {

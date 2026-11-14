@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { prisma } from "@birr/db";
 import { FoundationDeedsService } from "./foundation-deeds.service";
-import { renderFoundationDeedText } from "./foundation-deed-template";
+import { JOINT_FOUNDATION_DEED_TEMPLATE_VERSION, FOUNDATION_DEED_TEMPLATE_VERSION, renderFoundationDeedText } from "./foundation-deed-template";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 
@@ -50,10 +50,22 @@ describe("FoundationDeedsService", () => {
     await prisma.$disconnect();
   });
 
+  // What the signing page sends back: the hash of the preview it showed.
+  async function textHashFor(foundationId: string, founderId: string) {
+    return (await service.preview(foundationId, founderId)).textHash;
+  }
+
+  async function addCoFounder(foundationId: string, name: string) {
+    const coFounder = await prisma.founder.create({ data: { name, kind: "individual" } });
+    founderIds.push(coFounder.id);
+    await prisma.foundationFounder.create({ data: { foundationId, founderId: coFounder.id } });
+    return coFounder;
+  }
+
   test("sign() rejects a foundation with no active waqf", async () => {
     const { founder, foundation } = await createFounderWithFoundation("draft");
     await expect(
-      service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true }),
+      service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash: await textHashFor(foundation.id, founder.id) }),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -61,21 +73,21 @@ describe("FoundationDeedsService", () => {
     const { foundation } = await createFounderWithFoundation("active");
     const { founder: otherFounder } = await createFounderWithFoundation("active");
     await expect(
-      service.sign({ foundationId: foundation.id, founderId: otherFounder.id, typedLegalName: "Amina Yusuf", affirmed: true }),
+      service.sign({ foundationId: foundation.id, founderId: otherFounder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash: "unused" }),
     ).rejects.toThrow(ForbiddenException);
   });
 
   test("sign() rejects a mismatched typed legal name", async () => {
     const { founder, foundation } = await createFounderWithFoundation("active");
     await expect(
-      service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Someone Else", affirmed: true }),
+      service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Someone Else", affirmed: true, textHash: await textHashFor(foundation.id, founder.id) }),
     ).rejects.toThrow(BadRequestException);
   });
 
   test("sign() rejects affirmed: false", async () => {
     const { founder, foundation } = await createFounderWithFoundation("active");
     await expect(
-      service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: false }),
+      service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: false, textHash: await textHashFor(foundation.id, founder.id) }),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -86,6 +98,7 @@ describe("FoundationDeedsService", () => {
       founderId: founder.id,
       typedLegalName: "Amina Yusuf",
       affirmed: true,
+      textHash: await textHashFor(foundation.id, founder.id),
       ipAddress: "203.0.113.7",
     });
 
@@ -96,6 +109,7 @@ describe("FoundationDeedsService", () => {
     const expectedText = renderFoundationDeedText(foundation, founderRow, [waqf]);
     expect(deed.deedText).toBe(expectedText);
     expect(deed.deedText).toContain(waqf.name);
+    expect(deed.deedTemplateVersion).toBe(FOUNDATION_DEED_TEMPLATE_VERSION);
 
     const logs = await prisma.auditLog.findMany({ where: { entityId: deed.id, action: "foundation_deed.signed" } });
     expect(logs).toHaveLength(1);
@@ -104,10 +118,10 @@ describe("FoundationDeedsService", () => {
 
   test("sign() rejects signing the same foundation's deed twice", async () => {
     const { founder, foundation } = await createFounderWithFoundation("active");
-    await service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true });
+    await service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash: await textHashFor(foundation.id, founder.id) });
 
     await expect(
-      service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true }),
+      service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash: await textHashFor(foundation.id, founder.id) }),
     ).rejects.toThrow(ConflictException);
   });
 
@@ -123,6 +137,7 @@ describe("FoundationDeedsService", () => {
       founderId: founder.id,
       typedLegalName: "Amina Yusuf",
       affirmed: true,
+      textHash: await textHashFor(foundation.id, founder.id),
     });
     expect(deed.deedText).toContain(waqf.name);
     expect(deed.deedText).toContain(secondWaqf.name);
@@ -138,9 +153,108 @@ describe("FoundationDeedsService", () => {
     expect(reloaded.deedText).not.toContain(thirdWaqf.name);
   });
 
+  test("preview() shows exactly the text sign() then stores", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    const preview = await service.preview(foundation.id, founder.id);
+    const deed = await service.sign({
+      foundationId: foundation.id,
+      founderId: founder.id,
+      typedLegalName: "Amina Yusuf",
+      affirmed: true,
+      textHash: preview.textHash,
+    });
+    expect(deed.deedText).toBe(preview.deedText);
+    expect(preview).toMatchObject({ joint: false, coFounders: [], alreadySigned: false });
+    await expect(service.preview(foundation.id, founder.id)).resolves.toMatchObject({ alreadySigned: true });
+  });
+
+  test("sign() refuses a deed that changed after the signer's preview, and stores nothing", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    const staleHash = await textHashFor(foundation.id, founder.id);
+    // A second fund goes active after the preview, so the stored text would differ.
+    const later = await prisma.waqf.create({
+      data: { name: "Foundation Deed Spec Later Waqf", type: "project", jurisdiction: "NG", foundationId: foundation.id, status: "active" },
+    });
+    waqfIds.push(later.id);
+
+    await expect(
+      service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash: staleHash }),
+    ).rejects.toThrow(ConflictException);
+    expect(await prisma.foundationDeed.findUnique({ where: { foundationId: foundation.id } })).toBeNull();
+  });
+
+  test("a jointly established foundation gets the joint deed, naming every co-founder the signer signs for", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    await prisma.foundation.update({ where: { id: foundation.id }, data: { establishedJointly: true } });
+    const coFounder = await addCoFounder(foundation.id, "Yusuf Bello");
+
+    const preview = await service.preview(foundation.id, founder.id);
+    expect(preview).toMatchObject({ joint: true, coFounders: ["Yusuf Bello"] });
+
+    const deed = await service.sign({
+      foundationId: foundation.id,
+      founderId: founder.id,
+      typedLegalName: "Amina Yusuf",
+      affirmed: true,
+      textHash: preview.textHash,
+    });
+    expect(deed.deedTemplateVersion).toBe(JOINT_FOUNDATION_DEED_TEMPLATE_VERSION);
+    expect(deed.deedText).toContain('(the "Signing Founder")');
+    expect(deed.deedText).toContain("for themselves and on behalf of each co-founder");
+    expect(deed.deedText).toContain(`  - ${coFounder.name}`);
+  });
+
+  test("a single-founder foundation that gains a co-founder before signing also gets the joint deed", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    await addCoFounder(foundation.id, "Late Co-Founder");
+    const preview = await service.preview(foundation.id, founder.id);
+    expect(preview.joint).toBe(true);
+    expect(preview.deedText).toContain("Late Co-Founder");
+  });
+
+  test("a jointly established foundation with no co-founders yet still gets the joint deed, listing none", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    await prisma.foundation.update({ where: { id: foundation.id }, data: { establishedJointly: true } });
+    const preview = await service.preview(foundation.id, founder.id);
+    expect(preview.joint).toBe(true);
+    expect(preview.deedText).toContain("None yet — each co-founder is bound from the day they accept");
+  });
+
+  test("findByFoundationIdForFounder() returns the deed with each co-founder's recorded statement", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    const deed = await service.sign({
+      foundationId: foundation.id,
+      founderId: founder.id,
+      typedLegalName: "Amina Yusuf",
+      affirmed: true,
+      textHash: await textHashFor(foundation.id, founder.id),
+    });
+    const coFounder = await addCoFounder(foundation.id, "Consenting Co-Founder");
+    const coUser = await prisma.user.create({
+      data: { email: `foundation-deed-spec-co-${Date.now()}@example.test`, fullName: "Consenting Co-Founder", status: "active" },
+    });
+    userIds.push(coUser.id);
+    await prisma.coFounderDeedConsent.create({
+      data: {
+        foundationId: foundation.id,
+        founderId: coFounder.id,
+        userId: coUser.id,
+        kind: "adopt_signed_deed",
+        foundationDeedId: deed.id,
+        statementVersion: "spec",
+        statementText: "I adopt it.",
+      },
+    });
+
+    const found = await service.findByFoundationIdForFounder(foundation.id, founder.id);
+    expect(found?.coFounderConsents).toEqual([
+      expect.objectContaining({ founderName: "Consenting Co-Founder", kind: "adopt_signed_deed", statementText: "I adopt it." }),
+    ]);
+  });
+
   test("foundation_deeds is immutable at the DB level — UPDATE and DELETE are both rejected by a trigger", async () => {
     const { founder, foundation } = await createFounderWithFoundation("active");
-    const deed = await service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true });
+    const deed = await service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash: await textHashFor(foundation.id, founder.id) });
 
     // Enforced via a BEFORE UPDATE/DELETE trigger — see
     // 20260827145212_add_foundation_deed/migration.sql.

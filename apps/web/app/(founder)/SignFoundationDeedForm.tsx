@@ -11,11 +11,20 @@
 // could never have its deed signed through the UI at all, even though
 // the backend (POST /foundation-deeds) already accepts any foundationId.
 import { useEffect, useState } from "react";
-import { apiFetchJson } from "../../lib/api";
+import { ApiError, apiFetchJson } from "../../lib/api";
 import { useFounderSession } from "../../lib/founder-session";
 import { humanize } from "../../lib/format";
 import type { Foundation, Waqf } from "../../lib/types";
 import { Alert, Button, IconCheckCircle, IconFileText, IconShieldCheck, Skeleton } from "@birr/ui";
+
+// GET /foundation-deeds/:foundationId/preview — the deed exactly as it
+// would be stored if signed now (see FoundationDeedsService.preview).
+interface DeedPreview {
+  deedText: string;
+  textHash: string;
+  joint: boolean;
+  coFounders: string[];
+}
 
 /** Same comparison the backend makes (FoundationDeedsService: trimmed, case-insensitive). */
 function sameName(a: string, b: string): boolean {
@@ -25,6 +34,7 @@ function sameName(a: string, b: string): boolean {
 export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: Foundation; onSigned: () => void }) {
   const { user } = useFounderSession();
   const [activeWaqfs, setActiveWaqfs] = useState<Waqf[] | null>(null);
+  const [preview, setPreview] = useState<DeedPreview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [typedLegalName, setTypedLegalName] = useState("");
@@ -38,9 +48,11 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
     // returns every waqf this founder session can see (across every
     // Foundation they're on), so filtering to this one Foundation
     // client-side is simpler than adding a new scoped route for it.
-    apiFetchJson<Waqf[]>("/waqfs")
-      .then((waqfs) => {
-        if (!cancelled) setActiveWaqfs(waqfs.filter((w) => w.foundationId === foundation.id && w.status === "active"));
+    Promise.all([apiFetchJson<Waqf[]>("/waqfs"), apiFetchJson<DeedPreview>(`/foundation-deeds/${foundation.id}/preview`)])
+      .then(([waqfs, deedPreview]) => {
+        if (cancelled) return;
+        setActiveWaqfs(waqfs.filter((w) => w.foundationId === foundation.id && w.status === "active"));
+        setPreview(deedPreview);
       })
       .catch((err: unknown) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "Something went wrong.");
@@ -57,12 +69,18 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
     try {
       await apiFetchJson("/foundation-deeds", {
         method: "POST",
-        body: JSON.stringify({ foundationId: foundation.id, typedLegalName, affirmed }),
+        body: JSON.stringify({ foundationId: foundation.id, typedLegalName, affirmed, textHash: preview?.textHash }),
       });
       onSigned();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Something went wrong.");
       setSubmitting(false);
+      // 409: the deed changed since it was shown (a fund went active, a
+      // co-founder joined). Show the new text, and make them affirm again.
+      if (err instanceof ApiError && err.status === 409) {
+        setAffirmed(false);
+        apiFetchJson<DeedPreview>(`/foundation-deeds/${foundation.id}/preview`).then(setPreview).catch(() => {});
+      }
     }
   }
 
@@ -76,7 +94,7 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
       </Alert>
     );
   }
-  if (activeWaqfs === null) {
+  if (activeWaqfs === null || preview === null) {
     return <Skeleton className="h-40 w-full" />;
   }
 
@@ -124,7 +142,17 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
             </div>
           </dl>
 
-          <p className="mt-8 text-[15px] leading-7 text-slate-700">
+          {preview.joint && (
+            <p className="mt-4 rounded-xl border border-primary-100 bg-primary-50/60 p-4 text-sm leading-relaxed text-slate-700">
+              <span className="font-semibold text-slate-900">A joint deed.</span> You sign it for yourself and every co-founder of{" "}
+              {foundation.name}, present and future
+              {preview.coFounders.length > 0 ? <> — today, {preview.coFounders.join(", ")}</> : ""}. Each co-founder agrees to it, in
+              their own name, when they accept their invitation.
+            </p>
+          )}
+
+          <p className="mt-8 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">In short</p>
+          <p className="mt-2 text-[15px] leading-7 text-slate-700">
             This deed records the establishment of <span className="font-medium">{foundation.name}</span> and
             appoints Birr as Mutawalli (trustee) over every Waqf Fund established under it — including funds you
             establish in the future. By signing below, you irrevocably dedicate the assets contributed to each such
@@ -132,6 +160,15 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
             governance standards and each fund&apos;s own jurisdiction&apos;s regulatory requirements. This
             appointment takes effect upon signature.
           </p>
+
+          <p className="mt-8 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">The full deed — what you&apos;re signing</p>
+          <div
+            tabIndex={0}
+            aria-label="Full text of the Deed of Waqf"
+            className="mt-2 max-h-[28rem] overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-4 text-[13px] leading-6 text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 sm:p-5"
+          >
+            {preview.deedText}
+          </div>
 
           {hasActiveWaqf && (
             <div className="mt-8">
