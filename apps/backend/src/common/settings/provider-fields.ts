@@ -3,6 +3,19 @@ export interface ProviderFieldSpec {
   label: string;
   /** true = masked in the dashboard, shown only as a last-4-chars preview. false = plain config value (e.g. a from-address), safe to show in full. */
   secret: boolean;
+  /** Why a value can't be saved, or null when it's fine. SettingsService.set() refuses a value this rejects, so a typo is caught when it's saved rather than breaking every later use of the field. */
+  validate?: (value: string) => string | null;
+}
+
+// Resend accepts "email@example.com" or "Name <email@example.com>". A
+// from-address saved without its closing ">" (2026-09-29) made Resend
+// reject every email Birr sent, sign-up verification included, until
+// someone noticed.
+const EMAIL = "[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+";
+const FROM_ADDRESS = new RegExp(`^(?:${EMAIL}|[^<>]*[^<>\\s] <${EMAIL}>)$`);
+
+export function validateFromAddress(value: string): string | null {
+  return FROM_ADDRESS.test(value) ? null : 'Use "email@example.com" or "Name <email@example.com>".';
 }
 
 // Drives both the Platform Settings GET listing and PUT/DELETE
@@ -34,7 +47,7 @@ export const PROVIDER_FIELDS: Record<string, ProviderFieldSpec[]> = {
   ],
   resend: [
     { key: "API_KEY", label: "API key", secret: true },
-    { key: "FROM_ADDRESS", label: "From address", secret: false },
+    { key: "FROM_ADDRESS", label: "From address", secret: false, validate: validateFromAddress },
   ],
   twilio: [
     { key: "ACCOUNT_SID", label: "Account SID", secret: true },
@@ -62,4 +75,11 @@ export function envVarName(provider: string, key: string): string {
 
 export function isKnownProviderField(provider: string, key: string): boolean {
   return Boolean(PROVIDER_FIELDS[provider]?.some((f) => f.key === key));
+}
+
+/** The field's own validation message for this value, prefixed with its label, or null when it's fine. */
+export function providerFieldValueError(provider: string, key: string, value: string): string | null {
+  const field = PROVIDER_FIELDS[provider]?.find((f) => f.key === key);
+  const problem = field?.validate?.(value) ?? null;
+  return problem && `${field!.label}: ${problem}`;
 }
