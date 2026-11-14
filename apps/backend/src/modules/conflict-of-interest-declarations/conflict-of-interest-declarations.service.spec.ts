@@ -1,15 +1,23 @@
 import { prisma } from "@birr/db";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { ConflictOfInterestDeclarationsService } from "./conflict-of-interest-declarations.service";
-import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
+import type { NotificationsService } from "../notifications/notifications.service";
 
 describe("ConflictOfInterestDeclarationsService", () => {
-  const service = new ConflictOfInterestDeclarationsService(createFakeNotificationsService());
+  // Records notifications instead of writing them. declare() notifies every
+  // active compliance officer and Audit Committee member, and the shared dev
+  // database holds about a thousand left behind by earlier runs. Writing a
+  // notification for each one filled the connection pool, so the next test's
+  // transaction couldn't start in time. The fan-out isn't what these tests
+  // check, so it doesn't touch the database here.
+  const notify = jest.fn().mockResolvedValue(undefined);
+  const service = new ConflictOfInterestDeclarationsService({ notify } as unknown as NotificationsService);
 
   const declarationIds: string[] = [];
 
   let declarantStaffId: string;
   let declarantUserId: string;
+  let reviewerStaffId: string;
   let reviewerUserId: string;
 
   beforeAll(async () => {
@@ -31,14 +39,21 @@ describe("ConflictOfInterestDeclarationsService", () => {
       data: { email: `coi-reviewer-${Date.now()}@example.com`, fullName: "Test Reviewer" },
     });
     reviewerUserId = reviewerUser.id;
-    await prisma.birrStaff.create({
+    const reviewerStaff = await prisma.birrStaff.create({
       data: { userId: reviewerUser.id, roles: { create: { role: "audit_committee" } } },
     });
+    reviewerStaffId = reviewerStaff.id;
   });
 
   afterAll(async () => {
     await prisma.conflictOfInterestDeclaration.deleteMany({
       where: { id: { in: declarationIds } },
+    });
+    // They can't be deleted (see beforeAll), but suspending them keeps them
+    // out of every later run's reviewer lists.
+    await prisma.birrStaff.updateMany({
+      where: { id: { in: [declarantStaffId, reviewerStaffId] } },
+      data: { status: "suspended" },
     });
     await prisma.$disconnect();
   });
@@ -98,7 +113,7 @@ describe("ConflictOfInterestDeclarationsService", () => {
         where: { id: declaration.id },
         data: { reviewedByUserId: declarantUserId },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/coi_reviewer_not_declarant/);
   });
 
   test("review() by a different staff member updates status and writes an audit log", async () => {
