@@ -47,8 +47,8 @@ one Foundation as they like.
 ## What happens after establishment — the trustee work
 
 From the moment a Waqf Fund exists, everything that touches it runs
-through Birr's own staff, using Birr's internal tools — never the
-Founder:
+through Birr's governance as trustee — its officers, boards and
+committees, using Birr's internal tools — never the Founder:
 
 - **Asset management**, including the decision to dispose of an asset.
 - **Investment management**, for Investment-type Waqf Funds — placing
@@ -69,7 +69,7 @@ Founder:
 ```mermaid
 flowchart LR
     A["Founder establishes<br/>Foundation + Waqf Fund"] --> B["Founder funds it<br/>(card / regional / stablecoin)"]
-    B --> C["Birr staff manage it<br/>ongoing: assets, investments,<br/>beneficiaries, distributions"]
+    B --> C["Birr's officers and committees<br/>manage it ongoing: assets, investments,<br/>beneficiaries, distributions"]
     C --> D["Every sensitive action:<br/>maker proposes, different<br/>checker approves"]
     D --> E["Distribution reaches<br/>a named Beneficiary"]
     D --> F["Every decision written to<br/>the immutable audit trail"]
@@ -94,4 +94,4 @@ review and add. Founders also get read-only visibility into their own
 Waqf Fund's Assets, Investments, Distributions (by cause), aggregate
 Beneficiary counts (never individual identities — this matches standard
 endowment donor-confidentiality practice), and any governance decisions
-Birr staff have taken.
+Birr has taken.
