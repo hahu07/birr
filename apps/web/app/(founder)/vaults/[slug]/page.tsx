@@ -295,8 +295,8 @@ export default function VaultDonationPage() {
             </div>
             <p className="mt-3 flex items-start gap-2 px-1 text-xs leading-relaxed text-slate-500">
               <IconShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" />
-              Birr is the trustee for this vault. Every payout to a delivery partner needs approval from two different Birr
-              officers.
+              Birr is the trustee for this vault. Every payout to a delivery partner is decided by members of the responsible
+              board or committee.
             </p>
           </aside>
         </div>

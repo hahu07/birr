@@ -10,9 +10,10 @@
 // 2026-10 redesign: the hero leads with the product itself (the Founder
 // Portal overview on a desktop monitor, sample data), and the two products
 // are laid side by side rather than behind tabs. Copy stays to what the
-// platform actually enforces — "dual authorisation" rather than "Board
-// approval", because a payout's checker may be a Board member or a
-// Compliance Officer; "Shariah advisory" is the owner's chosen public name.
+// platform actually enforces. "Board authorisation" is the owner's
+// chosen public name (2026-11-14) for the two-person rule: decisions are
+// made by members of the responsible board or committee. "Shariah
+// advisory" is likewise the owner's chosen public name.
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -63,7 +64,7 @@ const VAULT_TEASER_LIMIT = 3;
 const TRUST_POINTS = [
   { icon: IconLandmark, title: "Registered trustee", body: "Incorporated Trustee under the Corporate Affairs Commission" },
   { icon: IconShieldCheck, title: "Shariah advisory", body: "Investments screened against prohibited sectors" },
-  { icon: IconUsers, title: "Dual authorisation", body: "Every payout approved by a second person" },
+  { icon: IconUsers, title: "Board authorisation", body: "Every payout decided by board or committee members" },
   { icon: IconFileText, title: "Permanent record", body: "Every action logged — nothing edited or deleted" },
 ];
 
@@ -71,8 +72,8 @@ const GOVERNANCE_POINTS = [
   {
     id: undefined,
     icon: IconUsers,
-    title: "Dual authorisation on every consequential act",
-    body: "Distributions, investment changes, asset disposals and beneficiary criteria each need two different people. The system itself refuses an approval by the person who proposed it.",
+    title: "Board authorisation on every consequential act",
+    body: "Distributions, investment changes, asset disposals and beneficiary criteria are each decided by members of the responsible board or committee.",
   },
   {
     id: undefined,
@@ -117,12 +118,12 @@ const FAQ_ITEMS = [
   {
     question: "Who manages my Waqf Fund once it's established?",
     answer:
-      "Ongoing governance — asset disposal, distribution approval, investment changes — moves to Birr's own staff under dual authorisation: every action is proposed by one person and approved by a different one, enforced by the database itself, not just policy. You keep the purpose — which causes it supports and how its endowment is earmarked between them.",
+      "Ongoing governance — asset disposal, distribution approval, investment changes — is decided by members of the responsible Birr board or committee — the Board of Trustees, Investment Committee, Audit Committee or Shariah Supervisory Board. You keep the purpose — which causes it supports and how its endowment is earmarked between them.",
   },
   {
     question: "What's the difference between a Waqf Fund and a Vault?",
     answer:
-      "A Waqf Fund is an endowment you establish; its corpus is preserved and Birr becomes its trustee. A Vault is a Birr-curated campaign anyone can give to, with no account needed; the gift is spent on the need it was given for. Both run under the same dual authorisation once money moves.",
+      "A Waqf Fund is an endowment you establish; its corpus is preserved and Birr becomes its trustee. A Vault is a Birr-curated campaign anyone can give to, with no account needed; the gift is spent on the need it was given for. Both run under the same board authorisation once money moves.",
   },
   {
     question: "How is Shariah compliance ensured?",
@@ -196,7 +197,7 @@ export default function MarketingHome({
               </span>
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-primary-100/85 text-pretty sm:text-lg lg:mx-0">
-              Establish your own Waqf Fund in minutes. Birr becomes your Mutawalli — investing, distributing and reporting under dual
+              Establish your own Waqf Fund in minutes. Birr becomes your Mutawalli — investing, distributing and reporting under board
               authorisation and an audit trail no one can edit.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
@@ -214,7 +215,7 @@ export default function MarketingHome({
               </Link>
             </div>
             <ul className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-primary-200 lg:justify-start">
-              {["CAC-registered trustee", "Shariah advisory", "Dual authorisation"].map((t) => (
+              {["CAC-registered trustee", "Shariah advisory", "Board authorisation"].map((t) => (
                 <li key={t} className="flex items-center gap-1.5">
                   <IconCheckCircle className="h-4 w-4 text-accent-300" />
                   {t}
@@ -230,7 +231,7 @@ export default function MarketingHome({
                 tone="primary"
                 title="Distribution approved"
                 line="₦620,000 to Education"
-                note="Proposed by one officer, approved by another"
+                note="Decided by members of the Board of Trustees"
                 icon={<IconCheckCircle className="h-4 w-4" />}
               />
               <FloatingNote
@@ -619,7 +620,7 @@ function CheckList({ items, tone }: { items: string[]; tone: "dark" | "light" })
 }
 
 // A card overlapping the monitor's edge — two of them narrate the two
-// promises the product makes (dual authorisation; a preserved corpus).
+// promises the product makes (board authorisation; a preserved corpus).
 // Wide screens only: on narrower ones they would cover the dashboard.
 function FloatingNote({
   className,
@@ -701,7 +702,7 @@ function WaqfDiagram() {
   );
 }
 
-// Dual authorisation: proposer, a different approver, then the action —
+// Board authorisation: proposer, a different approver, then the action —
 // and the refused path when the proposer tries to approve their own.
 function DualAuthorisationDiagram() {
   const b = { fontSize: 9.5, fontWeight: 600, fill: "#113f33" };
@@ -711,7 +712,7 @@ function DualAuthorisationDiagram() {
       viewBox="0 0 360 134"
       className="block h-auto w-full"
       role="img"
-      aria-label="Officer A proposes, a different Officer B approves, and only then is the action carried out and recorded. If Officer A tries to approve their own proposal, the system refuses to record it."
+      aria-label="A Birr officer proposes, a different person from the responsible board or committee approves, and only then is the action carried out and recorded. If the officer tries to approve their own proposal, the system refuses to record it."
     >
       <defs>
         <marker id="home-auth-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
@@ -722,19 +723,19 @@ function DualAuthorisationDiagram() {
         </marker>
       </defs>
       <rect x="1" y="10" width="92" height="50" rx="7" fill="#eff9f6" stroke="#aee1d1" />
-      <text x="47" y="31" textAnchor="middle" style={b}>Officer A</text>
+      <text x="47" y="31" textAnchor="middle" style={b}>Officer</text>
       <text x="47" y="46" textAnchor="middle" style={s}>proposes</text>
       <path d="M96 35H130" fill="none" stroke="#17755d" strokeWidth="1.4" markerEnd="url(#home-auth-arrow)" />
       <rect x="134" y="10" width="92" height="50" rx="7" fill="#eff9f6" stroke="#aee1d1" />
-      <text x="180" y="31" textAnchor="middle" style={b}>Officer B</text>
-      <text x="180" y="46" textAnchor="middle" style={s}>reviews &amp; approves</text>
+      <text x="180" y="31" textAnchor="middle" style={b}>Approver</text>
+      <text x="180" y="46" textAnchor="middle" style={s}>board or committee</text>
       <path d="M229 35H263" fill="none" stroke="#17755d" strokeWidth="1.4" markerEnd="url(#home-auth-arrow)" />
       <rect x="267" y="10" width="92" height="50" rx="7" fill="#113f33" />
       <text x="313" y="31" textAnchor="middle" style={{ ...b, fill: "#fff" }}>Carried out</text>
       <text x="313" y="46" textAnchor="middle" style={{ ...s, fill: "#d7f0e8" }}>and recorded</text>
       <path d="M47 62V107H130" fill="none" stroke="#a23b2a" strokeWidth="1.3" strokeDasharray="3 2.6" markerEnd="url(#home-auth-refused)" />
       <rect x="134" y="84" width="225" height="46" rx="7" fill="#fbeeeb" stroke="#e7b4aa" />
-      <text x="246.5" y="103" textAnchor="middle" style={s}>Officer A tries to approve their own proposal</text>
+      <text x="246.5" y="103" textAnchor="middle" style={s}>The officer tries to approve their own proposal</text>
       <text x="246.5" y="119" textAnchor="middle" style={{ ...b, fill: "#a23b2a" }}>The system refuses to record it</text>
     </svg>
   );

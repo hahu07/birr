@@ -107,7 +107,7 @@ export default function AccountPage() {
 const CATEGORY_LABELS: Record<NotificationPreferenceCategory, { title: string; description: string }> = {
   governance: {
     title: "Governance & waqf status",
-    description: "A fund is activated, a deed is signed, or Birr staff decides on a proposal you're involved in.",
+    description: "A fund is activated, a deed is signed, or Birr decides on a proposal you're involved in.",
   },
   money: {
     title: "Money movement",
