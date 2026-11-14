@@ -64,7 +64,7 @@ const VAULT_TEASER_LIMIT = 3;
 const TRUST_POINTS = [
   { icon: IconLandmark, title: "Registered trustee", body: "Incorporated Trustee under the Corporate Affairs Commission" },
   { icon: IconShieldCheck, title: "Shariah advisory", body: "Investments screened against prohibited sectors" },
-  { icon: IconUsers, title: "Board authorisation", body: "Every payout approved by a second person" },
+  { icon: IconUsers, title: "Board authorisation", body: "Every payout decided by board or committee members" },
   { icon: IconFileText, title: "Permanent record", body: "Every action logged — nothing edited or deleted" },
 ];
 
@@ -73,7 +73,7 @@ const GOVERNANCE_POINTS = [
     id: undefined,
     icon: IconUsers,
     title: "Board authorisation on every consequential act",
-    body: "Distributions, investment changes, asset disposals and beneficiary criteria each need two different people. The system itself refuses an approval by the person who proposed it.",
+    body: "Distributions, investment changes, asset disposals and beneficiary criteria are each decided by members of the responsible board or committee.",
   },
   {
     id: undefined,
