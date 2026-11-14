@@ -365,6 +365,12 @@ export default function OnboardingFounderFoundationPage() {
                       />
                     ))}
                   </div>
+                  {/* An informal group isn't a legal entity, so it isn't an Institution: each
+                      member is their own Individual founder, joined through co-founder invites. */}
+                  <p className="mt-2.5 text-xs leading-relaxed text-slate-500">
+                    Setting this up with family or friends? Choose <span className="font-medium text-slate-700">Individual</span>, then
+                    invite them as co-founders in step 3.
+                  </p>
                 </fieldset>
                 <Field label={kind === "institution" ? "Institution name" : "Your full name"} htmlFor="founderName">
                   <input

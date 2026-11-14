@@ -26,7 +26,7 @@ export type InstitutionType =
 export const KIND_GUIDE: Record<FounderKind, { label: string; description: string; example: string }> = {
   institution: {
     label: "Institution",
-    description: "You're establishing this on behalf of an organization, not yourself personally.",
+    description: "You're establishing this on behalf of a registered organization, not yourself personally.",
     example: "A bank's CSR arm, a university endowment office, or an NGO dedicating part of its reserves.",
   },
   individual: {
