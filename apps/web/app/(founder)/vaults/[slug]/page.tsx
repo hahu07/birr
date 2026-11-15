@@ -28,11 +28,9 @@ import { MoneyInput } from "../../_components/form";
 // are even offered for it.
 //
 // "stripe" (Card, international) deliberately removed — see
-// WaqfFundForm.tsx's own comment on this same removal.
-const PROVIDERS = [
-  { value: "paystack", label: "Card (Nigeria)", currencies: ["NGN"] },
-  { value: "stablecoin", label: "Stablecoin", currencies: ["USDC", "USDT"] },
-] as const;
+// WaqfFundForm.tsx's own comment on this same removal. "stablecoin" is
+// hidden for the same reasons given there (2026-11-15).
+const PROVIDERS = [{ value: "paystack", label: "Card (Nigeria)", currencies: ["NGN"] }] as const;
 
 const ID_TYPES = ["passport", "national_id", "drivers_license", "other"] as const;
 
@@ -452,7 +450,7 @@ function ContributionForm({
         {availableProviders.length === 1 ? (
           <p className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
             <IconShieldCheck className="h-4 w-4 shrink-0 text-primary-700" />
-            Paid with {availableProviders[0]!.value === "paystack" ? "card or bank transfer via Paystack" : "stablecoin"}
+            Paid with card or bank transfer via Paystack
           </p>
         ) : (
           <div>

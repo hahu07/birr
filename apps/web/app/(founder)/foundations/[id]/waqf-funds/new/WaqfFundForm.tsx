@@ -30,10 +30,13 @@ const WAQF_TYPES = ["investment", "asset", "project"] as const;
 // and untouched (apps/backend/.../providers/stripe.adapter.ts) in case
 // this becomes viable later (e.g. a non-Nigerian legal entity); this is
 // a product-surface decision, not evidence the code was wrong.
-const PROVIDERS = [
-  { value: "paystack", label: "Card (Nigeria)", currencies: ["NGN"] },
-  { value: "stablecoin", label: "Stablecoin", currencies: ["USDC", "USDT"] },
-] as const;
+// "stablecoin" (USDC/USDT) hidden too, 2026-11-15, at the owner's
+// direction: Coinbase Commerce, which StablecoinAdapter is built on,
+// closed to merchants outside the US and Singapore on 2026-03-31, and
+// the CBN's stablecoin rules (in force 2026-11-05) don't yet allow USDC
+// or USDT to be used for payments in Nigeria. The adapter stays; see
+// CLAUDE.md's 2026-11-15 note before bringing it back.
+const PROVIDERS = [{ value: "paystack", label: "Card (Nigeria)", currencies: ["NGN"] }] as const;
 
 interface CorpusMinimum {
   currency: string;
@@ -249,7 +252,6 @@ export function WaqfFundForm({
     !submitting;
 
   const amountLocked = isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0;
-  const providerLabel = PROVIDERS.find((p) => p.value === provider)!.label;
   // Numbered only when there's more than one step on screen (a brand-new
   // fund); a top-up/retry is the payment step alone.
   const paymentStep = waqfAlreadyExists ? undefined : 3;
@@ -409,8 +411,8 @@ export function WaqfFundForm({
                       name="provider"
                       checked={provider === p.value}
                       onChange={() => handleProviderChange(p.value)}
-                      title={p.value === "paystack" ? "Card or bank (Nigeria)" : "Stablecoin"}
-                      body={p.value === "paystack" ? "Naira, via Paystack" : "USDC or USDT"}
+                      title="Card or bank (Nigeria)"
+                      body="Naira, via Paystack"
                       disabled={currencyLocked && provider !== p.value}
                     />
                   ))}
@@ -422,7 +424,7 @@ export function WaqfFundForm({
                 )}
               </fieldset>
 
-              {/* Only the stablecoin rail has more than one currency to pick. */}
+              {/* Only a payment method with more than one currency shows a picker (none today). */}
               {PROVIDERS.find((p) => p.value === provider)!.currencies.length > 1 && (
                 <Field label="Currency" htmlFor="currency">
                   <Select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value)} disabled={currencyLocked} className="sm:max-w-[12rem]">
@@ -481,7 +483,7 @@ export function WaqfFundForm({
                       <>
                         You'll pay{" "}
                         <span className="font-semibold tabular-nums text-slate-900">{formatMoney(amount, currency)}</span> via{" "}
-                        {providerLabel === "Card (Nigeria)" ? "Paystack" : "stablecoin checkout"}.
+                        Paystack.
                       </>
                     ) : (
                       "Enter an amount to continue."

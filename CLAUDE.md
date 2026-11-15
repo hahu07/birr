@@ -554,6 +554,36 @@ someone else's signature with no record they agreed. Owner's decisions
   Board note asks them to. A revision they approve gets a new version.
 - Co-founders who joined before this change were left as they are.
 
+**Update, 2026-11-15 — Stablecoin hidden as a donation option too; no
+crypto for now.** Owner's decision, after research showed neither works
+in Nigeria today:
+- **The gateway is gone.** `StablecoinAdapter` is built on Coinbase
+  Commerce, which reportedly closed to merchants outside the US and
+  Singapore on 2026-03-31; its successor, Coinbase Business, serves
+  US/Singapore entities only. No key was ever configured and no
+  stablecoin payment was ever made.
+- **The law doesn't allow it yet.** The CBN's Regulations for the
+  Operations of Non-Security Virtual Assets (in force 2026-11-05) let a
+  dollar stablecoin be used in Nigeria only once approved as "Class 2"
+  and issued by a CBN-licensed Nigerian company; none is reported
+  approved, so USDC/USDT don't qualify. Merchant acceptance and payment
+  gateways need separate CBN authorisation; existing operators have 180
+  days (to about early May 2027) to apply. The SEC (ISA 2025) already
+  barred accepting crypto directly without registration.
+- **Other crypto (BTC, ETH, ...) waits on three things**, revisit after
+  the CBN window closes: a legal opinion on whether a non-profit
+  receiving crypto through an authorised gateway needs its own approval;
+  a Shariah Supervisory Board ruling on crypto as waqf or zakah (AAOIFI
+  has no binding standard, and scholars differ); and a CBN-authorised
+  provider that converts to naira on arrival, so a waqf never holds a
+  volatile asset.
+- Removed from `WaqfFundForm.tsx` and `vaults/[slug]/page.tsx`, the
+  same way Stripe was; the adapter, webhook and Platform Settings entry
+  stay. Most findings came from news and law-firm summaries, not the
+  CBN text itself; have Legal confirm before relying on them.
+- For USD giving, the route is still Paystack international payments
+  with a Zenith Bank USD domiciliary account (see the 2026-09-19 note).
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
