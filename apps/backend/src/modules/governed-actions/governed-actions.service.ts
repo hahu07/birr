@@ -2009,20 +2009,15 @@ export class GovernedActionsService {
       }
       const decided = await tx.governedAction.findUniqueOrThrow({ where: { id: action.id } });
 
-      await tx.auditLog.create({
-        data: {
-          waqfId: action.waqfId,
-          vaultId: action.vaultId,
-          actorType: "birr_staff",
-          actorUserId: input.checkerUserId,
-          action: `governed_action.${status}`,
-          entityType: "GovernedAction",
-          entityId: action.id,
-          before: action as any,
-          after: decided as any,
-        },
-      });
-
+      // The decision's own audit row is written after the handler runs,
+      // not before. Writing an audit row takes the audit chain's lock
+      // (audit_logs_chain_hash) until this transaction commits, and most
+      // handlers take a lock of their own (the zakah spending limit, a
+      // waqf or vault row, ...). Taken in the other order, an approval
+      // deadlocks with any transaction that takes that same lock first and
+      // writes its audit row second, e.g. creating a zakah distribution
+      // (seen 2026-11-15). Rule: take every other lock before the first
+      // audit row.
       let fulfillment: FulfillmentResult | undefined;
       const handler = this.handlers.get(action.permission.key);
       if (handler) {
@@ -2040,21 +2035,36 @@ export class GovernedActionsService {
         } else if (handler.onReject) {
           fulfillment = await handler.onReject(action.payload, tx);
         }
-        if (fulfillment) {
-          await tx.auditLog.create({
-            data: {
-              waqfId: action.waqfId,
-              vaultId: action.vaultId,
-              actorType: "birr_staff",
-              actorUserId: input.checkerUserId,
-              action: fulfillment.auditAction,
-              entityType: fulfillment.entityType,
-              entityId: fulfillment.entityId,
-              before: fulfillment.before as any,
-              after: fulfillment.after as any,
-            },
-          });
-        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          waqfId: action.waqfId,
+          vaultId: action.vaultId,
+          actorType: "birr_staff",
+          actorUserId: input.checkerUserId,
+          action: `governed_action.${status}`,
+          entityType: "GovernedAction",
+          entityId: action.id,
+          before: action as any,
+          after: decided as any,
+        },
+      });
+
+      if (fulfillment) {
+        await tx.auditLog.create({
+          data: {
+            waqfId: action.waqfId,
+            vaultId: action.vaultId,
+            actorType: "birr_staff",
+            actorUserId: input.checkerUserId,
+            action: fulfillment.auditAction,
+            entityType: fulfillment.entityType,
+            entityId: fulfillment.entityId,
+            before: fulfillment.before as any,
+            after: fulfillment.after as any,
+          },
+        });
       }
 
       return { governedAction: decided, fulfillment };

@@ -904,3 +904,10 @@ attributable.
 - Flag any place a single person could both propose and approve an
   action, even across two different roles they happen to hold — that's a
   maker-checker bug, not a style issue.
+- **In one transaction, take every other lock before writing the first
+  audit row.** Writing an audit row takes the audit chain's lock until
+  commit, so a transaction that audits first and locks second deadlocks
+  with one that locks first and audits second. `GovernedActionsService
+  .decide()` writes its decision row after the handler runs for this
+  reason (a zakah approval deadlocked with a new distribution,
+  2026-11-15).
