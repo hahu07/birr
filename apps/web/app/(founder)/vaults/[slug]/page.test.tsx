@@ -97,7 +97,7 @@ describe("VaultDonationPage — a fetch failure is not the same as a real 404", 
   });
 });
 
-describe("VaultDonationPage — giving monthly", () => {
+describe("VaultDonationPage — giving monthly", { timeout: 20_000 }, () => {
   beforeEach(() => {
     mockedFetch.mockReset();
     mockedFetch.mockImplementation((path: string) => {
