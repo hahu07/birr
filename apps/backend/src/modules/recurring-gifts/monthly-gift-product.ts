@@ -1,4 +1,4 @@
-import type { Prisma, RecurringGift, RecurringGiftKind, RecurringGiftPauseReason } from "@birr/db";
+import type { IdType, Prisma, RecurringGift, RecurringGiftKind, RecurringGiftPauseReason } from "@birr/db";
 import type { SavedCardChargeResult } from "../contributions/providers/payment-provider.interface";
 
 /** One payment of a monthly gift, as its product records it. */
@@ -48,4 +48,12 @@ export interface MonthlyGiftProduct {
   minimum(): Promise<Prisma.Decimal>;
   /** What the gift goes to, for its manage page. */
   describe(gift: RecurringGift): Promise<{ name: string; detail?: string; link?: string }>;
+  /** The giver adds the name and ID the AML threshold asks for (Vault and zakah givers, from their link). */
+  recordIdentity?(gift: RecurringGift, identity: GiverIdentity): Promise<void>;
+}
+
+export interface GiverIdentity {
+  fullName: string;
+  idType: IdType;
+  idNumber: string;
 }

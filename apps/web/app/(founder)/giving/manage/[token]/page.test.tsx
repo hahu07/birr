@@ -106,4 +106,21 @@ describe("Manage a monthly gift", { timeout: 20_000 }, () => {
     expect(await screen.findByText("This link isn't valid")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Email me my links/ })).toHaveAttribute("href", "/giving/manage");
   });
+
+  test("monthly zakah paused for new terms shows the new wording and resumes once accepted", async () => {
+    mockedFetch.mockImplementation(async (path: string) => {
+      if (path === "/zakah-payments/terms") return { wakalah: { version: "v-new", text: "I appoint Birr as my agent (new wording)." } };
+      if (path === "/giving/manage/tok-1/terms") return gift({ kind: "zakah", target: { name: "Zakah on wealth", detail: "paid in advance" } });
+      return gift({ kind: "zakah", status: "paused", pauseReason: "terms_changed", nextChargeAt: null, target: { name: "Zakah on wealth", detail: "paid in advance" } });
+    });
+    const user = userEvent.setup();
+    render(<ManageMonthlyGiftPage />);
+    const accept = await screen.findByRole("button", { name: "Accept and carry on" });
+    expect(accept).toBeDisabled();
+    await user.click(await screen.findByLabelText(/new wording/));
+    await user.click(accept);
+    await waitFor(() => expect(screen.getByText("Active")).toBeInTheDocument());
+    const [, init] = mockedFetch.mock.calls.find(([path]) => path === "/giving/manage/tok-1/terms")!;
+    expect(JSON.parse(init!.body as string)).toEqual({ version: "v-new" });
+  });
 });

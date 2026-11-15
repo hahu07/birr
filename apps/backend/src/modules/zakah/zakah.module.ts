@@ -13,10 +13,11 @@ import { ZakahStructuringReviewService } from "./zakah-structuring-review.servic
 import { ResendZakahReceiptEmailAdapter } from "./zakah-receipt-email.adapter";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { SettingsModule } from "../../common/settings/settings.module";
+import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-core.module";
 import { EncryptionService } from "../../common/settings/encryption.service";
 
 @Module({
-  imports: [SettingsModule],
+  imports: [SettingsModule, RecurringGiftsCoreModule],
   controllers: [ZakahController, ZakahPaymentsController, ZakahDistributionsController, ZakahRefundsController],
   // PaystackAdapter and EncryptionService: each consuming module provides
   // its own instance, same convention as VaultsModule.

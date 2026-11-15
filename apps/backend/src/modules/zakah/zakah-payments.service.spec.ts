@@ -11,6 +11,7 @@ import type { ResendZakahReceiptEmailAdapter, ZakahReceipt } from "./zakah-recei
 import { ZAKAH_WAKALAH_TERMS } from "./zakah-terms";
 import { ZakahFitrService } from "./zakah-fitr.service";
 import { unusedFitrSeason } from "./test-support-fitr";
+import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
 
 // A fake Paystack: records what would be sent, and lets each test decide
 // what the "webhook" or "verify" call reports. Nothing reaches Paystack.
@@ -61,6 +62,7 @@ describe("ZakahPaymentsService", () => {
     new ZakahLedgerService(),
     receipts as unknown as ResendZakahReceiptEmailAdapter,
     fitr,
+    createFakeRecurringGiftsCore().core,
   );
 
   const base = { amount: "95000", coverFee: false, wakalahConsentVersion: ZAKAH_WAKALAH_TERMS.version };

@@ -10,6 +10,7 @@ import { ZakahLedgerService } from "./zakah-ledger.service";
 import { ZakahPaymentsService } from "./zakah-payments.service";
 import type { ResendZakahReceiptEmailAdapter } from "./zakah-receipt-email.adapter";
 import { ZakahRefundsService } from "./zakah-refunds.service";
+import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
 
 // AML holds. Fixture payments use a made-up per-run currency, so this
 // suite's spending limit is its own pool (see zakah-refunds.service.spec.ts)
@@ -25,6 +26,7 @@ describe("AML holds on zakah payments", () => {
     ledger,
     {} as ResendZakahReceiptEmailAdapter,
     new ZakahFitrService(),
+    createFakeRecurringGiftsCore().core,
   );
   const refunds = new ZakahRefundsService(encryption, ledger, {} as ResendZakahReceiptEmailAdapter);
   const run = Date.now().toString(36).toUpperCase();

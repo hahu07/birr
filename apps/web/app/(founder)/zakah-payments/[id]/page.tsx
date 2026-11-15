@@ -19,6 +19,8 @@ interface ZakahPaymentStatus {
   feeCover: string;
   currency: string;
   status: "pending" | "confirmed" | "failed";
+  /** Set when this was the first payment of a monthly zakah. */
+  recurringGift?: { status: "pending_setup" | "active" | "paused" | "cancelled" | "ended" } | null;
 }
 
 const POLL_INTERVAL_MS = 2000;
@@ -140,6 +142,17 @@ export default function ZakahPaymentStatusPage() {
                 : " — Birr will pass it on, as your agent, only to people eligible to receive zakah."}
             {Number(payment.feeCover) > 0 && ` Thank you for also covering the ${formatMoney(payment.feeCover, payment.currency)} processing fee.`}
           </p>
+          {payment.recurringGift && payment.recurringGift.status !== "ended" && (
+            <p className="mx-auto mt-3 max-w-sm rounded-lg bg-primary-50/70 px-3 py-2.5 text-xs leading-relaxed text-slate-700">
+              Your monthly zakah has begun: the same amount will be paid in advance each month on your card. We&apos;ve emailed you a private
+              link to change or stop it any time.
+            </p>
+          )}
+          {payment.recurringGift?.status === "ended" && (
+            <p className="mx-auto mt-3 max-w-sm rounded-lg bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
+              Your card can&apos;t be charged again automatically, so this won&apos;t repeat. Today&apos;s zakah still went through.
+            </p>
+          )}
           <p className="mt-2 text-xs text-slate-500">If you gave your email, a receipt is on its way. May Allah accept it from you.</p>
           {reference}
           <Link href="/zakah" className="mt-4 inline-block text-sm font-medium text-primary-700 hover:text-primary-800">

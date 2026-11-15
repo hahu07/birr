@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { prisma, Prisma, type RecurringGift } from "@birr/db";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
-import { GiftNeedsGiver, type MonthlyGiftCharge, type MonthlyGiftPrecheck, type MonthlyGiftProduct } from "./monthly-gift-product";
+import { GiftNeedsGiver, type GiverIdentity, type MonthlyGiftCharge, type MonthlyGiftPrecheck, type MonthlyGiftProduct } from "./monthly-gift-product";
 
 const IDENTITY_CODES = new Set(["IDENTITY_REQUIRED", "IDENTITY_CONFIRMATION_REQUIRED", "IDENTITY_MISMATCH"]);
 
@@ -85,5 +85,9 @@ export class VaultMonthlyProduct implements MonthlyGiftProduct {
       ? await prisma.vaultCause.findUnique({ where: { id: gift.vaultCauseId }, select: { name: true } })
       : null;
     return { name: vault?.name ?? "A Vault", detail: cause?.name, link: vault ? `/vaults/${vault.slug}` : undefined };
+  }
+
+  async recordIdentity(gift: RecurringGift, identity: GiverIdentity) {
+    await this.contributions.recordDonorIdentity(gift.email, identity);
   }
 }

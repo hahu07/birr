@@ -9,6 +9,11 @@ import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { RecurringGiftsService } from "./recurring-gifts.service";
 import { VaultMonthlyProduct } from "./vault-monthly.product";
 import { WaqfMonthlyProduct } from "./waqf-monthly.product";
+import { ZakahMonthlyProduct } from "./zakah-monthly.product";
+import { ZakahPaymentsService } from "../zakah/zakah-payments.service";
+import { ZakahLedgerService } from "../zakah/zakah-ledger.service";
+import { ZakahFitrService } from "../zakah/zakah-fitr.service";
+import { ZAKAH_WAKALAH_TERMS } from "../zakah/zakah-terms";
 import { ContributionsService } from "../contributions/contributions.service";
 import { AssetsService } from "../assets/assets.service";
 import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
@@ -57,7 +62,7 @@ describe("Monthly Vault gifts", () => {
     unused as any,
   );
   // Waqf top-ups have their own describe block below.
-  const service = new RecurringGiftsService(core, contributions, new VaultMonthlyProduct(contributions), new WaqfMonthlyProduct(null as any));
+  const service = new RecurringGiftsService(core, new VaultMonthlyProduct(contributions), new WaqfMonthlyProduct(null as any), new ZakahMonthlyProduct(null as any));
   const vaultsService = new VaultsService(new VaultProceedsService(), ledger);
 
   const run = Date.now().toString(36);
@@ -353,8 +358,7 @@ describe("Monthly Waqf Fund top-ups", () => {
     paystack as any,
     unused as any,
   );
-  const vaultContributions = { recordDonorIdentity: jest.fn() } as unknown as VaultContributionsService;
-  const service = new RecurringGiftsService(core, vaultContributions, new VaultMonthlyProduct(vaultContributions), new WaqfMonthlyProduct(contributions));
+  const service = new RecurringGiftsService(core, new VaultMonthlyProduct(null as any), new WaqfMonthlyProduct(contributions), new ZakahMonthlyProduct(null as any));
 
   const run = Date.now().toString(36);
   const waqfIds: string[] = [];
@@ -468,5 +472,110 @@ describe("Monthly Waqf Fund top-ups", () => {
     await prisma.recurringGift.update({ where: { id: gift.id }, data: { nextChargeAt: new Date(Date.now() - 1000) } });
     await service.processDue(gift.id);
     expect(await prisma.recurringGift.findUniqueOrThrow({ where: { id: gift.id } })).toMatchObject({ status: "ended", endedReason: "waqf_inactive" });
+  });
+});
+
+describe("Monthly zakah (paid in advance)", () => {
+  const paystack = new FakeRecurringPaystack();
+  const { core, emails } = createFakeRecurringGiftsCore(paystack);
+  const settings = { get: async (provider: string, key: string) => (provider === "paystack" && key === "ZAKAH_SUBACCOUNT_CODE" ? "ACCT_test_zakah" : undefined) };
+  const payments = new ZakahPaymentsService(
+    new EncryptionService(),
+    settings as any,
+    paystack as any,
+    new ZakahLedgerService(),
+    { sendReceipt: async () => undefined } as any,
+    new ZakahFitrService(),
+    core,
+  );
+  const service = new RecurringGiftsService(core, new VaultMonthlyProduct(null as any), new WaqfMonthlyProduct(null as any), new ZakahMonthlyProduct(payments));
+  const run = Date.now().toString(36);
+  let n = 0;
+  const terms = ZAKAH_WAKALAH_TERMS.version;
+
+  async function setUp(amount = "50000", coverFee = true) {
+    const email = `monthly-zakah-${run}-${n++}@example.com`;
+    const result = await payments.initiate({ kind: "mal", amount, coverFee, wakalahConsentVersion: terms, payerEmail: email, monthly: true });
+    await payments.reconcile(result.payment.id);
+    const row = await prisma.zakahPayment.findUniqueOrThrow({ where: { id: result.payment.id } });
+    const deadline = Date.now() + 10_000;
+    let gift = await prisma.recurringGift.findUniqueOrThrow({ where: { id: row.recurringGiftId! } });
+    while (gift.status === "pending_setup" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+      gift = await prisma.recurringGift.findUniqueOrThrow({ where: { id: gift.id } });
+    }
+    return { gift, row };
+  }
+
+  const tokenFor = (gift: RecurringGift) =>
+    emails.sent.find((e) => e.to === gift.email && e.subject === "Your monthly zakah is set up")!.ctaUrl!.split("/giving/manage/")[1];
+  const reload = (gift: RecurringGift) => prisma.recurringGift.findUniqueOrThrow({ where: { id: gift.id } });
+  const due = (gift: RecurringGift) => prisma.recurringGift.update({ where: { id: gift.id }, data: { nextChargeAt: new Date(Date.now() - 1000) } });
+
+  beforeEach(() => {
+    paystack.card = REUSABLE_CARD;
+    paystack.nextCharge = { status: "confirmed", providerPaymentId: "pay_fake" };
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  test("setting up goes into the zakah account by card, recording the terms, the fee cover and the calculation's prices", async () => {
+    const { gift, row } = await setUp();
+    expect(paystack.checkouts.find((c) => c.reference === row.id)).toMatchObject({ cardOnly: true });
+    expect(row).toMatchObject({ settlementSubaccount: "ACCT_test_zakah", recurringPeriod: periodOf(new Date()) });
+    expect(Number(row.feeCover)).toBeGreaterThan(0);
+    expect(gift).toMatchObject({ kind: "zakah", status: "active", coverFee: true, wakalahConsentVersion: terms, zakahMetalPriceId: row.metalPriceId });
+    expect(emails.sent.find((e) => e.to === gift.email)!.bodyHtml).toContain("zakah paid in advance");
+  });
+
+  test("Zakah al-Fitr can't be monthly, and monthly zakah needs an email", async () => {
+    await expect(
+      payments.initiate({ kind: "fitr", fitrPeople: 2, fitrForm: "food", coverFee: false, wakalahConsentVersion: terms, payerEmail: "f@example.com", monthly: true }),
+    ).rejects.toThrow("Zakah al-Fitr is paid once a year");
+    await expect(payments.initiate({ kind: "mal", amount: "50000", coverFee: false, wakalahConsentVersion: terms, monthly: true })).rejects.toThrow(
+      "Monthly zakah needs your email",
+    );
+  });
+
+  test("a month is charged into the zakah account with the fee cover, recording the setup's prices", async () => {
+    const { gift, row } = await setUp();
+    await due(gift);
+    await service.processDue(gift.id);
+    const charge = paystack.charges.at(-1)!;
+    expect(charge.split).toEqual({ subaccount: "ACCT_test_zakah", mainAccountShareMinorUnits: Math.round(Number(row.feeCover) * 100) });
+    expect(Number(charge.amount)).toBeCloseTo(Number(row.amount) + Number(row.feeCover), 2);
+    const month = await prisma.zakahPayment.findFirstOrThrow({ where: { recurringGiftId: gift.id, recurringPeriod: gift.nextPeriod } });
+    expect(month).toMatchObject({ status: "confirmed", metalPriceId: row.metalPriceId, wakalahConsentVersion: terms, pool: "mal" });
+  });
+
+  test("changed wakalah terms pause the gift until the payer accepts the new wording", async () => {
+    const { gift } = await setUp("50000", false);
+    await prisma.recurringGift.update({ where: { id: gift.id }, data: { wakalahConsentVersion: "an-older-wording" } });
+    await due(gift);
+    const before = paystack.charges.length;
+    await service.processDue(gift.id);
+    expect(paystack.charges.length).toBe(before);
+    expect(await reload(gift)).toMatchObject({ status: "paused", pauseReason: "terms_changed" });
+
+    const token = tokenFor(gift);
+    await expect(service.acceptZakahTerms(token, { version: "an-older-wording" })).rejects.toThrow(BadRequestException);
+    expect((await service.acceptZakahTerms(token, { version: terms })).status).toBe("active");
+    expect(await reload(gift)).toMatchObject({ wakalahConsentVersion: terms, pauseReason: null });
+    expect(await prisma.auditLog.count({ where: { entityId: gift.id, action: "recurring_gift.terms_accepted" } })).toBe(1);
+  });
+
+  test("a payer reaching the AML threshold without an ID is paused for it; giving it resumes the gift", async () => {
+    const threshold = (await prisma.vaultDonorThreshold.findUniqueOrThrow({ where: { currency: "NGN" } })).thresholdAmount;
+    const { gift } = await setUp(new Prisma.Decimal(threshold).div(2).plus(1000).toFixed(2), false);
+    await due(gift);
+    await service.processDue(gift.id);
+    expect(await reload(gift)).toMatchObject({ status: "paused", pauseReason: "needs_identity" });
+
+    await service.provideIdentity(tokenFor(gift), { fullName: "Yusuf Bello", idType: "national_id", idNumber: "98765432109" });
+    expect((await prisma.zakahPayer.findUniqueOrThrow({ where: { email: gift.email } })).idNumberEncrypted).not.toBeNull();
+    await service.processDue(gift.id);
+    expect((await reload(gift)).nextPeriod).toBe(addMonths(gift.nextPeriod, 1));
   });
 });

@@ -1,14 +1,15 @@
 import { randomBytes } from "crypto";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsEmail, IsNumberString } from "class-validator";
-import { prisma, Prisma, type RecurringGift, type RecurringGiftKind, type RecurringGiftPauseReason } from "@birr/db";
+import { IsEmail, IsEnum, IsNumberString, IsString, MaxLength } from "class-validator";
+import { IdType, prisma, Prisma, type RecurringGift, type RecurringGiftKind, type RecurringGiftPauseReason } from "@birr/db";
 import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validation/max-decimal";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
-import { VaultContributionsService, type VaultDonorIdentityInput } from "../vaults/vault-contributions.service";
 import { RecurringGiftsCoreService, hashManageToken, snapshot } from "./recurring-gifts-core.service";
 import { GiftNeedsGiver, type MonthlyGiftCharge, type MonthlyGiftProduct } from "./monthly-gift-product";
 import { VaultMonthlyProduct } from "./vault-monthly.product";
 import { WaqfMonthlyProduct } from "./waqf-monthly.product";
+import { ZakahMonthlyProduct } from "./zakah-monthly.product";
+import { ZAKAH_WAKALAH_TERMS } from "../zakah/zakah-terms";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { addMonths, cardExpiredBy, chargeDateFor } from "./recurring-gift-dates";
 import { cancelledEmail, chargeFailedEmail, endedEmail, manageLinksEmail, pausedEmail, reminderEmail } from "./recurring-gift-emails";
@@ -40,6 +41,27 @@ export class RequestManageLinksInput {
   email!: string;
 }
 
+/** The name and ID the AML threshold asks a Vault or zakah giver for. */
+export class GiverIdentityInput {
+  @IsString()
+  @MaxLength(200)
+  fullName!: string;
+
+  @IsEnum(IdType)
+  idType!: IdType;
+
+  @IsString()
+  @MaxLength(50)
+  idNumber!: string;
+}
+
+/** A monthly zakah payer accepting the current wakalah wording. */
+export class AcceptZakahTermsInput {
+  @IsString()
+  @MaxLength(64)
+  version!: string;
+}
+
 type Who = { type: "giver" } | { type: "system" } | { type: "staff"; userId: string };
 
 /**
@@ -57,13 +79,14 @@ export class RecurringGiftsService {
 
   constructor(
     private readonly core: RecurringGiftsCoreService,
-    private readonly vaultContributions: VaultContributionsService,
     vaultProduct: VaultMonthlyProduct,
     waqfProduct: WaqfMonthlyProduct,
+    zakahProduct: ZakahMonthlyProduct,
   ) {
     this.products = new Map<RecurringGiftKind, MonthlyGiftProduct>([
       ["vault", vaultProduct],
       ["waqf", waqfProduct],
+      ["zakah", zakahProduct],
     ]);
   }
 
@@ -382,16 +405,44 @@ export class RecurringGiftsService {
     return this.product(gift).startCardUpdate(gift);
   }
 
-  async provideIdentity(token: string, input: VaultDonorIdentityInput) {
+  async provideIdentity(token: string, input: GiverIdentityInput) {
     const gift = await this.byToken(token);
-    if (gift.kind !== "vault" || gift.status !== "paused" || gift.pauseReason !== "needs_identity") {
+    const product = this.product(gift);
+    if (!product.recordIdentity || gift.status !== "paused" || gift.pauseReason !== "needs_identity") {
       throw new BadRequestException("This monthly gift isn't waiting for your ID.");
     }
-    await this.vaultContributions.recordDonorIdentity(gift.email, input);
+    await product.recordIdentity(gift, input);
     const updated = await this.transition(gift, { type: "giver" }, "recurring_gift.resumed", this.resumeData(gift), {
       status: "paused",
       pauseReason: "needs_identity",
     });
+    return this.present(updated ?? gift);
+  }
+
+  /**
+   * A monthly zakah payer accepts the current wakalah wording, after it
+   * changed since they set the gift up. Only the exact current version is
+   * accepted, and recorded on the gift; the gift then carries on.
+   */
+  async acceptZakahTerms(token: string, input: AcceptZakahTermsInput) {
+    const gift = await this.byToken(token);
+    if (gift.kind !== "zakah" || gift.status !== "paused" || gift.pauseReason !== "terms_changed") {
+      throw new BadRequestException("This monthly zakah isn't waiting for you to accept new terms.");
+    }
+    if (input.version !== ZAKAH_WAKALAH_TERMS.version) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: "WAKALAH_TERMS_CHANGED",
+        message: "The terms changed again just now. Please reload the page and read them again.",
+      });
+    }
+    const updated = await this.transition(
+      gift,
+      { type: "giver" },
+      "recurring_gift.terms_accepted",
+      { wakalahConsentVersion: input.version, ...this.resumeData(gift) },
+      { status: "paused", pauseReason: "terms_changed" },
+    );
     return this.present(updated ?? gift);
   }
 

@@ -296,6 +296,7 @@ function PausedAction({ token, gift, onChange }: { token: string; gift: ManagedG
           </Button>
         </form>
       )}
+      {gift.pauseReason === "terms_changed" && <AcceptNewTerms token={token} onChange={onChange} />}
       {gift.pauseReason === "below_minimum" && (
         <>
           <p className="text-sm font-semibold text-amber-950">The minimum gift has gone up</p>
@@ -305,6 +306,57 @@ function PausedAction({ token, gift, onChange }: { token: string; gift: ManagedG
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Monthly zakah only: the agency (wakalah) wording changed after the payer
+ * set it up, so it's paused until they accept the current one. Shows the
+ * exact text and sends its version; the server accepts only the current one.
+ */
+function AcceptNewTerms({ token, onChange }: { token: string; onChange: (gift: ManagedGift) => void }) {
+  const [terms, setTerms] = useState<{ version: string; text: string } | null>(null);
+  const [accepted, setAccepted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetchJson<{ wakalah: { version: string; text: string } }>("/zakah-payments/terms")
+      .then((t) => setTerms(t.wakalah))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Couldn't load the terms."));
+  }, []);
+
+  async function accept() {
+    if (!terms) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onChange(await apiFetchJson<ManagedGift>(`/giving/manage/${token}/terms`, { method: "POST", body: JSON.stringify({ version: terms.version }) }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <p className="text-sm font-semibold text-amber-950">The terms for paying zakah through Birr have changed</p>
+      <p className="mt-1 text-sm leading-relaxed text-amber-900">Please read the new wording. Your monthly zakah carries on once you accept it.</p>
+      {error && (
+        <Alert tone="danger" title="That didn't work" className="mt-3">
+          {error}
+        </Alert>
+      )}
+      {terms && (
+        <label className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-white p-3 text-xs leading-relaxed text-slate-700">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+          <span>{terms.text}</span>
+        </label>
+      )}
+      <Button type="button" className="mt-4" disabled={!terms || !accepted || busy} onClick={accept}>
+        {busy ? "Saving…" : "Accept and carry on"}
+      </Button>
     </div>
   );
 }
