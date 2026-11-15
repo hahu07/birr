@@ -6,8 +6,11 @@ const API_KEY = "sk-fixture-key";
 
 /** No DB involvement needed for an adapter-level unit test — same
  * "fake cast as the real class" pattern as paystack-payout.adapter.spec.ts. */
-function fakeSettings(key: string | undefined = API_KEY): SettingsService {
-  return { get: async () => key } as unknown as SettingsService;
+// null means "no key configured". Not undefined: passing undefined applies
+// the default, which sent the "no key" test to the real API with the
+// fixture key.
+function fakeSettings(key: string | null = API_KEY): SettingsService {
+  return { get: async () => key ?? undefined } as unknown as SettingsService;
 }
 
 describe("OpenAiImageAdapter", () => {
@@ -25,7 +28,7 @@ describe("OpenAiImageAdapter", () => {
   test(
     "throws when no API key is configured",
     async () => {
-      const adapter = new OpenAiImageAdapter(fakeSettings(undefined));
+      const adapter = new OpenAiImageAdapter(fakeSettings(null));
       await expect(adapter.generate("a waqf")).rejects.toThrow(ServiceUnavailableException);
     },
     15000,

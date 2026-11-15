@@ -11,7 +11,14 @@ import { createFakeNotificationsService } from "../notifications/test-support/fa
 // load (this file failed exactly this way when run right after a
 // backend restart). Poll instead: check every 20ms, up to 1s, for the
 // expected notification count to actually land.
-async function waitForNotifications(where: { type: string; relatedEntityId: string }, atLeast = 1) {
+// Each lookup names the possible recipients: the shared dev database's
+// notifications table holds millions of rows from earlier runs, and only
+// recipientUserId is indexed, so a lookup by relatedEntityId alone read the
+// whole table on every poll and timed the test out.
+async function waitForNotifications(
+  where: { type: string; relatedEntityId: string; recipientUserId: { in: string[] } },
+  atLeast = 1,
+) {
   const deadline = Date.now() + 15000;
   let found: Awaited<ReturnType<typeof prisma.notification.findMany>> = [];
   while (Date.now() < deadline) {
@@ -165,7 +172,11 @@ describe("MessagesService", () => {
     );
     messageIds.push(message.id);
 
-    const notifications = await waitForNotifications({ type: "message.received", relatedEntityId: message.id });
+    const notifications = await waitForNotifications({
+      type: "message.received",
+      relatedEntityId: message.id,
+      recipientUserId: { in: [staffUserId, founderUserAId, founderUserBId] },
+    });
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toMatchObject({ recipientType: "birr_staff", recipientUserId: staffUserId });
   }, 20_000);
@@ -178,7 +189,14 @@ describe("MessagesService", () => {
     );
     messageIds.push(message.id);
 
-    const notifications = await waitForNotifications({ type: "message.received", relatedEntityId: message.id }, 2);
+    const notifications = await waitForNotifications(
+      {
+        type: "message.received",
+        relatedEntityId: message.id,
+        recipientUserId: { in: [staffUserId, founderUserAId, founderUserBId] },
+      },
+      2,
+    );
     const recipientIds = notifications.map((n) => n.recipientUserId).sort();
     expect(recipientIds).toEqual([founderUserAId, founderUserBId].sort());
   }, 20_000);

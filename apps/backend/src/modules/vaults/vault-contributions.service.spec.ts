@@ -210,10 +210,13 @@ describe("VaultContributionsService", () => {
     vaultIds.push(multiCurrencyVault.id);
     await prisma.$transaction((tx) => vaultsService.publish(multiCurrencyVault.id, tx));
 
-    // NGN — an additionalCurrency, not the primary — succeeds.
+    // NGN — an additionalCurrency, not the primary — succeeds. At the
+    // configured minimum, which staff can change in the Ops Console
+    // (raised to 250,000 in the dev database on 2026-11-14).
+    const ngnMinimum = await prisma.contributionMinimum.findUniqueOrThrow({ where: { currency: "NGN" } });
     const ngnResult = await service.initiate({
       vaultId: multiCurrencyVault.id,
-      amount: "200000",
+      amount: ngnMinimum.minAmount.toString(),
       currency: "NGN",
       provider: "paystack",
       donorEmail: uniqueEmail("additional-currency"),
