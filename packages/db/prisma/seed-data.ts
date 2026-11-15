@@ -92,6 +92,10 @@ const governedPermissions = [
   // one is the same two-person rule as staff.invite.
   { key: "staff.role_add", category: "staff", requiresMakerChecker: true, description: "Give an existing staff member an additional role." },
   { key: "staff.role_remove", category: "staff", requiresMakerChecker: true, description: "Take a role away from a staff member who holds more than one." },
+  // 2026-11-15: suspending stops someone using the Ops Console at once (e.g.
+  // they've left); same two-person rule as role changes (owner's decision).
+  { key: "staff.suspend", category: "staff", requiresMakerChecker: true, description: "Suspend a staff member: they're refused on their next request until reinstated." },
+  { key: "staff.reinstate", category: "staff", requiresMakerChecker: true, description: "Reinstate a suspended staff member." },
   // Changing what a role may do, from the Ops Console (2026-10-18). Owner's
   // decisions: proposed by platform_admin, approved by board_of_trustees
   // only, and every permission is editable — this one included — subject
@@ -285,6 +289,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.invite": { canChecker: true },
     "staff.role_add": { canChecker: true },
     "staff.role_remove": { canChecker: true },
+    "staff.suspend": { canChecker: true },
+    "staff.reinstate": { canChecker: true },
     "role.permission_change": { canChecker: true },
     "zakah.refund_approve": { canChecker: true },
   },
@@ -348,6 +354,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.invite": { canChecker: true },
     "staff.role_add": { canChecker: true },
     "staff.role_remove": { canChecker: true },
+    "staff.suspend": { canChecker: true },
+    "staff.reinstate": { canChecker: true },
     "zakah.metal_price_set": { canChecker: true },
     "zakah.distribution_approve": { canChecker: true },
     "zakah.distribution_mark_paid": { canChecker: true },
@@ -376,6 +384,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.invite": { canMaker: true },
     "staff.role_add": { canMaker: true },
     "staff.role_remove": { canMaker: true },
+    "staff.suspend": { canMaker: true },
+    "staff.reinstate": { canMaker: true },
     "role.permission_change": { canMaker: true },
   },
 };

@@ -58,6 +58,10 @@ export default function StaffPage() {
   const canManageInvitations = can("staff.invitation_manage");
   const canAddRole = can("staff.role_add");
   const canRemoveRole = can("staff.role_remove");
+  // Suspending and reinstating are two-person too (2026-11-15).
+  const canSuspend = can("staff.suspend");
+  const canReinstate = can("staff.reinstate");
+  const showActions = canRequestMfaReset || canSuspend || canReinstate;
   const load = useCallback(() => {
     setError(null);
     Promise.all([apiFetchJson<BirrStaff[]>("/birr-staff"), apiFetchJson<Invitation[]>("/invitations")])
@@ -168,7 +172,7 @@ export default function StaffPage() {
                       <TableHeaderCell>Role</TableHeaderCell>
                       <TableHeaderCell>Status</TableHeaderCell>
                       <TableHeaderCell>2FA</TableHeaderCell>
-                      {canRequestMfaReset && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
+                      {showActions && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -200,16 +204,25 @@ export default function StaffPage() {
                             {s.user.mfaEnabled ? "Enrolled" : "Not enrolled"}
                           </Badge>
                         </TableCell>
-                        {canRequestMfaReset && (
+                        {showActions && (
                           <TableCell className="text-right">
-                            {s.user.mfaEnabled && (
-                              <ProposeGovernedActionButton
-                                permissionKey="staff.mfa_reset"
-                                payload={{ staffId: s.id }}
-                                label="Request MFA reset"
-                                onProposed={load}
-                              />
-                            )}
+                            <div className="flex flex-col items-end gap-2">
+                              {canRequestMfaReset && s.user.mfaEnabled && s.status === "active" && (
+                                <ProposeGovernedActionButton
+                                  permissionKey="staff.mfa_reset"
+                                  payload={{ staffId: s.id }}
+                                  label="Request MFA reset"
+                                  onProposed={load}
+                                />
+                              )}
+                              {/* Nobody proposes their own suspension; the backend refuses it too. */}
+                              {s.id !== currentStaff?.id && s.status === "active" && canSuspend && (
+                                <StaffStatusChange member={s} kind="suspend" onProposed={load} />
+                              )}
+                              {s.id !== currentStaff?.id && s.status === "suspended" && canReinstate && (
+                                <StaffStatusChange member={s} kind="reinstate" onProposed={load} />
+                              )}
+                            </div>
                           </TableCell>
                         )}
                       </TableRow>
@@ -244,6 +257,79 @@ export default function StaffPage() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Propose suspending or reinstating someone, with a reason. Nothing
+ * changes until a Board member or Compliance officer approves it on the
+ * Approvals page; suspension then takes effect on the person's next click.
+ */
+function StaffStatusChange({ member, kind, onProposed }: { member: BirrStaff; kind: "suspend" | "reinstate"; onProposed: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const label = kind === "suspend" ? "Suspend…" : "Reinstate…";
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await apiFetchJson("/governed-actions", {
+        method: "POST",
+        body: JSON.stringify({ permissionKey: `staff.${kind}`, payload: { staffId: member.id, reason: reason.trim() } }),
+      });
+      setSent(true);
+      onProposed();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (sent) return <span className="text-xs text-slate-500">Sent for approval</span>;
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`text-xs font-medium ${kind === "suspend" ? "text-rose-700 hover:text-rose-800" : "text-primary-700 hover:text-primary-800"}`}
+      >
+        {label}
+      </button>
+    );
+  }
+  return (
+    <form onSubmit={submit} className="w-72 space-y-2 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm">
+      <label htmlFor={`status-reason-${member.id}`} className="block text-xs font-medium text-slate-700">
+        {kind === "suspend" ? `Why suspend ${member.user.fullName}?` : `Why reinstate ${member.user.fullName}?`}
+      </label>
+      <textarea
+        id={`status-reason-${member.id}`}
+        rows={3}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+      />
+      {error && <p className="text-xs text-rose-700">{error}</p>}
+      <p className="text-[11px] leading-snug text-slate-500">
+        {kind === "suspend"
+          ? "A Board member or Compliance officer approves it; then they're signed out on their next click."
+          : "A Board member or Compliance officer approves it before they can sign in again."}
+      </p>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => setOpen(false)} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button type="submit" variant={kind === "suspend" ? "danger" : "primary"} className="px-2.5 py-1 text-xs" disabled={submitting || reason.trim().length < 10}>
+          {submitting ? "Sending…" : "Send for approval"}
+        </Button>
+      </div>
+    </form>
   );
 }
 

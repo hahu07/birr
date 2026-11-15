@@ -1,7 +1,10 @@
 import { prisma, Beneficiary, Investment, Distribution, BirrStaffRole } from "@birr/db";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { GovernedActionsService, assertRoleChangeAllowed } from "./governed-actions.service";
+import type { Request } from "express";
+import { resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
+import { signSessionToken, STAFF_SESSION_COOKIE_NAME } from "../../common/auth/session";
+import { GovernedActionsService, assertRoleChangeAllowed, assertSuspensionAllowed } from "./governed-actions.service";
 import { staffHasAccess } from "../../common/auth/staff-permissions";
 import { AssetsService } from "../assets/assets.service";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
@@ -2347,6 +2350,99 @@ describe("GovernedActionsService", () => {
   // compliance_officer. Nobody proposes or approves changes to their own
   // roles; external_auditor stands alone; the last active platform_admin
   // keeps that role.
+  // staff.suspend / staff.reinstate (2026-11-15): same two-person rule as
+  // role changes. Suspension takes effect on the person's next request,
+  // and may never lock a governed action out.
+  describe("staff.suspend / staff.reinstate", () => {
+    let adminUserId: string;
+    let complianceUserId: string;
+
+    async function staffWith(label: string, ...roles: BirrStaffRole[]) {
+      const user = await prisma.user.create({
+        data: { email: `suspend-${label}-${randomUUID().slice(0, 8)}@example.com`, fullName: `Suspend ${label}` },
+      });
+      const staff = await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: roles.map((role) => ({ role })) } } });
+      return { user, staff };
+    }
+    const propose = async (kind: "suspend" | "reinstate", staffId: string, makerUserId = adminUserId, reason = "Left Birr on 14 November; access no longer needed.") => {
+      const action = await service.propose({ permissionKey: `staff.${kind}`, payload: { staffId, reason }, makerUserId });
+      governedActionIds.push(action.id);
+      return action;
+    };
+
+    beforeAll(async () => {
+      adminUserId = (await staffWith("admin", "platform_admin")).user.id;
+      complianceUserId = (await staffWith("compliance", "compliance_officer")).user.id;
+    }, 30000);
+
+    test("suspend → refused on their next request; reinstate → back in; both audited with the reason and approver", async () => {
+      const { user, staff } = await staffWith("leaver", "legal_adviser");
+      const request = { cookies: { [STAFF_SESSION_COOKIE_NAME]: signSessionToken(user.id) } } as unknown as Request;
+      await expect(resolveBirrStaffFromSession(request, { requireMfa: false })).resolves.toMatchObject({ id: staff.id });
+
+      const suspend = await propose("suspend", staff.id);
+      await service.decide({ governedActionId: suspend.id, checkerUserId: complianceUserId, approve: true });
+      expect((await prisma.birrStaff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe("suspended");
+      await expect(resolveBirrStaffFromSession(request, { requireMfa: false })).rejects.toThrow();
+      const suspended = await prisma.auditLog.findFirstOrThrow({ where: { entityId: staff.id, action: "birr_staff.suspended" } });
+      expect(suspended.after).toMatchObject({ status: "suspended", reason: "Left Birr on 14 November; access no longer needed.", approvedByUserId: complianceUserId });
+
+      const reinstate = await propose("reinstate", staff.id, adminUserId, "Rejoined Birr; reinstating access.");
+      await service.decide({ governedActionId: reinstate.id, checkerUserId: complianceUserId, approve: true });
+      await expect(resolveBirrStaffFromSession(request, { requireMfa: false })).resolves.toMatchObject({ id: staff.id });
+      expect(await prisma.auditLog.count({ where: { entityId: staff.id, action: "birr_staff.reinstated" } })).toBe(1);
+    });
+
+    test("nobody suspends themselves, nor approves their own suspension", async () => {
+      const admin2 = await staffWith("admin2", "platform_admin");
+      await expect(propose("suspend", admin2.staff.id, admin2.user.id)).rejects.toThrow(ForbiddenException);
+      const target = await staffWith("own-approve", "compliance_officer");
+      const action = await propose("suspend", target.staff.id);
+      await expect(service.decide({ governedActionId: action.id, checkerUserId: target.user.id, approve: true })).rejects.toThrow(ForbiddenException);
+    });
+
+    test("the proposer cannot approve it, and the database refuses it too", async () => {
+      const { staff } = await staffWith("maker-checker", "legal_adviser");
+      const action = await propose("suspend", staff.id);
+      await expect(service.decide({ governedActionId: action.id, checkerUserId: adminUserId, approve: true })).rejects.toThrow(ForbiddenException);
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: adminUserId } })).rejects.toThrow();
+    });
+
+    test("needs a real reason, and only one change per person can be pending", async () => {
+      const { staff } = await staffWith("pending", "legal_adviser", "audit_committee");
+      await expect(propose("suspend", staff.id, adminUserId, "gone")).rejects.toThrow(BadRequestException);
+      await propose("suspend", staff.id);
+      await expect(
+        service.propose({ permissionKey: "staff.role_remove", payload: { staffId: staff.id, role: "audit_committee" }, makerUserId: adminUserId }),
+      ).rejects.toThrow(ConflictException);
+      await expect(propose("reinstate", staff.id)).rejects.toThrow();
+    });
+
+    test("never leaves a governed action with nobody active able to approve it", async () => {
+      // Built inside a transaction that is rolled back: a throwaway
+      // approval action only legal_adviser may approve, and every other
+      // legal adviser suspended, so the one left can't be suspended.
+      const { staff } = await staffWith("last-approver", "legal_adviser");
+      const target = { id: staff.id, user: { fullName: "Suspend last-approver" }, roleList: ["legal_adviser"] as BirrStaffRole[] };
+      const rollback = new Error("rollback");
+      await expect(
+        prisma.$transaction(async (tx) => {
+          const role = await tx.role.findUniqueOrThrow({ where: { key: "legal_adviser" } });
+          const permission = await tx.permission.create({
+            data: { key: `test.lockout_${randomUUID().slice(0, 8)}`, requiresMakerChecker: true, description: "test only" },
+          });
+          await tx.rolePermission.create({ data: { roleId: role.id, permissionId: permission.id, canChecker: true } });
+          await tx.birrStaff.updateMany({
+            where: { id: { not: staff.id }, status: "active", roles: { some: { role: "legal_adviser" } } },
+            data: { status: "suspended" },
+          });
+          await expect(assertSuspensionAllowed(target, tx)).rejects.toThrow(/nobody active able to approve test\.lockout_/);
+          throw rollback;
+        }),
+      ).rejects.toBe(rollback);
+    }, 30000);
+  });
+
   describe("staff.role_add / staff.role_remove", () => {
     let adminUserId: string;
     let adminStaffId: string;

@@ -649,6 +649,19 @@ original values are gone) and stay flagged; a fresh database's chain
 verifies clean. A future migration that must touch audit rows has to drop
 those triggers explicitly.
 
+**Update, 2026-11-15 — staff can be suspended and reinstated.** Owner's
+decision: the governed `staff.suspend` / `staff.reinstate`, the same
+two-person rule as role changes (maker `platform_admin`; checkers
+`board_of_trustees` / `compliance_officer`), with a written reason kept
+in the audit trail. Nobody proposes or approves their own. A suspension
+is refused if it would leave any governed action with nobody active able
+to propose or approve it, or remove the last active `platform_admin`
+(`assertSuspensionAllowed`, re-checked at approval under a lock). It
+takes effect on the person's next request, since
+`resolveBirrStaffFromSession` refuses anyone not active; their open
+proposals stay for others to decide. One pending role or status change
+per person at a time.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
@@ -729,9 +742,9 @@ staff link and take that seat. A failed email is retried via
 Board/Compliance member gets its first approver from the server-only
 `bootstrap-first-approver` script (owner's choice over an in-app
 exception). It refuses once any active approver exists. Runbook:
-`docs/staff-onboarding.md`. Still true: nothing in the app can change an
-existing staff member's role or suspend them; if that's ever added, it
-needs the same two-person rule.
+`docs/staff-onboarding.md`. Changing an existing staff member's roles
+(Phase 2, below) and suspending or reinstating them (2026-11-15, below)
+now use the same two-person rule.
 
 **Update, 2026-10-18: one named-permission model for all staff access
 (Phase 1 of 3).** Every staff route now declares a named permission:

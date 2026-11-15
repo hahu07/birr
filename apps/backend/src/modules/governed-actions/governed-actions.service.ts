@@ -105,6 +105,78 @@ async function loadRoleChangeTarget(staffId: string, db: Prisma.TransactionClien
   return { ...staff, roleList: roleNames(staff) };
 }
 
+// staff.suspend / staff.reinstate payload (2026-11-15): who, and why. The
+// reason is shown to whoever approves and kept in the audit trail.
+function parseStaffStatusPayload(payload: unknown): { staffId: string; reason: string } {
+  const { staffId, reason } = (payload ?? {}) as { staffId?: unknown; reason?: unknown };
+  if (typeof staffId !== "string" || !staffId) throw new BadRequestException("A staff member is required.");
+  const text = typeof reason === "string" ? reason.trim() : "";
+  if (text.length < 10 || text.length > 1000) {
+    throw new BadRequestException("Give a reason of 10 to 1,000 characters; whoever approves it reads it first.");
+  }
+  return { staffId, reason: text };
+}
+
+async function loadStatusChangeTarget(staffId: string, db: Prisma.TransactionClient) {
+  const staff = await db.birrStaff.findUnique({
+    where: { id: staffId },
+    include: { user: { select: { id: true, fullName: true, email: true } }, ...ROLE_NAMES },
+  });
+  if (!staff) throw new NotFoundException(`Staff member "${staffId}" not found.`);
+  return { ...staff, roleList: roleNames(staff) };
+}
+
+function assertNotSelf(target: { user: { id: string } }, userId: string, as: "propose" | "approve", what: string) {
+  if (target.user.id === userId) {
+    throw new ForbiddenException(`You can't ${as} ${what} yourself — another staff member has to.`);
+  }
+}
+
+/**
+ * Suspending someone may never leave a governed action with nobody active
+ * able to propose it, or nobody able to approve it (the same no-lock-out
+ * rule as editing a grant, see assertPermissionChangeAllowed), nor leave
+ * no active platform_admin to propose staff changes.
+ */
+export async function assertSuspensionAllowed(target: { id: string; user: { fullName: string }; roleList: BirrStaffRole[] }, db: Prisma.TransactionClient) {
+  const name = target.user.fullName;
+  const others = { status: "active" as const, id: { not: target.id } };
+  if (target.roleList.includes("platform_admin") && (await db.birrStaff.count({ where: { ...others, ...holdsAnyRole("platform_admin") } })) === 0) {
+    throw new BadRequestException(`${name} is the last active platform_admin — suspending them would leave nobody able to propose staff changes.`);
+  }
+  const governed = await db.permission.findMany({
+    where: { requiresMakerChecker: true },
+    select: { key: true, rolePermissions: { select: { canMaker: true, canChecker: true, role: { select: { key: true } } } } },
+  });
+  for (const permission of governed) {
+    for (const [side, label] of [["canMaker", "propose"], ["canChecker", "approve"]] as const) {
+      const roles = permission.rolePermissions.filter((g) => g[side]).map((g) => g.role.key as BirrStaffRole);
+      // Only a role this person holds can be emptied by suspending them.
+      if (!roles.some((r) => target.roleList.includes(r))) continue;
+      const remaining = await db.birrStaff.count({ where: { ...others, ...holdsAnyRole(...roles) } });
+      if (remaining === 0) {
+        throw new BadRequestException(
+          `Suspending ${name} would leave nobody active able to ${label} ${permission.key}. Bring someone else into that role first.`,
+        );
+      }
+    }
+  }
+}
+
+/** One pending role or status change per staff member at a time. */
+async function assertNoPendingStaffChange(staffId: string) {
+  const permissions = await prisma.permission.findMany({
+    where: { key: { in: ["staff.role_add", "staff.role_remove", "staff.suspend", "staff.reinstate"] } },
+    select: { id: true },
+  });
+  const pending = await prisma.governedAction.findFirst({
+    where: { permissionId: { in: permissions.map((p) => p.id) }, status: "proposed", payload: { path: ["staffId"], equals: staffId } },
+  });
+  if (pending) {
+    throw new ConflictException("A change for this staff member is already awaiting approval — decide that one first.");
+  }
+}
+
 // Owner decision (2026-10-18): nobody proposes changes to their own roles,
 // and — the same self-dealing from the other side — nobody approves them.
 function assertNotOwnRoles(target: { user: { id: string; fullName: string } }, userId: string, as: "propose" | "approve") {
@@ -1571,23 +1643,7 @@ export class GovernedActionsService {
             await assertRoleChangeAllowed("add", target, role, prisma);
           },
           checkDuplicate: async (payload) => {
-            const { staffId } = parseStaffRolePayload(payload);
-            const permissions = await prisma.permission.findMany({
-              where: { key: { in: ["staff.role_add", "staff.role_remove"] } },
-              select: { id: true },
-            });
-            const pending = await prisma.governedAction.findFirst({
-              where: {
-                permissionId: { in: permissions.map((p) => p.id) },
-                status: "proposed",
-                payload: { path: ["staffId"], equals: staffId },
-              },
-            });
-            if (pending) {
-              throw new ConflictException(
-                "A role change for this staff member is already awaiting approval — decide that one first.",
-              );
-            }
+            await assertNoPendingStaffChange(parseStaffRolePayload(payload).staffId);
           },
           describePayload: async (payload) => {
             const { staffId, role } = parseStaffRolePayload(payload);
@@ -1629,23 +1685,7 @@ export class GovernedActionsService {
             await assertRoleChangeAllowed("remove", target, role, prisma);
           },
           checkDuplicate: async (payload) => {
-            const { staffId } = parseStaffRolePayload(payload);
-            const permissions = await prisma.permission.findMany({
-              where: { key: { in: ["staff.role_add", "staff.role_remove"] } },
-              select: { id: true },
-            });
-            const pending = await prisma.governedAction.findFirst({
-              where: {
-                permissionId: { in: permissions.map((p) => p.id) },
-                status: "proposed",
-                payload: { path: ["staffId"], equals: staffId },
-              },
-            });
-            if (pending) {
-              throw new ConflictException(
-                "A role change for this staff member is already awaiting approval — decide that one first.",
-              );
-            }
+            await assertNoPendingStaffChange(parseStaffRolePayload(payload).staffId);
           },
           describePayload: async (payload) => {
             const { staffId, role } = parseStaffRolePayload(payload);
@@ -1678,6 +1718,104 @@ export class GovernedActionsService {
               entityId: staffId,
               before: { roles: target.roleList },
               after: { roles: target.roleList.filter((r) => r !== role), approvedByUserId: ctx.checkerUserId },
+            };
+          },
+        },
+      ],
+      // ---- Suspending and reinstating staff (2026-11-15). Owner's
+      // decision: the same two-person rule as role changes (maker
+      // platform_admin; checkers board_of_trustees / compliance_officer).
+      // Suspension takes effect on the person's next request
+      // (resolveBirrStaffFromSession refuses anyone not active). Nobody
+      // proposes or approves their own, and no suspension may lock out a
+      // governed action (assertSuspensionAllowed). ----
+      [
+        "staff.suspend",
+        {
+          validatePropose: async (payload, ctx) => {
+            const { staffId } = parseStaffStatusPayload(payload);
+            const target = await loadStatusChangeTarget(staffId, prisma);
+            assertNotSelf(target, ctx.makerUserId, "propose", "suspending");
+            if (target.status !== "active") throw new BadRequestException(`${target.user.fullName} is already suspended.`);
+            await assertSuspensionAllowed(target, prisma);
+          },
+          checkDuplicate: async (payload) => {
+            await assertNoPendingStaffChange(parseStaffStatusPayload(payload).staffId);
+          },
+          describePayload: async (payload) => {
+            const { staffId, reason } = parseStaffStatusPayload(payload);
+            const target = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true, ...ROLE_NAMES } });
+            if (!target) return `Staff member "${staffId}" not found.`;
+            const [proposals, assignments] = await Promise.all([
+              prisma.governedAction.count({ where: { makerUserId: target.userId, status: "proposed" } }),
+              prisma.waqfCaseAssignment.count({ where: { birrStaffId: staffId, status: "active" } }),
+            ]);
+            return (
+              `Suspend ${target.user.fullName} (${roleNames(target).join(", ")}). Reason: "${reason}". ` +
+              `They have ${proposals} proposal(s) awaiting approval and ${assignments} active case assignment(s) to reassign. ` +
+              `Confirm through a separate channel before approving.`
+            );
+          },
+          describeCurrentState: async (payload) => {
+            const target = await prisma.birrStaff.findUnique({ where: { id: parseStaffStatusPayload(payload).staffId }, include: ROLE_NAMES });
+            return target ? { status: target.status, roles: roleNames(target) } : null;
+          },
+          onApprove: async (payload, tx, ctx) => {
+            const { staffId, reason } = parseStaffStatusPayload(payload);
+            // Serializes suspensions, so two approved together can't each
+            // count the other as the remaining approver of something.
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('birr_staff:status_change'))`;
+            const target = await loadStatusChangeTarget(staffId, tx);
+            assertNotSelf(target, ctx.checkerUserId, "approve", "suspending");
+            if (target.status !== "active") throw new BadRequestException(`${target.user.fullName} is already suspended.`);
+            await assertSuspensionAllowed(target, tx);
+            await tx.birrStaff.update({ where: { id: staffId }, data: { status: "suspended" } });
+            return {
+              auditAction: "birr_staff.suspended",
+              entityType: "BirrStaff",
+              entityId: staffId,
+              before: { status: "active" },
+              after: { status: "suspended", reason, approvedByUserId: ctx.checkerUserId },
+            };
+          },
+        },
+      ],
+      [
+        "staff.reinstate",
+        {
+          validatePropose: async (payload, ctx) => {
+            const { staffId } = parseStaffStatusPayload(payload);
+            const target = await loadStatusChangeTarget(staffId, prisma);
+            assertNotSelf(target, ctx.makerUserId, "propose", "reinstating");
+            if (target.status !== "suspended") throw new BadRequestException(`${target.user.fullName} isn't suspended.`);
+          },
+          checkDuplicate: async (payload) => {
+            await assertNoPendingStaffChange(parseStaffStatusPayload(payload).staffId);
+          },
+          describePayload: async (payload) => {
+            const { staffId, reason } = parseStaffStatusPayload(payload);
+            const target = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true, ...ROLE_NAMES } });
+            return target
+              ? `Reinstate ${target.user.fullName} (${roleNames(target).join(", ")}). Reason: "${reason}". Confirm through a separate channel before approving.`
+              : `Staff member "${staffId}" not found.`;
+          },
+          describeCurrentState: async (payload) => {
+            const target = await prisma.birrStaff.findUnique({ where: { id: parseStaffStatusPayload(payload).staffId }, include: ROLE_NAMES });
+            return target ? { status: target.status, roles: roleNames(target) } : null;
+          },
+          onApprove: async (payload, tx, ctx) => {
+            const { staffId, reason } = parseStaffStatusPayload(payload);
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('birr_staff:status_change'))`;
+            const target = await loadStatusChangeTarget(staffId, tx);
+            assertNotSelf(target, ctx.checkerUserId, "approve", "reinstating");
+            if (target.status !== "suspended") throw new BadRequestException(`${target.user.fullName} isn't suspended.`);
+            await tx.birrStaff.update({ where: { id: staffId }, data: { status: "active" } });
+            return {
+              auditAction: "birr_staff.reinstated",
+              entityType: "BirrStaff",
+              entityId: staffId,
+              before: { status: "suspended" },
+              after: { status: "active", reason, approvedByUserId: ctx.checkerUserId },
             };
           },
         },

@@ -83,3 +83,28 @@ Then run the same command again with `--execute` added. It:
   the person directly, then delete it from wherever you copied it.
 
 From then on, add everyone else with **A**.
+
+## C. Suspending someone, and reinstating them
+
+When someone leaves Birr, or their access must stop while something is
+looked into, suspend them. It's two-person, like adding staff.
+
+1. A **Platform Admin** opens **Team**, chooses **Suspend…** on that
+   person's row, and writes why (at least 10 characters). Nothing changes
+   yet.
+2. A **Board member or Compliance officer** approves it on
+   **Approvals**. Confirm the reason through a separate channel first.
+3. From their next click, the suspended person is refused everywhere in
+   the Ops Console.
+
+The approval screen shows how many proposals they have awaiting
+approval and how many active case assignments they hold: reassign the
+case assignments, and decide or reject their open proposals.
+
+Birr refuses a suspension that would leave any approval action with
+nobody active able to propose it or approve it, or that would remove
+the last active Platform Admin. Bring someone else into the role first.
+
+To let them back in, **Reinstate…** works the same way. Nobody can
+suspend or reinstate themselves.
+
