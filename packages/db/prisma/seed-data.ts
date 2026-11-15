@@ -203,6 +203,12 @@ export const accessPermissions = [
   // IP addresses and giving patterns, including people who give to both
   // Vault and zakah. Owner's decision: these four roles, deliberately not
   // platform_admin (unlike vault.structuring_review).
+  // Monthly giving (2026-11-15): who gives monthly, how much, and whether
+  // it's paused. Same four roles as the zakah review list, not
+  // platform_admin. Stopping one only ever stops money coming in, so it's
+  // Compliance alone, with a reason; the giver is never told why.
+  { key: "giving.monthly_view", category: "compliance", description: "See monthly gifts (Vault gifts, Waqf Fund top-ups and zakah): who gives, how much, and their status.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "mutawalli_officer"] },
+  { key: "giving.monthly_cancel", category: "compliance", description: "Stop someone's monthly gift, with a reason. The giver is told it has ended, never why.", roles: ["compliance_officer"] },
   { key: "zakah.structuring_review", category: "zakah", description: "See the zakah AML review list, including giving that spans Vault and zakah.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "mutawalli_officer"] },
   { key: "zakah.refund_request", category: "zakah", description: "Record a zakah refund request and the payer's bank details for it.", roles: ["compliance_officer"] },
   { key: "zakah.fitr_campaign_draft", category: "zakah", description: "Draft and edit a season's Zakah al-Fitr campaign (approving it is zakah.fitr_campaign_approve).", roles: ["mutawalli_officer"] },

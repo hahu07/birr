@@ -336,6 +336,24 @@ describe("Monthly Vault gifts", () => {
     expect(emails.sent.length).toBe(count);
   });
 
+  test("Compliance can stop a gift with a reason kept in the audit trail; the giver isn't told why, and the list never shows the card", async () => {
+    const { gift } = await activeGift();
+    const listed = (await service.staffList({ kind: "vault", status: "active" })).find((g) => g.id === gift.id)!;
+    expect(listed).toMatchObject({ email: gift.email, card: { last4: "4081" } });
+    expect(JSON.stringify(listed)).not.toContain(gift.authorizationEncrypted!);
+
+    const reason = "Linked to a structuring pattern under review; stopping further charges.";
+    const detail = await service.staffCancel(gift.id, reason, actorUserId);
+    expect(detail).toMatchObject({ status: "cancelled", cancelledBy: "staff" });
+    const row = await prisma.auditLog.findFirstOrThrow({ where: { entityId: gift.id, action: "recurring_gift.cancelled" } });
+    expect(row).toMatchObject({ actorType: "birr_staff", actorUserId });
+    expect((row.after as { detail?: string }).detail).toBe(reason);
+    const mail = emails.sent.filter((e) => e.to === gift.email).at(-1)!;
+    expect(mail.subject).toBe("Your monthly gift is cancelled");
+    expect(mail.bodyHtml).not.toContain("structuring");
+    await expect(service.staffCancel(gift.id, reason, actorUserId)).rejects.toThrow(BadRequestException);
+  });
+
   test("the database keeps monthly gifts in naira, on days every month has, and never active without a card", async () => {
     const base = { kind: "vault" as const, email: newEmail(), amount: "1000", dayOfMonth: 5, nextPeriod: "2026-12", vaultId };
     await expect(prisma.recurringGift.create({ data: { ...base, currency: "USD" } })).rejects.toThrow();

@@ -516,6 +516,78 @@ export class RecurringGiftsService {
     return this.applyCardUpdate(await this.requireFounderGift(waqfId, founderId));
   }
 
+  // ─── Ops Console ─────────────────────────────────────────────────────
+
+  /** Monthly gifts, newest first, filtered by status and kind. Never the saved card itself. */
+  async staffList(filter: { status?: string; kind?: string }) {
+    const statuses = ["pending_setup", "active", "paused", "cancelled", "ended"] as const;
+    const kinds = ["vault", "waqf", "zakah"] as const;
+    const gifts = await prisma.recurringGift.findMany({
+      where: {
+        ...(statuses.includes(filter.status as (typeof statuses)[number]) && { status: filter.status as (typeof statuses)[number] }),
+        ...(kinds.includes(filter.kind as (typeof kinds)[number]) && { kind: filter.kind as (typeof kinds)[number] }),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    return Promise.all(gifts.map(async (gift) => ({ id: gift.id, ...(await this.staffSummary(gift)) })));
+  }
+
+  private async staffSummary(gift: RecurringGift) {
+    return {
+      kind: gift.kind,
+      status: gift.status,
+      pauseReason: gift.pauseReason,
+      email: gift.email,
+      amount: gift.amount.toString(),
+      currency: gift.currency,
+      dayOfMonth: gift.dayOfMonth,
+      nextPeriod: gift.nextPeriod,
+      nextChargeAt: gift.nextChargeAt,
+      failedAttempts: gift.failedAttempts,
+      card: gift.cardLast4 ? { last4: gift.cardLast4, brand: gift.cardBrand, expMonth: gift.cardExpMonth, expYear: gift.cardExpYear } : null,
+      target: await this.product(gift).describe(gift),
+      waqfId: gift.waqfId,
+      vaultId: gift.vaultId,
+      founderId: gift.founderId,
+      createdAt: gift.createdAt,
+      activatedAt: gift.activatedAt,
+      cancelledAt: gift.cancelledAt,
+      cancelledBy: gift.cancelledBy,
+      endedAt: gift.endedAt,
+      endedReason: gift.endedReason,
+    };
+  }
+
+  async staffDetail(id: string) {
+    const gift = await prisma.recurringGift.findUnique({ where: { id } });
+    if (!gift) throw new NotFoundException(`Monthly gift "${id}" not found.`);
+    const charges = await this.product(gift).charges(gift.id);
+    const history = await prisma.auditLog.findMany({
+      where: { entityType: "RecurringGift", entityId: gift.id },
+      orderBy: { sequence: "asc" },
+      select: { action: true, actorType: true, actorUserId: true, createdAt: true },
+    });
+    return {
+      id: gift.id,
+      ...(await this.staffSummary(gift)),
+      charges: charges.map((c) => ({ id: c.id, period: c.recurringPeriod, amount: c.amount.toString(), status: c.status, createdAt: c.createdAt, confirmedAt: c.confirmedAt })),
+      history,
+    };
+  }
+
+  /**
+   * Compliance stops a gift, with a reason kept in the audit trail. The
+   * giver's email says it ended, never why (no tipping off).
+   */
+  async staffCancel(id: string, reason: string, staffUserId: string) {
+    const gift = await prisma.recurringGift.findUnique({ where: { id } });
+    if (!gift) throw new NotFoundException(`Monthly gift "${id}" not found.`);
+    if (gift.status === "cancelled" || gift.status === "ended") throw new BadRequestException("This monthly gift has already stopped.");
+    await this.applyCancel(gift, { type: "staff", userId: staffUserId }, reason.trim());
+    return this.staffDetail(id);
+  }
+
   /** For tests and the Ops list: a gift as the audit trail records it. */
   static snapshot = snapshot;
 }

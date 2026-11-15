@@ -598,6 +598,42 @@ in Nigeria today:
 - For USD giving, the route is still Paystack international payments
   with a Zenith Bank USD domiciliary account (see the 2026-09-19 note).
 
+**Update, 2026-11-15 — monthly giving, in naira.** Owner's decisions:
+- **Birr charges a saved card each month** (`RecurringGift`,
+  `modules/recurring-gifts`), for Vault gifts, founders' Waqf Fund
+  top-ups and zakah on wealth. The first gift is a card-only Paystack
+  checkout that saves the card's reusable authorisation (encrypted);
+  each later month goes through the product's own `initiate()` and
+  Paystack `charge_authorization`, so it passes every check a one-off
+  gift does. Not Paystack Subscriptions, which would charge without
+  those checks. Only cards can repeat.
+- **Monthly zakah is paid in advance (ta'jil)**, zakah on wealth only,
+  **live before the Shariah Supervisory Board has ruled**; the form says
+  the Maliki school doesn't permit paying zakah early. Each charge
+  records the setup's ruleset and prices; a changed wakalah wording
+  pauses it until the payer accepts the new one. Zakah al-Fitr stays
+  one-off. Add this to the Board's review list.
+- **Vault and zakah givers manage a gift through a private emailed
+  link** (only its hash is stored; `/giving/manage` reissues links), so
+  monthly giving needs an email. Founders manage top-ups in the Founder
+  Portal, under their account email; top-ups start only after a fund's
+  first contribution.
+- **The database allows one non-failed payment per gift per month**
+  (partial unique index), NGN only, day 1–28, never active without a
+  card. Declines are retried after 1 and 3 days, then the gift pauses.
+- **A scheduled charge accepts an ID already on file** past the AML
+  threshold (no one is present to re-type it, and the charge isn't
+  someone typing an email); without one, the gift pauses for the giver
+  to add it.
+- **Ops Console → Monthly Giving**: `giving.monthly_view` (Compliance,
+  Audit Committee, Board, Mutawalli Officers; not platform_admin);
+  `giving.monthly_cancel` is Compliance alone with a reason, never shown
+  to the giver.
+- Verified end to end on 2026-11-15 with Paystack test mode: a Vault
+  gift's setup checkout, then a real `charge_authorization` for the next
+  month. Founder top-ups and monthly zakah are covered by tests, not yet
+  by a live test-mode run.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

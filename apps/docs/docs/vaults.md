@@ -73,6 +73,39 @@ flowchart LR
 3. **Confirm** — the payment provider confirms completion via the same
    webhook-based mechanism a Waqf Fund contribution already uses.
 
+## Giving monthly
+
+You can give the same amount to a Vault every month instead of once.
+
+1. On the Vault's page, choose **Monthly**, enter the amount and your
+   email. The email is required for monthly giving: it's where your
+   receipts, reminders and private link go.
+2. Pay the first gift by **card** through Paystack. Only a card can be
+   charged again each month; bank transfer and USSD can't.
+3. From then on, Birr charges the same card on the **same day of each
+   month** (the day you started, or the 28th if you started later in the
+   month), at about 9am Lagos time. You get an email three days before
+   each charge.
+
+**Amina** starts a monthly gift of ₦250,000 to the Ramadan Relief Vault
+on 15 November. She pays the first ₦250,000 then, and her card is
+charged ₦250,000 on 15 December, 15 January, and so on.
+
+**Managing it.** Every setup email carries a private link where you can
+change the amount, update your card or cancel, at any time, with no
+account. Anyone with the link can manage the gift, so keep it to
+yourself. Lost it? Use **Email me my links** at `/giving/manage` and new
+links are sent to your email; the old ones stop working.
+
+**If a payment doesn't go through,** Birr tries again a day later and
+three days after that. If all three fail, the gift pauses until you
+update your card. Each month is charged at most once.
+
+**Each monthly gift is checked like a one-off gift.** If the Vault
+closes, your monthly gift ends. If your total giving reaches the level
+where the law requires us to record who you are, the gift pauses until
+you add your full name and ID from your link.
+
 ## Governance and compliance controls
 
 A Vault's own money-moving decisions run through the identical
