@@ -168,7 +168,8 @@ function BeneficiaryForm({
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
   const [bankCode, setBankCode] = useState("");
-  const [payoutProvider, setPayoutProvider] = useState<"paystack" | "stripe" | "stablecoin">("paystack");
+  // Paystack is the only payout rail (see CLAUDE.md, 2026-11-15).
+  const payoutProvider = "paystack" as const;
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -287,19 +288,8 @@ function BeneficiaryForm({
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700">Payout provider</label>
-              <select
-                value={payoutProvider}
-                onChange={(e) => setPayoutProvider(e.target.value as "paystack" | "stripe" | "stablecoin")}
-                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-              >
-                <option value="paystack">Paystack</option>
-                <option value="stripe" disabled>
-                  Stripe (coming soon)
-                </option>
-                <option value="stablecoin" disabled>
-                  Stablecoin (coming soon)
-                </option>
-              </select>
+              {/* Paystack is the only payout rail (Stripe and stablecoin don't work in Nigeria; see CLAUDE.md, 2026-11-15). */}
+              <p className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">Paystack</p>
             </div>
             <div className="min-w-[10rem] space-y-1.5">
               <label className="text-sm font-medium text-slate-700">Bank name</label>
@@ -447,9 +437,8 @@ function CriteriaUpdateAction({ beneficiary, onProposed }: { beneficiary: Benefi
 // registers the details themselves.
 function PayoutDetailsAction({ beneficiary, onSaved }: { beneficiary: Beneficiary; onSaved: () => void }) {
   const [editing, setEditing] = useState(false);
-  const [payoutProvider, setPayoutProvider] = useState<"paystack" | "stripe" | "stablecoin">(
-    beneficiary.payoutProvider ?? "paystack",
-  );
+  // Paystack is the only payout rail; saving moves any other to it.
+  const payoutProvider = "paystack" as const;
   const [bankName, setBankName] = useState(beneficiary.bankDetails?.bankName ?? "");
   const [accountNumber, setAccountNumber] = useState(beneficiary.bankDetails?.accountNumber ?? "");
   const [accountName, setAccountName] = useState(beneficiary.bankDetails?.accountName ?? "");
@@ -497,19 +486,7 @@ function PayoutDetailsAction({ beneficiary, onSaved }: { beneficiary: Beneficiar
 
   return (
     <form onSubmit={handleSave} className="w-56 space-y-1.5 rounded-md border border-slate-200 bg-slate-50 p-2">
-      <select
-        value={payoutProvider}
-        onChange={(e) => setPayoutProvider(e.target.value as "paystack" | "stripe" | "stablecoin")}
-        className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-      >
-        <option value="paystack">Paystack</option>
-        <option value="stripe" disabled>
-          Stripe (coming soon)
-        </option>
-        <option value="stablecoin" disabled>
-          Stablecoin (coming soon)
-        </option>
-      </select>
+      <p className="text-xs text-slate-500">Paid out via Paystack</p>
       <Input className="text-xs" placeholder="Bank name" required value={bankName} onChange={(e) => setBankName(e.target.value)} />
       <Input
         className="text-xs"
