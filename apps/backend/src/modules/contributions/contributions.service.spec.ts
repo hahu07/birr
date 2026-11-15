@@ -4,6 +4,7 @@ import { ContributionsService } from "./contributions.service";
 import { AssetsService } from "../assets/assets.service";
 import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
+import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
 import {
   CreatePaymentInput,
   CreatePaymentResult,
@@ -48,6 +49,7 @@ describe("ContributionsService", () => {
     new AssetsService(),
     createFakeNotificationsService(),
     new WaqfLedgerService(),
+    createFakeRecurringGiftsCore().core,
     stripeFake as any,
     paystackFake as any,
     stablecoinFake as any,

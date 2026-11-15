@@ -8,6 +8,11 @@ import { VaultLedgerService } from "../vaults/vault-ledger.service";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { RecurringGiftsService } from "./recurring-gifts.service";
 import { VaultMonthlyProduct } from "./vault-monthly.product";
+import { WaqfMonthlyProduct } from "./waqf-monthly.product";
+import { ContributionsService } from "../contributions/contributions.service";
+import { AssetsService } from "../assets/assets.service";
+import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
+import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import { addMonths, cardExpiredBy, chargeDateFor, dayOfMonthFor, periodOf } from "./recurring-gift-dates";
 import { createFakeRecurringGiftsCore, FakeRecurringPaystack, REUSABLE_CARD } from "./test-support/fake-recurring-gifts";
 
@@ -51,7 +56,8 @@ describe("Monthly Vault gifts", () => {
     paystack as any,
     unused as any,
   );
-  const service = new RecurringGiftsService(core, contributions, new VaultMonthlyProduct(contributions));
+  // Waqf top-ups have their own describe block below.
+  const service = new RecurringGiftsService(core, contributions, new VaultMonthlyProduct(contributions), new WaqfMonthlyProduct(null as any));
   const vaultsService = new VaultsService(new VaultProceedsService(), ledger);
 
   const run = Date.now().toString(36);
@@ -331,5 +337,136 @@ describe("Monthly Vault gifts", () => {
     await expect(prisma.recurringGift.create({ data: { ...base, dayOfMonth: 29 } })).rejects.toThrow();
     await expect(prisma.recurringGift.create({ data: { ...base, status: "active", nextChargeAt: new Date() } })).rejects.toThrow();
     await expect(prisma.recurringGift.create({ data: { ...base, kind: "waqf" } })).rejects.toThrow();
+  });
+});
+
+describe("Monthly Waqf Fund top-ups", () => {
+  const paystack = new FakeRecurringPaystack();
+  const { core, emails } = createFakeRecurringGiftsCore(paystack);
+  const unused = { createPayment: jest.fn(), verifyAndParseWebhook: jest.fn() };
+  const contributions = new ContributionsService(
+    new AssetsService(),
+    createFakeNotificationsService(),
+    new WaqfLedgerService(),
+    core,
+    unused as any,
+    paystack as any,
+    unused as any,
+  );
+  const vaultContributions = { recordDonorIdentity: jest.fn() } as unknown as VaultContributionsService;
+  const service = new RecurringGiftsService(core, vaultContributions, new VaultMonthlyProduct(vaultContributions), new WaqfMonthlyProduct(contributions));
+
+  const run = Date.now().toString(36);
+  const waqfIds: string[] = [];
+  let founderId: string;
+  let otherFounderId: string;
+  let foundationId: string;
+  let minimum: string;
+
+  async function fundedWaqf(name: string, funded = true) {
+    const waqf = await prisma.waqf.create({
+      data: { name, type: "investment", jurisdiction: "NG", foundationId, corpusCurrency: "NGN", status: funded ? "active" : "draft" },
+    });
+    waqfIds.push(waqf.id);
+    if (funded) {
+      await prisma.contribution.create({
+        data: { waqfId: waqf.id, amount: minimum, currency: "NGN", provider: "paystack", providerReference: `first-${waqf.id}`, status: "confirmed", confirmedAt: new Date() },
+      });
+    }
+    return waqf.id;
+  }
+
+  async function setUp(waqfId: string) {
+    const result = await contributions.initiate({ waqfId, amount: minimum, currency: "NGN", provider: "paystack", founderId, payerEmail: `founder-${run}@example.com`, monthly: true });
+    await contributions.reconcileForFounder(result.contribution.id, founderId);
+    const deadline = Date.now() + 10_000;
+    let gift = await prisma.recurringGift.findUniqueOrThrow({ where: { id: result.contribution.recurringGiftId! } });
+    while (gift.status === "pending_setup" && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50));
+      gift = await prisma.recurringGift.findUniqueOrThrow({ where: { id: gift.id } });
+    }
+    return { gift, result };
+  }
+
+  beforeAll(async () => {
+    founderId = (await prisma.founder.create({ data: { name: "Monthly Top-up Founder", kind: "individual" } })).id;
+    otherFounderId = (await prisma.founder.create({ data: { name: "Other Founder", kind: "individual" } })).id;
+    foundationId = (await prisma.foundation.create({ data: { name: "Monthly Top-up Foundation" } })).id;
+    await prisma.foundationFounder.create({ data: { foundationId, founderId } });
+    minimum = (await prisma.contributionMinimum.findUniqueOrThrow({ where: { currency: "NGN" } })).minAmount.toFixed(2);
+  });
+
+  afterAll(async () => {
+    const giftIds = (await prisma.recurringGift.findMany({ where: { waqfId: { in: waqfIds } }, select: { id: true } })).map((g) => g.id);
+    const rows = await prisma.contribution.findMany({ where: { waqfId: { in: waqfIds } }, select: { id: true, assetId: true } });
+    await prisma.waqfJournalEntryLine.deleteMany({ where: { journalEntry: { waqfId: { in: waqfIds } } } });
+    await prisma.waqfJournalEntry.deleteMany({ where: { waqfId: { in: waqfIds } } });
+    await prisma.contribution.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+    await prisma.asset.deleteMany({ where: { id: { in: rows.map((r) => r.assetId).filter((a): a is string => a != null) } } });
+    await prisma.recurringGift.deleteMany({ where: { id: { in: giftIds } } });
+    await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
+    await prisma.$disconnect();
+  });
+
+  test("a top-up can only start once the fund's first contribution has gone through", async () => {
+    const unfunded = await fundedWaqf("Unfunded Fund", false);
+    await expect(
+      contributions.initiate({ waqfId: unfunded, amount: minimum, currency: "NGN", provider: "paystack", founderId, payerEmail: "f@example.com", monthly: true }),
+    ).rejects.toThrow("first contribution has gone through");
+  });
+
+  test("setting up saves the founder's card under their email, and emails point to the portal, not a private link", async () => {
+    const waqfId = await fundedWaqf("Top-up Fund");
+    const { gift, result } = await setUp(waqfId);
+    expect(paystack.checkouts.find((c) => c.reference === result.contribution.id)).toMatchObject({ cardOnly: true });
+    expect(gift).toMatchObject({ kind: "waqf", status: "active", founderId, email: `founder-${run}@example.com`, manageTokenHash: null });
+    const mail = emails.sent.find((e) => e.ctaUrl?.endsWith(`/portfolio/${waqfId}`))!;
+    expect(mail.subject).toBe("Your monthly gift is set up");
+    expect(await prisma.auditLog.findFirst({ where: { entityId: gift.id, action: "recurring_gift.set_up_started" } })).toMatchObject({
+      actorType: "founder_user",
+      actorFounderId: founderId,
+      waqfId,
+    });
+
+    // One top-up per fund.
+    await expect(
+      contributions.initiate({ waqfId, amount: minimum, currency: "NGN", provider: "paystack", founderId, payerEmail: "f@example.com", monthly: true }),
+    ).rejects.toThrow("already has a monthly top-up");
+  });
+
+  test("a due month is charged on the saved card under the founder's email, and booked like any contribution", async () => {
+    const waqfId = await fundedWaqf("Charged Fund");
+    const { gift } = await setUp(waqfId);
+    await prisma.recurringGift.update({ where: { id: gift.id }, data: { nextChargeAt: new Date(Date.now() - 1000) } });
+    await service.processDue(gift.id);
+
+    expect(paystack.charges.at(-1)).toMatchObject({ email: gift.email, authorizationCode: REUSABLE_CARD.authorizationCode });
+    const charged = await prisma.contribution.findFirstOrThrow({ where: { recurringGiftId: gift.id, recurringPeriod: gift.nextPeriod } });
+    expect(charged.status).toBe("confirmed");
+    expect(await prisma.waqfJournalEntry.count({ where: { sourceId: charged.id } })).toBeGreaterThan(0);
+    expect((await prisma.recurringGift.findUniqueOrThrow({ where: { id: gift.id } })).nextPeriod).toBe(addMonths(gift.nextPeriod, 1));
+  });
+
+  test("only the founder sees and changes their top-up; it can be changed and cancelled", async () => {
+    const waqfId = await fundedWaqf("Managed Fund");
+    const { gift } = await setUp(waqfId);
+    expect((await service.founderTopUp(waqfId, founderId))?.status).toBe("active");
+    await expect(service.founderTopUp(waqfId, otherFounderId)).rejects.toThrow(NotFoundException);
+    await expect(service.founderCancel(waqfId, otherFounderId)).rejects.toThrow(NotFoundException);
+
+    const raised = new Prisma.Decimal(minimum).plus(10000).toFixed(2);
+    expect((await service.founderChangeAmount(waqfId, founderId, { amount: raised })).amount).toBe(new Prisma.Decimal(raised).toString());
+    expect((await service.founderCancel(waqfId, founderId)).status).toBe("cancelled");
+    expect(await service.founderTopUp(waqfId, founderId)).toBeNull();
+    expect(await prisma.auditLog.findFirst({ where: { entityId: gift.id, action: "recurring_gift.cancelled" } })).toMatchObject({ actorType: "founder_user" });
+  });
+
+  test("a fund that is no longer active ends its top-up", async () => {
+    const waqfId = await fundedWaqf("Suspended Fund");
+    const { gift } = await setUp(waqfId);
+    await prisma.waqf.update({ where: { id: waqfId }, data: { status: "suspended" } });
+    await prisma.recurringGift.update({ where: { id: gift.id }, data: { nextChargeAt: new Date(Date.now() - 1000) } });
+    await service.processDue(gift.id);
+    expect(await prisma.recurringGift.findUniqueOrThrow({ where: { id: gift.id } })).toMatchObject({ status: "ended", endedReason: "waqf_inactive" });
   });
 });

@@ -8,6 +8,8 @@ import { VaultContributionsService, type VaultDonorIdentityInput } from "../vaul
 import { RecurringGiftsCoreService, hashManageToken, snapshot } from "./recurring-gifts-core.service";
 import { GiftNeedsGiver, type MonthlyGiftCharge, type MonthlyGiftProduct } from "./monthly-gift-product";
 import { VaultMonthlyProduct } from "./vault-monthly.product";
+import { WaqfMonthlyProduct } from "./waqf-monthly.product";
+import { withFounderScope } from "../../common/db/founder-scope";
 import { addMonths, cardExpiredBy, chargeDateFor } from "./recurring-gift-dates";
 import { cancelledEmail, chargeFailedEmail, endedEmail, manageLinksEmail, pausedEmail, reminderEmail } from "./recurring-gift-emails";
 
@@ -57,8 +59,12 @@ export class RecurringGiftsService {
     private readonly core: RecurringGiftsCoreService,
     private readonly vaultContributions: VaultContributionsService,
     vaultProduct: VaultMonthlyProduct,
+    waqfProduct: WaqfMonthlyProduct,
   ) {
-    this.products = new Map<RecurringGiftKind, MonthlyGiftProduct>([["vault", vaultProduct]]);
+    this.products = new Map<RecurringGiftKind, MonthlyGiftProduct>([
+      ["vault", vaultProduct],
+      ["waqf", waqfProduct],
+    ]);
   }
 
   private product(gift: RecurringGift): MonthlyGiftProduct {
@@ -417,6 +423,46 @@ export class RecurringGiftsService {
     }
     if (links.length > 0) await this.core.sendSafely(manageLinksEmail(email, links));
     return { sent: true };
+  }
+
+  // ─── A founder's monthly top-up, in the Founder Portal ───────────────
+
+  /** The founder's running top-up on this fund, or null. Scoped to the founder (RLS) like their other waqf reads. */
+  private async founderGift(waqfId: string, founderId: string): Promise<RecurringGift | null> {
+    return withFounderScope(founderId, async (tx) => {
+      const waqf = await tx.waqf.findFirst({
+        where: { id: waqfId, foundation: { foundationFounders: { some: { founderId } } } },
+        select: { id: true },
+      });
+      if (!waqf) throw new NotFoundException("Waqf Fund not found.");
+      return tx.recurringGift.findFirst({
+        where: { kind: "waqf", waqfId, founderId, status: { in: ["pending_setup", "active", "paused"] } },
+        orderBy: { createdAt: "desc" },
+      });
+    });
+  }
+
+  private async requireFounderGift(waqfId: string, founderId: string): Promise<RecurringGift> {
+    const gift = await this.founderGift(waqfId, founderId);
+    if (!gift) throw new NotFoundException("This fund has no monthly top-up.");
+    return gift;
+  }
+
+  async founderTopUp(waqfId: string, founderId: string) {
+    const gift = await this.founderGift(waqfId, founderId);
+    return gift ? this.present(gift) : null;
+  }
+
+  async founderChangeAmount(waqfId: string, founderId: string, input: ChangeRecurringGiftAmountInput) {
+    return this.present(await this.applyAmount(await this.requireFounderGift(waqfId, founderId), input.amount, { type: "giver" }));
+  }
+
+  async founderCancel(waqfId: string, founderId: string) {
+    return this.present(await this.applyCancel(await this.requireFounderGift(waqfId, founderId), { type: "giver" }));
+  }
+
+  async founderCardUpdate(waqfId: string, founderId: string) {
+    return this.applyCardUpdate(await this.requireFounderGift(waqfId, founderId));
   }
 
   /** For tests and the Ops list: a gift as the audit trail records it. */

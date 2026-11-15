@@ -43,6 +43,7 @@ import {
   IconFileText,
 } from "@birr/ui";
 import { ContributionsSection } from "./ContributionsSection";
+import { MonthlyTopUpSection } from "./MonthlyTopUpSection";
 import { CausesSection } from "./CausesSection";
 import { AssetsSection } from "./AssetsSection";
 import { InvestmentsSection } from "./InvestmentsSection";
@@ -186,6 +187,7 @@ export default function WaqfFundDetailPage() {
                   <ProjectProgressSection waqfId={waqf.id} currency={waqf.corpusCurrency ?? "USD"} />
                 )}
                 <ContributionsSection waqf={waqf} onCorpusIncreased={load} />
+                <MonthlyTopUpSection waqf={waqf} />
               </div>
             )}
 

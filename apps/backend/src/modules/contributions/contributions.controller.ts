@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
-import { IsEmail, IsEnum, IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsEmail, IsEnum, IsNumberString, IsOptional, IsString } from "class-validator";
 import { Request } from "express";
 import { Throttle } from "@nestjs/throttler";
 import { ContributionProvider } from "@birr/db";
@@ -8,7 +8,7 @@ import { DistributionsService } from "../distributions/distributions.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import { VaultDistributionsService } from "../vaults/vault-distributions.service";
 import { ZakahPaymentsService } from "../zakah/zakah-payments.service";
-import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
+import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
@@ -39,6 +39,11 @@ class InitiateContributionBody {
   @IsOptional()
   @IsEmail()
   payerEmail?: string;
+
+  /** Top this fund up every month by card (see RecurringGift). */
+  @IsOptional()
+  @IsBoolean()
+  monthly?: boolean;
 }
 
 // @Public() — Founder-Portal self-service surface (initiate/findById) plus
@@ -68,7 +73,10 @@ export class ContributionsController {
   async initiate(@Body() body: InitiateContributionBody, @Req() request: Request) {
     const founder = await resolveFounderFromSession(request);
     assertPrimaryContact(founder);
-    return this.service.initiate({ ...body, founderId: founder.id });
+    // A monthly top-up's card is saved under the founder's own account
+    // email, which also receives its reminders (see RecurringGift).
+    const payerEmail = body.monthly ? (await resolveUserFromSession(request)).email : body.payerEmail;
+    return this.service.initiate({ ...body, payerEmail, founderId: founder.id });
   }
 
   // Dual-reachable, same branching AssetsController.list() already uses:
