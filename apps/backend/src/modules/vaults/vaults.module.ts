@@ -32,9 +32,10 @@ import { PaystackPayoutAdapter } from "../distributions/providers/paystack-payou
 import { SettingsModule } from "../../common/settings/settings.module";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { FunnelEventsModule } from "../funnel-events/funnel-events.module";
+import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-core.module";
 
 @Module({
-  imports: [SettingsModule, FunnelEventsModule],
+  imports: [SettingsModule, FunnelEventsModule, RecurringGiftsCoreModule],
   controllers: [
     VaultsController,
     VaultContributionsController,

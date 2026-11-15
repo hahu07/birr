@@ -15,6 +15,7 @@ import {
   WebhookResult,
 } from "../contributions/providers/payment-provider.interface";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
+import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
 
 /** Same configurable-fake pattern as ContributionsService's own spec. */
 class FakeAdapter implements PaymentProviderAdapter {
@@ -91,6 +92,7 @@ describe("VaultContributionsService", () => {
     receiptEmail as any,
     ledger,
     new FunnelEventsService(),
+    createFakeRecurringGiftsCore().core,
     stripeFake as any,
     paystackFake as any,
     stablecoinFake as any,

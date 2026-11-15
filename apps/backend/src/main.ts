@@ -18,6 +18,8 @@ import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { NotificationsService } from "./modules/notifications/notifications.service";
 import { startTrusteeLicenseExpiryScheduler } from "./modules/trustee-licenses/trustee-license-expiry-scheduler";
 import { startPortfolioDriftScheduler } from "./modules/investments/portfolio-drift-scheduler";
+import { startRecurringGiftsScheduler } from "./modules/recurring-gifts/recurring-gifts-scheduler";
+import { RecurringGiftsService } from "./modules/recurring-gifts/recurring-gifts.service";
 import { InvestmentTargetsService } from "./modules/investments/investment-targets.service";
 import { VaultInvestmentTargetsService } from "./modules/vaults/vault-investment-targets.service";
 import { hasAnySessionCookie } from "./common/auth/session";
@@ -322,6 +324,8 @@ async function bootstrap() {
     app.get(VaultInvestmentTargetsService),
     app.get(NotificationsService),
   );
+  // Monthly giving: charges each due gift, sends reminders (see the scheduler's own comment).
+  startRecurringGiftsScheduler(app.get(RecurringGiftsService));
 }
 bootstrap().catch((err: unknown) => {
   Sentry.captureException(err);

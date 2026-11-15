@@ -39,6 +39,7 @@ import { ZakahFitrService } from "../zakah/zakah-fitr.service";
 import { unusedFitrSeason } from "../zakah/test-support-fitr";
 import { lockZakahCommitments } from "../zakah/zakah-commitments";
 import { draftRulesets } from "@birr/zakah";
+import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
 // local FakeAdapter/FakeReceiptEmailAdapter — duplicated rather than
@@ -147,6 +148,7 @@ describe("GovernedActionsService", () => {
       new FakeVaultReceiptEmailAdapter() as any,
       vaultLedgerService,
       new FunnelEventsService(),
+      createFakeRecurringGiftsCore().core,
       new FakeVaultPaymentAdapter() as any,
       new FakeVaultPaymentAdapter() as any,
       new FakeVaultPaymentAdapter() as any,

@@ -160,11 +160,25 @@ export default function VaultContributionStatusPage() {
           <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-900/25">
             <IconCheckCircle className="h-5 w-5" />
           </span>
-          <p className="mt-4 text-sm font-medium text-slate-900">Thank you — your gift is confirmed</p>
+          <p className="mt-4 text-sm font-medium text-slate-900">
+            {contribution.recurringGift ? "Thank you — your monthly gift has begun" : "Thank you — your gift is confirmed"}
+          </p>
           <p className="mt-1 text-sm text-slate-500">
             {formatMoney(contribution.amount, contribution.currency)} to {contribution.vault.name} has
             been received.
           </p>
+          {contribution.recurringGift && contribution.recurringGift.status !== "ended" && (
+            <p className="mx-auto mt-3 max-w-sm rounded-lg bg-primary-50/70 px-3 py-2.5 text-xs leading-relaxed text-slate-700">
+              It will repeat every month on your card. We&apos;ve emailed you a private link to change the amount or cancel any
+              time.
+            </p>
+          )}
+          {contribution.recurringGift?.status === "ended" && (
+            <p className="mx-auto mt-3 max-w-sm rounded-lg bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
+              Your card can&apos;t be charged again automatically, so this won&apos;t repeat. Today&apos;s gift still went
+              through. To give monthly, start again with a debit or credit card.
+            </p>
+          )}
           <ContributionReference id={contribution.id} />
           <div className="mt-4 flex justify-center gap-4">
             <Link

@@ -331,6 +331,10 @@ function ContributionForm({
   const [vaultCauseId, setVaultCauseId] = useState("");
   const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["value"]>(availableProviders[0]?.value ?? "paystack");
   const [donorEmail, setDonorEmail] = useState("");
+  // Monthly giving (2026-11-15): card only, naira only, needs an email.
+  const [monthly, setMonthly] = useState(false);
+  const monthlyAvailable = currency === "NGN" && availableProviders.some((p) => p.value === "paystack");
+  const giveMonthly = monthly && monthlyAvailable;
   const [donorFullName, setDonorFullName] = useState("");
   const [showIdentity, setShowIdentity] = useState(false);
   const [idType, setIdType] = useState<(typeof ID_TYPES)[number]>("passport");
@@ -355,6 +359,7 @@ function ContributionForm({
           donorFullName: donorFullName || undefined,
           idType: showIdentity ? idType : undefined,
           idNumber: showIdentity && idNumber ? idNumber : undefined,
+          monthly: giveMonthly || undefined,
         }),
       });
       trackFunnelEvent("vault", "checkout_started", { vaultId: vault.id, metadata: { provider, currency } });
@@ -443,6 +448,8 @@ function ContributionForm({
           {minimumAmount && <p className="mt-1 text-xs text-slate-500">Minimum contribution: {formatMoney(minimumAmount, currency, { decimals: 0 })}</p>}
         </div>
 
+        {monthlyAvailable && <GiveFrequency monthly={monthly} onChange={setMonthly} />}
+
         {causes.length > 0 && (
           <CauseChoice causes={causes} vaultCurrency={vault.currency} selectedId={vaultCauseId} onSelect={setVaultCauseId} />
         )}
@@ -450,7 +457,7 @@ function ContributionForm({
         {availableProviders.length === 1 ? (
           <p className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
             <IconShieldCheck className="h-4 w-4 shrink-0 text-primary-700" />
-            Paid with card or bank transfer via Paystack
+            {giveMonthly ? "Paid by card via Paystack" : "Paid with card or bank transfer via Paystack"}
           </p>
         ) : (
           <div>
@@ -475,16 +482,21 @@ function ContributionForm({
         <div className="grid gap-4">
           <div>
             <label htmlFor="contribution-donor-email" className="mb-1.5 block text-sm font-medium text-slate-700">
-              Email (optional)
+              {giveMonthly ? "Email" : "Email (optional)"}
             </label>
             <Input
               id="contribution-donor-email"
               type="email"
               placeholder="you@example.com"
+              required={giveMonthly}
               value={donorEmail}
               onChange={(e) => setDonorEmail(e.target.value)}
             />
-            <p className="mt-1 text-xs text-slate-500">For your receipt. Leave blank to give anonymously, without a receipt.</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {giveMonthly
+                ? "For your receipts, a reminder before each charge, and your private link to change or cancel."
+                : "For your receipt. Leave blank to give anonymously, without a receipt."}
+            </p>
           </div>
           <div>
             <label htmlFor="contribution-donor-name" className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -538,10 +550,52 @@ function ContributionForm({
         )}
 
         <Button type="submit" disabled={submitting} className="w-full py-3 text-base">
-          {submitting ? "Processing…" : "Continue to payment"}
+          {submitting ? "Processing…" : giveMonthly ? "Set up monthly gift" : "Continue to payment"}
         </Button>
         <p className="text-center text-xs text-slate-500">You'll finish on a secure checkout page, then come back here.</p>
       </form>
+  );
+}
+
+function ordinal(day: number): string {
+  const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
+  return `${day}${suffix}`;
+}
+
+/** The day a monthly gift started today repeats on: today in Lagos, or the 28th (see RecurringGift.dayOfMonth). */
+function monthlyDay(): number {
+  const day = Number(new Intl.DateTimeFormat("en-NG", { day: "numeric", timeZone: "Africa/Lagos" }).format(new Date()));
+  return Math.min(day, 28);
+}
+
+/** One-time or monthly (owner's decision, 2026-11-15: monthly by card, in naira). */
+function GiveFrequency({ monthly, onChange }: { monthly: boolean; onChange: (monthly: boolean) => void }) {
+  return (
+    <fieldset>
+      <legend className="mb-1.5 block text-sm font-medium text-slate-700">How often</legend>
+      <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="radiogroup">
+        {[
+          { value: false, label: "One time" },
+          { value: true, label: "Monthly" },
+        ].map((option) => (
+          <label
+            key={option.label}
+            className={`cursor-pointer rounded-lg px-3 py-2 text-center text-sm font-semibold transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-500/40 ${
+              monthly === option.value ? "bg-white text-primary-800 shadow-sm" : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <input type="radio" name="give-frequency" className="sr-only" checked={monthly === option.value} onChange={() => onChange(option.value)} />
+            {option.label}
+          </label>
+        ))}
+      </div>
+      {monthly && (
+        <p className="mt-2 rounded-lg border border-primary-100 bg-primary-50/60 px-3 py-2.5 text-xs leading-relaxed text-slate-700">
+          Charged to your card on the <strong>{ordinal(monthlyDay())}</strong> of every month, starting today. Cards only. We&apos;ll email
+          you before each charge, with a private link to change the amount or cancel any time.
+        </p>
+      )}
+    </fieldset>
   );
 }
 

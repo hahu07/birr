@@ -470,6 +470,8 @@ export interface VaultContribution {
   createdAt: string;
   confirmedAt: string | null;
   vault: { name: string; slug: string };
+  /** Set when this was the first gift of a monthly gift. */
+  recurringGift?: { status: "pending_setup" | "active" | "paused" | "cancelled" | "ended" } | null;
 }
 
 export interface MessageAttachment {

@@ -430,6 +430,7 @@ model Founder {
   signedWaqfDeeds        WaqfDeed[]
   signedFoundationDeeds  FoundationDeed[]
   coFounderDeedConsents  CoFounderDeedConsent[]
+  recurringGifts         RecurringGift[]
   causeSuggestions       CauseCategorySuggestion[]
   beneficiaryNominations BeneficiaryNomination[]
   founderRequests        FounderRequest[]
@@ -568,6 +569,7 @@ model Waqf {
   distributions          Distribution[]
   waqfCauses             WaqfCause[]
   contributions          Contribution[]
+  recurringGifts         RecurringGift[]
   waqfDeed               WaqfDeed?
   causeSuggestions       CauseCategorySuggestion[]
   proceeds               WaqfProceeds[]
@@ -1201,6 +1203,13 @@ model Contribution {
   assetId           String?              @unique
   asset             Asset?               @relation(fields: [assetId], references: [id])
   confirmedAt       DateTime?
+  // Set on a monthly gift's payments (see RecurringGift): which gift, and
+  // which month ('2026-12') this payment collects. A partial unique index
+  // allows one non-failed payment per gift per month. A gift without a
+  // month is a card-update checkout; it counts as the month then due.
+  recurringGiftId   String?
+  recurringGift     RecurringGift?       @relation(fields: [recurringGiftId], references: [id], onDelete: Restrict)
+  recurringPeriod   String?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
@@ -2290,6 +2299,7 @@ model Vault {
 
   causes            VaultCause[]
   contributions     VaultContribution[]
+  recurringGifts    RecurringGift[]
   investments       VaultInvestment[]
   investmentTargets VaultInvestmentTarget[]
   proceeds          VaultProceeds[]
@@ -2350,9 +2360,10 @@ model VaultCause {
   updatedAt       DateTime       @updatedAt
   deletedAt       DateTime?
 
-  contributions VaultContribution[]
-  distributions VaultDistribution[]
-  allocations   VaultCauseAllocation[]
+  contributions  VaultContribution[]
+  recurringGifts RecurringGift[]
+  distributions  VaultDistribution[]
+  allocations    VaultCauseAllocation[]
 
   @@unique([vaultId, name])
   @@map("vault_causes")
@@ -2519,6 +2530,13 @@ model VaultContribution {
   // one legitimately) — it links two different declared identities
   // (VaultDonor rows) for a human to look at, nothing more.
   ipAddress          String?
+  // Set on a monthly gift's payments (see RecurringGift): which gift, and
+  // which month ('2026-12') this payment collects. A partial unique index
+  // allows one non-failed payment per gift per month. A gift without a
+  // month is a card-update checkout; it counts as the month then due.
+  recurringGiftId    String?
+  recurringGift      RecurringGift?       @relation(fields: [recurringGiftId], references: [id], onDelete: Restrict)
+  recurringPeriod    String?
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
@@ -3123,6 +3141,13 @@ model ZakahPayment {
   // Captured server-side for Compliance's off-platform AML review only,
   // same as VaultContribution.ipAddress; never gates a payment.
   ipAddress             String?
+  // Set on a monthly gift's payments (see RecurringGift): which gift, and
+  // which month ('2026-12') this payment collects. A partial unique index
+  // allows one non-failed payment per gift per month. A gift without a
+  // month is a card-update checkout; it counts as the month then due.
+  recurringGiftId       String?
+  recurringGift         RecurringGift?       @relation(fields: [recurringGiftId], references: [id], onDelete: Restrict)
+  recurringPeriod       String?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
 
@@ -3437,4 +3462,115 @@ model ZakahFitrCampaign {
 
   @@unique([season, version])
   @@map("zakah_fitr_campaigns")
+}
+
+// ─── Monthly giving (2026-11-15) ────────────────────────────────────────
+// Owner's decisions: Birr charges a saved card each month (Paystack
+// charge_authorization), for Vault gifts, founders' Waqf Fund top-ups and
+// zakah on wealth (paid in advance, ta'jil; live before the Shariah
+// Supervisory Board has ruled). The first gift is an ordinary card-only
+// checkout that saves the card; each later month Birr creates an ordinary
+// pending gift through the product's own initiate() — every check a
+// one-off gift gets (Vault open, minimum, AML threshold, waqf currency,
+// wakalah terms) — and charges the saved card. Naira only. Vault and zakah
+// givers manage their gift through a private emailed link (only its hash
+// is stored); founders manage theirs in the Founder Portal.
+
+enum RecurringGiftKind {
+  vault
+  waqf
+  zakah
+}
+
+enum RecurringGiftStatus {
+  /// The first, card-saving payment hasn't confirmed yet.
+  pending_setup
+  active
+  /// Stopped until the giver acts; see pauseReason.
+  paused
+  /// Stopped by the giver or by Compliance.
+  cancelled
+  /// Stopped by circumstance: the Vault closed, the card couldn't be saved, ...
+  ended
+}
+
+enum RecurringGiftPauseReason {
+  card_failed
+  card_expired
+  needs_identity
+  terms_changed
+  below_minimum
+}
+
+model RecurringGift {
+  id              String                    @id @default(uuid())
+  kind            RecurringGiftKind
+  status          RecurringGiftStatus       @default(pending_setup)
+  pauseReason     RecurringGiftPauseReason?
+  /// The giver's email: receipts, reminders, the manage link, and the
+  /// Paystack customer the saved card belongs to.
+  email           String
+  amount          Decimal
+  /// NGN only (a CHECK).
+  currency        String                    @default("NGN")
+  /// The day of the month it's charged, 1–28 (a CHECK).
+  dayOfMonth      Int
+  /// The month the next charge collects, e.g. "2026-12".
+  nextPeriod      String
+  nextChargeAt    DateTime?
+  /// Declined charges for nextPeriod so far; reset once it's collected.
+  failedAttempts  Int                       @default(0)
+  /// A scheduler run working on this gift claims it until then.
+  processingUntil DateTime?
+
+  vaultId      String?
+  vault        Vault?      @relation(fields: [vaultId], references: [id], onDelete: Restrict)
+  vaultCauseId String?
+  vaultCause   VaultCause? @relation(fields: [vaultCauseId], references: [id], onDelete: Restrict)
+  waqfId       String?
+  waqf         Waqf?       @relation(fields: [waqfId], references: [id], onDelete: Restrict)
+  founderId    String?
+  founder      Founder?    @relation(fields: [founderId], references: [id], onDelete: Restrict)
+
+  /// Zakah: add the processing fee on top (as at setup).
+  coverFee              Boolean @default(false)
+  /// Zakah: the wakalah wording accepted; a charge pauses if it changes.
+  wakalahConsentVersion String?
+  /// Zakah: the calculation behind the amount, recorded on every charge.
+  zakahRulesetKey       String?
+  zakahRulesetVersion   Int?
+  zakahMetalPriceId     String?
+
+  /// Paystack's reusable card authorisation, encrypted (EncryptionService).
+  authorizationEncrypted String?
+  cardLast4              String?
+  cardBrand              String?
+  cardExpMonth           Int?
+  cardExpYear            Int?
+  /// A card checkout (setup, or a card update) whose confirmation should
+  /// save the card used.
+  pendingCardReference   String? @unique
+
+  /// sha256 of the giver's private manage link (Vault and zakah).
+  manageTokenHash    String? @unique
+  /// The period whose pre-charge reminder has been sent.
+  lastReminderPeriod String?
+
+  activatedAt DateTime?
+  cancelledAt DateTime?
+  /// "giver", "founder" or "staff".
+  cancelledBy String?
+  endedAt     DateTime?
+  endedReason String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  contributions      Contribution[]
+  vaultContributions VaultContribution[]
+  zakahPayments      ZakahPayment[]
+
+  @@index([status, nextChargeAt])
+  @@index([email])
+  @@index([founderId])
+  @@map("recurring_gifts")
 }

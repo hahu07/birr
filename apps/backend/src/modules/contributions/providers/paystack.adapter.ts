@@ -5,6 +5,9 @@ import {
   PaymentProviderAdapter,
   RefundInput,
   RefundResult,
+  SavedCardAuthorization,
+  SavedCardChargeInput,
+  SavedCardChargeResult,
   VerifiedPayment,
   WebhookResult,
 } from "./payment-provider.interface";
@@ -23,10 +26,49 @@ interface PaystackRefundResponse {
   message?: string;
 }
 
+interface PaystackAuthorization {
+  authorization_code?: string;
+  reusable?: boolean;
+  channel?: string;
+  last4?: string;
+  brand?: string;
+  card_type?: string;
+  exp_month?: string;
+  exp_year?: string;
+}
+
 interface PaystackVerifyResponse {
   status: boolean;
-  data?: { id: number; status: string; reference: string; amount: number; currency: string };
+  data?: {
+    id: number;
+    status: string;
+    reference: string;
+    amount: number;
+    currency: string;
+    authorization?: PaystackAuthorization;
+  };
   message?: string;
+}
+
+interface PaystackChargeAuthorizationResponse {
+  status: boolean;
+  data?: { id: number; status: string; reference: string; gateway_response?: string };
+  message?: string;
+}
+
+function toSavedCard(auth: PaystackAuthorization | undefined): SavedCardAuthorization | undefined {
+  if (!auth?.authorization_code) return undefined;
+  const month = Number(auth.exp_month);
+  const year = Number(auth.exp_year);
+  return {
+    authorizationCode: auth.authorization_code,
+    reusable: auth.reusable === true,
+    channel: auth.channel ?? "unknown",
+    last4: auth.last4 ?? null,
+    brand: (auth.brand ?? auth.card_type)?.trim() || null,
+    expMonth: Number.isInteger(month) && month >= 1 && month <= 12 ? month : null,
+    expYear: Number.isInteger(year) && year > 2000 ? year : null,
+  };
 }
 
 interface PaystackWebhookEvent {
@@ -71,6 +113,7 @@ export class PaystackAdapter implements PaymentProviderAdapter {
         currency: input.currency.toUpperCase(),
         reference: input.reference,
         callback_url: callbackUrl,
+        ...(input.cardOnly && { channels: ["card"] }),
         ...(input.split && {
           subaccount: input.split.subaccount,
           // A flat amount (kobo) kept by the main account; it overrides the
@@ -138,7 +181,47 @@ export class PaystackAdapter implements PaymentProviderAdapter {
       amountMinorUnits: body.data.amount,
       currency: body.data.currency.toUpperCase(),
       providerPaymentId: String(body.data.id),
+      authorization: toSavedCard(body.data.authorization),
     };
+  }
+
+  /**
+   * Charges a saved card (POST /transaction/charge_authorization), for a
+   * monthly gift's later months. Paystack usually answers with the
+   * outcome straight away; a "pending" answer is settled by the
+   * charge.success / charge.failed webhook, which matches our reference
+   * like any other payment.
+   */
+  async chargeSavedCard(input: SavedCardChargeInput): Promise<SavedCardChargeResult> {
+    const secretKey = await this.settings.get("paystack", "SECRET_KEY");
+    if (!secretKey) {
+      throw new ServiceUnavailableException("Card payments via Nigeria aren't available right now.");
+    }
+    const res = await fetch(`${this.baseUrl}/transaction/charge_authorization`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: input.email,
+        amount: Math.round(Number(input.amount) * 100),
+        currency: input.currency.toUpperCase(),
+        authorization_code: input.authorizationCode,
+        reference: input.reference,
+        ...(input.split && {
+          subaccount: input.split.subaccount,
+          transaction_charge: input.split.mainAccountShareMinorUnits,
+          bearer: "account",
+        }),
+      }),
+    });
+    const body = (await res.json()) as PaystackChargeAuthorizationResponse;
+    // A refused request (bad authorisation, card no longer chargeable) is
+    // a declined charge for the giver, not an outage.
+    if (!body.data) {
+      if (res.status >= 500) throw new Error(`Paystack charge_authorization failed: ${body.message ?? res.statusText}`);
+      return { status: "failed", gatewayResponse: body.message ?? res.statusText };
+    }
+    const status = body.data.status === "success" ? "confirmed" : body.data.status === "failed" ? "failed" : "pending";
+    return { status, providerPaymentId: String(body.data.id), gatewayResponse: body.data.gateway_response };
   }
 
   // Unlike Stripe, Paystack's refund endpoint accepts the original

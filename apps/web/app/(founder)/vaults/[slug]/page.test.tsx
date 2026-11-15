@@ -96,3 +96,46 @@ describe("VaultDonationPage — a fetch failure is not the same as a real 404", 
     expect(screen.queryByText(/Couldn't load this vault/)).toBeNull();
   });
 });
+
+describe("VaultDonationPage — giving monthly", () => {
+  beforeEach(() => {
+    mockedFetch.mockReset();
+    mockedFetch.mockImplementation((path: string) => {
+      if (path.includes("contribution-minimums")) return Promise.resolve([{ currency: "NGN", minAmount: "250000" }]);
+      if (path === "/vault-contributions") return Promise.resolve({ clientPayload: { checkoutUrl: "https://checkout.test/x" } });
+      return Promise.resolve(vault());
+    });
+    Object.defineProperty(window, "location", { value: { href: "" }, writable: true });
+  });
+
+  it("monthly needs an email and sends monthly: true; one-time stays anonymous-friendly", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+    render(<VaultDonationPage />);
+
+    const email = await screen.findByLabelText("Email (optional)");
+    expect(email).not.toBeRequired();
+    await user.click(screen.getByRole("radio", { name: "Monthly" }));
+    expect(screen.getByLabelText("Email")).toBeRequired();
+    expect(screen.getByText(/of every month, starting today/)).toBeTruthy();
+
+    await user.type(screen.getByLabelText(/^Amount/), "250000");
+    await user.type(screen.getByLabelText("Email"), "amina@example.com");
+    await user.click(screen.getByRole("button", { name: "Set up monthly gift" }));
+
+    await waitFor(() => expect(window.location.href).toBe("https://checkout.test/x"));
+    const [, init] = mockedFetch.mock.calls.find(([path]) => path === "/vault-contributions")!;
+    expect(JSON.parse(init!.body as string)).toMatchObject({ amount: "250000", currency: "NGN", provider: "paystack", donorEmail: "amina@example.com", monthly: true });
+  });
+
+  it("a one-time gift doesn't ask for monthly", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+    render(<VaultDonationPage />);
+    await user.type(await screen.findByLabelText(/^Amount/), "250000");
+    await user.click(screen.getByRole("button", { name: "Continue to payment" }));
+    await waitFor(() => expect(window.location.href).toBe("https://checkout.test/x"));
+    const [, init] = mockedFetch.mock.calls.find(([path]) => path === "/vault-contributions")!;
+    expect(JSON.parse(init!.body as string)).not.toHaveProperty("monthly");
+  });
+});
