@@ -10,12 +10,156 @@
 // foundations[0] — a Waqf Fund established under any 2nd+ Foundation
 // could never have its deed signed through the UI at all, even though
 // the backend (POST /foundation-deeds) already accepts any foundationId.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiFetchJson } from "../../lib/api";
 import { useFounderSession } from "../../lib/founder-session";
 import { humanize } from "../../lib/format";
 import type { Foundation, Waqf } from "../../lib/types";
 import { Alert, Button, IconCheckCircle, IconFileText, IconShieldCheck, Skeleton } from "@birr/ui";
+import { DEED_RECITALS_ID, DeedBody, deedSectionId, parseDeedText } from "./DeedDocument";
+
+const MINOR_WORDS = new Set(["of", "and", "as", "the", "to", "in", "for", "a", "an", "on", "by"]);
+
+/** "DECLARATION OF WAQF" → "Declaration of Waqf", for the contents row. */
+function titleCase(heading: string): string {
+  return heading
+    .toLowerCase()
+    .split(" ")
+    .map((word, i) =>
+      i > 0 && MINOR_WORDS.has(word) ? word : word.replace(/(^|-)([a-z])/g, (_, sep: string, c: string) => sep + c.toUpperCase()),
+    )
+    .join(" ");
+}
+
+/**
+ * The deed about to be signed, formatted as a document, with a contents
+ * row, reading progress, and the exact stored text one click away. The
+ * formatted view only restyles (see DeedDocument's parser); "Exact text"
+ * shows the characters that are stored and hashed when signing.
+ */
+function DeedReader({ deedText, parties }: { deedText: string; parties: string[] }) {
+  const [view, setView] = useState<"formatted" | "exact">("formatted");
+  const [progress, setProgress] = useState(0);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const contents = useMemo(() => {
+    const blocks = parseDeedText(deedText);
+    const items: { id: string; label: string }[] = [];
+    for (const block of blocks) {
+      if (block.kind === "heading" && block.text === "RECITALS") items.push({ id: DEED_RECITALS_ID, label: "Recitals" });
+      if (block.kind === "section") items.push({ id: deedSectionId(block.number), label: `${block.number}. ${titleCase(block.heading)}` });
+    }
+    return items;
+  }, [deedText]);
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    setProgress(max <= 0 ? 1 : Math.min(1, el.scrollTop / max));
+    // The clause being read: the last one whose heading has reached the top third.
+    const containerTop = el.getBoundingClientRect().top;
+    let current: string | null = null;
+    for (const item of contents) {
+      const target = el.querySelector<HTMLElement>(`#${item.id}`);
+      if (target && target.getBoundingClientRect().top - containerTop <= el.clientHeight / 3) current = item.id;
+    }
+    setActiveId(current);
+  }, [contents]);
+
+  // A different deed (or view) starts again from the top.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    onScroll();
+  }, [deedText, view, onScroll]);
+
+  function jumpTo(id: string) {
+    const container = scrollRef.current;
+    const target = container?.querySelector<HTMLElement>(`#${id}`);
+    if (!container || !target) return;
+    const top = target.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - 16;
+    container.scrollTo({ top, behavior: "smooth" });
+  }
+
+  const readToEnd = progress >= 0.98;
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/80 px-3 py-2.5 sm:px-4">
+        <div role="tablist" aria-label="How to show the deed" className="inline-flex rounded-lg bg-slate-200/70 p-0.5 text-xs font-medium">
+          {(["formatted", "exact"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => setView(v)}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              {v === "formatted" ? "Formatted" : "Exact text"}
+            </button>
+          ))}
+        </div>
+        <p className={`flex items-center gap-1.5 text-xs ${readToEnd ? "font-medium text-primary-700" : "text-slate-500"}`}>
+          {readToEnd ? (
+            <>
+              <IconCheckCircle className="h-3.5 w-3.5" /> Read to the end
+            </>
+          ) : (
+            <>{Math.round(progress * 100)}% read</>
+          )}
+        </p>
+      </div>
+      <div className="h-0.5 bg-slate-100" aria-hidden="true">
+        <div className="h-full bg-gradient-to-r from-primary-600 to-accent-500 transition-[width] duration-150" style={{ width: `${progress * 100}%` }} />
+      </div>
+
+      {view === "formatted" && contents.length > 0 && (
+        <nav aria-label="Deed contents" className="flex gap-1.5 overflow-x-auto border-b border-slate-100 px-3 py-2 sm:px-4">
+          {contents.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => jumpTo(item.id)}
+              aria-current={activeId === item.id ? "location" : undefined}
+              className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                activeId === item.id
+                  ? "border-primary-600 bg-primary-700 text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-800"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        tabIndex={0}
+        aria-label="Full text of the Deed of Waqf"
+        className="max-h-[34rem] overflow-y-auto bg-[#fffdf8] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500/30"
+      >
+        {view === "formatted" ? (
+          <div className="m-3 rounded-lg border border-accent-200/70 px-5 py-8 sm:m-4 sm:px-10 sm:py-10">
+            <DeedBody deedText={deedText} parties={parties} />
+          </div>
+        ) : (
+          <div className="p-4 sm:p-6">
+            <p className="mb-3 text-xs text-slate-500">
+              Exactly as stored when you sign — the formatted view shows these same words, laid out for reading.
+            </p>
+            <pre className="whitespace-pre-wrap break-words font-mono text-[12.5px] leading-6 text-slate-700">{deedText}</pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // GET /foundation-deeds/:foundationId/preview — the deed exactly as it
 // would be stored if signed now (see FoundationDeedsService.preview).
@@ -162,13 +306,7 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
           </p>
 
           <p className="mt-8 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">The full deed — what you&apos;re signing</p>
-          <div
-            tabIndex={0}
-            aria-label="Full text of the Deed of Waqf"
-            className="mt-2 max-h-[28rem] overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-4 text-[13px] leading-6 text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500/30 sm:p-5"
-          >
-            {preview.deedText}
-          </div>
+          <DeedReader deedText={preview.deedText} parties={[foundation.name, ...preview.coFounders]} />
 
           {hasActiveWaqf && (
             <div className="mt-8">

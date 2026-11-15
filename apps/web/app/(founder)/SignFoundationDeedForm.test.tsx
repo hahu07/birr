@@ -40,6 +40,17 @@ describe("SignFoundationDeedForm", { timeout: 15_000 }, () => {
     expect(screen.queryByText(/A joint deed/)).not.toBeInTheDocument();
   });
 
+  test("the exact stored text is one click away from the formatted deed", async () => {
+    mockApi({ joint: false, coFounders: [] });
+    render(<SignFoundationDeedForm foundation={foundation} onSigned={vi.fn()} />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("tab", { name: "Exact text" }));
+    // Line breaks and all: the characters that are stored and hashed.
+    const exact = screen.getByLabelText("Full text of the Deed of Waqf").querySelector("pre");
+    expect(exact?.textContent).toBe("DEED OF WAQF (ISLAMIC ENDOWMENT)\nThe full legal text.");
+  });
+
   test("a joint deed says who the signer signs for", async () => {
     mockApi({ joint: true, coFounders: ["Yusuf Bello"] });
     render(<SignFoundationDeedForm foundation={foundation} onSigned={vi.fn()} />);
