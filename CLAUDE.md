@@ -662,6 +662,22 @@ takes effect on the person's next request, since
 proposals stay for others to decide. One pending role or status change
 per person at a time.
 
+**Update, 2026-11-15 — daily Paystack reconciliation, flag-only.**
+Owner's decisions: each Lagos day is checked against Paystack in **both
+directions** — money in (waqf contributions, Vault gifts, zakah with its
+fee cover, monthly charges included), money out (Paystack transfers for
+waqf and Vault distributions) and Vault refunds — and every mismatch is
+**flagged for Compliance; nothing is corrected automatically**
+(`modules/payment-reconciliation`). Zakah distributions and refunds are
+bank transfers from the zakah account, so they're outside it. The
+scheduler reconciles yesterday after 02:00 Lagos; Paystack is read ±1
+day so midnight-straddling payments aren't reported missing. Compliance
+is notified (in-app and email), can "ask Paystack again" through each
+product's own re-check, and resolves with a required note (a database
+CHECK). `payments.reconciliation_view`: Compliance, Audit, Board,
+Mutawalli; `_resolve` and `_run`: Compliance. In a dev database, test
+fixtures with references Paystack never saw are flagged, correctly.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
