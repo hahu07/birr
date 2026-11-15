@@ -42,6 +42,8 @@ const CHANNEL_PLAN: Record<string, { email: boolean; whatsapp: boolean }> = {
   // their inbox and on WhatsApp, not just in-app — these are the events a
   // founder actually checks their phone for.
   "distribution.paid": { email: true, whatsapp: true },
+  // A daily Paystack reconciliation found mismatches (2026-11-15): Compliance should look the same day.
+  "payments.reconciliation_issues": { email: true, whatsapp: false },
   "contribution.confirmed": { email: true, whatsapp: true },
   "contribution.failed": { email: true, whatsapp: true },
   "waqf.activated": { email: true, whatsapp: true },

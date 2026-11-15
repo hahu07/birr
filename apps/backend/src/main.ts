@@ -20,6 +20,8 @@ import { startTrusteeLicenseExpiryScheduler } from "./modules/trustee-licenses/t
 import { startPortfolioDriftScheduler } from "./modules/investments/portfolio-drift-scheduler";
 import { startRecurringGiftsScheduler } from "./modules/recurring-gifts/recurring-gifts-scheduler";
 import { RecurringGiftsService } from "./modules/recurring-gifts/recurring-gifts.service";
+import { startPaymentReconciliationScheduler } from "./modules/payment-reconciliation/payment-reconciliation-scheduler";
+import { PaymentReconciliationService } from "./modules/payment-reconciliation/payment-reconciliation.service";
 import { InvestmentTargetsService } from "./modules/investments/investment-targets.service";
 import { VaultInvestmentTargetsService } from "./modules/vaults/vault-investment-targets.service";
 import { hasAnySessionCookie } from "./common/auth/session";
@@ -326,6 +328,8 @@ async function bootstrap() {
   );
   // Monthly giving: charges each due gift, sends reminders (see the scheduler's own comment).
   startRecurringGiftsScheduler(app.get(RecurringGiftsService));
+  // Daily Paystack reconciliation: checks yesterday after 02:00 Lagos (see the scheduler's own comment).
+  startPaymentReconciliationScheduler(app.get(PaymentReconciliationService));
 }
 bootstrap().catch((err: unknown) => {
   Sentry.captureException(err);

@@ -211,6 +211,11 @@ export const accessPermissions = [
   // it's paused. Same four roles as the zakah review list, not
   // platform_admin. Stopping one only ever stops money coming in, so it's
   // Compliance alone, with a reason; the giver is never told why.
+  // Paystack reconciliation (2026-11-15): flag-only. Seeing mismatches is
+  // the same four roles as the review lists; acting on them is Compliance.
+  { key: "payments.reconciliation_view", category: "compliance", description: "See daily Paystack reconciliation runs and the mismatches they found.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "mutawalli_officer"] },
+  { key: "payments.reconciliation_resolve", category: "compliance", description: "Ask Paystack again about a mismatch, and mark it resolved with a note.", roles: ["compliance_officer"] },
+  { key: "payments.reconciliation_run", category: "compliance", description: "Reconcile a chosen past day with Paystack now.", roles: ["compliance_officer"] },
   { key: "giving.monthly_view", category: "compliance", description: "See monthly gifts (Vault gifts, Waqf Fund top-ups and zakah): who gives, how much, and their status.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "mutawalli_officer"] },
   { key: "giving.monthly_cancel", category: "compliance", description: "Stop someone's monthly gift, with a reason. The giver is told it has ended, never why.", roles: ["compliance_officer"] },
   { key: "zakah.structuring_review", category: "zakah", description: "See the zakah AML review list, including giving that spans Vault and zakah.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "mutawalli_officer"] },

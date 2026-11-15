@@ -387,6 +387,8 @@ model User {
   zakahFitrCampaignsCreated      ZakahFitrCampaign[]             @relation("ZakahFitrCampaignCreator")
   zakahPaymentsHeld              ZakahPayment[]                  @relation("ZakahPaymentHolder")
   zakahRecipientChangesRequested ZakahRecipient[]                @relation("ZakahRecipientChangeRequester")
+  reconciliationRunsStarted      PaymentReconciliationRun[]      @relation("ReconciliationRunStarter")
+  reconciliationIssuesResolved   PaymentReconciliationIssue[]    @relation("ReconciliationIssueResolver")
 
   @@map("users")
 }
@@ -3573,4 +3575,103 @@ model RecurringGift {
   @@index([email])
   @@index([founderId])
   @@map("recurring_gifts")
+}
+
+// ─── Paystack reconciliation (2026-11-15) ───────────────────────────────
+// Owner's decisions: each day, compare Paystack's records of money in
+// (contributions, Vault gifts, zakah, monthly charges included), money out
+// (transfers for waqf and Vault distributions) and Vault refunds with
+// Birr's own, and flag every mismatch for Compliance. Nothing is corrected
+// automatically. Zakah distributions and refunds are bank transfers from
+// the zakah account, not Paystack, so they're outside this.
+
+enum ReconciliationRunStatus {
+  running
+  clean
+  issues
+  failed
+}
+
+enum ReconciliationDirection {
+  in
+  out
+  refund
+}
+
+enum ReconciliationIssueKind {
+  /// Paystack took a payment Birr has no record of.
+  in_missing_in_birr
+  /// Birr shows a payment confirmed that Paystack doesn't show as paid.
+  in_missing_at_paystack
+  /// Both have it, with different outcomes (paid at Paystack, pending or failed at Birr, or the reverse).
+  in_status_mismatch
+  in_amount_mismatch
+  /// Paystack sent a transfer Birr has no record of.
+  out_missing_in_birr
+  /// Birr shows a payout paid or sent that Paystack has no transfer for.
+  out_missing_at_paystack
+  out_status_mismatch
+  out_amount_mismatch
+  /// Paystack made a refund Birr didn't record.
+  refund_missing_in_birr
+  /// Birr shows a refund that Paystack has no record of.
+  refund_missing_at_paystack
+}
+
+enum ReconciliationIssueStatus {
+  open
+  resolved
+}
+
+model PaymentReconciliationRun {
+  id              String                  @id @default(uuid())
+  /// The Lagos day checked, e.g. "2026-11-15".
+  day             String
+  windowStart     DateTime
+  windowEnd       DateTime
+  status          ReconciliationRunStatus @default(running)
+  error           String?
+  /// "scheduler" or "staff".
+  trigger         String
+  startedByUserId String?
+  startedBy       User?                   @relation("ReconciliationRunStarter", fields: [startedByUserId], references: [id], onDelete: Restrict)
+  /// How many records each side had, per direction.
+  counts          Json?
+  startedAt       DateTime                @default(now())
+  finishedAt      DateTime?
+
+  issues PaymentReconciliationIssue[]
+
+  @@index([day])
+  @@map("payment_reconciliation_runs")
+}
+
+model PaymentReconciliationIssue {
+  id                String                    @id @default(uuid())
+  runId             String
+  run               PaymentReconciliationRun  @relation(fields: [runId], references: [id], onDelete: Restrict)
+  direction         ReconciliationDirection
+  kind              ReconciliationIssueKind
+  /// The reference both sides use (our row id for payments and transfers;
+  /// the original payment's reference for a refund).
+  providerReference String
+  /// waqf_contribution | vault_contribution | zakah_payment | waqf_distribution | vault_distribution | vault_refund, when Birr has the record.
+  product           String?
+  recordId          String?
+  paystackStatus    String?
+  paystackAmount    Decimal?
+  birrStatus        String?
+  birrAmount        Decimal?
+  currency          String?
+  /// One plain-English line for Compliance.
+  detail            String
+  status            ReconciliationIssueStatus @default(open)
+  resolvedAt        DateTime?
+  resolvedByUserId  String?
+  resolvedBy        User?                     @relation("ReconciliationIssueResolver", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+  resolutionNote    String?
+  createdAt         DateTime                  @default(now())
+
+  @@index([status, direction])
+  @@map("payment_reconciliation_issues")
 }
