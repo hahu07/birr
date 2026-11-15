@@ -98,8 +98,9 @@ involvement or approval step:
 3. **Establish one or more Waqf Funds** under that Foundation. Creating
    a Waqf Fund *is itself* the Founder's agreement that Birr becomes
    Mutawalli over it — there's no separate sign-off step.
-4. **Fund it** — accept contributions through card payments (Stripe),
-   regional payment rails (Paystack), or stablecoin.
+4. **Fund it** — accept contributions through Paystack, in Naira (bank
+   transfer or local card). Stripe and stablecoin are not available in
+   Nigeria today; see CLAUDE.md (2026-09-19, 2026-11-15).
 5. **Generate a waqf deed** — the founding legal document, drafted from
    jurisdiction-specific templates. One deed, signed once, covers a
    Foundation and every Waqf Fund established under it, present and

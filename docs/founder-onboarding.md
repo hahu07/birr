@@ -43,8 +43,8 @@ whatever gets established under it.
 **3. Waqf Fund.**
 The first Waqf Fund under that Foundation — one of three types
 (Investment / Asset / Project) — then a real contribution
-(Paystack in Naira, or a stablecoin; Stripe was removed on 2026-09-19,
-see CLAUDE.md) to fund it. The fund's status only
+(Paystack in Naira; Stripe was removed on 2026-09-19 and stablecoin on
+2026-11-15, see CLAUDE.md) to fund it. The fund's status only
 flips to `active` once that first contribution actually confirms; step 4
 isn't reachable before that.
 

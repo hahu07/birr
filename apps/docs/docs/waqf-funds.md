@@ -19,7 +19,7 @@ involvement or approval step:
    a Waqf Fund *is itself* the Founder's agreement that Birr becomes
    Mutawalli over it — there's no separate sign-off step.
 4. **Fund it** — pay in through Paystack in Naira (bank transfer or
-   local card), or in stablecoin.
+   local card).
 5. **Generate a waqf deed** — the founding legal document, drafted from
    jurisdiction-specific templates. One deed, signed once, covers a
    Foundation and every Waqf Fund established under it, present and
@@ -82,7 +82,7 @@ committees, using Birr's internal tools — never the Founder:
 
 ```mermaid
 flowchart LR
-    A["Founder establishes<br/>Foundation + Waqf Fund"] --> B["Founder funds it<br/>(card / regional / stablecoin)"]
+    A["Founder establishes<br/>Foundation + Waqf Fund"] --> B["Founder funds it<br/>(Paystack, in Naira)"]
     B --> C["Birr's officers and committees<br/>manage it ongoing: assets, investments,<br/>beneficiaries, distributions"]
     C --> D["Every sensitive action:<br/>maker proposes, different<br/>checker approves"]
     D --> E["Distribution reaches<br/>a named Beneficiary"]

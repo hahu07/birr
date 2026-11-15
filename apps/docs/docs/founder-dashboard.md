@@ -77,7 +77,7 @@ funds as examples:
 |---|---|---|
 | **Lifecycle** *(Clean Water Project only)* | A checklist of every stage a project waqf goes through, from "just started" to "long-term wrap-up." Shows Amina exactly where her project currently stands. | No, just for viewing |
 | **Project Progress** *(Clean Water Project only)* | The actual milestones — e.g. "Well #1: Drilled ✅ — cost ₦3,150,000 of the ₦3,000,000 budgeted," with photos/evidence attached. | No, just for viewing |
-| **Contributions** | How much has been donated so far, and the history of who gave what and when. | **Yes** — she can add more money here, in Naira via Paystack (bank transfer or local card) or in stablecoin |
+| **Contributions** | How much has been donated so far, and the history of who gave what and when. | **Yes** — she can add more money here, in Naira via Paystack (bank transfer or local card) |
 | **Causes** | The specific purposes her fund supports — e.g. "Scholarships" or "Clean Water Access" — picked from Birr's standard list, and how much money is earmarked for each. | **Yes** — she can pick, unpick, and set the amount for each cause herself, no approval needed |
 | **Assets** | Any physical property backing the fund (e.g. a building). | No — Birr registers assets, and selling one is decided by members of the Board of Trustees, Investment Committee or Audit Committee |
 | **Investments** *(Scholarship Waqf only)* | What the ₦75,000,000 is actually invested in, and whether it's been checked for Shariah compliance. | No, just for viewing |
