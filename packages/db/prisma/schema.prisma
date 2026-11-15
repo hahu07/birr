@@ -1942,9 +1942,9 @@ model AuditLog {
   // identity, unlike actorDonorId below.
   vaultId        String?
   actorUserId    String?
-  actorUser      User?       @relation(fields: [actorUserId], references: [id])
+  actorUser      User?       @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   actorAgentId   String?
-  actorAgent     AiAgent?    @relation(fields: [actorAgentId], references: [id])
+  actorAgent     AiAgent?    @relation(fields: [actorAgentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   // Founders aren't User rows (no FounderMembership built yet — a
   // founder-portal session maps directly to a Founder record), so a
   // founder-initiated action (self-service Foundation/Waqf Fund
@@ -1952,14 +1952,14 @@ model AuditLog {
   // actorAgentId pattern rather than leaving actorType: founder_user
   // entries with no way to say *which* founder.
   actorFounderId String?
-  actorFounder   Founder?    @relation(fields: [actorFounderId], references: [id])
+  actorFounder   Founder?    @relation(fields: [actorFounderId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   // Same reasoning as actorFounderId above, for actorType: public_donor
   // (see that enum value's own comment) — a VaultDonor is neither a User
   // nor a Founder. Included in the hash-chain formula alongside the
   // other three actor FKs (see the migration that added this column for
   // why the whole chain had to be recomputed, not just appended to).
   actorDonorId   String?
-  actorDonor     VaultDonor? @relation(fields: [actorDonorId], references: [id])
+  actorDonor     VaultDonor? @relation(fields: [actorDonorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   actorType      ActorType
   action         String
   entityType     String

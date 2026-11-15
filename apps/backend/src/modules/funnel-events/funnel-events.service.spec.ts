@@ -13,7 +13,9 @@ describe("FunnelEventsService", () => {
 
   afterAll(async () => {
     await prisma.funnelEvent.deleteMany({ where: { id: { in: eventIds } } });
-    await prisma.founder.deleteMany({ where: { id: founderId } });
+    // People the audit log names (users, founders, Vault donors) are left
+    // in place: audit_logs refuses their deletion (2026-11-15), so history
+    // is never rewritten.
     await prisma.$disconnect();
   });
 

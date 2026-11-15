@@ -634,6 +634,21 @@ in Nigeria today:
   month. Founder top-ups and monthly zakah are covered by tests, not yet
   by a live test-mode run.
 
+**Update, 2026-11-15 — the audit log now refuses rewrites at the database
+level.** Its four actor foreign keys (user, founder, AI agent, Vault
+donor) were `ON DELETE SET NULL`, so deleting one of those people
+rewrote every audit row naming them, with the table owner's rights,
+around the revoked UPDATE grant, and broke those rows' hashes. 5,941 rows
+in the dev database failed `audit_logs_verify_chain()`, all from test
+cleanup; no application code deletes these people. Owner's decision:
+those keys are now `RESTRICT`, and triggers refuse any UPDATE, DELETE or
+TRUNCATE on `audit_logs`, whoever runs it
+(`20261115190000_audit_logs_refuse_rewrites`). Tests leave people the
+log names in place. The dev rows already broken can't be repaired (their
+original values are gone) and stay flagged; a fresh database's chain
+verifies clean. A future migration that must touch audit rows has to drop
+those triggers explicitly.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

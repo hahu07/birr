@@ -147,7 +147,9 @@ describe("Monthly Vault gifts", () => {
     await prisma.vaultJournalEntry.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vaultContribution.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
     await prisma.recurringGift.deleteMany({ where: { id: { in: giftIds } } });
-    await prisma.vaultDonor.deleteMany({ where: { email: { in: emailsUsed } } });
+    // People the audit log names (users, founders, Vault donors) are left
+    // in place: audit_logs refuses their deletion (2026-11-15), so history
+    // is never rewritten.
     await prisma.vaultCause.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
     await prisma.$disconnect();

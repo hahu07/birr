@@ -107,7 +107,9 @@ describe("NotificationsService — notification preferences", () => {
   afterAll(async () => {
     await prisma.notification.deleteMany({ where: { id: { in: notificationIds } } });
     await prisma.notificationPreference.deleteMany({ where: { userId: { in: preferenceUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: preferenceUserIds } } });
+    // People the audit log names (users, founders, Vault donors) are left
+    // in place: audit_logs refuses their deletion (2026-11-15), so history
+    // is never rewritten.
     await prisma.$disconnect();
   });
 

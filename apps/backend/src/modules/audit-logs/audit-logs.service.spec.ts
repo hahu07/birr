@@ -186,12 +186,37 @@ describe("AuditLogsService", () => {
     // Pure round-trip check on verifyChain() itself — doesn't assert the
     // whole table is clean (this spec shares a dev DB with everything
     // else), just that verifyChain() runs and returns the expected shape.
+    // Re-hashes the whole chain, so it takes as long as the log is big:
+    // tens of thousands of rows in a dev database that tests write to.
     test("verifyChain() returns a well-formed result", async () => {
       const result = await service.verifyChain();
       expect(typeof result.ok).toBe("boolean");
       expect(result.totalRecords).toBeGreaterThan(0);
       expect(Array.isArray(result.issues)).toBe(true);
       expect(result.ok).toBe(result.issues.length === 0);
+    }, 60_000);
+
+    test("the database refuses to rewrite history: no deleting a person a record names, no changing or deleting a record", async () => {
+      // Before 2026-11-15, deleting a Vault donor (or user, founder, AI
+      // agent) silently nulled them out of every audit row naming them,
+      // which broke those rows' hashes.
+      const donor = await prisma.vaultDonor.create({ data: { email: `audit-immutable-${Date.now()}@example.com` } });
+      const log = await prisma.auditLog.create({
+        data: {
+          actorType: "public_donor",
+          actorDonorId: donor.id,
+          action: "test.immutable_fixture",
+          entityType: "TestEntity",
+          entityId: "immutable-fixture-1",
+        },
+      });
+      auditLogIds.push(log.id);
+
+      await expect(prisma.vaultDonor.delete({ where: { id: donor.id } })).rejects.toThrow();
+      await expect(prisma.$executeRaw`UPDATE "audit_logs" SET "action" = 'tampered' WHERE "id" = ${log.id}`).rejects.toThrow();
+      await expect(prisma.$executeRaw`DELETE FROM "audit_logs" WHERE "id" = ${log.id}`).rejects.toThrow();
+      const after = await prisma.auditLog.findUniqueOrThrow({ where: { id: log.id } });
+      expect(after).toMatchObject({ action: "test.immutable_fixture", actorDonorId: donor.id });
     });
 
     test("exportChain() returns records in ascending sequence order with a matching chain head", async () => {
