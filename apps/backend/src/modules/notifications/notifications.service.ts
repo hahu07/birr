@@ -66,6 +66,8 @@ const CHANNEL_PLAN: Record<string, { email: boolean; whatsapp: boolean }> = {
   "cause_impact_update.logged": { email: false, whatsapp: false },
   "waqf_deed.signed": { email: true, whatsapp: false },
   "foundation_deed.signed": { email: true, whatsapp: true },
+  // A co-founder must act before the deed can be signed for them.
+  "foundation_deed.consent_needed": { email: true, whatsapp: true },
   "trustee_license.status_changed": { email: true, whatsapp: false },
   "waqf.needs_case_assignment": { email: true, whatsapp: false },
   "coi.needs_review": { email: true, whatsapp: false },
@@ -109,6 +111,7 @@ const TYPE_TO_PREFERENCE_CATEGORY: Record<string, NotificationPreferenceCategory
   "governed_action.decided": "governance",
   "waqf.activated": "governance",
   "foundation_deed.signed": "governance",
+  "foundation_deed.consent_needed": "governance",
   "waqf_deed.signed": "governance",
   "distribution.paid": "money",
   "contribution.confirmed": "money",

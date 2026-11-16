@@ -177,7 +177,10 @@ with her, such as her husband or a sibling, with their own account and
 their own money in it. Co-founders are invited from the Foundation's
 page (or while setting it up, by choosing "Jointly, with family or
 friends"). Each one agrees to the Foundation's deed in their own name
-when they join, and the deed page lists who agreed and when.
+when they join, and the deed page lists who agreed and when. Amina can't
+sign the deed for a co-founder who hasn't agreed yet: the signing page
+says who she's waiting for, and Birr reminds them by email and WhatsApp
+(at most once a day) to agree on the Foundation's deed page.
 
 ## Activity — her own history book
 

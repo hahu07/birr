@@ -58,6 +58,13 @@ describe("SignFoundationDeedForm", { timeout: 15_000 }, () => {
     expect(screen.getByText(/today, Yusuf Bello/)).toBeInTheDocument();
   });
 
+  test("no reminders are sent when nobody is being waited for", async () => {
+    mockApi({ joint: true, coFounders: ["Yusuf Bello"] });
+    render(<SignFoundationDeedForm foundation={foundation} onSigned={vi.fn()} />);
+    await screen.findByLabelText("Full text of the Deed of Waqf");
+    expect(mockedApiFetchJson.mock.calls.some(([path]) => String(path).endsWith("/consent-reminders"))).toBe(false);
+  });
+
   test("signing sends the hash of the deed that was shown", async () => {
     mockApi({ joint: false, coFounders: [] });
     const onSigned = vi.fn();
@@ -87,10 +94,16 @@ describe("SignFoundationDeedForm", { timeout: 15_000 }, () => {
     await user.click(screen.getByRole("button", { name: "Sign deed" }));
   }
 
-  test("can't sign until every co-founder has agreed, and says who it's waiting for", async () => {
+  test("can't sign until every co-founder has agreed, says who it's waiting for, and reminds them", async () => {
     mockApi({ joint: true, coFounders: ["Yusuf Bello", "Hauwa Bello"], awaitingConsent: ["Hauwa Bello"] });
+    const base = mockedApiFetchJson.getMockImplementation()!;
+    mockedApiFetchJson.mockImplementation(async (path, init) =>
+      path === "/foundation-deeds/fdn-1/consent-reminders" ? { reminded: ["Hauwa Bello"], alreadyReminded: [], noPrimaryContact: [] } : base(path, init),
+    );
     render(<SignFoundationDeedForm foundation={foundation} onSigned={vi.fn()} />);
     expect(await screen.findByText("Waiting for Hauwa Bello to agree")).toBeInTheDocument();
+    expect(await screen.findByText("We've just reminded Hauwa Bello by email and WhatsApp.")).toBeInTheDocument();
+    expect(mockedApiFetchJson).toHaveBeenCalledWith("/foundation-deeds/fdn-1/consent-reminders", { method: "POST" });
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Type your full legal name to sign"), "Amina Bello");
     await user.click(screen.getByRole("checkbox"));

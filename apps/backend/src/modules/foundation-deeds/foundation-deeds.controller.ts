@@ -71,6 +71,15 @@ export class FoundationDeedsController {
     return this.service.consentStatus(foundationId, founder.id);
   }
 
+  // The signer asks Birr to remind the co-founders the deed is waiting
+  // for (at most once a day each). Primary contact only, like signing.
+  @Post(":foundationId/consent-reminders")
+  async remindCoFounders(@Param("foundationId") foundationId: string, @Req() request: Request) {
+    const [user, founder] = await Promise.all([resolveUserFromSession(request), resolveFounderFromSession(request)]);
+    assertPrimaryContact(founder);
+    return this.service.remindAwaitingCoFounders(foundationId, founder.id, user.fullName);
+  }
+
   // Agreeing binds this founder (their money is dedicated under the
   // deed), so like signing it's for their primary contact only.
   @Post(":foundationId/consent")

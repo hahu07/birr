@@ -559,7 +559,9 @@ someone else's signature with no record they agreed. Owner's decisions
 - **2026-11-16, owner's decision: a joint deed waits for every
   co-founder's own agreement.** Signing is refused while any other
   founder of the Foundation has no `CoFounderDeedConsent`; the signing
-  page names who it's waiting for. Co-founders without one (joined
+  page names who it's waiting for, and reminds each one's primary
+  contact by email and WhatsApp (`foundation_deed.consent_needed`, at
+  most once a day per Foundation). Co-founders without one (joined
   before agreeing was part of joining, or added another way) agree on
   the Foundation's deed page (`GET/POST
   /foundation-deeds/:foundationId/consent`, their primary contact only),

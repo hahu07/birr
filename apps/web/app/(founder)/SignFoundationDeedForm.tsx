@@ -172,6 +172,19 @@ interface DeedPreview {
   awaitingConsent: string[];
 }
 
+// POST /foundation-deeds/:foundationId/consent-reminders — who was just
+// reminded to agree, who already was today, and who has no one to agree.
+interface ReminderResult {
+  reminded: string[];
+  alreadyReminded: string[];
+  noPrimaryContact: string[];
+}
+
+/** "Yusuf", "Yusuf and Hauwa", "Yusuf, Hauwa and Musa". */
+function listNames(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
 /** Same comparison the backend makes (FoundationDeedsService: trimmed, case-insensitive). */
 function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -187,6 +200,7 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
   const [affirmed, setAffirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [reminders, setReminders] = useState<ReminderResult | null>(null);
 
   // The deed text and the funds listed beside it always come from the same
   // load, so they can't disagree. No GET /foundations/:id/waqfs endpoint
@@ -207,6 +221,13 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
         if (cancelled) return;
         setActiveWaqfs(waqfs);
         setPreview(deedPreview);
+        // Waiting for co-founders: remind them, so the signer needn't chase
+        // them. The backend sends each at most one reminder a day.
+        if (deedPreview.awaitingConsent.length > 0) {
+          apiFetchJson<ReminderResult>(`/foundation-deeds/${foundation.id}/consent-reminders`, { method: "POST" })
+            .then((result) => !cancelled && setReminders(result))
+            .catch(() => {});
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "Something went wrong.");
@@ -214,7 +235,7 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
     return () => {
       cancelled = true;
     };
-  }, [load]);
+  }, [load, foundation.id]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -279,6 +300,18 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
         <Alert tone="warning" title={`Waiting for ${awaiting.join(", ")} to agree`}>
           You sign this deed for every co-founder of {foundation.name}, so each must first agree to that in their own name. They&apos;ll
           find it on this Foundation&apos;s deed page. You can sign once they have.
+          {reminders && reminders.reminded.length > 0 && (
+            <span className="mt-1.5 block">We&apos;ve just reminded {listNames(reminders.reminded)} by email and WhatsApp.</span>
+          )}
+          {reminders && reminders.alreadyReminded.length > 0 && (
+            <span className="mt-1.5 block">{listNames(reminders.alreadyReminded)} had a reminder in the last day.</span>
+          )}
+          {reminders && reminders.noPrimaryContact.length > 0 && (
+            <span className="mt-1.5 block">
+              {listNames(reminders.noPrimaryContact)} {reminders.noPrimaryContact.length === 1 ? "has" : "have"} no one who can sign in to agree.
+              Contact Birr.
+            </span>
+          )}
         </Alert>
       )}
 
