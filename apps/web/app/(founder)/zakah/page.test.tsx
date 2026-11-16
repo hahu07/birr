@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { draftRulesets, type ZakahRuleset, type ZakahRulings } from "@birr/zakah";
 import ZakahCalculatorPage from "./page";
@@ -68,6 +68,11 @@ const openFitr = {
   opensOn: "2027-02-08", closesOn: "2027-03-09", expectedEidOn: "2027-03-10", state: "open",
 };
 
+/** The result card; the phone summary bar repeats the figure on purpose. */
+function result() {
+  return within(document.getElementById("zakah-result")!);
+}
+
 describe("Public zakah calculator", { timeout: 15_000 }, () => {
   beforeEach(() => {
     mockedApiFetchJson.mockReset();
@@ -81,14 +86,14 @@ describe("Public zakah calculator", { timeout: 15_000 }, () => {
     expect(screen.getByText(/to see what you owe/)).toBeInTheDocument();
     await user.click(screen.getByLabelText(/held this wealth for a full lunar year/));
 
-    expect(screen.getByText("₦95,000.00")).toBeInTheDocument();
+    expect(result().getByText("₦95,000.00")).toBeInTheDocument();
     expect(screen.getByText("2.5% of ₦3,800,000.00")).toBeInTheDocument();
     expect(screen.getByText("₦1,190,000.00")).toBeInTheDocument();
   });
 
   test("defaults to the Maliki ruleset and says which ruleset and prices it used", async () => {
     setup();
-    expect(await screen.findByLabelText("School of thought")).toHaveValue("maliki");
+    expect(await screen.findByRole("radio", { name: /Maliki/ })).toBeChecked();
     expect(screen.getByText(/Uses the Maliki ruleset \(version 1\)/)).toBeInTheDocument();
     expect(screen.getByText(/Test source/)).toBeInTheDocument();
   });
@@ -112,9 +117,9 @@ describe("Public zakah calculator", { timeout: 15_000 }, () => {
     // 20g of 18k: 15g pure × ₦150,000 = ₦2,250,000.
     await user.type(screen.getByLabelText("Weight (grams)"), "20");
 
-    expect(screen.getByText("₦95,000.00")).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("School of thought"), "hanafi");
-    expect(screen.getByText("₦151,250.00")).toBeInTheDocument();
+    expect(result().getByText("₦95,000.00")).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: /Hanafi/ }));
+    expect(result().getByText("₦151,250.00")).toBeInTheDocument();
   });
 
   test("explains a figure it can't read", async () => {
@@ -180,7 +185,7 @@ describe("Public zakah calculator", { timeout: 15_000 }, () => {
     setup({ terms: null });
     await enterAmina(user);
     await user.click(screen.getByLabelText(/held this wealth for a full lunar year/));
-    expect(screen.getByText("₦95,000.00")).toBeInTheDocument();
+    expect(result().getByText("₦95,000.00")).toBeInTheDocument();
   });
 
   describe("Zakah al-Fitr", () => {

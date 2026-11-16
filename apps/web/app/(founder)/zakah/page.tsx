@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { MetalPrices, ZakahRuleset } from "@birr/zakah";
 import { ApiError, apiFetchJson } from "../../../lib/api";
-import { Alert, Button, Skeleton } from "@birr/ui";
+import { Alert, Button, IconCheckCircle, IconShieldCheck, IconClock, Skeleton } from "@birr/ui";
 import { Reveal, SiteFooter, SiteHeader } from "../SiteChrome";
 import { ZakahCalculator } from "./ZakahCalculator";
 import type { ZakahPaymentTerms } from "./PayZakahForm";
@@ -76,16 +76,31 @@ export default function ZakahCalculatorPage() {
     <div className="min-h-screen bg-white">
       <SiteHeader />
 
-      <section className="px-4 pb-16 pt-12 sm:px-8 sm:pt-16">
+      {/* pb-28 on phones leaves room for the calculator's summary bar. */}
+      <section className="bg-gradient-to-b from-primary-50/60 via-white to-white px-4 pb-28 pt-12 sm:px-8 sm:pt-16 lg:pb-16">
         <Reveal className="mx-auto max-w-2xl text-center">
           <p className="text-xs font-semibold uppercase tracking-widest text-accent-600">Zakah calculator</p>
-          <h1 className="font-display mt-3 text-3xl font-medium tracking-tight text-slate-900 sm:text-4xl">
+          <h1 className="font-display mt-3 text-3xl font-medium tracking-tight text-slate-900 sm:text-5xl">
             Work out your zakah in Naira.
           </h1>
-          <p className="mt-3 text-sm leading-relaxed text-slate-600">
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-slate-600">
             Enter what you own and what you owe. We compare it with today&apos;s nisab and show exactly how we reached the
-            figure. Your numbers stay on your device.
+            figure.
           </p>
+          <ul className="mt-6 flex flex-wrap justify-center gap-2 text-xs font-medium text-slate-700">
+            <li className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
+              <IconShieldCheck aria-hidden="true" className="h-3.5 w-3.5 text-primary-600" />
+              Your figures stay on your device
+            </li>
+            <li className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
+              <IconCheckCircle aria-hidden="true" className="h-3.5 w-3.5 text-primary-600" />
+              Rulings approved by Birr&apos;s Shariah Board
+            </li>
+            <li className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 shadow-sm">
+              <IconClock aria-hidden="true" className="h-3.5 w-3.5 text-primary-600" />
+              Today&apos;s gold and silver prices
+            </li>
+          </ul>
         </Reveal>
 
         <div className="mx-auto mt-10 max-w-5xl">
@@ -121,7 +136,23 @@ export default function ZakahCalculatorPage() {
 
         {fitr && <FitrSection campaign={fitr.campaign} rulesets={fitr.rulesets} paymentTerms={fitr.paymentTerms} />}
 
-        <p className="mx-auto mt-12 max-w-2xl text-center text-xs leading-relaxed text-slate-500">
+        <div className="mx-auto mt-16 max-w-5xl">
+          <h2 className="text-center text-xs font-semibold uppercase tracking-widest text-slate-500">Good to know</h2>
+          <dl className="mt-5 grid gap-4 sm:grid-cols-3">
+            {[
+              { term: "The nisab", body: "The least wealth on which zakah is due, set by the value of a fixed weight of gold or silver. Below it, nothing is due." },
+              { term: "The hawl", body: "Zakah falls due once wealth at or above the nisab has been held for a full Islamic (hijri) year." },
+              { term: "2.5%", body: "The rate on cash, savings, business stock, money owed to you, and gold and silver counted as wealth." },
+            ].map((item) => (
+              <div key={item.term} className="rounded-2xl border border-slate-200/80 bg-white p-5">
+                <dt className="font-display text-lg font-medium text-slate-900">{item.term}</dt>
+                <dd className="mt-1.5 text-sm leading-relaxed text-slate-600">{item.body}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        <p className="mx-auto mt-10 max-w-2xl text-center text-xs leading-relaxed text-slate-500">
           This calculator covers cash, savings, business stock, money owed to you, and gold and silver. Livestock, crops, shares,
           pensions and crypto have their own rules and aren&apos;t included yet.
         </p>
