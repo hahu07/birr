@@ -379,7 +379,10 @@ jobs:
 
   deploy:
     needs: [typecheck, lint, migration-drift, test, agents-test, web-test, e2e-test, build, dependency-audit]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Paused until production hosting is chosen (owner's decision,
+    # 2026-11-16; see docs/deploy-checklist-2026-11.md): runs only once
+    # the repository variable DEPLOY_ENABLED is set to "true".
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       # Each hook is a per-service secret URL from Render's dashboard

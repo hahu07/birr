@@ -4,7 +4,40 @@ What to check the next time `main` goes to Render. Covers the 20 commits
 from `8e8cfeb` (homepage and Founder Portal redesign) through `0a4b84b`
 (Claude Agent SDK 0.3.311).
 
-## First: nothing from this batch has been deployed yet
+## Status, 2026-11-16: there is no running production
+
+- **Both Render services are suspended.** `birr-backend` and `birr-web`
+  each answer "This service has been suspended".
+- **The Render database is gone.** `birr-postgres` was put on Render's
+  free plan for a test deploy on 2026-09-09, and a free Render database
+  is deleted after 30 days.
+- **The owner's decision (2026-11-16): no hosting for now.** Keep
+  developing locally and choose hosting closer to launch: Render on paid
+  plans, or the HarmonWeb VPS in `docs/vps-deployment-plan.md`.
+- **The CI `deploy` job is paused.** It runs only when the repository
+  variable `DEPLOY_ENABLED` is `true` (Settings → Secrets and variables →
+  Actions → Variables). Set it once the deploy hooks exist.
+
+When hosting is chosen, these come on top of the checklist below:
+
+- **Always on.** Free or sleeping instances won't do. The backend runs
+  scheduled work that has to happen on time: monthly card charges and
+  their retries, the daily Paystack reconciliation after 02:00 Lagos,
+  and trustee-licence expiry checks.
+- **A new, empty database.** Every migration runs from the start,
+  including the audit-log triggers that refuse rewrites. Then:
+  - rotate the `birr_app` role's password, as `render.yaml` describes;
+  - create the first Board or Compliance approver with the server-only
+    `bootstrap-first-approver` script (`docs/staff-onboarding.md`, B).
+- **Platform Settings.** Paystack secret and webhook secret, the zakah
+  subaccount code (no zakah is taken without it), Resend, Twilio, and
+  Birr's contact email and phone.
+- **Paystack webhook.** Point Paystack's webhook URL at the deployed
+  backend, and check one test payment confirms.
+- **Backups.** Include off-site Postgres backups before any real money
+  arrives.
+
+## Before 2026-11-16: nothing from this batch had been deployed
 
 - Every Render service in `render.yaml` has `autoDeploy: false`.
 - The CI `deploy` job, which runs on each push to `main` once all checks
@@ -34,8 +67,10 @@ So production is still on the last version someone deployed by hand. Pick one:
 | Frontend | Homepage, Founder Portal and Ops Console redesign | #55, #74 |
 | Security overrides | joi, deepmerge-ts, webpack and others; `pnpm audit --audit-level=high` is clean | #56, #57, #73 |
 
-**No database migrations were added.** None of the Prisma upgrades needed
-one. Rolling back to the previous deploy is therefore a code-only rollback.
+**No database migrations were added by this batch.** None of the Prisma
+upgrades needed one. Later work has added many (zakah, monthly giving,
+reconciliation, succession and others), so with today's `main` a rollback
+is no longer code-only.
 
 ## Before deploying
 
@@ -113,8 +148,10 @@ Run these in order, against the deployed URLs.
 ## If something goes wrong
 
 - **Code rollback.** In Render, open the service → Events → choose the
-  previous deploy → Rollback. Because no migrations were added, the
-  database needs nothing.
+  previous deploy → Rollback. This batch alone added no migrations, but
+  today's `main` has many. Check whether the version you roll back to
+  matches the database's migrations before relying on a code-only
+  rollback.
 - **Audit-log note.** Audit entries written while the new version runs
   store money amounts in their snapshots as exact strings (`"1000"`),
   where older entries hold numbers (`1000`). Both forms are valid. A
