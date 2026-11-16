@@ -5,18 +5,18 @@
 // inbox, see app/verified/page.tsx), so this page shows a "check your
 // email" state until that's done, then the in-app WhatsApp phone/code
 // form.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { useFounderSession } from "../../../../lib/founder-session";
 import { ROUTE_FOR_STEP, useOnboardingStatus } from "../../../../lib/onboarding";
 import { Alert, Button, Card, IconCheckCircle, IconInbox, IconMessageCircle, IconShieldCheck, Input, Skeleton } from "@birr/ui";
+import { CODE_LENGTH, OtpInput } from "./OtpInput";
 
 // The backend allows 5 sends per 10 minutes for both the email and the
 // WhatsApp code; a minute between resends keeps a founder well inside
 // that without them having to guess why a sixth attempt was refused.
 const RESEND_COOLDOWN_SECONDS = 60;
-const CODE_LENGTH = 6;
 
 export default function VerifyPage() {
   const { status, loading } = useOnboardingStatus(true);
@@ -373,77 +373,3 @@ function VerifyWhatsAppForm() {
   );
 }
 
-/**
- * Six single-digit boxes that behave as one field: typing moves to the
- * next box, Backspace on an empty box moves back, and pasting a whole
- * code (from WhatsApp, or the phone's own one-time-code suggestion)
- * fills every box at once.
- */
-function OtpInput({
-  value,
-  onChange,
-  disabled,
-  invalid,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-  invalid: boolean;
-}) {
-  const inputs = useRef<(HTMLInputElement | null)[]>([]);
-
-  useEffect(() => {
-    inputs.current[0]?.focus();
-  }, []);
-
-  function setFrom(index: number, typed: string) {
-    const digits = typed.replace(/\D/g, "");
-    if (!digits) return;
-    const next = (value.slice(0, index) + digits).slice(0, CODE_LENGTH);
-    onChange(next);
-    inputs.current[Math.min(next.length, CODE_LENGTH - 1)]?.focus();
-  }
-
-  return (
-    <fieldset>
-      <legend className="mb-3 block w-full text-center text-sm font-medium text-slate-700">6-digit code</legend>
-      <div className="flex justify-center gap-2 sm:gap-3">
-        {Array.from({ length: CODE_LENGTH }, (_, i) => (
-          <input
-            key={i}
-            ref={(el) => {
-              inputs.current[i] = el;
-            }}
-            type="text"
-            inputMode="numeric"
-            autoComplete={i === 0 ? "one-time-code" : "off"}
-            aria-label={`Digit ${i + 1}`}
-            maxLength={i === 0 ? CODE_LENGTH : 1}
-            value={value[i] ?? ""}
-            disabled={disabled}
-            onFocus={(e) => e.target.select()}
-            onChange={(e) => setFrom(i, e.target.value)}
-            onPaste={(e) => {
-              e.preventDefault();
-              setFrom(0, e.clipboardData.getData("text"));
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Backspace") {
-                e.preventDefault();
-                if (value[i]) onChange(value.slice(0, i));
-                else if (i > 0) {
-                  onChange(value.slice(0, i - 1));
-                  inputs.current[i - 1]?.focus();
-                }
-              } else if (e.key === "ArrowLeft" && i > 0) inputs.current[i - 1]?.focus();
-              else if (e.key === "ArrowRight" && i < CODE_LENGTH - 1) inputs.current[i + 1]?.focus();
-            }}
-            className={`h-12 w-11 rounded-lg border bg-white text-center text-xl font-semibold text-slate-900 tabular-nums shadow-sm transition-colors focus:outline-none focus:ring-2 disabled:bg-slate-50 sm:h-14 sm:w-12 ${
-              invalid ? "border-red-300 focus:border-red-500 focus:ring-red-100" : "border-slate-300 focus:border-primary-500 focus:ring-primary-100"
-            }`}
-          />
-        ))}
-      </div>
-    </fieldset>
-  );
-}

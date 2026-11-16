@@ -54,17 +54,15 @@ describe("BirrStaffService", () => {
 
   describe("MFA", () => {
     let mfaUserId: string;
-    let mfaStaffId: string;
 
     beforeAll(async () => {
       const user = await prisma.user.create({
         data: { email: `birr-staff-mfa-${Date.now()}@example.com`, fullName: "MFA Fixture Staff" },
       });
       mfaUserId = user.id;
-      const staff = await prisma.birrStaff.create({
+      await prisma.birrStaff.create({
         data: { userId: user.id, roles: { create: { role: "compliance_officer" } } },
       });
-      mfaStaffId = staff.id;
     });
 
     // Explicit timeout: startMfaEnrollment() does real QR PNG generation,
@@ -123,19 +121,39 @@ describe("BirrStaffService", () => {
     // Same reasoning as the test above — startMfaEnrollment() + confirmMfaEnrollment()
     // do real QR generation + bcrypt hashing.
     test("resetMfaInTransaction() clears MFA state and deletes backup codes (the audit record is the governed-action engine's job)", async () => {
-      const { secretForManualEntry } = await service.startMfaEnrollment(mfaUserId);
-      await service.confirmMfaEnrollment(mfaUserId, codeFor(secretForManualEntry));
+      const resetUser = await prisma.user.create({ data: { email: `birr-staff-mfa-reset-${Date.now()}@example.com`, fullName: "MFA Reset Staff" } });
+      const resetStaff = await prisma.birrStaff.create({ data: { userId: resetUser.id, roles: { create: { role: "compliance_officer" } } } });
+      const { secretForManualEntry } = await service.startMfaEnrollment(resetUser.id);
+      await service.confirmMfaEnrollment(resetUser.id, codeFor(secretForManualEntry));
 
-      await prisma.$transaction((tx) => service.resetMfaInTransaction(mfaStaffId, tx));
+      await prisma.$transaction((tx) => service.resetMfaInTransaction(resetStaff.id, tx));
 
-      const user = await prisma.user.findUniqueOrThrow({ where: { id: mfaUserId } });
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: resetUser.id } });
       expect(user.mfaEnabled).toBe(false);
       expect(user.mfaSecretEncrypted).toBeNull();
-      expect(await prisma.mfaBackupCode.count({ where: { userId: mfaUserId } })).toBe(0);
+      expect(await prisma.mfaBackupCode.count({ where: { userId: resetUser.id } })).toBe(0);
+      // After a reset, setup starts afresh with a new secret.
+      const again = await service.startMfaEnrollment(resetUser.id);
+      expect(again.secretForManualEntry).not.toBe(secretForManualEntry);
+    }, 25000);
+
+    test("starting setup again shows the same secret, so an earlier QR code still works; never once two-factor is on", async () => {
+      const user = await prisma.user.create({ data: { email: `birr-staff-mfa-restart-${Date.now()}@example.com`, fullName: "MFA Restart Staff" } });
+      await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: { role: "compliance_officer" } } } });
+      const [first, second] = await Promise.all([service.startMfaEnrollment(user.id), service.startMfaEnrollment(user.id)]);
+      expect(second.secretForManualEntry).toBe(first.secretForManualEntry);
+      const third = await service.startMfaEnrollment(user.id);
+      expect(third.secretForManualEntry).toBe(first.secretForManualEntry);
+      // A code from the first QR code confirms setup.
+      await service.confirmMfaEnrollment(user.id, codeFor(first.secretForManualEntry));
+      await expect(service.startMfaEnrollment(user.id)).rejects.toThrow(/already on/);
+      expect(await service.verifyLoginMfaCode(user.id, codeFor(first.secretForManualEntry))).toBeUndefined();
     }, 25000);
 
     test("resetMfaInTransaction() refuses an account with no MFA enrolled", async () => {
-      await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(mfaStaffId, tx))).rejects.toThrow(
+      const user = await prisma.user.create({ data: { email: `birr-staff-mfa-none-${Date.now()}@example.com`, fullName: "No MFA Staff" } });
+      const staff = await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: { role: "compliance_officer" } } } });
+      await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(staff.id, tx))).rejects.toThrow(
         /nothing to reset/,
       );
     });

@@ -5,7 +5,7 @@
 // and SessionAuthGuard backs that up server-side by rejecting every
 // other route until enrollment is confirmed. MFA is mandatory here, not
 // opt-in — see BirrStaffService.login's own comment.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import type { MfaEnrollmentConfirm, MfaEnrollmentStart } from "../../../lib/ops-types";
 import { Alert, Button, Card, IconMark, Input } from "@birr/ui";
@@ -19,24 +19,25 @@ export default function MfaSetupPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  // Each enroll call replaces the pending secret, so it must run once per
-  // mount. Without this, React's dev-mode double effect sent two, and the
-  // QR shown could be a secret the second call had already replaced —
-  // every code from it was then rejected.
-  const enrollStartedRef = useRef(false);
-
+  // Starting setup again returns the same unconfirmed secret (see
+  // BirrStaffService.startMfaEnrollment), so a repeated call, a second tab
+  // or a return to this page all show the same QR code.
   useEffect(() => {
-    if (enrollStartedRef.current) return;
-    enrollStartedRef.current = true;
+    let cancelled = false;
     apiFetchJson<MfaEnrollmentStart>("/birr-staff/me/mfa/enroll", { method: "POST" })
       .then((data) => {
+        if (cancelled) return;
         setEnrollment(data);
         setStep("scan");
       })
       .catch((err: unknown) => {
+        if (cancelled) return;
         setError(err instanceof Error ? err.message : "Something went wrong.");
         setStep("error");
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleConfirm(e: React.FormEvent) {

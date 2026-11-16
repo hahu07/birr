@@ -12,16 +12,24 @@ const POLL_INTERVAL_MS = 60_000;
 export function useNotifications(enabled: boolean) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed load is shown, never mistaken for "no notifications": an
+  // officer could otherwise miss an approval or reconciliation alert.
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!enabled) return;
-    const data = await apiFetchJson<NotificationItem[]>("/notifications").catch(() => null);
-    if (data) setNotifications(data);
+    try {
+      setNotifications(await apiFetchJson<NotificationItem[]>("/notifications"));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    }
   }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
       setNotifications([]);
+      setError(null);
       setLoading(false);
       return;
     }
@@ -29,9 +37,13 @@ export function useNotifications(enabled: boolean) {
     setLoading(true);
     apiFetchJson<NotificationItem[]>("/notifications")
       .then((data) => {
-        if (!cancelled) setNotifications(data);
+        if (cancelled) return;
+        setNotifications(data);
+        setError(null);
       })
-      .catch(() => {})
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -56,7 +68,7 @@ export function useNotifications(enabled: boolean) {
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 
-  return { notifications, unreadCount, loading, refresh, markRead, markAllRead };
+  return { notifications, unreadCount, loading, error, refresh, markRead, markAllRead };
 }
 
 /**

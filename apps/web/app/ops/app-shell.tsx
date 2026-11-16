@@ -147,7 +147,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
   const isMfaExemptRoute = MFA_EXEMPT_ROUTES.includes(pathname);
   // Not until MFA is enrolled — see hasCaseload's comment below.
-  const { notifications, unreadCount, loading: notificationsLoading, refresh, markRead, markAllRead } =
+  const { notifications, unreadCount, loading: notificationsLoading, error: notificationsError, refresh, markRead, markAllRead } =
     useNotifications(!loading && Boolean(staff?.user.mfaEnabled));
 
   // Drives the "My Desk" nav item's visibility (see NAV_GROUPS'
@@ -275,6 +275,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             notifications={notifications}
             unreadCount={unreadCount}
             loading={notificationsLoading}
+            error={notificationsError}
             onOpen={refresh}
             onSelect={handleSelectNotification}
             onMarkAllRead={markAllRead}
