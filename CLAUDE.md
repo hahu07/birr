@@ -545,14 +545,28 @@ someone else's signature with no record they agreed. Owner's decisions
   invitation** (`co-founder-consent.ts`): authorizing the signer if the
   deed isn't signed yet, adopting it if it is. Stored as an immutable
   `CoFounderDeedConsent` with the exact text and version, plus an audit
-  row; acceptance is refused without the current version.
+  row; acceptance is refused without the current version, or if the
+  statement changed since it was shown (e.g. the deed was signed while
+  they read: the client echoes the statement's hash).
 - The signing page now shows **the full deed text** that will be
   stored (`GET /foundation-deeds/:foundationId/preview`), not only a
   summary, and signing is refused if the text changed since it was shown.
+  Funds and co-founders are listed oldest first, so the hashed text is
+  the same on every read.
 - **Went live at the owner's direction before Legal or the Shariah
   Supervisory Board reviewed the joint wording or the statements** — the
   Board note asks them to. A revision they approve gets a new version.
-- Co-founders who joined before this change were left as they are.
+- **2026-11-16, owner's decision: a joint deed waits for every
+  co-founder's own agreement.** Signing is refused while any other
+  founder of the Foundation has no `CoFounderDeedConsent`; the signing
+  page names who it's waiting for. Co-founders without one (joined
+  before agreeing was part of joining, or added another way) agree on
+  the Foundation's deed page (`GET/POST
+  /foundation-deeds/:foundationId/consent`, their primary contact only),
+  and can adopt a deed already signed the same way. Signing and joining
+  both take the Foundation's row lock first, so neither sees the other
+  half-done. `co_founder_deed_consents` has founder-isolation RLS like
+  `foundation_deeds`.
 
 **Update, 2026-11-15 — Stablecoin hidden as a donation option too; no
 crypto for now.** Owner's decision, after research showed neither works

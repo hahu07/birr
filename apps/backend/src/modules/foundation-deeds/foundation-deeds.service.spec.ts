@@ -4,6 +4,7 @@ import { FoundationDeedsService } from "./foundation-deeds.service";
 import { JOINT_FOUNDATION_DEED_TEMPLATE_VERSION, FOUNDATION_DEED_TEMPLATE_VERSION, renderFoundationDeedText } from "./foundation-deed-template";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
+import { withFounderScope } from "../../common/db/founder-scope";
 
 describe("FoundationDeedsService", () => {
   const service = new FoundationDeedsService(createFakeNotificationsService(), new FunnelEventsService());
@@ -60,6 +61,23 @@ describe("FoundationDeedsService", () => {
     founderIds.push(coFounder.id);
     await prisma.foundationFounder.create({ data: { foundationId, founderId: coFounder.id } });
     return coFounder;
+  }
+
+  /** A co-founder with a primary contact who can sign in and agree. */
+  async function addCoFounderWithContact(foundationId: string, name: string) {
+    const coFounder = await addCoFounder(foundationId, name);
+    const user = await prisma.user.create({
+      data: { email: `foundation-deed-spec-cf-${Date.now()}-${Math.random()}@example.test`, fullName: name, status: "active" },
+    });
+    userIds.push(user.id);
+    await prisma.founderMembership.create({ data: { founderId: coFounder.id, userId: user.id, permissionLevel: "primary_contact" } });
+    return { coFounder, user };
+  }
+
+  /** The co-founder agrees to the statement they're shown, as the deed page does. */
+  async function agree(foundationId: string, founderId: string, userId: string) {
+    const statement = await service.consentStatus(foundationId, founderId);
+    return service.giveConsent({ foundationId, founderId, userId, statementHash: statement!.hash });
   }
 
   test("sign() rejects a foundation with no active waqf", async () => {
@@ -186,10 +204,11 @@ describe("FoundationDeedsService", () => {
   test("a jointly established foundation gets the joint deed, naming every co-founder the signer signs for", async () => {
     const { founder, foundation } = await createFounderWithFoundation("active");
     await prisma.foundation.update({ where: { id: foundation.id }, data: { establishedJointly: true } });
-    const coFounder = await addCoFounder(foundation.id, "Yusuf Bello");
+    const { coFounder, user: coUser } = await addCoFounderWithContact(foundation.id, "Yusuf Bello");
+    await agree(foundation.id, coFounder.id, coUser.id);
 
     const preview = await service.preview(foundation.id, founder.id);
-    expect(preview).toMatchObject({ joint: true, coFounders: ["Yusuf Bello"] });
+    expect(preview).toMatchObject({ joint: true, coFounders: ["Yusuf Bello"], awaitingConsent: [] });
 
     const deed = await service.sign({
       foundationId: foundation.id,
@@ -250,6 +269,78 @@ describe("FoundationDeedsService", () => {
     expect(found?.coFounderConsents).toEqual([
       expect.objectContaining({ founderName: "Consenting Co-Founder", kind: "adopt_signed_deed", statementText: "I adopt it." }),
     ]);
+  });
+
+  test("a joint deed waits for every co-founder's own agreement, then signs for them all", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    const yusuf = await addCoFounderWithContact(foundation.id, "Yusuf Bello");
+    const hauwa = await addCoFounderWithContact(foundation.id, "Hauwa Bello");
+
+    let preview = await service.preview(foundation.id, founder.id);
+    expect(preview.awaitingConsent.sort()).toEqual(["Hauwa Bello", "Yusuf Bello"]);
+    const sign = (textHash: string) => service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash });
+    await expect(sign(preview.textHash)).rejects.toMatchObject({ response: { code: "deed_awaiting_consent" } });
+
+    // Each sees the "authorize the signer" statement and agrees in their own name.
+    const statement = await service.consentStatus(foundation.id, yusuf.coFounder.id);
+    expect(statement).toMatchObject({ kind: "authorize_signer" });
+    const consent = await agree(foundation.id, yusuf.coFounder.id, yusuf.user.id);
+    expect(consent).toMatchObject({ kind: "authorize_signer", userId: yusuf.user.id, statementText: statement!.text });
+    expect(await prisma.auditLog.count({ where: { entityId: consent.id, action: "co_founder.deed_consented" } })).toBe(1);
+    expect(await service.consentStatus(foundation.id, yusuf.coFounder.id)).toBeNull();
+    await expect(
+      service.giveConsent({ foundationId: foundation.id, founderId: yusuf.coFounder.id, userId: yusuf.user.id, statementHash: statement!.hash }),
+    ).rejects.toThrow(/already agreed/);
+    expect((await service.preview(foundation.id, founder.id)).awaitingConsent).toEqual(["Hauwa Bello"]);
+
+    await agree(foundation.id, hauwa.coFounder.id, hauwa.user.id);
+    preview = await service.preview(foundation.id, founder.id);
+    expect(preview.awaitingConsent).toEqual([]);
+    const deed = await sign(preview.textHash);
+    expect(deed.deedTemplateVersion).toBe(JOINT_FOUNDATION_DEED_TEMPLATE_VERSION);
+    // The signer has nothing to agree to; nor does anyone who already has.
+    expect(await service.consentStatus(foundation.id, founder.id)).toBeNull();
+  });
+
+  test("a co-founder with no agreement on record can adopt a deed already signed, but not with a statement they weren't shown", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    const deed = await service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash: await textHashFor(foundation.id, founder.id) });
+    // Added after signing by a path that records no agreement (e.g. FoundationsService.create).
+    const late = await addCoFounderWithContact(foundation.id, "Late Bello");
+    const statement = await service.consentStatus(foundation.id, late.coFounder.id);
+    expect(statement).toMatchObject({ kind: "adopt_signed_deed" });
+    expect(statement!.text).toContain("signed by Amina Yusuf");
+    await expect(
+      service.giveConsent({ foundationId: foundation.id, founderId: late.coFounder.id, userId: late.user.id, statementHash: "not-what-was-shown" }),
+    ).rejects.toMatchObject({ response: { code: "statement_changed" } });
+    const consent = await agree(foundation.id, late.coFounder.id, late.user.id);
+    expect(consent).toMatchObject({ kind: "adopt_signed_deed", foundationDeedId: deed.id });
+  });
+
+  test("the deed lists funds and co-founders oldest first, however the rows come back", async () => {
+    const { founder, foundation, waqf } = await createFounderWithFoundation("active");
+    // Inserted after the first fund, but dated earlier.
+    const older = await prisma.waqf.create({
+      data: { name: "Aaa Older Spec Waqf", type: "project", jurisdiction: "NG", foundationId: foundation.id, status: "active", createdAt: new Date("2020-01-01T00:00:00Z") },
+    });
+    waqfIds.push(older.id);
+    const { deedText } = await service.preview(foundation.id, founder.id);
+    expect(deedText.indexOf(older.name)).toBeGreaterThan(-1);
+    expect(deedText.indexOf(older.name)).toBeLessThan(deedText.indexOf(waqf.name));
+    // Same text, same hash, on every read.
+    const hashes = await Promise.all(Array.from({ length: 5 }, () => textHashFor(foundation.id, founder.id)));
+    expect(new Set(hashes).size).toBe(1);
+  });
+
+  test("co-founders' agreements are isolated by the database: another founder's session can't read them", async () => {
+    const { foundation } = await createFounderWithFoundation("active");
+    const co = await addCoFounderWithContact(foundation.id, "Isolated Bello");
+    await agree(foundation.id, co.coFounder.id, co.user.id);
+    const outsider = await createFounderWithFoundation("active");
+    const asOutsider = await withFounderScope(outsider.founder.id, (tx) => tx.coFounderDeedConsent.findMany({ where: { foundationId: foundation.id } }));
+    expect(asOutsider).toEqual([]);
+    const asMember = await withFounderScope(co.coFounder.id, (tx) => tx.coFounderDeedConsent.findMany({ where: { foundationId: foundation.id } }));
+    expect(asMember).toHaveLength(1);
   });
 
   test("foundation_deeds is immutable at the DB level — UPDATE and DELETE are both rejected by a trigger", async () => {

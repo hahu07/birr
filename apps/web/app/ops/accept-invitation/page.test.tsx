@@ -31,7 +31,7 @@ describe("Accept a co-founder invitation", { timeout: 20_000 }, () => {
           establishedJointly: true,
           invitedByName: "Amina Bello",
           deed: null,
-          statement: { kind: "authorize_signer", text: STATEMENT, version: "2026-11-14-v1" },
+          statement: { kind: "authorize_signer", text: STATEMENT, version: "2026-11-14-v1", hash: "statement-hash-1" },
         };
       }
       if (path === "/invitations/accept") return { invitation: { inviteeKind: "co_founder" } };
@@ -64,7 +64,44 @@ describe("Accept a co-founder invitation", { timeout: 20_000 }, () => {
       founderName: "Yusuf Bello",
       kind: "individual",
       deedConsentVersion: "2026-11-14-v1",
+      deedStatementHash: "statement-hash-1",
     });
+  });
+
+  test("if the deed was signed while they read, shows the new statement and asks again", async () => {
+    const ADOPT = "I join Bello Family Foundation as a co-founder. I adopt its Deed of Waqf, signed by Amina Bello on 16 November 2026.";
+    let signed = false;
+    mockedApiFetchJson.mockImplementation(async (path: string) => {
+      if (path === "/invitations/preview?token=tok-1") {
+        return {
+          email: "yusuf@example.com",
+          foundationName: "Bello Family Foundation",
+          establishedJointly: true,
+          invitedByName: "Amina Bello",
+          deed: signed ? { signerName: "Amina Bello", signedAt: "2026-11-16T09:00:00Z" } : null,
+          statement: signed
+            ? { kind: "adopt_signed_deed", text: ADOPT, version: "2026-11-14-v1", hash: "statement-hash-2" }
+            : { kind: "authorize_signer", text: STATEMENT, version: "2026-11-14-v1", hash: "statement-hash-1" },
+        };
+      }
+      if (path === "/invitations/accept") {
+        signed = true;
+        throw new ApiError("The Foundation's deed changed while you were reading.", 409, "statement_changed");
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<AcceptInvitationPage />);
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Your full name"), "Yusuf Bello");
+    await user.type(screen.getByLabelText("Full name"), "Yusuf Bello");
+    await user.type(screen.getByLabelText("Password"), "correct-horse-battery");
+    await user.type(screen.getByLabelText("Confirm password"), "correct-horse-battery");
+    await user.click(screen.getByRole("checkbox", { name: /I accept this statement/ }));
+    await user.click(screen.getByRole("button", { name: "Accept and join as co-founder" }));
+
+    expect(await screen.findByText(ADOPT)).toBeInTheDocument();
+    expect(screen.getByText(/changed while you were reading/)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /I accept this statement/ })).not.toBeChecked();
   });
 
   test("says so when the invitation is no longer valid", async () => {

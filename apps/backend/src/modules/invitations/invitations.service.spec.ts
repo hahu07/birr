@@ -413,6 +413,7 @@ describe("InvitationsService", () => {
         kind: "institution",
         institutionType: "ngo",
         deedConsentVersion: CO_FOUNDER_STATEMENT_VERSION,
+        deedStatementHash: (await service.previewCoFounderInvitation(invitation.token)).statement.hash,
       });
       userIds.push(result.user.id);
       const newFounderId = result.newFounderId!;
@@ -475,6 +476,7 @@ describe("InvitationsService", () => {
         founderName: "Co-Founder Spec Founder C",
         kind: "individual",
         deedConsentVersion: CO_FOUNDER_STATEMENT_VERSION,
+        deedStatementHash: (await service.previewCoFounderInvitation(invitation.token)).statement.hash,
       });
       userIds.push(result.user.id);
       founderIds.push(result.newFounderId!);
@@ -502,7 +504,9 @@ describe("InvitationsService", () => {
     }
 
     // null = the statement wasn't accepted at all (undefined would take the default).
-    function acceptAsCoFounder(token: string, name: string, deedConsentVersion: string | null = CO_FOUNDER_STATEMENT_VERSION) {
+    // The statement hash is the one the accept page was shown, unless given.
+    async function acceptAsCoFounder(token: string, name: string, deedConsentVersion: string | null = CO_FOUNDER_STATEMENT_VERSION, deedStatementHash?: string) {
+      const shownHash = deedConsentVersion === null ? undefined : (deedStatementHash ?? (await service.previewCoFounderInvitation(token)).statement.hash);
       return service.accept(
         {
           token,
@@ -511,6 +515,7 @@ describe("InvitationsService", () => {
           founderName: name,
           kind: "individual",
           deedConsentVersion: deedConsentVersion ?? undefined,
+          deedStatementHash: shownHash,
         },
         "198.51.100.4",
       );
@@ -594,6 +599,41 @@ describe("InvitationsService", () => {
       expect(consent.statementText).toContain("I adopt its Deed of Waqf, signed by Founder A Primary Contact on 14 November 2026");
     });
 
+    test("accept() refuses a statement that changed after it was shown (the deed was signed meanwhile), and creates nothing", async () => {
+      const foundation = await foundationsService.create({
+        name: `Co-Founder Spec Race Foundation ${Date.now()}`,
+        purpose: "Testing a deed signed while a co-founder reads",
+        founderIds: [coFounderFounderAId],
+      });
+      const invitation = await inviteCoFounder(foundation.id, "race");
+      const shown = (await service.previewCoFounderInvitation(invitation.token)).statement;
+      expect(shown.kind).toBe("authorize_signer");
+      // Founder A signs while the invitee is still reading.
+      await prisma.foundationDeed.create({
+        data: {
+          foundationId: foundation.id,
+          signedByUserId: coFounderInviterUserId,
+          signedByFounderId: coFounderFounderAId,
+          typedLegalName: "Founder A Primary Contact",
+          deedTemplateVersion: "spec",
+          deedText: "Spec deed",
+          affirmed: true,
+        },
+      });
+      await expect(acceptAsCoFounder(invitation.token, "Racing Co-Founder", CO_FOUNDER_STATEMENT_VERSION, shown.hash)).rejects.toMatchObject({
+        response: { code: "statement_changed" },
+      });
+      expect(await prisma.user.findUnique({ where: { email: invitation.email } })).toBeNull();
+      // Shown the new statement, they can accept that one.
+      const result = await acceptAsCoFounder(invitation.token, "Racing Co-Founder");
+      userIds.push(result.user.id);
+      founderIds.push(result.newFounderId!);
+      const consent = await prisma.coFounderDeedConsent.findUniqueOrThrow({
+        where: { foundationId_founderId: { foundationId: foundation.id, founderId: result.newFounderId! } },
+      });
+      expect(consent.kind).toBe("adopt_signed_deed");
+    });
+
     test("a jointly established Foundation is joined as an individual, never an institution", async () => {
       const foundation = await foundationsService.create({
         name: `Co-Founder Spec Joint Foundation ${Date.now()}`,
@@ -613,6 +653,7 @@ describe("InvitationsService", () => {
           kind: "institution",
           institutionType: "ngo",
           deedConsentVersion: CO_FOUNDER_STATEMENT_VERSION,
+          deedStatementHash: (await service.previewCoFounderInvitation(invitation.token)).statement.hash,
         }),
       ).rejects.toThrow(BadRequestException);
       expect(await prisma.user.findUnique({ where: { email: invitation.email } })).toBeNull();

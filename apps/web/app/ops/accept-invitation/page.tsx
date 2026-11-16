@@ -8,7 +8,7 @@
 // new staff member straight in.
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { apiFetchJson } from "../../../lib/api";
+import { ApiError, apiFetchJson } from "../../../lib/api";
 import { Alert, AuthSplitLayout, Button, IconFileText, IconMark, Input, PasswordInput, Select, Skeleton } from "@birr/ui";
 import { ChoiceCard, Field, FormSection, inputClass } from "../../(founder)/_components/form";
 import {
@@ -37,7 +37,7 @@ interface CoFounderInvitationPreview {
   establishedJointly: boolean;
   invitedByName: string;
   deed: { signerName: string; signedAt: string } | null;
-  statement: { kind: "adopt_signed_deed" | "authorize_signer"; text: string; version: string };
+  statement: { kind: "adopt_signed_deed" | "authorize_signer"; text: string; version: string; hash: string };
 }
 
 function formatDate(iso: string): string {
@@ -112,6 +112,7 @@ function AcceptInvitationContent() {
         if (founderKind === "institution") body.institutionType = institutionType;
         if (homeJurisdiction) body.homeJurisdiction = homeJurisdiction;
         body.deedConsentVersion = preview?.statement.version;
+        body.deedStatementHash = preview?.statement.hash;
       }
       const result = await apiFetchJson<{ invitation: { inviteeKind: "founder_user" | "birr_staff" | "co_founder" } }>(
         "/invitations/accept",
@@ -127,6 +128,14 @@ function AcceptInvitationContent() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setSubmitting(false);
+      // The deed was signed while they read: show the statement that now
+      // applies, and have them accept that one.
+      if (err instanceof ApiError && err.code === "statement_changed" && token) {
+        setAcceptsStatement(false);
+        apiFetchJson<CoFounderInvitationPreview>(`/invitations/preview?token=${encodeURIComponent(token)}`)
+          .then(setPreview)
+          .catch(() => setPreviewError(true));
+      }
     }
   }
 

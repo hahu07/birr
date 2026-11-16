@@ -38,6 +38,7 @@ interface CoFounderConsent {
   consentedAt: string;
 }
 import { SignFoundationDeedForm } from "../../../SignFoundationDeedForm";
+import { CoFounderConsentPanel } from "./CoFounderConsentPanel";
 
 export default function FoundationDeedPage() {
   const params = useParams<{ id: string }>();
@@ -98,6 +99,12 @@ export default function FoundationDeedPage() {
       )}
 
       {!error && !foundation && <Skeleton className="mt-6 h-96 w-full" />}
+
+      {!error && foundation && isPrimaryContact !== undefined && (
+        <div className="mt-6 print:hidden">
+          <CoFounderConsentPanel key={foundation.foundationDeed?.id ?? "unsigned"} foundationId={foundation.id} isPrimaryContact={isPrimaryContact} onAgreed={load} />
+        </div>
+      )}
 
       {!error && foundation && !foundation.foundationDeed && isPrimaryContact && (
         <div className="mt-6">

@@ -168,6 +168,8 @@ interface DeedPreview {
   textHash: string;
   joint: boolean;
   coFounders: string[];
+  /** Co-founders who must agree before this deed can be signed for them. */
+  awaitingConsent: string[];
 }
 
 /** Same comparison the backend makes (FoundationDeedsService: trimmed, case-insensitive). */
@@ -186,16 +188,24 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // The deed text and the funds listed beside it always come from the same
+  // load, so they can't disagree. No GET /foundations/:id/waqfs endpoint
+  // exists — /waqfs already returns every waqf this founder session can
+  // see, so filtering to this one Foundation client-side is simpler.
+  const load = useCallback(
+    () =>
+      Promise.all([apiFetchJson<Waqf[]>("/waqfs"), apiFetchJson<DeedPreview>(`/foundation-deeds/${foundation.id}/preview`)]).then(
+        ([waqfs, deedPreview]) => ({ waqfs: waqfs.filter((w) => w.foundationId === foundation.id && w.status === "active"), deedPreview }),
+      ),
+    [foundation.id],
+  );
+
   useEffect(() => {
     let cancelled = false;
-    // No GET /foundations/:id/waqfs endpoint exists — /waqfs already
-    // returns every waqf this founder session can see (across every
-    // Foundation they're on), so filtering to this one Foundation
-    // client-side is simpler than adding a new scoped route for it.
-    Promise.all([apiFetchJson<Waqf[]>("/waqfs"), apiFetchJson<DeedPreview>(`/foundation-deeds/${foundation.id}/preview`)])
-      .then(([waqfs, deedPreview]) => {
+    load()
+      .then(({ waqfs, deedPreview }) => {
         if (cancelled) return;
-        setActiveWaqfs(waqfs.filter((w) => w.foundationId === foundation.id && w.status === "active"));
+        setActiveWaqfs(waqfs);
         setPreview(deedPreview);
       })
       .catch((err: unknown) => {
@@ -204,7 +214,7 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
     return () => {
       cancelled = true;
     };
-  }, [foundation.id]);
+  }, [load]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -217,19 +227,31 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
       });
       onSigned();
     } catch (err) {
+      // Someone else (a co-founder, another tab) signed it first: show the signed deed.
+      if (err instanceof ApiError && err.code === "deed_already_signed") {
+        onSigned();
+        return;
+      }
       setSubmitError(err instanceof Error ? err.message : "Something went wrong.");
       setSubmitting(false);
-      // 409: the deed changed since it was shown (a fund went active, a
-      // co-founder joined). Show the new text, and make them affirm again.
+      // The deed changed since it was shown (a fund went active, a
+      // co-founder joined), or a co-founder still has to agree. Show the
+      // current text and funds together, and make them affirm again.
       if (err instanceof ApiError && err.status === 409) {
         setAffirmed(false);
-        apiFetchJson<DeedPreview>(`/foundation-deeds/${foundation.id}/preview`).then(setPreview).catch(() => {});
+        load()
+          .then(({ waqfs, deedPreview }) => {
+            setActiveWaqfs(waqfs);
+            setPreview(deedPreview);
+          })
+          .catch(() => {});
       }
     }
   }
 
   const hasActiveWaqf = Boolean(activeWaqfs?.length);
-  const canSubmit = hasActiveWaqf && typedLegalName.trim().length > 0 && affirmed && !submitting;
+  const awaiting = preview?.awaitingConsent ?? [];
+  const canSubmit = hasActiveWaqf && awaiting.length === 0 && typedLegalName.trim().length > 0 && affirmed && !submitting;
 
   if (loadError) {
     return (
@@ -250,6 +272,13 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
       {submitError && (
         <Alert tone="danger" title="Couldn't sign the deed">
           {submitError}
+        </Alert>
+      )}
+
+      {awaiting.length > 0 && (
+        <Alert tone="warning" title={`Waiting for ${awaiting.join(", ")} to agree`}>
+          You sign this deed for every co-founder of {foundation.name}, so each must first agree to that in their own name. They&apos;ll
+          find it on this Foundation&apos;s deed page. You can sign once they have.
         </Alert>
       )}
 
@@ -291,7 +320,7 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
               <span className="font-semibold text-slate-900">A joint deed.</span> You sign it for yourself and every co-founder of{" "}
               {foundation.name}, present and future
               {preview.coFounders.length > 0 ? <> — today, {preview.coFounders.join(", ")}</> : ""}. Each co-founder agrees to it, in
-              their own name, when they accept their invitation.
+              their own name, before you can sign it for them.
             </p>
           )}
 
@@ -388,7 +417,7 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
             </span>
             <div>
               <p className="text-sm text-slate-600">
-                {canSubmit ? "Ready to sign." : "Type your name and tick the box to sign."}
+                {canSubmit ? "Ready to sign." : awaiting.length > 0 ? "Waiting for every co-founder to agree." : "Type your name and tick the box to sign."}
               </p>
               <p className="mt-0.5 text-xs text-slate-500">Signing appoints Birr as Mutawalli (trustee). It takes effect immediately.</p>
             </div>

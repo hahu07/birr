@@ -65,6 +65,7 @@ const UNGATED_WRITE_ROUTES: Record<string, string> = {
   "POST /founders/whatsapp/verify-otp": FOUNDER_SELF_SERVICE,
   "POST /foundations": FOUNDER_SELF_SERVICE,
   "POST /foundation-deeds": FOUNDER_SELF_SERVICE,
+  "POST /foundation-deeds/:foundationId/consent": FOUNDER_SELF_SERVICE,
   "POST /founder-requests": FOUNDER_SELF_SERVICE,
   "POST /cause-category-suggestions": FOUNDER_SELF_SERVICE,
   "POST /beneficiary-nominations": FOUNDER_SELF_SERVICE,

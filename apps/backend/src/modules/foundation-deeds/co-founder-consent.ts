@@ -11,7 +11,8 @@
  * text its co-founder accepted, and the server refuses an acceptance
  * that agreed to anything other than the current version.
  */
-import type { CoFounderConsentKind } from "@birr/db";
+import { createHash } from "crypto";
+import type { CoFounderConsentKind, Prisma } from "@birr/db";
 
 export const CO_FOUNDER_STATEMENT_VERSION = "2026-11-14-v1";
 
@@ -43,4 +44,46 @@ export function renderCoFounderStatement(ctx: CoFounderStatementContext): string
     `for themselves. From then on the Deed applies to me, and I dedicate my own contributions to any Waqf Fund under ` +
     `${name} as waqf on its terms. Once dedicated, my contributions cannot be reclaimed.`
   );
+}
+
+/** What a statement is rendered from: the Foundation's name and its deed, if signed. */
+export const FOUNDATION_FOR_STATEMENT = {
+  select: {
+    name: true,
+    establishedJointly: true,
+    foundationDeed: { select: { id: true, signedAt: true, signedByUser: { select: { fullName: true } } } },
+  },
+} as const;
+
+export function coFounderStatementContext(foundation: {
+  name: string;
+  foundationDeed: { signedAt: Date; signedByUser: { fullName: string } } | null;
+}): CoFounderStatementContext {
+  return {
+    foundationName: foundation.name,
+    signedDeed: foundation.foundationDeed
+      ? { signerName: foundation.foundationDeed.signedByUser.fullName, signedAt: foundation.foundationDeed.signedAt }
+      : null,
+  };
+}
+
+/**
+ * The hash a co-founder's client echoes back when accepting: proof they
+ * saw exactly the statement being stored. The version alone isn't enough,
+ * since both statements share it, and the deed can be signed while
+ * they're reading the "authorize the signer" one.
+ */
+export function hashStatement(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+/**
+ * Takes the Foundation's row lock for the rest of the transaction. Signing
+ * the deed and recording a co-founder's agreement both take it first, so
+ * neither can see the other half-done: a co-founder never joins between
+ * the signer's checks and the deed being stored, and their statement
+ * never describes a deed state that changed under them.
+ */
+export async function lockFoundation(tx: Prisma.TransactionClient, foundationId: string): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "foundations" WHERE "id" = ${foundationId} FOR UPDATE`;
 }
