@@ -445,6 +445,10 @@ describe("ZakahPaymentsService", () => {
       const receipt = giver.fake.messages.find((m) => m.to === number);
       expect(receipt?.body).toContain("₦95,000.00 of zakah");
       expect(receipt?.body).toContain(payment.id);
+      // Sent through the zakah receipt template, once one is approved.
+      expect(giver.fake.templates.find((t) => t.to === number)).toEqual({
+        to: number, template: "zakah_receipt", values: ["₦95,000.00 of zakah", payment.id],
+      });
     });
 
     test("a number that hasn't been confirmed is refused", async () => {

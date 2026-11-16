@@ -16,8 +16,12 @@ export class FakeWhatsApp {
     this.codes.push({ to, code });
   }
 
-  async sendMessage(to: string, body: string) {
-    this.messages.push({ to, body });
+  /** Records the free text (what the sandbox sends) and which template it would use. */
+  templates: { to: string; template: string; values: string[] }[] = [];
+
+  async sendTemplate(to: string, template: string, values: string[], fallbackText: string) {
+    this.templates.push({ to, template, values });
+    this.messages.push({ to, body: fallbackText });
   }
 
   /** The last code sent to this number. */

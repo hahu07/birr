@@ -752,10 +752,17 @@ decisions:
   re-entered and match. A founder's top-up WhatsApp honours their "money"
   notification setting. A ruleset's "lower of" nisab is recorded as the
   metal it came to that day.
-- **Before launch:** production WhatsApp needs Meta-approved message
-  templates for business-initiated messages. Every WhatsApp Birr sends
-  today, the codes included, is free text, which works in Twilio's
-  sandbox only.
+- **Templates (built 2026-11-16):** a production sender can only start a
+  conversation with a Meta-approved template. Every WhatsApp Birr sends
+  goes through one of six templates (`whatsapp-templates.ts`: verification
+  code, gift receipt, zakah receipt, zakah refund update, monthly gift
+  update, account notice), sent by `TwilioWhatsAppAdapter.sendTemplate`
+  once its content SID is in Platform Settings → Twilio. Without one, the
+  sandbox sender sends the old free text, and a real sender refuses and
+  logs rather than send what WhatsApp would reject. **Still to do before
+  launch:** Meta business verification, then submit and approve the
+  templates per `docs/whatsapp-templates.md` (a test keeps it matching
+  the code) and paste in their SIDs.
 
 **Update, 2026-11-16 — the payer chooses a gold or silver nisab, where the
 Board allows it.** Owner's decisions: each ruleset carries

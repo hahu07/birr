@@ -1,3 +1,4 @@
+import { WHATSAPP_TEMPLATES } from "../whatsapp/whatsapp-templates";
 export interface ProviderFieldSpec {
   key: string;
   label: string;
@@ -16,6 +17,11 @@ const FROM_ADDRESS = new RegExp(`^(?:${EMAIL}|[^<>]*[^<>\\s] <${EMAIL}>)$`);
 
 export function validateEmail(value: string): string | null {
   return new RegExp(`^${EMAIL}$`).test(value) ? null : 'Use "email@example.com".';
+}
+
+/** A Twilio Content template SID: "HX" and 32 hex characters. */
+export function validateContentSid(value: string): string | null {
+  return /^HX[0-9a-f]{32}$/i.test(value) ? null : 'Use the template\'s content SID from Twilio, like "HX" followed by 32 letters and digits.';
 }
 
 export function validateFromAddress(value: string): string | null {
@@ -57,6 +63,14 @@ export const PROVIDER_FIELDS: Record<string, ProviderFieldSpec[]> = {
     { key: "ACCOUNT_SID", label: "Account SID", secret: true },
     { key: "AUTH_TOKEN", label: "Auth token", secret: true },
     { key: "WHATSAPP_FROM_NUMBER", label: "WhatsApp from number", secret: false },
+    // Approved WhatsApp templates (2026-11-16; docs/whatsapp-templates.md).
+    // Required on a real sender; the sandbox sends plain text without them.
+    ...Object.values(WHATSAPP_TEMPLATES).map((t) => ({
+      key: t.setting,
+      label: `WhatsApp template SID — ${t.setting.replace(/^TEMPLATE_/, "").toLowerCase().replace(/_/g, " ")}`,
+      secret: false,
+      validate: validateContentSid,
+    })),
   ],
   openai: [{ key: "API_KEY", label: "API key", secret: true }],
   replicate: [{ key: "API_KEY", label: "API key", secret: true }],

@@ -709,13 +709,15 @@ export class ZakahPaymentsService {
   /** A short WhatsApp receipt, like the email one; never holds up the confirmation. */
   private sendWhatsAppReceipt(to: string, payment: { id: string; amount: Prisma.Decimal; feeCover: Prisma.Decimal; fitrPeople: number | null }): void {
     if (!this.whatsApp) return;
+    const received =
+      `${moneyText(payment.amount)} of ${payment.fitrPeople ? "Zakah al-Fitr" : "zakah"}` +
+      (payment.fitrPeople ? ` for ${payment.fitrPeople} ${payment.fitrPeople === 1 ? "person" : "people"}` : "") +
+      (Number(payment.feeCover) > 0 ? `, and ${moneyText(payment.feeCover)} you added to cover the processing fee` : "");
     const text = whatsAppNotice(payment.fitrPeople ? "Your Zakah al-Fitr is received" : "Your zakah is received", [
-      `We received ${moneyText(payment.amount)} of zakah${payment.fitrPeople ? ` for ${payment.fitrPeople} ${payment.fitrPeople === 1 ? "person" : "people"}` : ""}` +
-        (Number(payment.feeCover) > 0 ? `, and ${moneyText(payment.feeCover)} you added to cover the processing fee` : "") +
-        ". All of your zakah goes to people eligible to receive it.",
+      `We received ${received}. All of your zakah goes to people eligible to receive it.`,
       `Receipt reference: ${payment.id}`,
     ]);
-    this.whatsApp.sendMessage(to, text).catch((err) =>
+    this.whatsApp.sendTemplate(to, "zakah_receipt", [received, payment.id], text).catch((err) =>
       this.logger.error(`Failed to send the WhatsApp receipt for zakah payment "${payment.id}":`, err instanceof Error ? err.stack : String(err)),
     );
   }
