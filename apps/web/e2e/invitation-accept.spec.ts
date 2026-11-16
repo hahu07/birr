@@ -156,4 +156,7 @@ test.afterEach(async () => {
   await prisma.notification.deleteMany({
     where: { recipientUser: { email: { startsWith: "e2e-cofounder-" } } },
   });
+  // Invitations point at the founder who sent them; other specs' clean-up
+  // deletes that founder's user, so these must go first.
+  await prisma.invitation.deleteMany({ where: { email: { startsWith: "e2e-cofounder-" } } });
 });
