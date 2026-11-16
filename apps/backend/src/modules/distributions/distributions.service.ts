@@ -89,6 +89,15 @@ export class DistributionsService {
         `Cause "${input.causeId}" does not belong to waqf "${input.waqfId}".`,
       );
     }
+    // A cause the founder removed takes no new distributions (2026-11-16):
+    // its allocation was freed for the fund's other causes, all but what
+    // it had already committed (WaqfCausesService.allocationPosition keeps
+    // that held back, which also covers one created in the moment the
+    // cause was being removed). One already pending on it can still be
+    // approved.
+    if (cause.deletedAt) {
+      throw new BadRequestException(`The founder has removed the cause "${cause.name}" from this fund, so it can't take new distributions.`);
+    }
     // See assertWithinAllocation's own comment: allocatedAmount/
     // proceedsAllocatedAmount carry no currency of their own, so
     // whichever currency reaches assertWithinAllocation first silently
