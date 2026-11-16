@@ -40,7 +40,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -60,7 +60,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -92,7 +92,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -148,7 +148,7 @@ jobs:
       JWT_SECRET: ci-test-secret-not-for-real-use
       SETTINGS_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -203,7 +203,7 @@ jobs:
   agents-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -252,7 +252,7 @@ jobs:
       JWT_SECRET: ci-test-secret-not-for-real-use
       SETTINGS_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -308,7 +308,7 @@ jobs:
   web-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -331,7 +331,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -346,7 +346,7 @@ jobs:
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
