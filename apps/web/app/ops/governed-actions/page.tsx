@@ -391,10 +391,11 @@ function ApprovalSummary({ action, isExpanded }: { action: GovernedAction; isExp
               {isAgent ? (action.makerAgent ? agentNickname(action.makerAgent.name) : "Unregistered agent") : (action.makerUser?.fullName ?? "—")}
             </span>
           </span>
-          <span>
-            {action.waqf?.name ??
-              (action.proposedFoundation ? `Foundation: ${action.proposedFoundation.name}` : <span className="italic">Waqf not yet created</span>)}
-          </span>
+          {/* Nothing when the action isn't about a waqf or Foundation
+              (zakah, staff, a Founder's primary contact). */}
+          {(action.waqf || action.proposedFoundation) && (
+            <span>{action.waqf?.name ?? `Foundation: ${action.proposedFoundation!.name}`}</span>
+          )}
           <span>{formatDate(action.createdAt)}</span>
         </span>
         <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary-700">

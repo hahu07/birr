@@ -14,6 +14,10 @@ export interface ProviderFieldSpec {
 const EMAIL = "[^\\s@<>]+@[^\\s@<>]+\\.[^\\s@<>]+";
 const FROM_ADDRESS = new RegExp(`^(?:${EMAIL}|[^<>]*[^<>\\s] <${EMAIL}>)$`);
 
+export function validateEmail(value: string): string | null {
+  return new RegExp(`^${EMAIL}$`).test(value) ? null : 'Use "email@example.com".';
+}
+
 export function validateFromAddress(value: string): string | null {
   return FROM_ADDRESS.test(value) ? null : 'Use "email@example.com" or "Name <email@example.com>".';
 }
@@ -62,6 +66,14 @@ export const PROVIDER_FIELDS: Record<string, ProviderFieldSpec[]> = {
   // a second settings concept for one string. Valid values today:
   // "openai" or "replicate".
   image_generation: [{ key: "ACTIVE_PROVIDER", label: "Active image provider (openai or replicate)", secret: false }],
+  // Also not a vendor: how a founder reaches Birr without signing in. The
+  // notice to a primary contact reported unable to act gives these, so
+  // they can object even if they've lost access (owner's decision,
+  // 2026-11-16); the email address is also that notice's reply-to.
+  support: [
+    { key: "CONTACT_EMAIL", label: "Contact email founders can write to", secret: false, validate: validateEmail },
+    { key: "CONTACT_PHONE", label: "Contact phone founders can call (e.g. +234 …)", secret: false },
+  ],
 };
 
 const ENV_PREFIX_OVERRIDES: Record<string, string> = {

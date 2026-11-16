@@ -702,6 +702,13 @@ two-person.** Answers the open question in
   lookup now also requires the membership to be active.
 - Birr transferring trusteeship itself stays out of scope (going-concern
   decision, 2026-08-30).
+- **2026-11-16, owner's decisions:** the 7-day notice is confirmed. The
+  notice must work without signing in: it gives Birr's contact email and
+  phone (Platform Settings → `support`, also the email's reply-to), its
+  email never says it can be ignored, and staff record an objection made
+  by phone or email ("Objection received…"). The wording
+  (`succession-notice.ts`) is a **draft** that Legal must approve; its
+  version is in the audit row.
 
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed

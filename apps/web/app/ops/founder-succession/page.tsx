@@ -113,7 +113,9 @@ function CaseCard({
 }) {
   const [busy, setBusy] = useState<"propose" | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [closing, setClosing] = useState(false);
+  // "close": closing the case; "objection": recording an objection the
+  // contact made by phone, email or letter.
+  const [noteFor, setNoteFor] = useState<"close" | "objection" | null>(null);
   const [note, setNote] = useState("");
   const [loadedAt] = useState(() => Date.now());
   const noticeRunning = new Date(c.earliestApprovalAt).getTime() > loadedAt;
@@ -131,11 +133,11 @@ function CaseCard({
     }
   }
 
-  async function close() {
+  async function submitNote() {
     setBusy("close");
     setError(null);
     try {
-      await apiFetchJson(`/staff/founder-succession/${c.id}/close`, { method: "POST", body: JSON.stringify({ note: note.trim() }) });
+      await apiFetchJson(`/staff/founder-succession/${c.id}/${noteFor === "objection" ? "objection" : "close"}`, { method: "POST", body: JSON.stringify({ note: note.trim() }) });
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -216,24 +218,31 @@ function CaseCard({
             </Button>
           </span>
         )}
-        {canClose && (c.status === "requested" || c.status === "objected") && !closing && (
-          <Button variant="secondary" onClick={() => setClosing(true)}>
+        {canClose && c.kind === "unreachable" && c.status === "requested" && !noteFor && (
+          <Button variant="secondary" onClick={() => setNoteFor("objection")}>
+            Objection received…
+          </Button>
+        )}
+        {canClose && (c.status === "requested" || c.status === "objected") && !noteFor && (
+          <Button variant="secondary" onClick={() => setNoteFor("close")}>
             Close…
           </Button>
         )}
       </div>
-      {closing && (
+      {noteFor && (
         <div className="mt-3 space-y-2">
-          <label htmlFor={`close-${c.id}`} className="block text-xs font-medium text-slate-700">
-            Why it's being closed (the Founder's members are told it was closed)
+          <label htmlFor={`note-${c.id}`} className="block text-xs font-medium text-slate-700">
+            {noteFor === "objection"
+              ? "What the contact said, how they reached Birr, and how you know it was them"
+              : "Why it's being closed (the Founder's members are told it was closed)"}
           </label>
-          <textarea id={`close-${c.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} className={textareaClass} />
+          <textarea id={`note-${c.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} className={textareaClass} />
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" disabled={busy !== null} onClick={() => setClosing(false)}>
+            <Button variant="secondary" disabled={busy !== null} onClick={() => setNoteFor(null)}>
               Cancel
             </Button>
-            <Button disabled={busy !== null || note.trim().length < 5} onClick={close}>
-              {busy === "close" ? "Closing…" : "Close request"}
+            <Button disabled={busy !== null || note.trim().length < 5} onClick={submitNote}>
+              {busy === "close" ? "Saving…" : noteFor === "objection" ? "Record objection" : "Close request"}
             </Button>
           </div>
         </div>

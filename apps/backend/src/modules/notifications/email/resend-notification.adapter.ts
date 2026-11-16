@@ -29,7 +29,7 @@ export class ResendNotificationEmailAdapter {
 
   async sendNotificationEmail(
     to: string,
-    input: { title: string; body: string; linkUrl?: string },
+    input: { title: string; body: string; linkUrl?: string; footerText?: string; replyTo?: string },
   ): Promise<void> {
     const apiKey = await this.settings.get("resend", "API_KEY");
     const from = await this.settings.get("resend", "FROM_ADDRESS");
@@ -47,12 +47,14 @@ export class ResendNotificationEmailAdapter {
     const { error } = await resend.emails.send({
       from,
       to,
+      ...(input.replyTo ? { replyTo: input.replyTo } : {}),
       subject: input.title,
       html: renderEmailTemplate({
         heading: input.title,
         bodyHtml: `<p>${escapeHtml(input.body)}</p>`,
         ctaLabel: input.linkUrl ? "View in Birr" : undefined,
         ctaUrl: input.linkUrl,
+        footerText: input.footerText,
       }),
     });
     if (error) {

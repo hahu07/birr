@@ -1,7 +1,11 @@
+import { EncryptionService } from "../../common/settings/encryption.service";
+import { SettingsService } from "../../common/settings/settings.service";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { prisma } from "@birr/db";
 import { FounderSuccessionService } from "./founder-succession.service";
+import { OUTGOING_NOTICE_VERSION, outgoingNotice } from "./succession-notice";
+import { renderEmailTemplate } from "../../common/email/notification-template";
 import { InvitationsService } from "../invitations/invitations.service";
 import type { ResendInvitationEmailAdapter } from "../invitations/email/resend-invitation.adapter";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
@@ -15,7 +19,7 @@ import { assertWhatsAppVerified } from "../../common/auth/current-founder";
  */
 describe("FounderSuccessionService", () => {
   const notifications = createFakeNotificationsService();
-  const service = new FounderSuccessionService(notifications);
+  const service = new FounderSuccessionService(notifications, new SettingsService(new EncryptionService()));
   const invitations = new InvitationsService({ sendInvitationEmail: async () => undefined } as unknown as ResendInvitationEmailAdapter, notifications);
 
   let makerUserId: string;
@@ -103,6 +107,51 @@ describe("FounderSuccessionService", () => {
     expect(closed.status).toBe("cancelled");
   });
 
+  test("the notice gives Birr's contact details, so the contact can object without signing in", async () => {
+    const before = { email: process.env.SUPPORT_CONTACT_EMAIL, phone: process.env.SUPPORT_CONTACT_PHONE };
+    process.env.SUPPORT_CONTACT_EMAIL = "trustee@birr.example";
+    process.env.SUPPORT_CONTACT_PHONE = "+234 800 000 0000";
+    try {
+      const { founder, contactUser, member } = await founderWithTeam();
+      const succession = await service.recordUnreachable(makerUserId, {
+        founderId: founder.id,
+        newMembershipId: member.id,
+        reason: "Institution says the contact has left.",
+        evidenceNote: "Letter from the bank's HR, 9 Nov.",
+      });
+      const notice = await prisma.notification.findFirstOrThrow({ where: { recipientUserId: contactUser.id, type: "founder_succession.outgoing_notice", relatedEntityId: succession.id } });
+      expect(notice.body).toContain("email trustee@birr.example or call +234 800 000 0000 (or reply to this email)");
+      expect(notice.body).toContain("Nothing changes while you object.");
+      const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityId: succession.id, action: "founder_succession.unreachable_reported" } });
+      expect(audit.after).toMatchObject({ outgoingNoticeVersion: OUTGOING_NOTICE_VERSION });
+    } finally {
+      if (before.email === undefined) delete process.env.SUPPORT_CONTACT_EMAIL;
+      else process.env.SUPPORT_CONTACT_EMAIL = before.email;
+      if (before.phone === undefined) delete process.env.SUPPORT_CONTACT_PHONE;
+      else process.env.SUPPORT_CONTACT_PHONE = before.phone;
+    }
+  });
+
+  test("an objection by phone or email is recorded by staff, and blocks approval the same way", async () => {
+    const { founder, contactUser, contact, member } = await founderWithTeam();
+    const succession = await service.reportUnavailable(
+      { userId: (await prisma.founderMembership.findUniqueOrThrow({ where: { id: member.id } })).userId, founderId: founder.id },
+      { newMembershipId: member.id, reason: "They stopped answering in August.", evidenceNote: "Calls and letters unanswered." },
+    );
+    const objected = await service.recordObjection(succession.id, makerUserId, { note: `Phoned Birr on 17 Nov; voice and date of birth matched ${contactUser.fullName}.` });
+    expect(objected).toMatchObject({ status: "objected" });
+    expect(objected.objectionNote).toMatch(/^Received by Birr: Phoned Birr/);
+    expect(await prisma.auditLog.count({ where: { entityId: succession.id, action: "founder_succession.objection_recorded", actorUserId: makerUserId } })).toBe(1);
+    await prisma.primaryContactSuccession.update({ where: { id: succession.id }, data: { earliestApprovalAt: new Date(Date.now() - 1000) } });
+    await expect(approve(succession.id)).rejects.toThrow(/objected/);
+    expect(await membership(contact.id)).toMatchObject({ permissionLevel: "primary_contact" });
+
+    // A handover is the contact's own request; there's nothing to object to.
+    const other = await founderWithTeam();
+    const handover = await service.requestHandover({ userId: other.contactUser.id, founderId: other.founder.id }, { newMembershipId: other.member.id, reason: "Retiring at the year end." });
+    await expect(service.recordObjection(handover.id, makerUserId, { note: "Someone phoned to object." })).rejects.toThrow(BadRequestException);
+  });
+
   test("unreachable, after the notice period: the outgoing contact is revoked and the new one takes over", async () => {
     const { founder, contact, member } = await founderWithTeam();
     const succession = await service.recordUnreachable(makerUserId, {
@@ -165,5 +214,23 @@ describe("FounderSuccessionService", () => {
     await expect(
       service.requestHandover({ userId: contactUser.id, founderId: founder.id }, { newEmail: existing.email, newFullName: "Existing Person", reason: "Handing to an existing account." }),
     ).rejects.toThrow(/Invite them to your team first/);
+  });
+});
+
+describe("the outgoing contact's notice", () => {
+  test("without Birr's contact details set, it still says how to object", () => {
+    const notice = outgoingNotice({ founderName: "Bello Family Waqf", objectBy: "23 Nov 2026", contact: {} });
+    expect(notice.body).toBe(
+      "Someone has told Birr you can no longer act as primary contact of Bello Family Waqf. If that's wrong, object before 23 Nov 2026: sign in and open Team, or contact Birr directly. Nothing changes while you object.",
+    );
+    expect(outgoingNotice({ founderName: "X", objectBy: "1 Dec 2026", contact: { phone: "+234 1" } }).body).toContain("or call +234 1. Nothing");
+  });
+
+  test("its email never says it can be safely ignored", () => {
+    const { emailFooter } = outgoingNotice({ founderName: "X", objectBy: "1 Dec 2026", contact: {} });
+    const html = renderEmailTemplate({ heading: "h", bodyHtml: "<p>b</p>", footerText: emailFooter });
+    expect(html).not.toContain("safely ignore");
+    expect(html).toContain("Please don&#39;t ignore this message".replace("&#39;", "'"));
+    expect(renderEmailTemplate({ heading: "h", bodyHtml: "<p>b</p>" })).toContain("safely ignore");
   });
 });

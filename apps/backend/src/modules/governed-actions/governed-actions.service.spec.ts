@@ -1,3 +1,4 @@
+import { SettingsService } from "../../common/settings/settings.service";
 import { prisma, Beneficiary, Investment, Distribution, BirrStaffRole } from "@birr/db";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
@@ -168,7 +169,7 @@ describe("GovernedActionsService", () => {
     zakahDistributionsService,
     zakahRefundsService,
     zakahFitrService,
-    new FounderSuccessionService(notificationsService),
+    new FounderSuccessionService(notificationsService, new SettingsService(new EncryptionService())),
   );
 
   const governedActionIds: string[] = [];
@@ -2451,7 +2452,7 @@ describe("GovernedActionsService", () => {
   describe("founder.primary_contact_change", () => {
     let officerUserId: string;
     let complianceUserId: string;
-    const successionService = new FounderSuccessionService(notificationsService);
+    const successionService = new FounderSuccessionService(notificationsService, new SettingsService(new EncryptionService()));
     const founderIds: string[] = [];
 
     async function staffWith(label: string, role: BirrStaffRole) {

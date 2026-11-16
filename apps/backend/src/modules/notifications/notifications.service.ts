@@ -15,6 +15,10 @@ export interface NotifyInput {
   linkUrl?: string;
   relatedEntityType?: string;
   relatedEntityId?: string;
+  /** Email only: replaces the default "you can safely ignore it" footer. */
+  emailFooter?: string;
+  /** Email only: where a reply goes, when replying is one way to respond. */
+  emailReplyTo?: string;
 }
 
 /**
@@ -173,6 +177,8 @@ export class NotificationsService {
           // itself stays relative in the in-app row created above; this
           // is a separately-resolved value for the external channel only.
           linkUrl: resolvePortalLink(input.linkUrl),
+          footerText: input.emailFooter,
+          replyTo: input.emailReplyTo,
         });
       } catch (err) {
         this.logger.error(

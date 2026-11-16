@@ -12,10 +12,29 @@ Which situation is it?
 | Situation | Who asks | Notice before approval |
 |---|---|---|
 | **Handover.** The contact can still act (retiring, a new Bursar, an institution's leadership changing). | The primary contact, on their **Team** page. | None. |
-| **Can't act.** The contact has died, is too unwell, or can't be reached. | Another member on their **Team** page, or a Mutawalli Officer here, for family or an institution. | **7 days.** The contact is emailed and sent a WhatsApp at once, and can object. |
+| **Can't act.** The contact has died, is too unwell, or can't be reached. | Another member on their **Team** page, or a Mutawalli Officer here, for family or an institution. | **7 days** (owner's decision, confirmed 16 Nov 2026). The contact is emailed and sent a WhatsApp at once, and can object. |
 
 Either way, the new primary contact is an existing active member or someone
 new, by email and name.
+
+**Before the first "can't act" case:** a Platform Admin sets Birr's contact
+email and phone in Ops Console → **Settings** → *Birr contact*. The notice
+gives these so a contact who has lost access to their account can still
+object, and a reply to the notice email goes to that address. Without them
+the notice can only say "contact Birr directly". Someone must read that
+inbox and answer that phone.
+
+The notice says (a **draft**; Legal must approve it, and any change gets a
+new version in `succession-notice.ts`):
+
+> Someone has told Birr you can no longer act as primary contact of
+> *Bello Family Waqf*. If that's wrong, object before *23 Nov 2026*: sign in
+> and open Team, or email *…* or call *…* (or reply to this email). Nothing
+> changes while you object.
+
+Its email ends: "Please don't ignore this message. If you do nothing, Birr
+may give your role as primary contact to someone else after the date above.
+If this is wrong, tell Birr." The audit log records which version was sent.
 
 ---
 
@@ -67,7 +86,13 @@ at each step.
 
 ## If the contact objects
 
-The request shows **Objected** with their note, and can't be approved.
+**By phone, email or letter:** a Mutawalli Officer opens the request and
+presses **Objection received…**. Write what they said, how they reached
+Birr, and how you know it was them (for example, you called back the number
+on file, or they confirmed their date of birth). It has the same effect as
+objecting in the portal, and the note shows "Received by Birr".
+
+Either way, the request shows **Objected** with their note, and can't be approved.
 Contact them, and whoever asked, off-platform. Then **Close…** the request
 with a note saying what you found. If a change is still needed, someone asks
 again.

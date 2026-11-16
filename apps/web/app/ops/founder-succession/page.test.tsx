@@ -68,6 +68,7 @@ describe("Ops: Primary Contact Changes", { timeout: 20_000 }, () => {
       if (path === "/staff/founder-succession") return [succession];
       if (path === "/governed-actions") return { id: "ga1" };
       if (path === "/staff/founder-succession/c1/close") return { ...succession, status: "cancelled" };
+      if (path === "/staff/founder-succession/c1/objection") return { ...succession, status: "objected" };
       throw new Error(path);
     });
   });
@@ -95,6 +96,16 @@ describe("Ops: Primary Contact Changes", { timeout: 20_000 }, () => {
     await userEvent.click(screen.getByRole("button", { name: "Close request" }));
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith("/staff/founder-succession/c1/close", { method: "POST", body: JSON.stringify({ note: "Family withdrew the request by phone." }) }),
+    );
+  });
+
+  test("an objection made by phone or email is recorded for the contact", async () => {
+    renderAs(staffWith(["founder.succession_view", "founder.succession_record"]));
+    await userEvent.click(await screen.findByRole("button", { name: "Objection received…" }));
+    await userEvent.type(screen.getByLabelText(/how they reached Birr/i), "Phoned on 17 Nov; date of birth matched.");
+    await userEvent.click(screen.getByRole("button", { name: "Record objection" }));
+    await waitFor(() =>
+      expect(mockedFetch).toHaveBeenCalledWith("/staff/founder-succession/c1/objection", { method: "POST", body: JSON.stringify({ note: "Phoned on 17 Nov; date of birth matched." }) }),
     );
   });
 

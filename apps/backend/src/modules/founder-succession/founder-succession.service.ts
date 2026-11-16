@@ -5,7 +5,11 @@ import { holdsAnyRole } from "../../common/auth/staff-roles";
 import { NotificationsService } from "../notifications/notifications.service";
 import { newInvitationToken } from "../invitations/invitations.service";
 import { stepDownOutgoing, stepUpAndComplete } from "./succession-swap";
+import { SettingsService } from "../../common/settings/settings.service";
+import { OUTGOING_NOTICE_VERSION, outgoingNotice } from "./succession-notice";
 
+// 7 days: the owner's decision, confirmed 2026-11-16 (long enough to notice
+// a message while away or unwell; short enough that a family isn't stuck).
 const OBJECTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const OPEN = ["requested", "approved", "objected"] as const;
 
@@ -85,7 +89,10 @@ const formatDay = (d: Date) =>
 export class FounderSuccessionService {
   private readonly logger = new Logger(FounderSuccessionService.name);
 
-  constructor(private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly notifications: NotificationsService,
+    private readonly settings: SettingsService,
+  ) {}
 
   // ─── Asking ──────────────────────────────────────────────────────────
 
@@ -166,7 +173,8 @@ export class FounderSuccessionService {
             action: args.kind === "handover" ? "founder_succession.handover_requested" : "founder_succession.unreachable_reported",
             entityType: "PrimaryContactSuccession",
             entityId: row.id,
-            after: row as unknown as Prisma.InputJsonValue,
+            // Which wording of the outgoing contact's notice was sent.
+            after: (args.kind === "unreachable" ? { ...row, outgoingNoticeVersion: OUTGOING_NOTICE_VERSION } : row) as unknown as Prisma.InputJsonValue,
           },
         });
         return row;
@@ -229,6 +237,23 @@ export class FounderSuccessionService {
   }
 
   /** Staff close an open case (e.g. after an objection), with a note. */
+  /**
+   * The outgoing contact objected without signing in (by phone, email or
+   * letter): staff record it on their behalf, with what was said and how
+   * Birr knows it was them. Same effect as their own objection.
+   */
+  async recordObjection(id: string, staffUserId: string, input: SuccessionNoteInput) {
+    const succession = await this.load(id);
+    if (succession.kind !== "unreachable") throw new BadRequestException("Only a report that the contact can't act can be objected to.");
+    return this.transition(
+      succession,
+      ["requested"],
+      { status: "objected", objectedAt: new Date(), objectionNote: `Received by Birr: ${input.note.trim()}` },
+      "founder_succession.objection_recorded",
+      { actorType: "birr_staff", actorUserId: staffUserId },
+    );
+  }
+
   async closeByStaff(id: string, staffUserId: string, input: SuccessionNoteInput) {
     const succession = await this.load(id);
     return this.transition(succession, ["requested", "objected"], { status: "cancelled" }, "founder_succession.closed", { actorType: "birr_staff", actorUserId: staffUserId }, input.note.trim());
@@ -448,13 +473,20 @@ export class FounderSuccessionService {
     if (succession.kind === "unreachable") {
       // The one message that matters most: the outgoing contact hears first, by email and WhatsApp.
       const outgoing = await prisma.founderMembership.findUniqueOrThrow({ where: { id: succession.outgoingMembershipId } });
+      // They may have lost access to their account, so the notice also
+      // says how to reach Birr without signing in.
+      const [email, phone] = await Promise.all([this.settings.get("support", "CONTACT_EMAIL"), this.settings.get("support", "CONTACT_PHONE")]);
+      if (!email && !phone) this.logger.warn("No Birr contact set (Platform Settings → support): the outgoing contact's notice can only say 'contact Birr directly'.");
+      const notice = outgoingNotice({ founderName: founder.name, objectBy: formatDay(succession.earliestApprovalAt), contact: { email, phone } });
       sends.push(
         this.notifications.notify({
           recipientType: "founder_user",
           recipientUserId: outgoing.userId,
           type: "founder_succession.outgoing_notice",
-          title: `Request to replace you as primary contact of ${founder.name}`,
-          body: `Someone has told Birr you can no longer act as primary contact of ${founder.name}. If that's wrong, sign in and object before ${formatDay(succession.earliestApprovalAt)}.`,
+          title: notice.title,
+          body: notice.body,
+          emailFooter: notice.emailFooter,
+          emailReplyTo: email ?? undefined,
           linkUrl: "/team",
           relatedEntityType: "PrimaryContactSuccession",
           relatedEntityId: succession.id,

@@ -72,6 +72,12 @@ export class FounderSuccessionStaffController {
     return this.service.recordUnreachable(staff.userId, body);
   }
 
+  @Post(":id/objection")
+  @RequiresAccess("founder.succession_record")
+  recordObjection(@Param("id") id: string, @Body() body: SuccessionNoteInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.service.recordObjection(id, staff.userId, body);
+  }
+
   @Post(":id/close")
   @RequiresAccess("founder.succession_record")
   close(@Param("id") id: string, @Body() body: SuccessionNoteInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
