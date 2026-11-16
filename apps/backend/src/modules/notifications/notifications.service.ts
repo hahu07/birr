@@ -208,14 +208,12 @@ export class NotificationsService {
   }
 
   private async sendWhatsApp(to: string, input: NotifyInput): Promise<void> {
-    const message = renderWhatsAppMessage({
-      type: input.type,
-      title: input.title,
-      body: input.body,
-      // Absolute — see resolvePortalLink's own comment.
-      linkUrl: resolvePortalLink(input.linkUrl),
-    });
-    await this.whatsAppAdapter.sendMessage(to, message);
+    // Absolute — see resolvePortalLink's own comment. A notice without
+    // its own link points at the portal, since the template always has one.
+    const linkUrl = resolvePortalLink(input.linkUrl);
+    const message = renderWhatsAppMessage({ type: input.type, title: input.title, body: input.body, linkUrl });
+    const templateLink = linkUrl ?? resolvePortalLink(input.recipientType === "birr_staff" ? "/ops" : "/")!;
+    await this.whatsAppAdapter.sendTemplate(to, "account_notice", [input.title, input.body, templateLink], message);
   }
 
   // Every category defaults to {email: true, whatsapp: true} — the

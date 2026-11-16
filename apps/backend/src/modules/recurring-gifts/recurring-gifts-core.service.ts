@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
-import { whatsAppTextFromEmail } from "../../common/giving/giver-contact";
+import { plainTextFromHtml, whatsAppTextFromEmail } from "../../common/giving/giver-contact";
 import { Injectable, Logger } from "@nestjs/common";
 import { prisma, Prisma, type RecurringGift, type RecurringGiftKind } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
@@ -233,7 +233,11 @@ export class RecurringGiftsCoreService {
     if (whatsapp) {
       try {
         if (!this.whatsApp) throw new Error("WhatsApp isn't available here.");
-        await this.whatsApp.sendMessage(whatsapp, whatsAppTextFromEmail(message));
+        // A message without a button still needs a link in the template:
+        // the founder's portfolio, or where a giver gets their manage links.
+        const base = process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000";
+        const link = message.ctaUrl ?? (message.founderAccountEmail ? `${base}/portfolio` : `${base}/giving/manage`);
+        await this.whatsApp.sendTemplate(whatsapp, "monthly_gift_update", [message.heading, plainTextFromHtml(message.bodyHtml), link], whatsAppTextFromEmail(message));
       } catch (err) {
         this.logger.error(`Failed to send "${message.subject}" by WhatsApp:`, err instanceof Error ? err.stack : String(err));
       }

@@ -892,11 +892,10 @@ export class VaultContributionsService {
     contribution: { id: string; amount: Prisma.Decimal; currency: string; vault: { name: string }; vaultCause: { name: string } | null },
   ): void {
     if (!this.whatsApp) return;
-    const text = whatsAppNotice("Thank you for your gift", [
-      `We received ${moneyText(contribution.amount, contribution.currency)} for ${contribution.vault.name}${contribution.vaultCause ? ` (${contribution.vaultCause.name})` : ""}.`,
-      `Receipt reference: ${contribution.id}`,
-    ]);
-    this.whatsApp.sendMessage(to, text).catch((err) =>
+    const amount = moneyText(contribution.amount, contribution.currency);
+    const givenTo = `${contribution.vault.name}${contribution.vaultCause ? ` (${contribution.vaultCause.name})` : ""}`;
+    const text = whatsAppNotice("Thank you for your gift", [`We received ${amount} for ${givenTo}.`, `Receipt reference: ${contribution.id}`]);
+    this.whatsApp.sendTemplate(to, "gift_receipt", [amount, givenTo, contribution.id], text).catch((err) =>
       this.logger.error(`Failed to send the WhatsApp receipt for vault contribution "${contribution.id}":`, err instanceof Error ? err.stack : String(err)),
     );
   }

@@ -681,6 +681,7 @@ describe("VaultContributionsService", () => {
       stripeFake.nextWebhookResult = null;
       await new Promise((r) => setImmediate(r));
       expect(giver.fake.messages.find((m) => m.to === number)?.body).toContain("Thank you for your gift");
+      expect(giver.fake.templates.find((t) => t.to === number)).toMatchObject({ template: "gift_receipt", values: [expect.stringMatching(/100\.00$/), expect.any(String), contribution.id] });
     });
 
     test("a number that hasn't been confirmed is refused", async () => {

@@ -51,12 +51,9 @@ export function whatsAppNotice(title: string, lines: string[]): string {
 
 const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " " };
 
-/**
- * An HTML email's message as WhatsApp text: the heading in bold, the
- * paragraphs and list items as plain lines, and the button as a link.
- */
-export function whatsAppTextFromEmail(message: { heading: string; bodyHtml: string; ctaLabel?: string; ctaUrl?: string }): string {
-  const body = message.bodyHtml
+/** An HTML email body as plain text: paragraphs and list items as lines, links as "label: url". */
+export function plainTextFromHtml(bodyHtml: string): string {
+  return bodyHtml
     .replace(/<li>/gi, "• ")
     .replace(/<\/(p|li|ul)>/gi, "\n")
     .replace(/<br\s*\/?>/gi, "\n")
@@ -65,5 +62,13 @@ export function whatsAppTextFromEmail(message: { heading: string; bodyHtml: stri
     .replace(/&[a-z#0-9]+;/gi, (e) => ENTITIES[e] ?? e)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * An HTML email's message as WhatsApp text: the heading in bold, the
+ * paragraphs and list items as plain lines, and the button as a link.
+ */
+export function whatsAppTextFromEmail(message: { heading: string; bodyHtml: string; ctaLabel?: string; ctaUrl?: string }): string {
+  const body = plainTextFromHtml(message.bodyHtml);
   return whatsAppNotice(message.heading, message.ctaUrl ? [body, "", `👉 ${message.ctaLabel ?? "Open in Birr"}: ${message.ctaUrl}`] : [body]);
 }

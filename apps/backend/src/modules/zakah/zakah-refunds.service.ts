@@ -107,18 +107,16 @@ export class ZakahRefundsService {
     const payer = { email: refund.payment.contactEmail, whatsappNumber: refund.payment.contactWhatsApp };
     if (payer.whatsappNumber && this.whatsApp) {
       const last4 = bank.accountNumber.slice(-4);
-      const text =
+      const update =
         stage === "approved"
-          ? whatsAppNotice("Your zakah refund is approved", [`Birr will refund ${moneyText(refund.amount)} to your account ending ${last4}.`, `Refund reference: ${refund.id}`])
-          : whatsAppNotice("Your zakah refund is paid", [
-              `${moneyText(refund.amount)} was sent to your account ending ${last4}` +
-                (refund.paidOn ? ` on ${date(refund.paidOn)}` : "") +
-                (refund.bankReference ? ` (bank reference ${refund.bankReference})` : "") +
-                ".",
-              `Refund reference: ${refund.id}`,
-            ]);
+          ? `Your refund is approved: Birr will refund ${moneyText(refund.amount)} to your account ending ${last4}.`
+          : `Your refund is paid: ${moneyText(refund.amount)} was sent to your account ending ${last4}` +
+            (refund.paidOn ? ` on ${date(refund.paidOn)}` : "") +
+            (refund.bankReference ? ` (bank reference ${refund.bankReference})` : "") +
+            ".";
+      const text = whatsAppNotice(stage === "approved" ? "Your zakah refund is approved" : "Your zakah refund is paid", [update, `Refund reference: ${refund.id}`]);
       await this.whatsApp
-        .sendMessage(payer.whatsappNumber, text)
+        .sendTemplate(payer.whatsappNumber, "zakah_refund_update", [update, refund.id], text)
         .catch((err) => this.logger.error(`Failed to send the WhatsApp refund notice for "${refund.id}":`, err instanceof Error ? err.stack : String(err)));
     }
     if (!payer.email) return;

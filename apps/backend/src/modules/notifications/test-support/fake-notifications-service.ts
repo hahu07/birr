@@ -25,8 +25,9 @@ class FakeNotificationEmailAdapter {
 class FakeWhatsAppAdapter {
   sent: { to: string; body: string }[] = [];
   async sendOtp(): Promise<void> {}
-  async sendMessage(to: string, body: string): Promise<void> {
-    this.sent.push({ to, body });
+  /** Records the free text (what the sandbox sends). */
+  async sendTemplate(to: string, _template: string, _values: string[], fallbackText: string): Promise<void> {
+    this.sent.push({ to, body: fallbackText });
   }
 }
 

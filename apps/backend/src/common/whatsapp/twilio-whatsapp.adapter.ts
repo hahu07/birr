@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Twilio } from "twilio";
 import { WhatsAppOtpAdapter } from "./whatsapp-otp.adapter";
 import { SettingsService } from "../settings/settings.service";
+import { TWILIO_SANDBOX_NUMBER, WHATSAPP_TEMPLATES, templateValue, type WhatsAppTemplateKey } from "./whatsapp-templates";
 
 /**
  * Lazy client construction, same reasoning as StripeAdapter/
@@ -39,21 +40,39 @@ export class TwilioWhatsAppAdapter implements WhatsAppOtpAdapter {
     return this.client;
   }
 
-  private async send(to: string, body: string): Promise<void> {
+  private async sender(): Promise<string> {
     const from = await this.settings.get("twilio", "WHATSAPP_FROM_NUMBER");
     if (!from) {
       throw new Error("Twilio WhatsApp from-number is not configured.");
     }
+    return from;
+  }
+
+  /**
+   * Sends one kind of message (2026-11-16). With the template's approved
+   * content SID set in Platform Settings, Twilio sends that template with
+   * these values. Without one, the free text goes instead — which only
+   * reaches people from the sandbox sender, so on a real sender a missing
+   * template is refused here with a clear reason rather than by WhatsApp.
+   */
+  async sendTemplate(to: string, template: WhatsAppTemplateKey, values: string[], fallbackText: string): Promise<void> {
+    const from = await this.sender();
+    const contentSid = await this.settings.get("twilio", WHATSAPP_TEMPLATES[template].setting);
     const twilio = await this.getTwilio();
-    await twilio.messages.create({ from: `whatsapp:${from}`, to: `whatsapp:${to}`, body });
+    if (contentSid) {
+      const contentVariables = JSON.stringify(Object.fromEntries(values.map((v, i) => [String(i + 1), templateValue(v)])));
+      await twilio.messages.create({ from: `whatsapp:${from}`, to: `whatsapp:${to}`, contentSid, contentVariables });
+      return;
+    }
+    if (from.replace(/\s/g, "") !== TWILIO_SANDBOX_NUMBER) {
+      throw new Error(
+        `No approved WhatsApp template for "${template}": add its content SID in Platform Settings → Twilio (see docs/whatsapp-templates.md).`,
+      );
+    }
+    await twilio.messages.create({ from: `whatsapp:${from}`, to: `whatsapp:${to}`, body: fallbackText });
   }
 
   sendOtp(to: string, code: string): Promise<void> {
-    return this.send(to, `Your Birr verification code is ${code}. It expires in 10 minutes.`);
-  }
-
-  /** Arbitrary WhatsApp text — used by NotificationsService, never for OTP. */
-  sendMessage(to: string, body: string): Promise<void> {
-    return this.send(to, body);
+    return this.sendTemplate(to, "verification_code", [code], `Your Birr verification code is ${code}. It expires in 10 minutes.`);
   }
 }
