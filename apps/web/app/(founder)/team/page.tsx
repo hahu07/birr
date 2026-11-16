@@ -15,8 +15,12 @@ import type { FounderMembership, Invitation } from "../../../lib/types";
 import { Alert, Badge, Button, IconPlus, Select, Skeleton } from "@birr/ui";
 import { linkButton, PageHeader, Panel, PanelHeader } from "../_components/ui";
 import { Field, inputClass } from "../_components/form";
+import { SuccessionSection } from "./SuccessionSection";
 
 const ROLE_OPTIONS: FounderMembership["permissionLevel"][] = ["viewer", "requester", "primary_contact"];
+// There is only ever one primary contact; the role changes hands through
+// "Hand over primary contact" below, which Birr confirms, never by invitation.
+const INVITE_ROLE_OPTIONS = ROLE_OPTIONS.filter((role) => role !== "primary_contact");
 
 export default function TeamPage() {
   const { user } = useFounderSession();
@@ -127,6 +131,10 @@ export default function TeamPage() {
             )}
           </Panel>
 
+          {!error && members !== null && members.length > 0 && (
+            <SuccessionSection members={members} userId={user?.id} isPrimaryContact={Boolean(isPrimaryContact)} onChanged={load} />
+          )}
+
           {!error && pendingInvitations.length > 0 && (
             <Panel>
               <PanelHeader title="Pending invitations" aside={<span className="text-xs text-slate-500">{pendingInvitations.length}</span>} />
@@ -160,7 +168,7 @@ export default function TeamPage() {
 const ROLE_DESCRIPTION: Record<FounderMembership["permissionLevel"], string> = {
   viewer: "Can see your portfolio.",
   requester: "Can also suggest causes and select or unselect them.",
-  primary_contact: "Full access, including inviting others.",
+  primary_contact: "Full access, including inviting others. There is one; see Primary contact to hand it over.",
 };
 
 function initialsOf(fullName: string): string {
@@ -252,7 +260,7 @@ function InviteForm({ onInvited, onCancel }: { onInvited: () => void; onCancel: 
         </Field>
         <Field label="Role" htmlFor="invite-role">
           <Select id="invite-role" value={roleKey} onChange={(e) => setRoleKey(e.target.value as FounderMembership["permissionLevel"])}>
-            {ROLE_OPTIONS.map((role) => (
+            {INVITE_ROLE_OPTIONS.map((role) => (
               <option key={role} value={role}>
                 {humanize(role)}
               </option>

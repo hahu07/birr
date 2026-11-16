@@ -678,6 +678,31 @@ CHECK). `payments.reconciliation_view`: Compliance, Audit, Board,
 Mutawalli; `_resolve` and `_run`: Compliance. In a dev database, test
 fixtures with references Paystack never saw are flagged, correctly.
 
+**Update, 2026-11-15 — a Founder's primary contact can be replaced,
+two-person.** Answers the open question in
+`docs/succession-and-preservation.md` (2026-08-30). Owner's decisions:
+- **The contact can still act** (retiring, a new Bursar, leadership
+  changing): they ask on the Team page; Birr confirms. After it, they
+  stay a viewer. If the successor is new to Birr, they're invited, and
+  the outgoing contact keeps the role until the invitation is accepted.
+- **The contact is gone** (died, incapacitated, unreachable): another
+  member asks, or a Mutawalli Officer records it for family or an
+  institution, with the evidence seen (a database CHECK requires it).
+  The contact is emailed and sent a WhatsApp at once and has **7 days to
+  object**; an objection blocks approval until staff close the case.
+  Approval revokes the outgoing contact's access.
+- **Both end in the governed `founder.primary_contact_change`**: maker
+  `mutawalli_officer`, checkers `compliance_officer` / `board_of_trustees`.
+  `PrimaryContactSuccession` keeps each case
+  (`modules/founder-succession`); Ops Console → Primary Contact Changes;
+  runbook `docs/founder-succession.md`.
+- The database allows **one active primary contact and one open case per
+  Founder** (partial unique indexes). The primary contact role can no
+  longer be given by an ordinary team invitation. Every primary-contact
+  lookup now also requires the membership to be active.
+- Birr transferring trusteeship itself stays out of scope (going-concern
+  decision, 2026-08-30).
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

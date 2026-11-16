@@ -88,7 +88,18 @@ function buildRows(status: WaqfLifecycleStatus): LifecycleChecklistRow[] {
       status: stages.audit.status,
       detail: stages.audit.count ? `${stages.audit.count} audit log ${stages.audit.count === 1 ? "entry" : "entries"}` : null,
     },
-    { key: "successionManagement", label: "Succession management", status: stages.successionManagement.status, detail: "Not yet available" },
+    {
+      key: "successionManagement",
+      label: "Succession management",
+      status: stages.successionManagement.status,
+      detail: stages.successionManagement.changeUnderWay
+        ? "A change of primary contact is under way"
+        : stages.successionManagement.status === "complete"
+          ? stages.successionManagement.lastChangedAt
+            ? `Primary contact in place; last changed ${new Date(stages.successionManagement.lastChangedAt).toLocaleDateString("en-NG")}`
+            : "Primary contact in place"
+          : "No active primary contact",
+    },
     {
       key: "longTermPreservation",
       label: "Long-term preservation",

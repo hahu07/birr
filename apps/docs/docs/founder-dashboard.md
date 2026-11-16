@@ -137,8 +137,9 @@ she manages who else has access. There are three levels:
 - **Viewer** — can look around, that's it.
 - **Requester** — can also do everything a Viewer can, plus pick/unpick
   causes and submit Requests.
-- **Primary contact** — full access, including inviting new people or
-  removing them. (Amina, as the founder, starts out as this.)
+- **Primary contact** — full access, including inviting new people.
+  (Amina, as the founder, starts out as this.) There's only one; see
+  below for handing it over.
 
 Only a Primary contact sees the "Invite someone" button — everyone else
 just doesn't see it, since they wouldn't be allowed to use it anyway.
@@ -149,6 +150,26 @@ send the email automatically — copy this link and send it yourself."*
 Pending invitations that haven't been accepted
 yet are listed separately, and Amina can cancel one if she invited the
 wrong person.
+
+There is only ever **one** primary contact, and the role can't be given
+by an invitation. If Amina is stepping back, say because she's handing
+the Foundation's day-to-day to her son Yusuf, she presses **Hand over
+primary contact…** in the Primary contact panel on the Team page. She
+picks Yusuf (or enters the name and email of someone not on the team
+yet) and gives a reason. Nothing changes until two of Birr's staff
+confirm it. Then Yusuf becomes primary contact and Amina stays on the
+team as a viewer. If Yusuf wasn't on Birr yet, he's emailed an
+invitation, and Amina keeps the role until he accepts.
+
+If the primary contact **can't act any more** (has died, is too unwell,
+or simply can't be reached), any other teammate can press **Our primary
+contact can't act…**, say who should take over, and describe the
+evidence they can give Birr, such as a death certificate or a board
+resolution. Family or an institution can also tell Birr directly. Birr
+emails and sends a WhatsApp to the primary contact first, and gives them
+**7 days to object** on their Team page, so nobody can take over an
+account by claiming someone is gone. After that, two Birr staff check
+the evidence and decide.
 
 Teammates are different from **co-founders**. A teammate helps run
 Amina's account; a co-founder is someone establishing the Foundation

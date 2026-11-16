@@ -344,6 +344,34 @@ export interface FounderMembership {
   user: { id: string; fullName: string; email: string; mfaEnabled: boolean };
 }
 
+// GET /founder-succession — this Founder's primary contact succession
+// cases (2026-11-15). A handover is the primary contact's own request; an
+// unreachable case is a member (or Birr staff) reporting them unable to
+// act, with a 7-day window for them to object. Birr approves either.
+export type SuccessionStatus = "requested" | "approved" | "completed" | "rejected" | "cancelled" | "objected";
+export interface PrimaryContactSuccession {
+  id: string;
+  founderId: string;
+  kind: "handover" | "unreachable";
+  status: SuccessionStatus;
+  outgoingMembershipId: string;
+  newMembershipId: string | null;
+  newEmail: string | null;
+  newFullName: string | null;
+  reason: string;
+  evidenceNote: string | null;
+  requestedByUserId: string | null;
+  outgoingNotifiedAt: string | null;
+  earliestApprovalAt: string;
+  objectedAt: string | null;
+  objectionNote: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  outgoingMembership: { id: string; user: { id: string; fullName: string; email: string } };
+  newMembership: { id: string; user: { id: string; fullName: string; email: string } } | null;
+  requestedBy: { fullName: string } | null;
+}
+
 // GET /invitations (founder-scoped) — invitations this Foundation's
 // primary contact has sent, any status.
 export interface Invitation {
@@ -528,7 +556,7 @@ export interface WaqfLifecycleStatus {
     financialReporting: { status: LifecycleStageStatus; count?: number };
     impactMeasurement: { status: LifecycleStageStatus; count?: number };
     audit: { status: LifecycleStageStatus; count?: number };
-    successionManagement: { status: LifecycleStageStatus };
+    successionManagement: { status: LifecycleStageStatus; changeUnderWay?: boolean; lastChangedAt?: string | null };
     longTermPreservation: { status: LifecycleStageStatus };
   };
   completedCount: number;
