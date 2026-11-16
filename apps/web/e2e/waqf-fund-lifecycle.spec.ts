@@ -85,6 +85,7 @@ test.describe("Waqf Fund establishment", () => {
   });
 
   test.afterEach(async () => {
+  // People stay: the audit log names them and refuses their deletion (2026-11-15); test staff are suspended instead.
     // No FoundationDeed created by THIS describe block — but
     // "E2E Fixture Foundation "/"e2e-founder-" is the same shared prefix
     // every seedEstablishedFounder()-based spec uses, including this
@@ -108,12 +109,6 @@ test.describe("Waqf Fund establishment", () => {
     // leaves its co-founders in place: the audit log names them).
     await prisma.foundation.deleteMany({
       where: { name: { startsWith: "E2E Fixture Foundation " }, foundationDeed: null, foundationFounders: { none: {} } },
-    });
-    await prisma.founder.deleteMany({
-      where: { name: "E2E Fixture Founder Org", signedFoundationDeeds: { none: {} } },
-    });
-    await prisma.user.deleteMany({
-      where: { email: { startsWith: "e2e-founder-" }, signedFoundationDeeds: { none: {} } },
     });
   });
 });

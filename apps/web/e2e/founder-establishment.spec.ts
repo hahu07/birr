@@ -21,6 +21,7 @@ test.describe("founder self-service establishment", () => {
   let createdUserId: string | undefined;
 
   test.afterEach(async () => {
+  // People stay: the audit log names them and refuses their deletion (2026-11-15); test staff are suspended instead.
     if (!createdUserId) return;
     const membership = await prisma.founderMembership.findFirst({ where: { userId: createdUserId } });
     if (membership) {
@@ -32,9 +33,7 @@ test.describe("founder self-service establishment", () => {
         await prisma.foundationFounder.deleteMany({ where: { foundationId } });
         await prisma.foundation.delete({ where: { id: foundationId } }).catch(() => {});
       }
-      await prisma.founder.delete({ where: { id: founderId } }).catch(() => {});
     }
-    await prisma.user.delete({ where: { id: createdUserId } }).catch(() => {});
     createdUserId = undefined;
   });
 

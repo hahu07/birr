@@ -177,6 +177,7 @@ test.describe("donation submission", () => {
 });
 
 test.afterEach(async () => {
+  // People stay: the audit log names them and refuses their deletion (2026-11-15); test staff are suspended instead.
   while (createdVaultIds.length > 0) {
     const vaultId = createdVaultIds.pop()!;
     await prisma.vaultCause.deleteMany({ where: { vaultId } });
@@ -185,7 +186,6 @@ test.afterEach(async () => {
   while (createdStaffUserIds.length > 0) {
     const userId = createdStaffUserIds.pop()!;
     await prisma.mfaBackupCode.deleteMany({ where: { userId } });
-    await prisma.birrStaff.deleteMany({ where: { userId } });
-    await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+    await prisma.birrStaff.updateMany({ where: { userId }, data: { status: "suspended" } });
   }
 });

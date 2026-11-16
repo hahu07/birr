@@ -107,7 +107,6 @@ test.describe("dual Founder/staff session boundary", () => {
         await prisma.waqf.deleteMany({ where: { id: { in: [ownWaqf.id, otherWaqf.id] } } });
         await prisma.foundationFounder.deleteMany({ where: { foundationId: otherFoundation.id } });
         await prisma.foundation.delete({ where: { id: otherFoundation.id } }).catch(() => {});
-        await prisma.founder.delete({ where: { id: otherFounder.id } }).catch(() => {});
       }
     } finally {
       await context.close();
@@ -116,6 +115,7 @@ test.describe("dual Founder/staff session boundary", () => {
 });
 
 test.afterEach(async () => {
+  // People stay: the audit log names them and refuses their deletion (2026-11-15); test staff are suspended instead.
   // NotificationsService fires a real notification row (governed_action
   // proposed/decided, etc.) off several of the real HTTP calls this spec
   // makes — its own recipientUserId FK blocks deleting the User beneath
@@ -142,13 +142,6 @@ test.afterEach(async () => {
   await prisma.foundation.deleteMany({
     where: { name: { startsWith: "E2E Fixture Foundation " }, foundationDeed: null, foundationFounders: { none: {} } },
   });
-  await prisma.founder.deleteMany({
-    where: { name: "E2E Fixture Founder Org", signedFoundationDeeds: { none: {} } },
-  });
-  await prisma.user.deleteMany({
-    where: { email: { startsWith: "e2e-founder-" }, signedFoundationDeeds: { none: {} } },
-  });
   await prisma.mfaBackupCode.deleteMany({ where: { user: { email: { startsWith: "e2e-staff-" } } } });
-  await prisma.birrStaff.deleteMany({ where: { user: { email: { startsWith: "e2e-staff-" } } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: "e2e-staff-" } } });
+  await prisma.birrStaff.updateMany({ where: { user: { email: { startsWith: "e2e-staff-" } } }, data: { status: "suspended" } });
 });

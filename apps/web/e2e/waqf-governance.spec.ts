@@ -122,8 +122,7 @@ test.describe("Ops Console asset disposal", () => {
         // session-boundary.spec.ts's own cleanup hit first.
         await prisma.notification.deleteMany({ where: { recipientUserId: userId } });
         await prisma.mfaBackupCode.deleteMany({ where: { userId } });
-        await prisma.birrStaff.deleteMany({ where: { userId } });
-        await prisma.user.deleteMany({ where: { id: userId } });
+        await prisma.birrStaff.updateMany({ where: { userId }, data: { status: "suspended" } });
       }
     } finally {
       await makerContext.close();
