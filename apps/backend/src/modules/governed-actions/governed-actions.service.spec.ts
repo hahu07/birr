@@ -2908,6 +2908,13 @@ describe("GovernedActionsService", () => {
     const run = Date.now().toString(36);
     let n = 0;
 
+    afterAll(async () => {
+      // Approved test rulesets would otherwise appear in the public
+      // calculator's school list (dev database). Superseding is the one
+      // change the database allows an approved ruleset.
+      await prisma.zakahRuleset.updateMany({ where: { key: { startsWith: `test-${run}-` }, status: "approved" }, data: { status: "superseded" } });
+    });
+
     async function draftRuleset() {
       return zakahService.createDraft(
         { key: `test-${run}-ga-${n++}`, madhhab: "maliki", label: "Maliki", rulings: draftRulesets.maliki.rulings },
