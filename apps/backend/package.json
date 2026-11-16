@@ -24,6 +24,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "cookie-parser": "^1.4.7",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.5.0",
@@ -45,9 +46,10 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
     "@types/qrcode": "^1.5.6",
-    "dotenv": "^17.4.2",
     "jest": "^29.7.0",
+    "pg": "^8.23.1",
     "ts-jest": "^29.2.0",
     "typescript": "^5.6.0"
   }

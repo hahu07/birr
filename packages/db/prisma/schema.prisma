@@ -31,6 +31,15 @@ enum FounderKind {
   individual
 }
 
+// What a co-founder agreed to when accepting their invitation to a
+// Foundation — see CoFounderDeedConsent.
+enum CoFounderConsentKind {
+  // The Foundation's deed was already signed: they adopt it.
+  adopt_signed_deed
+  // Not signed yet: they authorize the first founder to sign it for them.
+  authorize_signer
+}
+
 enum InstitutionType {
   islamic_bank
   university
@@ -345,6 +354,7 @@ model User {
   whatsappOtps                   WhatsAppOtp[]
   signedWaqfDeeds                WaqfDeed[]
   signedFoundationDeeds          FoundationDeed[]
+  coFounderDeedConsents          CoFounderDeedConsent[]
   updatedProviderCredentials     ProviderCredential[]
   proposedCauseSuggestions       CauseCategorySuggestion[]       @relation("CauseSuggestionProposedBy")
   reviewedCauseSuggestions       CauseCategorySuggestion[]       @relation("CauseSuggestionReviewedBy")
@@ -419,6 +429,7 @@ model Founder {
   auditLogs              AuditLog[]
   signedWaqfDeeds        WaqfDeed[]
   signedFoundationDeeds  FoundationDeed[]
+  coFounderDeedConsents  CoFounderDeedConsent[]
   causeSuggestions       CauseCategorySuggestion[]
   beneficiaryNominations BeneficiaryNomination[]
   founderRequests        FounderRequest[]
@@ -578,24 +589,30 @@ model Waqf {
 // exactly as it did before this model existed — see
 // waqfs/waqfs.service.ts's create() comment.
 model Foundation {
-  id           String           @id @default(uuid())
-  name         String
-  purpose      String?
-  jurisdiction String?
+  id                 String           @id @default(uuid())
+  name               String
+  purpose            String?
+  jurisdiction       String?
   // Set via POST /founders/establish (first Foundation, bundled with
   // Founder creation) — a served-file URL, not the file itself. See
   // apps/backend/src/modules/foundations/logo-storage.service.ts.
-  logoUrl      String?
-  status       FoundationStatus @default(active)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  deletedAt    DateTime?
+  logoUrl            String?
+  // Established jointly by family or friends (2026-11-14, owner's
+  // decision): the deed is then signed by one founder for every
+  // co-founder, present and future, each of whom adopts it through a
+  // CoFounderDeedConsent. See foundation-deed-template.ts.
+  establishedJointly Boolean          @default(false)
+  status             FoundationStatus @default(active)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
 
-  foundationFounders FoundationFounder[]
-  waqfs              Waqf[]
-  invitations        Invitation[]
-  foundationDeed     FoundationDeed?
-  messages           Message[]
+  foundationFounders    FoundationFounder[]
+  waqfs                 Waqf[]
+  invitations           Invitation[]
+  foundationDeed        FoundationDeed?
+  coFounderDeedConsents CoFounderDeedConsent[]
+  messages              Message[]
 
   @@map("foundations")
 }
@@ -673,7 +690,38 @@ model FoundationDeed {
   signedAt            DateTime   @default(now())
   createdAt           DateTime   @default(now())
 
+  coFounderDeedConsents CoFounderDeedConsent[]
+
   @@map("foundation_deeds")
+}
+
+// A co-founder's own, recorded consent to the Foundation's deed, given
+// when they accept their invitation (owner's decision, 2026-11-14 —
+// "A2" in the Board note "Joint Waqf: Who Signs the Deed"). The deed is
+// signed once, by one founder; this is how every other founder's money
+// is dedicated with their own agreement rather than on someone else's
+// signature alone. statementText is the exact wording they were shown,
+// snapshotted like FoundationDeed.deedText. Immutable once written, by
+// the same trigger as foundation_deeds.
+model CoFounderDeedConsent {
+  id               String               @id @default(uuid())
+  foundationId     String
+  foundation       Foundation           @relation(fields: [foundationId], references: [id])
+  founderId        String
+  founder          Founder              @relation(fields: [founderId], references: [id])
+  userId           String
+  user             User                 @relation(fields: [userId], references: [id])
+  kind             CoFounderConsentKind
+  // Set for adopt_signed_deed only — the deed they adopted.
+  foundationDeedId String?
+  foundationDeed   FoundationDeed?      @relation(fields: [foundationDeedId], references: [id], onDelete: Restrict)
+  statementVersion String
+  statementText    String               @db.Text
+  ipAddress        String?
+  consentedAt      DateTime             @default(now())
+
+  @@unique([foundationId, founderId])
+  @@map("co_founder_deed_consents")
 }
 
 // Join, not a single founderId column on Foundation — a Foundation can

@@ -55,8 +55,10 @@ test.describe("Co-founder invitation", () => {
     try {
       const page = await context.newPage();
       await page.goto(`/ops/accept-invitation?token=${token}&kind=co_founder`);
-      await expect(page.getByRole("heading", { name: "Join as a co-founder" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /^Join .+ as a co-founder$/ })).toBeVisible();
 
+      // Joining for an organization; the page defaults to an individual.
+      await page.getByRole("radio", { name: /^Institution/ }).check();
       await page.getByLabel("Institution name").fill("E2E Co-Founder Institution");
       await page.getByLabel("Full name").fill("E2E Co-Founder Person");
       // exact: true — PasswordInput's own "Show password" toggle button
@@ -64,6 +66,8 @@ test.describe("Co-founder invitation", () => {
       // "Confirm password" itself contains "password" too.
       await page.getByLabel("Password", { exact: true }).fill("E2e-CoFounder-Password-1!");
       await page.getByLabel("Confirm password").fill("E2e-CoFounder-Password-1!");
+      // Joining needs the co-founder's own agreement to the Foundation's deed.
+      await page.getByRole("checkbox", { name: /I accept this statement/ }).check();
 
       // The page's own success handler always does window.location.href
       // = "/" first — but this brand-new co-founder's own Foundation has
@@ -113,10 +117,12 @@ test.describe("Co-founder invitation", () => {
     try {
       const firstPage = await firstContext.newPage();
       await firstPage.goto(`/ops/accept-invitation?token=${token}&kind=co_founder`);
+      await firstPage.getByRole("radio", { name: /^Institution/ }).check();
       await firstPage.getByLabel("Institution name").fill("E2E Co-Founder Institution 2");
       await firstPage.getByLabel("Full name").fill("E2E Co-Founder Person 2");
       await firstPage.getByLabel("Password", { exact: true }).fill("E2e-CoFounder-Password-2!");
       await firstPage.getByLabel("Confirm password").fill("E2e-CoFounder-Password-2!");
+      await firstPage.getByRole("checkbox", { name: /I accept this statement/ }).check();
       await Promise.all([
         firstPage.waitForURL("/", { timeout: 10_000 }),
         firstPage.getByRole("button", { name: "Accept and join as co-founder" }).click(),
@@ -129,24 +135,20 @@ test.describe("Co-founder invitation", () => {
     try {
       const secondPage = await secondContext.newPage();
       await secondPage.goto(`/ops/accept-invitation?token=${token}&kind=co_founder`);
-      await secondPage.getByLabel("Institution name").fill("E2E Should Never Exist");
-      await secondPage.getByLabel("Full name").fill("E2E Should Never Exist");
-      await secondPage.getByLabel("Password", { exact: true }).fill("E2e-CoFounder-Password-3!");
-      await secondPage.getByLabel("Confirm password").fill("E2e-CoFounder-Password-3!");
-      await secondPage.getByRole("button", { name: "Accept and join as co-founder" }).click();
-
-      await expect(secondPage.getByText("Couldn't accept invitation")).toBeVisible();
-      await expect(secondPage.getByText(/already been accepted/)).toBeVisible();
-      await expect(secondPage).toHaveURL(/\/ops\/accept-invitation/);
-
-      const neverCreated = await prisma.founder.findFirst({ where: { name: "E2E Should Never Exist" } });
-      expect(neverCreated).toBeNull();
+      // A used link reveals nothing and offers no form to fill in again.
+      await expect(secondPage.getByText("This invitation isn't valid anymore")).toBeVisible();
+      await expect(secondPage.getByRole("button", { name: "Accept and join as co-founder" })).toHaveCount(0);
+      expect(await prisma.user.count({ where: { email: (await prisma.invitation.findUniqueOrThrow({ where: { token } })).email } })).toBe(1);
     } finally {
       await secondContext.close();
     }
   });
 });
 
+// Only what isn't part of the record. The fixture people, Founders and
+// Foundations stay: the audit log names them and each co-founder's
+// agreement to the deed (co_founder_deed_consents) is immutable, so like
+// every other spec since 2026-11-15, tests leave them in place.
 test.afterEach(async () => {
   await prisma.notification.deleteMany({
     where: { recipientUser: { email: { startsWith: "e2e-founder-" } } },
@@ -154,36 +156,7 @@ test.afterEach(async () => {
   await prisma.notification.deleteMany({
     where: { recipientUser: { email: { startsWith: "e2e-cofounder-" } } },
   });
-  await prisma.founderMembership.deleteMany({
-    where: {
-      user: {
-        OR: [{ email: { startsWith: "e2e-founder-" } }, { email: { startsWith: "e2e-cofounder-" } }],
-        signedFoundationDeeds: { none: {} },
-      },
-    },
-  });
-  await prisma.foundationFounder.deleteMany({
-    where: {
-      founder: {
-        OR: [{ name: "E2E Fixture Founder Org" }, { name: { startsWith: "E2E Co-Founder Institution" } }],
-        signedFoundationDeeds: { none: {} },
-      },
-    },
-  });
-  await prisma.foundation.deleteMany({
-    where: { name: { startsWith: "E2E Fixture Foundation " }, foundationDeed: null },
-  });
+  // Invitations point at the founder who sent them; other specs' clean-up
+  // deletes that founder's user, so these must go first.
   await prisma.invitation.deleteMany({ where: { email: { startsWith: "e2e-cofounder-" } } });
-  await prisma.founder.deleteMany({
-    where: {
-      OR: [{ name: "E2E Fixture Founder Org" }, { name: { startsWith: "E2E Co-Founder Institution" } }],
-      signedFoundationDeeds: { none: {} },
-    },
-  });
-  await prisma.user.deleteMany({
-    where: {
-      OR: [{ email: { startsWith: "e2e-founder-" } }, { email: { startsWith: "e2e-cofounder-" } }],
-      signedFoundationDeeds: { none: {} },
-    },
-  });
 });

@@ -1,6 +1,18 @@
 import { fileURLToPath } from "node:url";
 import { withSentryConfig } from "@sentry/nextjs/config";
 
+// Next.js only reads .env files from apps/web itself, but this repo keeps
+// one shared .env at the root (NEXT_PUBLIC_BACKEND_URL, WEB_PORT, ...).
+// Load it here, before Next inlines NEXT_PUBLIC_* values, so `pnpm dev`
+// works without exporting it by hand. Variables already set (the
+// Dockerfile's build args) win, and a missing file is ignored — .env is
+// in .dockerignore, so image builds never see it.
+try {
+  process.loadEnvFile(fileURLToPath(new URL("../../.env", import.meta.url)));
+} catch {
+  // No root .env — the environment is configured some other way.
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Founder-facing and Ops Console surfaces are merged into this one

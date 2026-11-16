@@ -493,6 +493,36 @@ describe("FoundersService.establishFounderAndFoundation", () => {
     expect(foundationLogs).toHaveLength(1);
   });
 
+  test("an individual can establish jointly, recorded on the Foundation and in its audit snapshot", async () => {
+    const { userId } = await createVerifiedUser("establish-jointly");
+    const { foundation } = await service.establishFounderAndFoundation(userId, {
+      founderName: "Joint Spec Founder",
+      kind: "individual",
+      foundationName: "Joint Spec Family Foundation",
+      purpose: "Testing joint establishment",
+      establishedJointly: "true",
+    });
+
+    expect(foundation.establishedJointly).toBe(true);
+    const [log] = await prisma.auditLog.findMany({ where: { entityId: foundation.id, action: "foundation.created" } });
+    expect(log.after).toMatchObject({ establishedJointly: true });
+  });
+
+  test("refuses establishing jointly as an institution — an informal group isn't one", async () => {
+    const { userId } = await createVerifiedUser("establish-jointly-institution");
+    await expect(
+      service.establishFounderAndFoundation(userId, {
+        founderName: "Joint Spec Institution",
+        kind: "institution",
+        institutionType: "ngo",
+        foundationName: "Joint Spec Institution Foundation",
+        purpose: "Testing",
+        establishedJointly: "true",
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(await prisma.founderMembership.findFirst({ where: { userId } })).toBeNull();
+  });
+
   test("rejects establishing a second Founder for the same user", async () => {
     const { userId } = await createVerifiedUser("establish-duplicate");
     await service.establishFounderAndFoundation(userId, {
@@ -787,20 +817,30 @@ describe("FoundersService MFA", () => {
   }, 25000);
 
   test("resetMfaInTransaction() clears MFA state and deletes backup codes (the audit record is the governed-action engine's job)", async () => {
-    const { secretForManualEntry } = await service.startMfaEnrollment(mfaUserId);
-    await service.confirmMfaEnrollment(mfaUserId, codeFor(secretForManualEntry));
+    const resetUser = await prisma.user.create({ data: { email: testEmail("mfa-founder-reset"), fullName: "MFA Reset Founder" } });
+    const { secretForManualEntry } = await service.startMfaEnrollment(resetUser.id);
+    await service.confirmMfaEnrollment(resetUser.id, codeFor(secretForManualEntry));
 
-    await prisma.$transaction((tx) => service.resetMfaInTransaction(mfaUserId, tx));
+    await prisma.$transaction((tx) => service.resetMfaInTransaction(resetUser.id, tx));
 
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: mfaUserId } });
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: resetUser.id } });
     expect(user.mfaEnabled).toBe(false);
     expect(user.mfaSecretEncrypted).toBeNull();
-    expect(await prisma.mfaBackupCode.count({ where: { userId: mfaUserId } })).toBe(0);
+    expect(await prisma.mfaBackupCode.count({ where: { userId: resetUser.id } })).toBe(0);
+  }, 25000);
+
+  test("starting setup again shows the same secret; never once two-factor is on", async () => {
+    const user = await prisma.user.create({ data: { email: testEmail("mfa-founder-restart"), fullName: "MFA Restart Founder" } });
+    const first = await service.startMfaEnrollment(user.id);
+    expect((await service.startMfaEnrollment(user.id)).secretForManualEntry).toBe(first.secretForManualEntry);
+    await service.confirmMfaEnrollment(user.id, codeFor(first.secretForManualEntry));
+    await expect(service.startMfaEnrollment(user.id)).rejects.toThrow(/already on/);
   }, 25000);
 
   test("resetMfaInTransaction() rejects an unknown user, an unenrolled user, and a Birr staff account", async () => {
     await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(randomUUID(), tx))).rejects.toThrow(NotFoundException);
-    await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(mfaUserId, tx))).rejects.toThrow(/nothing to reset/);
+    const unenrolled = await prisma.user.create({ data: { email: testEmail("mfa-founder-none"), fullName: "No MFA Founder" } });
+    await expect(prisma.$transaction((tx) => service.resetMfaInTransaction(unenrolled.id, tx))).rejects.toThrow(/nothing to reset/);
     const staffUser = await prisma.user.create({
       data: { email: testEmail("mfa-founder-is-staff"), fullName: "Staff Not Founder", mfaEnabled: true, mfaSecretEncrypted: "x" },
     });

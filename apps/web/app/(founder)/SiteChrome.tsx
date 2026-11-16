@@ -202,7 +202,7 @@ export function SiteFooter() {
           </Link>
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-500">
             A digital trustee for Islamic waqf — establish your own Waqf Fund, or support one of Birr's own Vaults.
-            Every payout runs under the same dual authorisation either way.
+            Every payout runs under the same board authorisation either way.
           </p>
         </div>
 

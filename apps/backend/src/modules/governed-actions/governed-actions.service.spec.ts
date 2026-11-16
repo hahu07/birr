@@ -37,6 +37,7 @@ import { ZakahLedgerService } from "../zakah/zakah-ledger.service";
 import { ZakahRefundsService } from "../zakah/zakah-refunds.service";
 import { ZakahFitrService } from "../zakah/zakah-fitr.service";
 import { unusedFitrSeason } from "../zakah/test-support-fitr";
+import { lockZakahCommitments } from "../zakah/zakah-commitments";
 import { draftRulesets } from "@birr/zakah";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
@@ -1212,12 +1213,15 @@ describe("GovernedActionsService", () => {
     });
     governedActionIds.push(action.id);
 
-    const proposed = await service.list({ status: "proposed" });
+    // Scoped to this test's own waqf: the shared dev database holds hundreds
+    // of decided actions from earlier runs, and listing them all (each with
+    // its summary looked up) outgrew the test timeout.
+    const proposed = await service.list({ status: "proposed", waqfId: waqf.id });
     expect(proposed.some((a) => a.id === action.id)).toBe(true);
     const found = proposed.find((a) => a.id === action.id)!;
     expect(found.permission.key).toBe("asset.dispose");
 
-    const approved = await service.list({ status: "approved" });
+    const approved = await service.list({ status: "approved", waqfId: waqf.id });
     expect(approved.some((a) => a.id === action.id)).toBe(false);
   });
 
@@ -2876,6 +2880,46 @@ describe("GovernedActionsService", () => {
         ["zakah_distribution.paid", distributionCheckerUserId],
       ]);
     });
+
+    test("approving a zakah distribution can't deadlock with a transaction holding the spending limit", async () => {
+      // Creating a distribution takes the zakah spending-limit lock, then
+      // writes its audit row. Approving one used to write its audit row
+      // (taking the audit chain's lock) and only then the spending-limit
+      // lock, so the two could each wait on the other forever until
+      // Postgres cancelled one (seen 2026-11-15). Here another transaction
+      // holds the spending limit while the approval starts, then writes
+      // its audit row: in the old order that's a deadlock.
+      const r = await fundedRecipient();
+      const d = await zakahDistributionsService.create(
+        { recipientId: r.id, category: "masakin", amount: "1000", reason: "Food support this month." },
+        makerUserId,
+      );
+      const approval = await service.propose({ permissionKey: "zakah.distribution_approve", payload: { distributionId: d.id }, makerUserId });
+
+      let holding!: () => void;
+      const lockHeld = new Promise<void>((resolve) => (holding = resolve));
+      let letGo!: () => void;
+      const released = new Promise<void>((resolve) => (letGo = resolve));
+      const other = prisma.$transaction(
+        async (tx) => {
+          await lockZakahCommitments(tx);
+          holding();
+          await released;
+          await tx.auditLog.create({
+            data: { actorType: "birr_staff", actorUserId: makerUserId, action: "test.lock_order", entityType: "ZakahDistribution", entityId: d.id },
+          });
+        },
+        { timeout: 20_000 },
+      );
+      await lockHeld;
+      const decision = service.decide({ governedActionId: approval.id, checkerUserId: distributionCheckerUserId, approve: true });
+      // Long enough for the approval to reach the spending-limit lock and wait.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      letGo();
+
+      await expect(Promise.all([other, decision])).resolves.toBeDefined();
+      expect((await prisma.zakahDistribution.findUniqueOrThrow({ where: { id: d.id } })).status).toBe("approved");
+    }, 30_000);
 
     test("zakah.recipient_approve and zakah.recipient_change: approved by a second person, audited; the database rejects checker = maker", async () => {
       const r = await zakahDistributionsService.createRecipient(

@@ -1,10 +1,17 @@
 import { prisma } from "@birr/db";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { ConflictOfInterestDeclarationsService } from "./conflict-of-interest-declarations.service";
-import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
+import type { NotificationsService } from "../notifications/notifications.service";
 
 describe("ConflictOfInterestDeclarationsService", () => {
-  const service = new ConflictOfInterestDeclarationsService(createFakeNotificationsService());
+  // Records notifications instead of writing them. declare() notifies every
+  // active compliance officer and Audit Committee member, and the shared dev
+  // database holds about a thousand left behind by earlier runs. Writing a
+  // notification for each one filled the connection pool, so the next test's
+  // transaction couldn't start in time. The fan-out isn't what these tests
+  // check, so it doesn't touch the database here.
+  const notify = jest.fn().mockResolvedValue(undefined);
+  const service = new ConflictOfInterestDeclarationsService({ notify } as unknown as NotificationsService);
 
   const declarationIds: string[] = [];
 
@@ -13,7 +20,8 @@ describe("ConflictOfInterestDeclarationsService", () => {
   let reviewerUserId: string;
 
   beforeAll(async () => {
-    // Fixture Users/BirrStaff are not cleaned up in afterAll — same
+    // Fixture Users/BirrStaff are not deleted in afterAll (jest.global-teardown.ts
+    // suspends them once the whole run is done) — same
     // reasoning as governed-actions.service.spec.ts (they end up
     // referenced via audit_logs.actorUserId, and that table is
     // insert-only at the DB role level, so deleting them would require
@@ -98,7 +106,7 @@ describe("ConflictOfInterestDeclarationsService", () => {
         where: { id: declaration.id },
         data: { reviewedByUserId: declarantUserId },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/coi_reviewer_not_declarant/);
   });
 
   test("review() by a different staff member updates status and writes an audit log", async () => {

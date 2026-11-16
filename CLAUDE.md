@@ -524,6 +524,80 @@ extending Waqf or Vault ones. Owner's decisions so far:
 accepts (`zakah-terms.ts`) is a **draft** that Legal and the Shariah
 Supervisory Board must approve before payments open.
 
+**Update, 2026-11-14 — joint waqf: one founder signs for all, each
+co-founder adopts the deed.** Families, couples and friends establishing
+a Foundation together had no path: they aren't an Institution, and the
+one-per-Foundation deed (see the Foundation Deed note above) was signed
+by whoever signed first, so another co-founder's money was dedicated on
+someone else's signature with no record they agreed. Owner's decisions
+("A2" in the Board note *Joint Waqf: Who Signs the Deed*):
+- A third founder type, **"Jointly, with family or friends"**: recorded
+  as an individual founder on a Foundation with `establishedJointly`. An
+  informal group is never an institution — establishing or joining a
+  joint Foundation as one is refused.
+- The deed then uses a **joint variant**
+  (`JOINT_FOUNDATION_DEED_TEMPLATE_VERSION`): the first founder signs for
+  themselves and every co-founder, present and future, and the deed
+  lists the co-founders as of signing. It also applies when a
+  single-founder Foundation has gained a co-founder before signing.
+  Single-founder deeds are byte-identical to v1.
+- **Every co-founder accepts a statement when accepting their
+  invitation** (`co-founder-consent.ts`): authorizing the signer if the
+  deed isn't signed yet, adopting it if it is. Stored as an immutable
+  `CoFounderDeedConsent` with the exact text and version, plus an audit
+  row; acceptance is refused without the current version, or if the
+  statement changed since it was shown (e.g. the deed was signed while
+  they read: the client echoes the statement's hash).
+- The signing page now shows **the full deed text** that will be
+  stored (`GET /foundation-deeds/:foundationId/preview`), not only a
+  summary, and signing is refused if the text changed since it was shown.
+  Funds and co-founders are listed oldest first, so the hashed text is
+  the same on every read.
+- **Went live at the owner's direction before Legal or the Shariah
+  Supervisory Board reviewed the joint wording or the statements** — the
+  Board note asks them to. A revision they approve gets a new version.
+- **2026-11-16, owner's decision: a joint deed waits for every
+  co-founder's own agreement.** Signing is refused while any other
+  founder of the Foundation has no `CoFounderDeedConsent`; the signing
+  page names who it's waiting for. Co-founders without one (joined
+  before agreeing was part of joining, or added another way) agree on
+  the Foundation's deed page (`GET/POST
+  /foundation-deeds/:foundationId/consent`, their primary contact only),
+  and can adopt a deed already signed the same way. Signing and joining
+  both take the Foundation's row lock first, so neither sees the other
+  half-done. `co_founder_deed_consents` has founder-isolation RLS like
+  `foundation_deeds`.
+
+**Update, 2026-11-15 — Stablecoin hidden as a donation option too; no
+crypto for now.** Owner's decision, after research showed neither works
+in Nigeria today:
+- **The gateway is gone.** `StablecoinAdapter` is built on Coinbase
+  Commerce, which reportedly closed to merchants outside the US and
+  Singapore on 2026-03-31; its successor, Coinbase Business, serves
+  US/Singapore entities only. No key was ever configured and no
+  stablecoin payment was ever made.
+- **The law doesn't allow it yet.** The CBN's Regulations for the
+  Operations of Non-Security Virtual Assets (in force 2026-11-05) let a
+  dollar stablecoin be used in Nigeria only once approved as "Class 2"
+  and issued by a CBN-licensed Nigerian company; none is reported
+  approved, so USDC/USDT don't qualify. Merchant acceptance and payment
+  gateways need separate CBN authorisation; existing operators have 180
+  days (to about early May 2027) to apply. The SEC (ISA 2025) already
+  barred accepting crypto directly without registration.
+- **Other crypto (BTC, ETH, ...) waits on three things**, revisit after
+  the CBN window closes: a legal opinion on whether a non-profit
+  receiving crypto through an authorised gateway needs its own approval;
+  a Shariah Supervisory Board ruling on crypto as waqf or zakah (AAOIFI
+  has no binding standard, and scholars differ); and a CBN-authorised
+  provider that converts to naira on arrival, so a waqf never holds a
+  volatile asset.
+- Removed from `WaqfFundForm.tsx` and `vaults/[slug]/page.tsx`, the
+  same way Stripe was; the adapter, webhook and Platform Settings entry
+  stay. Most findings came from news and law-firm summaries, not the
+  CBN text itself; have Legal confirm before relying on them.
+- For USD giving, the route is still Paystack international payments
+  with a Zenith Bank USD domiciliary account (see the 2026-09-19 note).
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
@@ -874,3 +948,10 @@ attributable.
 - Flag any place a single person could both propose and approve an
   action, even across two different roles they happen to hold — that's a
   maker-checker bug, not a style issue.
+- **In one transaction, take every other lock before writing the first
+  audit row.** Writing an audit row takes the audit chain's lock until
+  commit, so a transaction that audits first and locks second deadlocks
+  with one that locks first and audits second. `GovernedActionsService
+  .decide()` writes its decision row after the handler runs for this
+  reason (a zakah approval deadlocked with a new distribution,
+  2026-11-15).

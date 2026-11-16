@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { prisma } from "@birr/db";
 import { EncryptionService } from "./encryption.service";
-import { envVarName, isKnownProviderField } from "./provider-fields";
+import { envVarName, isKnownProviderField, providerFieldValueError } from "./provider-fields";
 
 function assertKnownField(provider: string, key: string): void {
   if (!isKnownProviderField(provider, key)) {
@@ -69,6 +69,8 @@ export class SettingsService {
    */
   async set(provider: string, key: string, value: string, actorUserId: string): Promise<void> {
     assertKnownField(provider, key);
+    const problem = providerFieldValueError(provider, key, value);
+    if (problem) throw new BadRequestException(problem);
     const encryptedValue = this.encryption.encrypt(value);
     await prisma.$transaction(async (tx) => {
       await tx.providerCredential.upsert({

@@ -3,7 +3,7 @@ import { IsBoolean, IsString } from "class-validator";
 import type { Request } from "express";
 import { FoundationDeedsService } from "./foundation-deeds.service";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
-import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
+import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
@@ -16,6 +16,16 @@ class SignFoundationDeedBody {
 
   @IsBoolean()
   affirmed!: boolean;
+
+  // From GET :foundationId/preview — proves the signer saw the text stored.
+  @IsString()
+  textHash!: string;
+}
+
+class GiveConsentBody {
+  // From GET :foundationId/consent — proves they saw the statement stored.
+  @IsString()
+  statementHash!: string;
 }
 
 // @Public() — Founder-Portal self-service surface, same reasoning as
@@ -39,8 +49,35 @@ export class FoundationDeedsController {
       founderId: founder.id,
       typedLegalName: body.typedLegalName,
       affirmed: body.affirmed,
+      textHash: body.textHash,
       ipAddress: request.ip,
     });
+  }
+
+  // The full deed text as it would be signed now. Declared before
+  // :foundationId so "preview" is never read as an id. Founder-only:
+  // staff read signed deeds below, and have nothing to sign.
+  @Get(":foundationId/preview")
+  async preview(@Param("foundationId") foundationId: string, @Req() request: Request) {
+    const founder = await resolveFounderFromSession(request);
+    return this.service.preview(foundationId, founder.id);
+  }
+
+  // A co-founder's own agreement to the deed, when none is on record yet
+  // (see FoundationDeedsService.consentStatus). Null when none is needed.
+  @Get(":foundationId/consent")
+  async consentStatus(@Param("foundationId") foundationId: string, @Req() request: Request) {
+    const founder = await resolveFounderFromSession(request);
+    return this.service.consentStatus(foundationId, founder.id);
+  }
+
+  // Agreeing binds this founder (their money is dedicated under the
+  // deed), so like signing it's for their primary contact only.
+  @Post(":foundationId/consent")
+  async giveConsent(@Param("foundationId") foundationId: string, @Body() body: GiveConsentBody, @Req() request: Request) {
+    const [user, founder] = await Promise.all([resolveUserFromSession(request), resolveFounderFromSession(request)]);
+    assertPrimaryContact(founder);
+    return this.service.giveConsent({ foundationId, founderId: founder.id, userId: user.id, statementHash: body.statementHash, ipAddress: request.ip });
   }
 
   // A signed deed's deedText/typedLegalName/ipAddress is real legal and

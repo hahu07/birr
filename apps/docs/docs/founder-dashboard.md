@@ -27,10 +27,10 @@ One rule applies to the *entire* dashboard, so it's worth saying up
 front: **Amina can look at everything and ask for things, but she can
 never personally approve or make a "real" change herself.** Anything
 that actually moves money or changes how a waqf is run — paying out to
-someone, changing an investment, disposing of an asset — has to be
-done by Birr's own staff, and always by *two different* staff members
-(one proposes it, a different one has to approve it before anything
-happens). Think of it like a bank: you can see your balance and ask for
+someone, changing an investment, disposing of an asset — is decided by
+members of the responsible Birr board or committee: depending on the
+decision, the Board of Trustees, Investment Committee, Audit Committee
+or Shariah Supervisory Board. Think of it like a bank: you can see your balance and ask for
 a transfer, but you can't edit the bank's own ledger yourself. That's
 what keeps the money safe.
 
@@ -77,15 +77,15 @@ funds as examples:
 |---|---|---|
 | **Lifecycle** *(Clean Water Project only)* | A checklist of every stage a project waqf goes through, from "just started" to "long-term wrap-up." Shows Amina exactly where her project currently stands. | No, just for viewing |
 | **Project Progress** *(Clean Water Project only)* | The actual milestones — e.g. "Well #1: Drilled ✅ — cost ₦3,150,000 of the ₦3,000,000 budgeted," with photos/evidence attached. | No, just for viewing |
-| **Contributions** | How much has been donated so far, and the history of who gave what and when. | **Yes** — she can add more money here, in Naira via Paystack (bank transfer or local card) or in stablecoin |
+| **Contributions** | How much has been donated so far, and the history of who gave what and when. | **Yes** — she can add more money here, in Naira via Paystack (bank transfer or local card) |
 | **Causes** | The specific purposes her fund supports — e.g. "Scholarships" or "Clean Water Access" — picked from Birr's standard list, and how much money is earmarked for each. | **Yes** — she can pick, unpick, and set the amount for each cause herself, no approval needed |
-| **Assets** | Any physical property backing the fund (e.g. a building). | No — only Birr staff register or sell an asset |
+| **Assets** | Any physical property backing the fund (e.g. a building). | No — Birr registers assets, and selling one is decided by members of the Board of Trustees, Investment Committee or Audit Committee |
 | **Investments** *(Scholarship Waqf only)* | What the ₦75,000,000 is actually invested in, and whether it's been checked for Shariah compliance. | No, just for viewing |
-| **Proceeds** *(Scholarship Waqf only)* | The profit the investment has earned so far, as logged by Birr's staff. | No, just for viewing |
+| **Proceeds** *(Scholarship Waqf only)* | The profit the investment has earned so far, as recorded by Birr's Investment Committee or a Mutawalli Officer. | No, just for viewing |
 | **Distributions** | A summary of payouts already made, grouped by cause (e.g. "₦4,800,000 paid out for Scholarships so far") — not a list of who received what. | No, just for viewing |
-| **Beneficiaries** | How many people are benefiting, and what the eligibility rules are — again, just a count, never names. | **Yes** — she can nominate someone she thinks should be considered, one at a time or in bulk, for Birr staff to review |
+| **Beneficiaries** | How many people are benefiting, and what the eligibility rules are — again, just a count, never names. | **Yes** — she can nominate someone she thinks should be considered, one at a time or in bulk, for a Birr Mutawalli Officer to review |
 | **Requests** | A form to formally ask Birr for something — see below. | **Yes** — this is the main "ask" button on the whole dashboard |
-| **Governance Activity** | A log of decisions Birr staff have already finished making about this fund (approved or rejected) — nothing still "in progress" shows up here. | No, just for viewing |
+| **Governance Activity** | A log of decisions Birr has already finished making about this fund (approved or rejected) — nothing still "in progress" shows up here. | No, just for viewing |
 | **Financial Report** | A report Amina can generate any time, and export as a PDF, e.g. for her own board meeting. | **Yes** — she can generate this whenever she wants |
 
 Two things worth knowing about the **Beneficiaries** section: Amina
@@ -144,12 +144,19 @@ Only a Primary contact sees the "Invite someone" button — everyone else
 just doesn't see it, since they wouldn't be allowed to use it anyway.
 Inviting a colleague sends them an email with a link to join; if the
 email can't be sent automatically, Amina gets a copy of that link to
-send herself (by WhatsApp, for example) — that's exactly the situation
-shown in the second screenshot earlier in this conversation, where the
-system says *"Couldn't send the email automatically — copy this link
-and send it yourself."* Pending invitations that haven't been accepted
+send herself (by WhatsApp, for example): the system says *"Couldn't
+send the email automatically — copy this link and send it yourself."*
+Pending invitations that haven't been accepted
 yet are listed separately, and Amina can cancel one if she invited the
 wrong person.
+
+Teammates are different from **co-founders**. A teammate helps run
+Amina's account; a co-founder is someone establishing the Foundation
+with her, such as her husband or a sibling, with their own account and
+their own money in it. Co-founders are invited from the Foundation's
+page (or while setting it up, by choosing "Jointly, with family or
+friends"). Each one agrees to the Foundation's deed in their own name
+when they join, and the deed page lists who agreed and when.
 
 ## Activity — her own history book
 

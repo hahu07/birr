@@ -127,7 +127,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isPublicRoute = isPublicRoutePath(pathname);
   const isHomeRoute = pathname === HOME_ROUTE;
   const { status: onboarding, loading: onboardingLoading } = useOnboardingStatus(!loading && Boolean(user), pathname);
-  const { notifications, unreadCount, loading: notificationsLoading, refresh, markRead, markAllRead } =
+  const { notifications, unreadCount, loading: notificationsLoading, error: notificationsError, refresh, markRead, markAllRead } =
     useNotifications(!loading && Boolean(user) && Boolean(onboarding?.onboardingComplete));
 
   useEffect(() => {
@@ -276,6 +276,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             notifications={notifications}
             unreadCount={unreadCount}
             loading={notificationsLoading}
+            error={notificationsError}
             onOpen={refresh}
             onSelect={handleSelectNotification}
             onMarkAllRead={markAllRead}

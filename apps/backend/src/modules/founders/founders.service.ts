@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { hash, compare } from "bcryptjs";
-import { IsEnum, IsOptional, IsString, Matches, MinLength } from "class-validator";
+import { IsEnum, IsIn, IsOptional, IsString, Matches, MinLength } from "class-validator";
 import { prisma, Prisma, FounderKind, InstitutionType } from "@birr/db";
 import { assertUserEmailVerified, assertUserWhatsAppVerified } from "../../common/auth/current-founder";
 import { ResendVerificationEmailAdapter } from "./email/resend.adapter";
@@ -93,6 +93,15 @@ export class EstablishFounderAndFoundationInput {
   @IsOptional()
   @IsString()
   rafiqDraftId?: string;
+
+  // "Jointly, with family or friends" (2026-11-14): the Foundation's deed
+  // is then signed by one founder for every co-founder, each of whom
+  // adopts it on joining (see CoFounderDeedConsent). A string because
+  // this endpoint takes multipart form data. Individuals only: an
+  // informal group isn't an institution.
+  @IsOptional()
+  @IsIn(["true", "false"])
+  establishedJointly?: "true" | "false";
 }
 
 // Step 2's own fields, minus the ones Rafiq has no use for (logo) —
@@ -405,13 +414,29 @@ export class FoundersService {
    * state to design around here). Doesn't flip mfaEnabled until
    * confirmMfaEnrollment succeeds.
    */
-  async startMfaEnrollment(userId: string) {
+  async startMfaEnrollment(userId: string): Promise<{ qrCodeDataUrl: string; secretForManualEntry: string }> {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const { secretBase32, otpauthUri } = this.mfa.generateSecret(user.email);
-    await prisma.user.update({
-      where: { id: userId },
-      data: { mfaSecretEncrypted: this.encryption.encrypt(secretBase32) },
-    });
+    // Starting again must never replace a secret already in use: the
+    // person would be locked out at their next sign-in.
+    if (user.mfaEnabled) {
+      throw new BadRequestException("Two-factor authentication is already on for this account.");
+    }
+    // An unconfirmed secret is reused, not replaced, so a second tab or a
+    // return to this page shows the same QR code and every code from it
+    // keeps working. A reset clears the secret, which starts afresh.
+    const pending = user.mfaSecretEncrypted ? this.encryption.decrypt(user.mfaSecretEncrypted) : undefined;
+    const { secretBase32, otpauthUri } = this.mfa.generateSecret(user.email, pending);
+    if (!pending) {
+      // Only if still unset: two first calls at once both end up with the winner's secret.
+      await prisma.user.updateMany({
+        where: { id: userId, mfaSecretEncrypted: null, mfaEnabled: false },
+        data: { mfaSecretEncrypted: this.encryption.encrypt(secretBase32) },
+      });
+      const stored = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+      if (stored.mfaSecretEncrypted && this.encryption.decrypt(stored.mfaSecretEncrypted) !== secretBase32) {
+        return this.startMfaEnrollment(userId);
+      }
+    }
     const qrCodeDataUrl = await this.mfa.qrCodeDataUrl(otpauthUri);
     return { qrCodeDataUrl, secretForManualEntry: secretBase32 };
   }
@@ -532,6 +557,10 @@ export class FoundersService {
     if (!input.purpose?.trim()) {
       throw new BadRequestException("purpose is required.");
     }
+    const establishedJointly = input.establishedJointly === "true";
+    if (establishedJointly && input.kind !== "individual") {
+      throw new BadRequestException("A Foundation established jointly with family or friends is set up by individuals, not an institution.");
+    }
 
     // Saved before the transaction — a filesystem write can't
     // participate in a Postgres transaction anyway, and validating the
@@ -568,6 +597,7 @@ export class FoundersService {
           purpose: input.purpose,
           jurisdiction: input.jurisdiction,
           logoUrl: logo?.url,
+          establishedJointly,
         },
       });
       await tx.foundationFounder.create({ data: { foundationId: foundation.id, founderId: founder.id } });

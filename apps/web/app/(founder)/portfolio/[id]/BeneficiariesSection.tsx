@@ -59,7 +59,7 @@ export function BeneficiariesSection({ waqfId }: { waqfId: string }) {
 
       {nominateState === "submitted" && (
         <Alert tone="success" title="Nomination submitted" className="mb-4">
-          Birr staff will review this before your fund's beneficiary count updates.
+          A Birr Mutawalli Officer will review this before your fund&apos;s beneficiary count updates.
         </Alert>
       )}
 

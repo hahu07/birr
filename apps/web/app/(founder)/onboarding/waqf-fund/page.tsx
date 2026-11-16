@@ -11,7 +11,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, humanize } from "../../../../lib/format";
 import { ROUTE_FOR_STEP } from "../../../../lib/onboarding";
 import type { Foundation, Waqf } from "../../../../lib/types";
-import { Alert, Badge, Skeleton } from "@birr/ui";
+import { Alert, Badge, IconArrowRight, Skeleton } from "@birr/ui";
 import { WaqfFundForm } from "../../foundations/[id]/waqf-funds/new/WaqfFundForm";
 
 export default function OnboardingWaqfFundPage() {
@@ -83,10 +83,10 @@ export default function OnboardingWaqfFundPage() {
       )}
 
       {completedWaqfs && (
-        <div className="mt-6 space-y-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Already funded</p>
+        <div className="mt-6 max-w-2xl space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Already funded</p>
           {completedWaqfs.map((w) => (
-            <div key={w.id} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div key={w.id} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-slate-900">{w.name}</p>
                 <Badge tone="success">{humanize(w.status)}</Badge>
@@ -102,12 +102,15 @@ export default function OnboardingWaqfFundPage() {
               )}
             </div>
           ))}
-          <Link
-            href={ROUTE_FOR_STEP[4]}
-            className="inline-flex items-center text-sm font-medium text-primary-700 hover:text-primary-800"
-          >
-            Continue to sign deed →
-          </Link>
+          <div className="flex justify-end">
+            <Link
+              href={ROUTE_FOR_STEP[4]}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-primary-900/20 hover:bg-primary-800"
+            >
+              Continue to sign deed
+              <IconArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
         </div>
       )}
 

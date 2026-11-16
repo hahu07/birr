@@ -53,7 +53,7 @@ pooled, fungible cash, never a registered individual asset.
 
 ```mermaid
 flowchart LR
-    A["Browse open Vaults<br/>(no account needed)"] --> B["Give — pick an amount,<br/>optionally a cause,<br/>pay by card / regional / stablecoin"]
+    A["Browse open Vaults<br/>(no account needed)"] --> B["Give — pick an amount,<br/>optionally a cause,<br/>pay via Paystack"]
     B --> C{"Email provided?"}
     C -->|Yes| D["Receipt sent on confirmation"]
     C -->|No — anonymous| E["No receipt;<br/>anti-structuring check skipped"]
@@ -65,7 +65,7 @@ flowchart LR
 1. **Browse** — anyone can see every open Vault and the causes it
    supports, with no account required.
 2. **Give** — pick an amount, optionally earmark a specific cause within
-   the Vault, and pay by card, a regional payment rail, or stablecoin.
+   the Vault, and pay through Paystack (bank transfer or local card).
    Providing an email is optional, not required: giving anonymously is
    allowed, at the cost of two things — no receipt can be sent, and
    Birr's anti-structuring check (below) has no way to catch someone
@@ -98,9 +98,7 @@ Two additional compliance controls apply specifically to public giving:
   crossing it — requires their name and a form of identification before
   the gift can complete. This is an anti-structuring safeguard: it
   catches someone trying to avoid identity checks by splitting one large
-  gift into several smaller ones. Stablecoin gifts carry a materially
-  lower threshold than card or bank gifts, since a completed crypto
-  payment is far harder to reverse than a card charge.
+  gift into several smaller ones.
 - **A hold.** A compliance-tier staff member can flag any confirmed gift
   for review at any time, independent of whether it's ultimately
   refunded — this pauses nothing about the payment itself, just marks it

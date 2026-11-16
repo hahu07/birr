@@ -26,8 +26,9 @@ export interface GeneratedTotpSecret {
  */
 @Injectable()
 export class MfaService {
-  generateSecret(email: string): GeneratedTotpSecret {
-    const secret = new OTPAuth.Secret({ size: 20 });
+  generateSecret(email: string, existingBase32?: string): GeneratedTotpSecret {
+    // An existing secret gives back the same QR code: see pendingEnrollment.
+    const secret = existingBase32 ? OTPAuth.Secret.fromBase32(existingBase32) : new OTPAuth.Secret({ size: 20 });
     const totp = new OTPAuth.TOTP({
       issuer: ISSUER,
       label: email,

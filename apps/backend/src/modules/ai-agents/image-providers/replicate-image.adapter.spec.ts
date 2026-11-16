@@ -5,8 +5,11 @@ import { SettingsService } from "../../../common/settings/settings.service";
 const API_KEY = "r8-fixture-key";
 const POLL_URL = "https://api.replicate.com/v1/predictions/fixture-id";
 
-function fakeSettings(key: string | undefined = API_KEY): SettingsService {
-  return { get: async () => key } as unknown as SettingsService;
+// null means "no key configured". Not undefined: passing undefined applies
+// the default, which sent the "no key" test to the real API with the
+// fixture key.
+function fakeSettings(key: string | null = API_KEY): SettingsService {
+  return { get: async () => key ?? undefined } as unknown as SettingsService;
 }
 
 describe("ReplicateImageAdapter", () => {
@@ -21,7 +24,7 @@ describe("ReplicateImageAdapter", () => {
   test(
     "throws when no API key is configured",
     async () => {
-      const adapter = new ReplicateImageAdapter(fakeSettings(undefined));
+      const adapter = new ReplicateImageAdapter(fakeSettings(null));
       await expect(adapter.generate("a waqf")).rejects.toThrow(ServiceUnavailableException);
     },
     15000,

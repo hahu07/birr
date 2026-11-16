@@ -15,6 +15,8 @@ export interface NotificationBellProps {
   notifications: NotificationItem[];
   unreadCount: number;
   loading?: boolean;
+  /** Set when notifications couldn't be loaded, so a failure never looks like "all caught up". */
+  error?: string | null;
   /** Fired when the dropdown is opened — the consumer's chance to refresh. */
   onOpen?: () => void;
   /** Fired when a notification row is clicked (mark-read + navigate is the consumer's job). */
@@ -33,6 +35,7 @@ export function NotificationBell({
   notifications,
   unreadCount,
   loading = false,
+  error = null,
   onOpen,
   onSelect,
   onMarkAllRead,
@@ -81,10 +84,18 @@ export function NotificationBell({
         ref={toggleButtonRef}
         type="button"
         onClick={toggle}
-        aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+        aria-label={error ? "Notifications, couldn't load" : unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
         className="relative flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-md shadow-primary-900/25 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       >
         <IconBell className="h-5 w-5" />
+        {error && unreadCount === 0 && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white"
+          >
+            !
+          </span>
+        )}
         {unreadCount > 0 && (
           <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -104,7 +115,7 @@ export function NotificationBell({
           aria-hidden="true"
           className="pointer-events-none absolute right-full top-1/2 mr-3 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white opacity-0 shadow-md transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100 motion-reduce:transition-none"
         >
-          {unreadCount > 0 ? `${unreadCount > 9 ? "9+" : unreadCount} unread` : "Notifications"}
+          {error ? "Couldn't load notifications" : unreadCount > 0 ? `${unreadCount > 9 ? "9+" : unreadCount} unread` : "Notifications"}
         </span>
       )}
 
@@ -127,6 +138,11 @@ export function NotificationBell({
             )}
           </div>
           <div className="max-h-96 overflow-y-auto">
+            {error && (
+              <p role="alert" className="border-b border-amber-100 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">
+                Couldn&apos;t load notifications: {error} They may be out of date; reopen to try again.
+              </p>
+            )}
             {loading ? (
               <p className="px-4 py-8 text-center text-sm text-slate-500">Loading…</p>
             ) : notifications.length === 0 ? (

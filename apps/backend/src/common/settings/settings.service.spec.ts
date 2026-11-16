@@ -50,6 +50,20 @@ describe("SettingsService", () => {
     );
   });
 
+  // Only the refusal is exercised here: a valid set() would overwrite the
+  // real Resend from-address in a dev database this suite shares.
+  test("set() refuses a malformed Resend from-address and leaves the stored value as it was", async () => {
+    const where = { provider_key: { provider: "resend", key: "FROM_ADDRESS" } };
+    const before = await prisma.providerCredential.findUnique({ where });
+
+    await expect(service.set("resend", "FROM_ADDRESS", "BirrWaqf <onboarding@resend.dev", userId)).rejects.toThrow(
+      /^From address: /,
+    );
+
+    const after = await prisma.providerCredential.findUnique({ where });
+    expect(after?.encryptedValue ?? null).toBe(before?.encryptedValue ?? null);
+  });
+
   test("set() writes an audit log that never contains the plaintext value", async () => {
     await service.set("stripe", "SECRET_KEY", "sk_test_should_never_appear_in_audit_log", userId);
 

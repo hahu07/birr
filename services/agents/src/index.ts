@@ -10,6 +10,7 @@
 // SENTRY_DSN is unset. This is a plain Node process (no NestJS/Next.js
 // framework integration to auto-instrument), so init just needs to run
 // before anything that might throw, not before any particular import.
+import "./load-env";
 import * as Sentry from "@sentry/node";
 Sentry.init({
   dsn: process.env.SENTRY_DSN,

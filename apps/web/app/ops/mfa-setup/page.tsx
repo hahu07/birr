@@ -19,17 +19,25 @@ export default function MfaSetupPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
-
+  // Starting setup again returns the same unconfirmed secret (see
+  // BirrStaffService.startMfaEnrollment), so a repeated call, a second tab
+  // or a return to this page all show the same QR code.
   useEffect(() => {
+    let cancelled = false;
     apiFetchJson<MfaEnrollmentStart>("/birr-staff/me/mfa/enroll", { method: "POST" })
       .then((data) => {
+        if (cancelled) return;
         setEnrollment(data);
         setStep("scan");
       })
       .catch((err: unknown) => {
+        if (cancelled) return;
         setError(err instanceof Error ? err.message : "Something went wrong.");
         setStep("error");
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleConfirm(e: React.FormEvent) {

@@ -2,7 +2,7 @@
 sidebar_position: 1
 slug: /
 title: What Birr Is
-description: A digital trustee for Islamic waqf — what it is, who it serves, and how its two products relate to each other.
+description: A digital trustee for Islamic waqf — what it is, who it serves, and how its three products relate to each other.
 ---
 
 # What Birr Is
@@ -30,19 +30,23 @@ not merely operating software — this is treated throughout as a
 **fiduciary system**: correctness, auditability, and access control are
 prioritized ahead of feature velocity everywhere in how it's built.
 
-## Two products, one trustee
+## Three products, one governance engine
 
-Birr runs two genuinely separate products under that one trustee role:
+Birr runs three genuinely separate products. In the first two Birr is
+the trustee; in the third, zakah, it acts as each payer's agent:
 
 ```mermaid
 flowchart TD
-    A["Birr — one trustee,<br/>one governance engine"]
+    A["Birr — one governance engine"]
     A --> B["Waqf Funds<br/>(self-service endowments)"]
     A --> C["Vaults<br/>(staff-curated public giving)"]
-    B --> B1["Established by a Founder<br/>(institution or individual)"]
-    C --> C1["Created and curated<br/>by Birr's own staff"]
+    A --> Z["Zakah<br/>(calculator and payment)"]
+    B --> B1["Established by a Founder<br/>(institution or individual).<br/>Birr is trustee"]
+    C --> C1["Created and curated<br/>by Birr's own staff.<br/>Birr is trustee"]
+    Z --> Z1["Paid by anyone who owes it.<br/>Birr is their agent"]
     B1 --> D["Same governance engine:<br/>maker-checker approvals,<br/>immutable audit trail"]
     C1 --> D
+    Z1 --> D
 ```
 
 - **Waqf Funds** — a Founder (an institution or an individual) sets up
@@ -52,12 +56,15 @@ flowchart TD
   example, "Ramadan Relief Vault") that anyone can donate to directly,
   with no need to become a Founder or establish anything themselves. See
   [Vaults](./vaults).
+- **Zakah** — anyone can work out the zakah they owe, in Naira, and pay
+  it through Birr, which delivers it on their behalf only to people
+  eligible to receive it. Birr is the payer's agent here, not a trustee,
+  and keeps none of it. See [Zakah](./zakah).
 
-Both run through the identical governance engine underneath — the same
-maker-checker approval system, the same immutable audit trail, the same
-standard catalog of causes — but they serve different people and start
-in different ways. See [Governance](./governance) for the engine both
-share.
+All three run through the identical governance engine underneath — the
+same maker-checker approval system and the same immutable audit trail —
+but they serve different people and start in different ways. See
+[Governance](./governance) for the engine they share.
 
 ## Who Birr Serves
 
@@ -71,3 +78,5 @@ share.
 - **The general public** — anyone can give to a Birr-curated Vault, with
   no account, no application, and no relationship with Birr beyond the
   gift itself.
+- **Anyone who owes zakah** — the calculator is free to use, and paying
+  through Birr needs no account either.

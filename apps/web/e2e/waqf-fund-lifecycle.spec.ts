@@ -104,8 +104,10 @@ test.describe("Waqf Fund establishment", () => {
     await prisma.foundationFounder.deleteMany({
       where: { founder: { name: "E2E Fixture Founder Org", signedFoundationDeeds: { none: {} } } },
     });
+    // Not one another spec's co-founder still belongs to (invitation-accept
+    // leaves its co-founders in place: the audit log names them).
     await prisma.foundation.deleteMany({
-      where: { name: { startsWith: "E2E Fixture Foundation " }, foundationDeed: null },
+      where: { name: { startsWith: "E2E Fixture Foundation " }, foundationDeed: null, foundationFounders: { none: {} } },
     });
     await prisma.founder.deleteMany({
       where: { name: "E2E Fixture Founder Org", signedFoundationDeeds: { none: {} } },
@@ -127,7 +129,8 @@ test.describe("Foundation Deed signing", () => {
       const page = await context.newPage();
       await page.goto("/onboarding/deed");
       await expect(page.getByRole("heading", { name: "Sign the waqf deed" })).toBeVisible();
-      await expect(page.getByText(waqf.name)).toBeVisible();
+      // Listed among the funds the deed covers (its name is in the deed text too).
+      await expect(page.getByRole("list", { name: "Waqf Funds covered as of today" }).getByText(waqf.name)).toBeVisible();
 
       await page.getByLabel("Type your full legal name to sign").fill("E2E Fixture Founder");
       await page.getByRole("checkbox").check();

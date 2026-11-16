@@ -5,10 +5,21 @@
 // individual). Plain-language description + a concrete example per
 // option, not legal guidance — just enough to help someone recognize
 // which one matches who they actually are.
-import { Card } from "@birr/ui";
+//
+// 2026-11-14 redesign: the founder-type picker is now a pair of cards
+// carrying each type's one-line description (like the Waqf Fund step's
+// type cards), so this panel explains only the current choices, the same
+// way WaqfTypeGuide does, instead of listing every option.
+import { IconCheckCircle } from "@birr/ui";
 
-type FounderKind = "institution" | "individual";
-type InstitutionType =
+export type FounderKind = "institution" | "individual";
+/**
+ * The choice the founder makes on screen. "joint" (family or friends,
+ * 2026-11-14) is recorded as an individual founder on a Foundation marked
+ * establishedJointly — an informal group isn't an institution.
+ */
+export type FounderType = FounderKind | "joint";
+export type InstitutionType =
   | "islamic_bank"
   | "university"
   | "corporate_foundation"
@@ -18,20 +29,28 @@ type InstitutionType =
   | "awqaf_authority"
   | "other";
 
-const KIND_GUIDE: Record<FounderKind, { label: string; description: string; example: string }> = {
+export const FOUNDER_TYPE_GUIDE: Record<FounderType, { label: string; guideTitle: string; description: string; example: string }> = {
   institution: {
     label: "Institution",
-    description: "You're establishing this on behalf of an organization, not yourself personally.",
+    guideTitle: "Institution founders",
+    description: "You're establishing this on behalf of a registered organization, not yourself personally.",
     example: "A bank's CSR arm, a university endowment office, or an NGO dedicating part of its reserves.",
   },
   individual: {
     label: "Individual",
+    guideTitle: "Individual founders",
     description: "You're establishing this in your own personal capacity, not on behalf of an organization.",
     example: "A person dedicating part of their personal savings or an inherited property as waqf.",
   },
+  joint: {
+    label: "Jointly",
+    guideTitle: "Joint founders",
+    description: "You're establishing this together with family or friends, each of you as an individual.",
+    example: "A husband and wife, or siblings, endowing a family waqf together.",
+  },
 };
 
-const INSTITUTION_TYPE_GUIDE: Record<InstitutionType, { label: string; example: string }> = {
+export const INSTITUTION_TYPE_GUIDE: Record<InstitutionType, { label: string; example: string }> = {
   islamic_bank: { label: "Islamic Bank", example: "A bank dedicating a share of profits under its Shariah-compliant CSR mandate." },
   university: { label: "University", example: "A university endowing scholarship funds for underprivileged students." },
   corporate_foundation: { label: "Corporate Foundation", example: "A company's dedicated charitable foundation entity, separate from its main business." },
@@ -42,62 +61,59 @@ const INSTITUTION_TYPE_GUIDE: Record<InstitutionType, { label: string; example: 
   other: { label: "Other", example: "Any institution that doesn't fit the categories above." },
 };
 
-export function FounderFoundationGuide({
-  kind,
-  institutionType,
-}: {
-  kind: FounderKind;
-  institutionType: InstitutionType;
-}) {
-  return (
-    <Card className="lg:sticky lg:top-6">
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Founder type explained</p>
-      <p className="mb-3 text-xs text-slate-500">Not legal advice — just a plain-language guide to help you pick.</p>
-      <div className="space-y-3">
-        {(Object.keys(KIND_GUIDE) as FounderKind[]).map((key) => {
-          const isSelected = key === kind;
-          const entry = KIND_GUIDE[key];
-          return (
-            <div
-              key={key}
-              className={`rounded-md border p-3 transition-colors ${
-                isSelected ? "border-primary-300 bg-primary-50" : "border-slate-100"
-              }`}
-            >
-              <p className={`text-sm font-semibold ${isSelected ? "text-primary-900" : "text-slate-700"}`}>
-                {entry.label}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-slate-600">{entry.description}</p>
-              <p className="mt-1.5 text-xs italic leading-relaxed text-slate-500">e.g. {entry.example}</p>
-            </div>
-          );
-        })}
-      </div>
+function nextSteps(founderType: FounderType): string[] {
+  return [
+    "Your Foundation is established as soon as you submit. There's no approval step.",
+    "Birr becomes its Mutawalli (trustee).",
+    "Next, you set up and fund your first Waqf Fund.",
+    ...(founderType === "joint"
+      ? ["You sign the deed for everyone. Each co-founder agrees to it, in their own name, when they accept your invitation."]
+      : []),
+  ];
+}
 
-      {kind === "institution" && (
-        <>
-          <p className="mb-1 mt-5 text-xs font-medium uppercase tracking-wide text-slate-500">Institution type</p>
-          <div className="space-y-2">
-            {(Object.keys(INSTITUTION_TYPE_GUIDE) as InstitutionType[]).map((key) => {
-              const isSelected = key === institutionType;
-              const entry = INSTITUTION_TYPE_GUIDE[key];
-              return (
-                <div
-                  key={key}
-                  className={`rounded-md border p-2.5 transition-colors ${
-                    isSelected ? "border-primary-300 bg-primary-50" : "border-slate-100"
-                  }`}
-                >
-                  <p className={`text-xs font-semibold ${isSelected ? "text-primary-900" : "text-slate-700"}`}>
-                    {entry.label}
-                  </p>
-                  <p className="mt-0.5 text-xs italic leading-relaxed text-slate-500">e.g. {entry.example}</p>
-                </div>
-              );
-            })}
-          </div>
-        </>
+export function FounderFoundationGuide({
+  founderType,
+  institutionType,
+  showNextSteps = true,
+}: {
+  founderType: FounderType;
+  institutionType: InstitutionType;
+  /** Off where the founder is joining an existing Foundation (the co-founder accept page), not establishing one. */
+  showNextSteps?: boolean;
+}) {
+  const entry = FOUNDER_TYPE_GUIDE[founderType];
+  const institution = founderType === "institution" ? INSTITUTION_TYPE_GUIDE[institutionType] : null;
+  return (
+    <aside className="hidden rounded-2xl border border-primary-100 bg-gradient-to-b from-primary-50/80 to-white p-5 shadow-sm lg:sticky lg:top-20 lg:block">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-700">{entry.guideTitle}</p>
+      <p className="mt-3 text-sm leading-relaxed text-slate-700">{entry.description}</p>
+      <p className="mt-3 rounded-xl bg-white/80 p-3 text-xs italic leading-relaxed text-slate-600 ring-1 ring-inset ring-primary-100">
+        e.g. {entry.example}
+      </p>
+
+      {institution && (
+        <div className="mt-5 border-t border-primary-100 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-700">{institution.label}</p>
+          <p className="mt-2 text-xs italic leading-relaxed text-slate-600">e.g. {institution.example}</p>
+        </div>
       )}
-    </Card>
+
+      {showNextSteps && (
+      <div className="mt-5 border-t border-primary-100 pt-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-700">What happens next</p>
+        <ul className="mt-3 space-y-2.5">
+          {nextSteps(founderType).map((line) => (
+            <li key={line} className="flex items-start gap-2 text-xs leading-relaxed text-slate-600">
+              <IconCheckCircle className="mt-px h-3.5 w-3.5 shrink-0 text-primary-600" />
+              {line}
+            </li>
+          ))}
+        </ul>
+      </div>
+      )}
+
+      <p className="mt-4 text-[11px] leading-relaxed text-slate-500">A plain-language guide to help you pick — not legal advice.</p>
+    </aside>
   );
 }

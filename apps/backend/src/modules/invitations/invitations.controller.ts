@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { IsEmail, IsEnum, IsOptional, IsString } from "class-validator";
 import type { Request, Response } from "express";
 import { InvitationsService, InviteInput, AcceptInput } from "./invitations.service";
@@ -122,10 +123,22 @@ export class InvitationsController {
   // must be reachable by someone with no account yet. The token itself
   // is the credential (see InvitationsService.accept's comment). @Public()
   // opts it out of the global SessionAuthGuard for the same reason.
+  // What a co-founder sees before accepting — see
+  // InvitationsService.previewCoFounderInvitation. Public for the same
+  // reason as accept(): the token is the credential. Throttled because
+  // it answers "is this token live" to anyone holding one.
+  @Get("preview")
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async preview(@Query("token") token: string) {
+    if (!token) throw new NotFoundException("Invitation not found.");
+    return this.service.previewCoFounderInvitation(token);
+  }
+
   @Post("accept")
   @Public()
-  async accept(@Body() body: AcceptInput, @Res({ passthrough: true }) res: Response) {
-    const result = await this.service.accept(body);
+  async accept(@Body() body: AcceptInput, @Req() request: Request, @Res({ passthrough: true }) res: Response) {
+    const result = await this.service.accept(body, request.ip);
     // A birr_staff invite must log the new staff member into the staff
     // session (STAFF_SESSION_COOKIE_NAME), never the Founder one — see
     // that cookie's own comment. founder_user/co_founder both get the

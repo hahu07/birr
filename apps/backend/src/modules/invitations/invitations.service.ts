@@ -10,6 +10,15 @@ import {
   resolveFounderRecipientUserIdsForFoundation,
 } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
+import {
+  CO_FOUNDER_STATEMENT_VERSION,
+  coFounderStatementContext,
+  coFounderStatementKind,
+  FOUNDATION_FOR_STATEMENT,
+  hashStatement,
+  lockFoundation,
+  renderCoFounderStatement,
+} from "../foundation-deeds/co-founder-consent";
 import { staffHasAccess } from "../../common/auth/staff-permissions";
 
 const INVITATION_VALIDITY_DAYS = 7;
@@ -121,6 +130,19 @@ export class AcceptInput {
   @IsOptional()
   @IsString()
   homeJurisdiction?: string;
+
+  // co_founder only: the CO_FOUNDER_STATEMENT_VERSION of the statement
+  // about the Foundation's deed they accepted (see co-founder-consent.ts).
+  @IsOptional()
+  @IsString()
+  deedConsentVersion?: string;
+
+  // co_founder only: the hash of the exact statement they were shown
+  // (previewCoFounderInvitation's statement.hash). Checked against the
+  // statement stored, so the record is always what they saw.
+  @IsOptional()
+  @IsString()
+  deedStatementHash?: string;
 }
 
 @Injectable()
@@ -333,7 +355,44 @@ export class InvitationsService {
    * credential. The whole point is onboarding someone who has no account
    * yet, so there's nothing to authenticate them against beforehand.
    */
-  async accept(input: AcceptInput) {
+  /**
+   * What someone opening a co-founder invitation link sees before
+   * accepting: the Foundation, who invited them, and the exact statement
+   * about its deed they'll be asked to accept. The token is the
+   * credential (see accept()); anything but a pending, unexpired
+   * co-founder invitation is "not found", so the link reveals nothing
+   * once used or expired.
+   */
+  async previewCoFounderInvitation(token: string) {
+    const invitation = await prisma.invitation.findUnique({
+      where: { token },
+      include: { foundation: FOUNDATION_FOR_STATEMENT, invitedByUser: { select: { fullName: true } } },
+    });
+    if (
+      !invitation ||
+      invitation.inviteeKind !== "co_founder" ||
+      invitation.status !== "pending" ||
+      invitation.expiresAt < new Date() ||
+      !invitation.foundation
+    ) {
+      throw new NotFoundException("Invitation not found.");
+    }
+    const ctx = coFounderStatementContext(invitation.foundation);
+    return {
+      email: invitation.email,
+      foundationName: invitation.foundation.name,
+      // A family or friends' Foundation: its co-founders join as individuals.
+      establishedJointly: invitation.foundation.establishedJointly,
+      invitedByName: invitation.invitedByUser.fullName,
+      deed: ctx.signedDeed,
+      statement: (() => {
+        const text = renderCoFounderStatement(ctx);
+        return { kind: coFounderStatementKind(ctx), text, version: CO_FOUNDER_STATEMENT_VERSION, hash: hashStatement(text) };
+      })(),
+    };
+  }
+
+  async accept(input: AcceptInput, ipAddress?: string) {
     const invitation = await prisma.invitation.findUnique({
       where: { token: input.token },
     });
@@ -362,6 +421,21 @@ export class InvitationsService {
     if (invitation.inviteeKind === "co_founder" && (!input.founderName?.trim() || !input.kind)) {
       throw new BadRequestException("founderName and kind are required to accept a co-founder invitation.");
     }
+    // Their own money is dedicated under this Foundation's deed, so they
+    // must have accepted the current statement about it.
+    if (invitation.inviteeKind === "co_founder" && (input.deedConsentVersion !== CO_FOUNDER_STATEMENT_VERSION || !input.deedStatementHash)) {
+      throw new BadRequestException("Accept the statement about the Foundation's deed to join as a co-founder.");
+    }
+    // Same rule as establishing jointly: an informal group isn't an institution.
+    if (invitation.inviteeKind === "co_founder" && input.kind === "institution") {
+      const foundation = await prisma.foundation.findUnique({
+        where: { id: invitation.foundationId! },
+        select: { establishedJointly: true },
+      });
+      if (foundation?.establishedJointly) {
+        throw new BadRequestException("A Foundation established jointly by family or friends is joined as an individual, not an institution.");
+      }
+    }
     // A stray User row can already exist for this email — e.g. an
     // abandoned self-service sign-up that never verified (status stays
     // "invited" indefinitely, see FoundersService.signUp), unrelated to
@@ -382,6 +456,9 @@ export class InvitationsService {
     const passwordHash = await hashPassword(input.password);
 
     const result = await prisma.$transaction(async (tx) => {
+      // Before anything else (and before any audit row: see CLAUDE.md's
+      // lock-order rule): the deed can't be signed while they join.
+      if (invitation.inviteeKind === "co_founder") await lockFoundation(tx, invitation.foundationId!);
       const user = await tx.user.create({
         data: { email: invitation.email, fullName: input.fullName, passwordHash, status: "active" },
       });
@@ -418,6 +495,32 @@ export class InvitationsService {
         await tx.foundationFounder.create({
           data: { foundationId: invitation.foundationId!, founderId: founder.id },
         });
+        // Rendered from the deed's state under the lock, so the record says
+        // exactly what applied when they joined, and must be what they saw.
+        const foundation = await tx.foundation.findUniqueOrThrow({
+          where: { id: invitation.foundationId! },
+          ...FOUNDATION_FOR_STATEMENT,
+        });
+        const ctx = coFounderStatementContext(foundation);
+        const statementText = renderCoFounderStatement(ctx);
+        if (hashStatement(statementText) !== input.deedStatementHash) {
+          throw new ConflictException({
+            message: "The Foundation's deed changed while you were reading (it may have just been signed). Review the updated statement and accept it again.",
+            code: "statement_changed",
+          });
+        }
+        const consent = await tx.coFounderDeedConsent.create({
+          data: {
+            foundationId: invitation.foundationId!,
+            founderId: founder.id,
+            userId: user.id,
+            kind: coFounderStatementKind(ctx),
+            foundationDeedId: foundation.foundationDeed?.id ?? null,
+            statementVersion: CO_FOUNDER_STATEMENT_VERSION,
+            statementText,
+            ipAddress,
+          },
+        });
         await tx.auditLog.create({
           data: {
             actorType: "founder_user",
@@ -439,6 +542,18 @@ export class InvitationsService {
             // Composite-key join, no synthetic id — encode both halves.
             entityId: `${invitation.foundationId}:${founder.id}`,
             after: { foundationId: invitation.foundationId, founderId: founder.id } as any,
+          },
+        });
+        await tx.auditLog.create({
+          data: {
+            actorType: "founder_user",
+            actorUserId: user.id,
+            actorFounderId: founder.id,
+            action: "co_founder.deed_consented",
+            entityType: "CoFounderDeedConsent",
+            entityId: consent.id,
+            after: consent as any,
+            ipAddress,
           },
         });
       } else {

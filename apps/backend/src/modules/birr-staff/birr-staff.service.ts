@@ -107,16 +107,32 @@ export class BirrStaffService {
    * Starts (or restarts) enrollment — generates a fresh secret and
    * stores it encrypted, but doesn't flip mfaEnabled yet (see
    * User.mfaSecretEncrypted's own comment: inert until confirmed).
-   * Re-callable: a staff member who scans the QR then closes the tab
-   * can just start again, overwriting the unconfirmed secret.
+   * Re-callable: starting again returns the same unconfirmed secret
+   * (and QR code), so an earlier scan still works.
    */
-  async startMfaEnrollment(userId: string) {
+  async startMfaEnrollment(userId: string): Promise<{ qrCodeDataUrl: string; secretForManualEntry: string }> {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const { secretBase32, otpauthUri } = this.mfa.generateSecret(user.email);
-    await prisma.user.update({
-      where: { id: userId },
-      data: { mfaSecretEncrypted: this.encryption.encrypt(secretBase32) },
-    });
+    // Starting again must never replace a secret already in use: the
+    // person would be locked out at their next sign-in.
+    if (user.mfaEnabled) {
+      throw new BadRequestException("Two-factor authentication is already on for this account.");
+    }
+    // An unconfirmed secret is reused, not replaced, so a second tab or a
+    // return to this page shows the same QR code and every code from it
+    // keeps working. A reset clears the secret, which starts afresh.
+    const pending = user.mfaSecretEncrypted ? this.encryption.decrypt(user.mfaSecretEncrypted) : undefined;
+    const { secretBase32, otpauthUri } = this.mfa.generateSecret(user.email, pending);
+    if (!pending) {
+      // Only if still unset: two first calls at once both end up with the winner's secret.
+      await prisma.user.updateMany({
+        where: { id: userId, mfaSecretEncrypted: null, mfaEnabled: false },
+        data: { mfaSecretEncrypted: this.encryption.encrypt(secretBase32) },
+      });
+      const stored = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+      if (stored.mfaSecretEncrypted && this.encryption.decrypt(stored.mfaSecretEncrypted) !== secretBase32) {
+        return this.startMfaEnrollment(userId);
+      }
+    }
     const qrCodeDataUrl = await this.mfa.qrCodeDataUrl(otpauthUri);
     return { qrCodeDataUrl, secretForManualEntry: secretBase32 };
   }

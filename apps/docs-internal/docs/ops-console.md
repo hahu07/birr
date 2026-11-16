@@ -57,6 +57,8 @@ The sidebar is grouped into five sections. Here's what's in each.
 | **Foundations** | A read-only list of every Foundation that's been set up — Founders create these themselves (self-service), staff just see the result here afterward. | A Founder's Foundation shows up here the moment they finish setting it up — no staff action needed to create it. |
 | **Waqf Funds** | The real entry point into a specific fund's full detail — its Assets, Beneficiaries, Investments, Distributions — grouped by Foundation, since a Foundation can have several funds under it. | Clicking into a specific fund shows Yusuf everything about that one fund. |
 | **Vaults** | Birr's *other* product — public giving campaigns (like "Ramadan Relief Vault") that anyone can donate to directly, with no Founder or account involved at all. Staff create and curate these. | Ibrahim sets up a new "Clean Water Vault" campaign that any member of the public can give to without signing up. |
+| **Zakah** | Birr's *third* product: zakah paid through Birr, where Birr is each payer's agent rather than a trustee. This screen holds the approved rulings and gold/silver prices the public calculator uses, incoming payments, holds, refunds and Zakah al-Fitr seasons. See [Running Zakah](./zakah-operations). | Bello proposes today's gold and silver prices; Hauwa in Compliance approves them before the calculator uses them. |
+| **Zakah Distributions** | The register of people verified as eligible for zakah, and every payout to them or to partner organizations. Each payout needs a second person's approval, and another person's confirmation that the bank transfer really went out. | Yusuf proposes ₦60,000 for a verified widow in Kano; a Shariah board member approves it before Yusuf sends the transfer. |
 | **Counterparties** | The registry of outside banks and investment managers actually holding invested waqf money. A new one starts "pending review" and can't receive any money until it clears *two* separate checks: a Shariah sign-off, and a normal governed-action approval. | A new asset manager is added to hold part of an Investment waqf's capital — it sits pending until both gates clear. |
 | **Cause Categories** | The standard list of causes Founders pick from (e.g. "Scholarships," "Clean Water Access") — maintained centrally by Birr so every fund draws from the same catalog. | This is the same list a Founder picks a cause from on their own dashboard. |
 | **Vault / Waqf Ledger Accounts** | The underlying accounting "chart of accounts" — the categories money gets recorded against internally (asset, liability, revenue, expense, etc.) for Vaults and Waqf Funds respectively. Mostly invisible plumbing, only touched by platform admins. | Ibrahim adds a new expense-category ledger account so a new type of fee can be recorded correctly. |
@@ -69,6 +71,7 @@ The sidebar is grouped into five sections. Here's what's in each.
 | **Shariah Prohibited Sectors** | The list a Shariah reviewer checks an investment against before approving it (e.g. alcohol, gambling, conventional interest-based lending). | Before Yusuf's team invests a fund's capital, it gets checked against this list. |
 | **Audit Log** | A complete, permanent, unchangeable record of every important action anyone (staff, Founder, or AI agent) has taken on the platform. Nothing can ever be edited or deleted here — not even by an admin. | If a distribution ever gets questioned later, this log shows exactly who proposed it, who approved it, and when — permanently. |
 | **Vault Giving Review** | A manual review tool for spotting someone trying to split one large public donation into several smaller ones under different email addresses to dodge ID-verification rules. Birr made a deliberate choice not to auto-block this — a human reviews the pattern instead. | Zainab notices five ₦1.9M donations from five different emails, all from the same device, within an hour — and flags it for follow-up. |
+| **Zakah Giving Review** | The same kind of manual review for zakah, plus giving that spans Vault and zakah together. Visible to Compliance, the Audit Committee, the Board of Trustees and Mutawalli Officers, but not platform admins. | Hauwa sees one email that gave to a Vault and paid zakah in the same week: neither gift reached the ID threshold alone, but together they did. Hauwa follows up. |
 
 ## Admin — running Birr itself
 
@@ -93,6 +96,8 @@ examples:
   Yusuf and Zainab wouldn't see either one in their own sidebar.
 - Everyone can view **Roles & Access**, but only a platform admin can
   change anything on it.
+- **Zakah Giving Review** is hidden from platform admins, Ibrahim
+  included, even though they can see Vault Giving Review.
 
 This mirrors the same idea from the Founder Dashboard guide — the UI
 just reflects what you're allowed to do; it's never the actual lock.
