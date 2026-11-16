@@ -107,7 +107,7 @@ test.afterEach(async () => {
     where: { founder: { name: "E2E Fixture Founder Org", signedFoundationDeeds: { none: {} } } },
   });
   await prisma.foundation.deleteMany({
-    where: { name: { startsWith: "E2E Fixture Foundation " }, foundationDeed: null },
+    where: { name: { startsWith: "E2E Fixture Foundation " }, foundationDeed: null, foundationFounders: { none: {} } },
   });
   await prisma.founder.deleteMany({
     where: { name: "E2E Fixture Founder Org", signedFoundationDeeds: { none: {} } },
