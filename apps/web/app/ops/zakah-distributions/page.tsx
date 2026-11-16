@@ -679,7 +679,7 @@ function RecipientForm({ existing, onCreated, onCancel }: { existing?: ZakahReci
         </div>
         <div className="space-y-1.5">
           <label htmlFor="rec-phone" className="text-sm font-medium text-slate-700">Phone (optional)</label>
-          <Input id="rec-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input id="rec-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
       </div>
       <fieldset>

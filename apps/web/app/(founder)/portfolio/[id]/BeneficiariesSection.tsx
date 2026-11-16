@@ -306,7 +306,7 @@ function NominateBeneficiaryFormPanel({
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[10rem] space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Phone (optional)</label>
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
         <div className="min-w-[12rem] space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Email (optional)</label>

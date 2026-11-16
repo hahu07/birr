@@ -207,17 +207,17 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
       )}
 
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Identity</p>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-[12rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Name</label>
-          <Input required autoFocus maxLength={FIELD_LIMITS.name} value={name} onChange={(e) => setName(e.target.value)} />
+          <label className="block text-sm font-medium text-slate-700">Name</label>
+          <Input required autoFocus check="name" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Type</label>
+          <label className="block text-sm font-medium text-slate-700">Type</label>
           <select
             value={institutionType}
             onChange={(e) => setInstitutionType(e.target.value as Counterparty["institutionType"])}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
           >
             {INSTITUTION_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -226,23 +226,23 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
             ))}
           </select>
         </div>
-        <div className="w-32 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Jurisdiction</label>
+        <div className="w-52 space-y-1.5">
+          <label className="block text-sm font-medium text-slate-700">Jurisdiction</label>
           <CountrySelect value={jurisdiction} onChange={setJurisdiction} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Registration number (optional)</label>
-          <Input maxLength={FIELD_LIMITS.code} value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} placeholder="Company registration no." />
+          <label className="block text-sm font-medium text-slate-700">Registration number (optional)</label>
+          <Input check="reference" value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} placeholder="Company registration no." />
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-[16rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Address (optional)</label>
+          <label className="block text-sm font-medium text-slate-700">Address (optional)</label>
           <Input value={address} onChange={(e) => setAddress(e.target.value)} />
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Website (optional)</label>
+          <label className="block text-sm font-medium text-slate-700">Website (optional)</label>
           <Input type="url" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
         </div>
       </div>
@@ -255,7 +255,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
           top of a still-empty intake. */}
       <p className="pt-1 text-xs font-medium uppercase tracking-wide text-slate-500">Shariah review information</p>
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">Business activities</label>
+        <label className="block text-sm font-medium text-slate-700">Business activities</label>
         <textarea
           required
           minLength={20}
@@ -268,7 +268,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         />
       </div>
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">Existing Shariah certification (optional)</label>
+        <label className="block text-sm font-medium text-slate-700">Existing Shariah certification (optional)</label>
         <Input
           value={existingShariahCertification}
           onChange={(e) => setExistingShariahCertification(e.target.value)}
@@ -277,31 +277,33 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
       </div>
 
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Point of contact (optional)</p>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Contact name</label>
-          <Input maxLength={FIELD_LIMITS.name} value={contactName} onChange={(e) => setContactName(e.target.value)} />
+          <label className="block text-sm font-medium text-slate-700">Contact name</label>
+          <Input check="name" value={contactName} onChange={(e) => setContactName(e.target.value)} />
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Contact email</label>
+          <label className="block text-sm font-medium text-slate-700">Contact email</label>
           <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Contact phone</label>
+          <label className="block text-sm font-medium text-slate-700">Contact phone</label>
           <Input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="0803 123 4567 or +44…" />
         </div>
       </div>
 
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Regulatory (optional)</p>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-[12rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Regulatory license number</label>
-          <Input maxLength={FIELD_LIMITS.code} value={regulatoryLicenseNumber} onChange={(e) => setRegulatoryLicenseNumber(e.target.value)} />
+          <label className="block text-sm font-medium text-slate-700">Regulatory license number</label>
+          <Input check="reference" value={regulatoryLicenseNumber} onChange={(e) => setRegulatoryLicenseNumber(e.target.value)} />
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Regulating authority</label>
-          <Input value={regulatingAuthority} onChange={(e) => setRegulatingAuthority(e.target.value)} />
+          <label className="block text-sm font-medium text-slate-700">Regulating authority</label>
+          <Input check="name" value={regulatingAuthority} onChange={(e) => setRegulatingAuthority(e.target.value)} />
         </div>
+      </div>
+      <div className="flex justify-end">
         <Button type="submit" disabled={submitting}>
           {submitting ? "Registering…" : "Register"}
         </Button>

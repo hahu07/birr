@@ -221,11 +221,11 @@ function TrusteeLicenseForm({ onCreated }: { onCreated: () => void }) {
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Licensing authority</label>
-          <Input required value={licensingAuthority} onChange={(e) => setLicensingAuthority(e.target.value)} />
+          <Input required check="name" value={licensingAuthority} onChange={(e) => setLicensingAuthority(e.target.value)} />
         </div>
         <div className="w-40 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">License number (optional)</label>
-          <Input value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} />
+          <Input check="reference" value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} />
         </div>
         <div className="w-40 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Expires (optional)</label>
@@ -391,7 +391,7 @@ function CompliancePolicySetForm({ onSaved }: { onSaved: () => void }) {
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Reference URL (optional)</label>
-          <Input value={referenceUrl} onChange={(e) => setReferenceUrl(e.target.value)} />
+          <Input type="url" value={referenceUrl} onChange={(e) => setReferenceUrl(e.target.value)} />
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Notes (optional)</label>
