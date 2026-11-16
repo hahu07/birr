@@ -222,7 +222,7 @@ export default function WaqfDetailPage() {
           {waqf.type === "project" && (
             <WaqfMilestonesSection
               waqfId={id}
-              currency={waqf.corpusCurrency ?? "USD"}
+              currency={waqf.corpusCurrency ?? "NGN"}
               milestones={milestones}
               error={milestonesError}
               onChanged={reloadMilestones}
@@ -249,13 +249,13 @@ export default function WaqfDetailPage() {
             <>
               <InvestmentsSection waqfId={id} amountRaised={waqf.amountRaised ?? "0"} corpusCurrency={waqf.corpusCurrency} />
               <InvestmentTargetsSection waqfId={id} />
-              <ProceedsSection waqfId={id} onChanged={() => setProceedsVersion((v) => v + 1)} />
+              <ProceedsSection waqfId={id} currency={waqf.corpusCurrency ?? "NGN"} onChanged={() => setProceedsVersion((v) => v + 1)} />
             </>
           )}
           {waqf.type === "project" && (
             <WaqfExpensesSection
               waqfId={id}
-              currency={waqf.corpusCurrency ?? "USD"}
+              currency={waqf.corpusCurrency ?? "NGN"}
               milestones={milestones ?? []}
               onChanged={() => {
                 reloadMilestones();
@@ -265,6 +265,7 @@ export default function WaqfDetailPage() {
           )}
           <DistributionsSection
             waqfId={id}
+            currency={waqf.corpusCurrency ?? "NGN"}
             causesVersion={causesVersion}
             beneficiariesVersion={beneficiariesVersion}
             milestones={milestones ?? []}
@@ -288,7 +289,7 @@ export default function WaqfDetailPage() {
         <div hidden={activeTab !== "reports"} className="space-y-10">
           <FinancialReportSection waqfId={id} />
           <ComplianceReportSection waqfId={id} />
-          <WaqfLedgerSection waqfId={id} currency={waqf.corpusCurrency ?? "USD"} refreshKey={ledgerVersion} />
+          <WaqfLedgerSection waqfId={id} currency={waqf.corpusCurrency ?? "NGN"} refreshKey={ledgerVersion} />
         </div>
       )}
     </div>

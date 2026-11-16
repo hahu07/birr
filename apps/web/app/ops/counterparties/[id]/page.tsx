@@ -600,7 +600,7 @@ function ConcentrationLimitForm({
   onSet: (amount: string, currency: string) => void;
 }) {
   const [amount, setAmount] = useState(counterparty.concentrationLimit ?? "");
-  const [currency, setCurrency] = useState(counterparty.concentrationLimitCurrency ?? "USD");
+  const [currency, setCurrency] = useState(counterparty.concentrationLimitCurrency ?? "NGN");
 
   return (
     <div className="flex flex-wrap items-end gap-3">

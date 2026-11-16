@@ -26,9 +26,12 @@ import { useStaffSession } from "../../../../lib/staff-session";
 
 export function ProceedsSection({
   waqfId,
+  currency,
   onChanged,
 }: {
   waqfId: string;
+  /** The fund's own currency: the backend refuses proceeds in any other. */
+  currency: string;
   // Called after a proceeds record succeeds — the backend automatically
   // re-runs the proportional proceeds-allocation split across this
   // waqf's causes on every record() now (see WaqfProceedsService
@@ -70,6 +73,7 @@ export function ProceedsSection({
 
       {canRecord && showForm && (
         <ProceedsForm
+          currency={currency}
           waqfId={waqfId}
           investments={investments}
           onCreated={() => {
@@ -123,16 +127,17 @@ export function ProceedsSection({
 
 function ProceedsForm({
   waqfId,
+  currency,
   investments,
   onCreated,
 }: {
   waqfId: string;
+  currency: string;
   investments: Investment[];
   onCreated: () => void;
 }) {
   const [investmentId, setInvestmentId] = useState("");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("USD");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,7 +187,7 @@ function ProceedsForm({
         </div>
         <div className="w-28 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Currency</label>
-          <Input required value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
+          <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{currency}</p>
         </div>
         <div className="min-w-[14rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Description</label>

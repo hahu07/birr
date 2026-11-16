@@ -107,6 +107,7 @@ const NAV_GROUPS: {
       { href: "/ops/vault-compliance-review", label: "Vault Giving Review", icon: IconShieldAlert },
       { href: "/ops/zakah-review", label: "Zakah Giving Review", icon: IconShieldAlert, requiresPermission: "zakah.structuring_review" },
       { href: "/ops/monthly-giving", label: "Monthly Giving", icon: IconRepeat, requiresPermission: "giving.monthly_view" },
+      { href: "/ops/payment-reconciliation", label: "Payment Reconciliation", icon: IconClipboardCheck, requiresPermission: "payments.reconciliation_view" },
     ],
   },
   {

@@ -399,6 +399,23 @@ export class ContributionsService {
   async reconcileForFounder(id: string, founderId: string) {
     const contribution = await this.findByIdForFounder(id, founderId);
     if (!contribution) return null;
+    return this.reconcileWithProvider(contribution);
+  }
+
+  /**
+   * Staff side of the same re-check (Compliance's "Ask Paystack again" on a
+   * reconciliation issue): no founder scope, same idempotent path, the same
+   * amount check, and the same rate limit.
+   */
+  async reconcile(id: string) {
+    const contribution = await prisma.contribution.findUnique({ where: { id } });
+    if (!contribution) return null;
+    return this.reconcileWithProvider(contribution);
+  }
+
+  private async reconcileWithProvider<T extends { id: string; status: string; provider: ContributionProvider; providerReference: string; amount: Prisma.Decimal; currency: string }>(
+    contribution: T,
+  ) {
     if (contribution.status !== "pending") return contribution;
 
     const adapter = this.adapters.get(contribution.provider);

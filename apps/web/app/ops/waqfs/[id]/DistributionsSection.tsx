@@ -29,15 +29,17 @@ const STATUS_TONE: Record<Distribution["status"], "success" | "warning" | "dange
 
 // Matches the currencies actually accepted across every payment rail —
 // see WaqfFundForm.tsx's own PROVIDERS list, which this flattens.
-const CURRENCIES = ["USD", "EUR", "GBP", "NGN", "USDC", "USDT"] as const;
 
 export function DistributionsSection({
   waqfId,
+  currency,
   causesVersion,
   beneficiariesVersion,
   milestones = [],
 }: {
   waqfId: string;
+  /** The fund's own currency: the backend refuses a distribution in any other. */
+  currency: string;
   causesVersion: number;
   beneficiariesVersion: number;
   // Project-type waqfs only — see WaqfMilestone's own schema comment.
@@ -116,6 +118,7 @@ export function DistributionsSection({
           </Alert>
         ) : (
           <DistributionForm
+              currency={currency}
             waqfId={waqfId}
             causes={activeCauses}
             beneficiaries={beneficiaries}
@@ -241,10 +244,12 @@ function DistributionForm({
   waqfId,
   causes,
   beneficiaries,
+  currency,
   milestones,
   onCreated,
 }: {
   waqfId: string;
+  currency: string;
   causes: WaqfCause[];
   beneficiaries: Beneficiary[];
   milestones: WaqfMilestone[];
@@ -254,7 +259,6 @@ function DistributionForm({
   const [beneficiaryId, setBeneficiaryId] = useState(beneficiaries[0]?.id ?? "");
   const [waqfMilestoneId, setWaqfMilestoneId] = useState("");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState<(typeof CURRENCIES)[number]>("USD");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -342,17 +346,7 @@ function DistributionForm({
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Currency</label>
-          <select
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value as (typeof CURRENCIES)[number])}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
-            {CURRENCIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{currency}</p>
         </div>
         <Button type="submit" disabled={submitting}>
           {submitting ? "Adding…" : "Add"}

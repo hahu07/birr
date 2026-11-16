@@ -184,7 +184,7 @@ export default function WaqfFundDetailPage() {
               <div hidden={activeTab !== "overview"} className={PANEL_RESET_FIRST_CHILD}>
                 {waqf.type === "project" && <LifecycleSection waqfId={waqf.id} />}
                 {waqf.type === "project" && (
-                  <ProjectProgressSection waqfId={waqf.id} currency={waqf.corpusCurrency ?? "USD"} />
+                  <ProjectProgressSection waqfId={waqf.id} currency={waqf.corpusCurrency ?? "NGN"} />
                 )}
                 <ContributionsSection waqf={waqf} onCorpusIncreased={load} />
                 <MonthlyTopUpSection waqf={waqf} />

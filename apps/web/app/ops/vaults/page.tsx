@@ -348,8 +348,10 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState<VaultType>("project");
-  const [currency, setCurrency] = useState("USD");
-  const [additionalCurrencies, setAdditionalCurrencies] = useState("");
+  // Naira only (owner's decision, 2026-11-15): Paystack in NGN is the one
+  // rail a Vault can receive through. The backend still supports other and
+  // additional currencies, for when another rail works.
+  const currency = "NGN";
   const [jurisdiction, setJurisdiction] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -359,14 +361,6 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
     setError(null);
     setSubmitting(true);
     try {
-      // Comma-separated, same free-text convention as this form's own
-      // Currency/Jurisdiction fields rather than a fancier multi-select
-      // — the backend already dedupes against the primary currency and
-      // against itself (VaultsService.create's own comment).
-      const additional = additionalCurrencies
-        .split(",")
-        .map((c) => c.trim().toUpperCase())
-        .filter(Boolean);
       await apiFetchJson("/vaults", {
         method: "POST",
         body: JSON.stringify({
@@ -375,7 +369,6 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
           description: description || undefined,
           type,
           currency,
-          additionalCurrencies: additional.length > 0 ? additional : undefined,
           jurisdiction,
         }),
       });
@@ -431,17 +424,9 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
             ))}
           </Select>
         </div>
-        <div className="w-24 space-y-1.5">
+        <div className="w-28 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Currency</label>
-          <Input required value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
-        </div>
-        <div className="min-w-[12rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Additional currencies (optional)</label>
-          <Input
-            value={additionalCurrencies}
-            onChange={(e) => setAdditionalCurrencies(e.target.value)}
-            placeholder="e.g. NGN, USDC"
-          />
+          <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">NGN (₦)</p>
         </div>
         <div className="w-32 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Jurisdiction</label>
