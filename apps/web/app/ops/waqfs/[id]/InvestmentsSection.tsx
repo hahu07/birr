@@ -12,6 +12,7 @@ import { useStaffSession } from "../../../../lib/staff-session";
 import type { Counterparty, Investment, ShariahProhibitedSector, ShariahScreeningDecision } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader, useLoadedResource } from "../../_components/SectionChrome";
+import { FIELD_LIMITS } from "@birr/shared";
 
 const INSTRUMENT_TYPES: Investment["instrumentType"][] = [
   "sukuk",
@@ -312,6 +313,7 @@ function InvestmentForm({
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-slate-700">Business description</label>
         <textarea
+          maxLength={FIELD_LIMITS.longText}
           required
           minLength={20}
           rows={2}
@@ -511,6 +513,7 @@ function ShariahScreeningDecideForm({
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-slate-700">Reviewer notes</label>
         <textarea
+          maxLength={FIELD_LIMITS.longText}
           required
           rows={2}
           placeholder="Required regardless of decision — leave a real reason on file."

@@ -1,6 +1,7 @@
+import { FIELD_LIMITS } from "@birr/shared";
+import { PhoneField, TextField } from "../../common/validation/fields";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 import { Body, Controller, Get, NotFoundException, Param, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
-import { IsString } from "class-validator";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { BirrStaffService, BirrStaffLoginInput } from "./birr-staff.service";
@@ -25,22 +26,22 @@ import { MfaExempt } from "../../common/guards/mfa-exempt.decorator";
 import { loginThrottleLimit } from "../../common/auth/login-throttle";
 
 class RequestWhatsAppOtpBody {
-  @IsString()
+  @PhoneField()
   whatsappNumber!: string;
 }
 
 class VerifyWhatsAppOtpBody {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   code!: string;
 }
 
 class VerifyLoginMfaBody {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   code!: string;
 }
 
 class ConfirmMfaEnrollmentBody {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   code!: string;
 }
 

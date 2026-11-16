@@ -1,6 +1,8 @@
+import { LongTextField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { CountryCode } from "../../common/validation/country-code";
-import { IsDateString, IsEnum, IsOptional, IsString } from "class-validator";
+import { IsDateString, IsEnum, IsOptional } from "class-validator";
 import { prisma, TrusteeLicenseStatus } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
 
@@ -11,11 +13,11 @@ export class CreateTrusteeLicenseInput {
   @IsEnum(TrusteeLicenseStatus)
   status!: TrusteeLicenseStatus;
 
-  @IsString()
+  @TextField()
   licensingAuthority!: string;
 
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   licenseNumber?: string;
 
   @IsOptional()
@@ -27,7 +29,7 @@ export class CreateTrusteeLicenseInput {
   expiresAt?: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   notes?: string;
 }
 
@@ -36,7 +38,7 @@ export class UpdateTrusteeLicenseInput {
   status!: TrusteeLicenseStatus;
 
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   licenseNumber?: string;
 
   @IsOptional()
@@ -48,7 +50,7 @@ export class UpdateTrusteeLicenseInput {
   expiresAt?: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   notes?: string;
 }
 

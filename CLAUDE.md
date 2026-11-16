@@ -867,6 +867,30 @@ said "Nigeria".
 - **Tests:** they use ISO's user-assigned codes (`XA`–`XZ`), which are
   never a real country.
 
+**Update, 2026-11-16 — every form field is checked.** Owner's decision,
+after the counterparty form accepted anything (a blank name, `bob@` as
+an email, "call me" as a phone):
+- **One set of rules** in `common/validation/fields.ts`: `TextField`,
+  `LongTextField`, `NameField` (needs a letter), `EmailField`,
+  `PhoneField` (stored as E.164; a leading 0 is Nigerian, so `0803…`
+  becomes `+234803…`), `UrlField` (http/https), `DateField`, `IdField`,
+  `SecretField`, `JsonObjectField`, and `Trimmed` for fields that keep
+  their own length and minimum rules. Every API input uses them.
+- **Text is trimmed, and blank counts as not given:** a required field
+  says "X is required"; an optional one is left out (so on an update,
+  `""` now means "no change", not "clear it"). Ids, passwords, tokens
+  and WhatsApp proofs are never changed. Emails aren't lower-cased
+  (accounts are looked up as stored).
+- **Plain errors:** `createValidationPipe()` (`main.ts`) words each one
+  for the form ("Contact email must be a valid email address…"), and
+  refuses unknown fields by name.
+- **Limits are shared:** `FIELD_LIMITS` in `@birr/shared`. The web's
+  `Input` gets a default `maxLength` from its type, every textarea has
+  its field's limit, and fields have the right type (email, url, tel).
+- **Guard test:** `dto-coverage.spec.ts` fails on any text field in an
+  API input that has no length limit or rule, or free text that isn't
+  trimmed, the same idea as `route-role-coverage.spec.ts`.
+
 **Update, 2026-11-16 — every scheduled job is watched, and backups are
 real.** The five scheduled jobs (monthly giving, Paystack reconciliation,
 portfolio drift, trustee-licence expiry, access-review reminders) used to

@@ -1,5 +1,5 @@
+import { LongTextField } from "../../common/validation/fields";
 import { Body, Controller, Get, NotFoundException, Param, Post, Put, Query } from "@nestjs/common";
-import { IsString } from "class-validator";
 import {
   CounterpartiesService,
   RegisterCounterpartyInput,
@@ -12,7 +12,7 @@ import { RequiresAccess } from "../../common/guards/permission.guard";
 import { CounterpartyStatus } from "@birr/db";
 
 class StatusChangeInput {
-  @IsString()
+  @LongTextField()
   reason!: string;
 }
 

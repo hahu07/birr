@@ -1,3 +1,4 @@
+import { Trimmed } from "../../common/validation/fields";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { IsArray, IsOptional, IsString, MaxLength } from "class-validator";
 import { createHash } from "crypto";
@@ -18,6 +19,7 @@ export class CompleteAccessReviewInput {
   @IsArray()
   outcomes!: unknown[];
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(4000)

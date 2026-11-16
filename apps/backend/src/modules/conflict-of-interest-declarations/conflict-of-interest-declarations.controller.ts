@@ -1,5 +1,6 @@
+import { IdField, LongTextField } from "../../common/validation/fields";
 import { Body, Controller, Get, NotFoundException, Param, Post } from "@nestjs/common";
-import { IsIn, IsOptional, IsString } from "class-validator";
+import { IsIn, IsOptional } from "class-validator";
 import {
   ConflictOfInterestDeclarationsService,
   CoiReviewOutcome,
@@ -14,10 +15,10 @@ const REVIEW_OUTCOMES = ["reviewed", "cleared", "escalated"] as const;
 
 class DeclareBody {
   @IsOptional()
-  @IsString()
+  @IdField()
   waqfId?: string;
 
-  @IsString()
+  @LongTextField()
   declarationText!: string;
 }
 

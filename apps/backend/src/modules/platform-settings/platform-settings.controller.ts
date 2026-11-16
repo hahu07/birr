@@ -1,5 +1,5 @@
+import { SecretField } from "../../common/validation/fields";
 import { Body, Controller, Delete, Get, Param, Put, Req } from "@nestjs/common";
-import { IsString } from "class-validator";
 import type { Request } from "express";
 import { SettingsService } from "../../common/settings/settings.service";
 import { PROVIDER_FIELDS } from "../../common/settings/provider-fields";
@@ -7,7 +7,7 @@ import { resolveBirrStaffFromSession } from "../../common/auth/current-birr-staf
 import { RequiresAccess } from "../../common/guards/permission.guard";
 
 class SetSettingBody {
-  @IsString()
+  @SecretField(10_000)
   value!: string;
 }
 

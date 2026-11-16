@@ -14,6 +14,7 @@ import type { Foundation } from "../../../../lib/types";
 import { Alert, Button } from "@birr/ui";
 import { Field, FormSection, inputClass } from "../../_components/form";
 import { CountrySelect } from "../../../../components/forms/CountrySelect";
+import { FIELD_LIMITS } from "@birr/shared";
 
 export function FoundationForm({
   onSuccess,
@@ -67,6 +68,7 @@ export function FoundationForm({
             </Field>
             <Field label="Purpose" htmlFor="purpose" hint="This becomes part of the dedication itself.">
               <textarea
+                maxLength={FIELD_LIMITS.longText}
                 id="purpose"
                 value={purpose}
                 onChange={(e) => setPurpose(e.target.value)}

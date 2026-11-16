@@ -1,3 +1,4 @@
+import { IdField, LongTextField, NameField, Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException, Optional } from "@nestjs/common";
 import { IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
@@ -32,19 +33,20 @@ const ZERO = new Prisma.Decimal(0);
 const maxOf = (a: Prisma.Decimal, b: Prisma.Decimal) => (a.gt(b) ? a : b);
 
 export class CreateWaqfCauseInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   description?: string;
 
   // See WaqfCause.projectPlan's own schema comment — Birr-staff path
   // only (this DTO backs the custom-cause registration route, never a
   // Founder-facing one).
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(2000)
@@ -52,10 +54,10 @@ export class CreateWaqfCauseInput {
 }
 
 export class SelectCauseCategoryInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
-  @IsString()
+  @IdField()
   causeCategoryId!: string;
 }
 
@@ -64,6 +66,7 @@ export class AllocateCauseInput {
   amount!: Prisma.Decimal | number | string;
 
   /** Required when lowering an allocation above zero (2026-11-16). */
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(REASON_MAX)
@@ -72,12 +75,13 @@ export class AllocateCauseInput {
 
 /** Moving part of one cause's allocation to another cause of the same fund. */
 export class MoveAllocationInput {
-  @IsString()
+  @IdField()
   toCauseId!: string;
 
   @IsNumberString()
   amount!: string;
 
+  @Trimmed()
   @IsString()
   @MaxLength(REASON_MAX)
   reason!: string;
@@ -85,6 +89,7 @@ export class MoveAllocationInput {
 
 export class UnselectCauseInput {
   /** Required when the cause has an allocation (2026-11-16). */
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(REASON_MAX)
@@ -120,6 +125,7 @@ export interface AllocationPosition {
 }
 
 export class UpdateWaqfCauseProjectPlanInput {
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(2000)

@@ -1,6 +1,8 @@
+import { FIELD_LIMITS } from "@birr/shared";
+import { EmailField, IdField, TextField } from "../../common/validation/fields";
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { IsEmail, IsEnum, IsOptional, IsString } from "class-validator";
+import { IsEnum, IsOptional } from "class-validator";
 import type { Request, Response } from "express";
 import { InvitationsService, InviteInput, AcceptInput } from "./invitations.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
@@ -14,17 +16,17 @@ class InviteBody {
   @IsEnum(InviteeKind)
   inviteeKind!: InviteeKind;
 
-  @IsEmail()
+  @EmailField()
   email!: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   founderId?: string;
 
   // co_founder only — the EXISTING Foundation to invite a new co-founder
   // into.
   @IsOptional()
-  @IsString()
+  @IdField()
   foundationId?: string;
 
   // Not @IsEnum here — roleKey is validated against either
@@ -32,7 +34,7 @@ class InviteBody {
   // (see InvitationsService.invite's own runtime check), which a single
   // static decorator can't express. Unused/ignored for co_founder.
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   roleKey?: string;
 }
 

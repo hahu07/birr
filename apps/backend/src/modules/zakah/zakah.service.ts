@@ -1,3 +1,4 @@
+import { Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsIn, IsObject, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { Prisma, prisma, ZakahMadhhab, ZakahMetalPrice, ZakahRuleset as ZakahRulesetRow } from "@birr/db";
@@ -26,6 +27,7 @@ export class CreateZakahRulesetInput {
   @IsIn(MADHHABS)
   madhhab!: ZakahMadhhab;
 
+  @Trimmed()
   @IsString()
   @MinLength(1)
   @MaxLength(100)
@@ -38,6 +40,7 @@ export class CreateZakahRulesetInput {
 }
 
 export class UpdateZakahRulesetDraftInput {
+  @Trimmed()
   @IsString()
   @MinLength(1)
   @MaxLength(100)

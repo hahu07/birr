@@ -52,7 +52,9 @@ describe("RolesService", () => {
   });
 
   test("preview runs the guard rails on a batch without proposing it", async () => {
-    const before = await prisma.governedAction.count();
+    // Only this kind of action: other specs running alongside propose their own.
+    const proposals = { where: { permission: { key: "role.permission_change" } } };
+    const before = await prisma.governedAction.count(proposals);
     const { checks } = await service.preview([
       { roleKey: "legal_adviser", permissionKey: "vault.expense_record", canMaker: true, canChecker: false },
       { roleKey: "external_auditor", permissionKey: "asset.dispose", canMaker: false, canChecker: true },
@@ -60,7 +62,7 @@ describe("RolesService", () => {
     ]);
     expect(checks.map((c) => c.problem)).toEqual([null, expect.stringMatching(/External Auditor/), expect.stringMatching(/nobody active able to approve/)]);
     expect(checks[0]).toMatchObject({ before: { canMaker: false, canChecker: false }, affectedPeople: expect.any(Number) });
-    expect(await prisma.governedAction.count()).toBe(before);
+    expect(await prisma.governedAction.count(proposals)).toBe(before);
   });
 
   test("the export is the full matrix as CSV, and who exported it is audited", async () => {

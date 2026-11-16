@@ -1,7 +1,9 @@
+import { NameField, SecretField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { CountryCode } from "../../common/validation/country-code";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "crypto";
-import { IsEnum, IsOptional, IsString, MinLength } from "class-validator";
+import { IsEnum, IsOptional, MinLength } from "class-validator";
 import { prisma, Prisma, Invitation, InviteeKind, BirrStaffRole, FounderPermissionLevel, FounderKind, InstitutionType } from "@birr/db";
 import { hashPassword } from "../../common/auth/password-auth";
 import { ResendInvitationEmailAdapter } from "./email/resend-invitation.adapter";
@@ -102,13 +104,14 @@ export interface InviteInput {
 }
 
 export class AcceptInput {
-  @IsString()
+  @SecretField()
   token!: string;
 
-  @IsString()
+  @NameField()
   fullName!: string;
 
   @MinLength(MIN_PASSWORD_LENGTH)
+  @SecretField(200)
   password!: string;
 
   // Only required when accepting a co_founder invitation — the new
@@ -118,7 +121,7 @@ export class AcceptInput {
   // accept() itself does the real gating (same posture as roleKey's
   // dual meaning on InviteBody).
   @IsOptional()
-  @IsString()
+  @NameField()
   founderName?: string;
 
   @IsOptional()
@@ -135,14 +138,14 @@ export class AcceptInput {
   // co_founder only: the CO_FOUNDER_STATEMENT_VERSION of the statement
   // about the Foundation's deed they accepted (see co-founder-consent.ts).
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   deedConsentVersion?: string;
 
   // co_founder only: the hash of the exact statement they were shown
   // (previewCoFounderInvitation's statement.hash). Checked against the
   // statement stored, so the record is always what they saw.
   @IsOptional()
-  @IsString()
+  @SecretField()
   deedStatementHash?: string;
 }
 

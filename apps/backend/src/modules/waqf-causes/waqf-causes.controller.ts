@@ -1,5 +1,5 @@
+import { IdField } from "../../common/validation/fields";
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
-import { IsString } from "class-validator";
 import { Request } from "express";
 import {
   WaqfCausesService,
@@ -17,7 +17,7 @@ import { Public } from "../../common/guards/public.decorator";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 
 class AllocateProceedsProportionallyBody {
-  @IsString()
+  @IdField()
   waqfId!: string;
 }
 

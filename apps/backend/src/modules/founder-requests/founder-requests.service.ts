@@ -1,5 +1,6 @@
+import { IdField, JsonObjectField, TextField } from "../../common/validation/fields";
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsEnum, IsIn, IsObject, IsOptional, IsString } from "class-validator";
+import { IsEnum, IsIn, IsOptional } from "class-validator";
 import { prisma, Prisma, FounderRequestType } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { staffHasAccess } from "../../common/auth/staff-permissions";
@@ -29,17 +30,17 @@ const REQUIRED_DETAIL_KEYS: Record<FounderRequestType, string[]> = {
 };
 
 export class CreateFounderRequestInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
   @IsEnum(FounderRequestType)
   type!: FounderRequestType;
 
-  @IsObject()
+  @JsonObjectField(10_000)
   details!: Record<string, unknown>;
 
   @IsOptional()
-  @IsString()
+  @TextField()
   note?: string;
 }
 
@@ -48,7 +49,7 @@ export class DecideFounderRequestInput {
   status!: "in_review" | "actioned" | "declined";
 
   @IsOptional()
-  @IsString()
+  @TextField()
   reviewNote?: string;
 }
 

@@ -1,3 +1,5 @@
+import { EmailField, TextField, Trimmed } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { randomUUID } from "crypto";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
@@ -11,7 +13,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
+import { IsBoolean, IsEnum, IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
 import { ContributionProvider, IdType, prisma, Prisma, ZakahPool, type RecurringGift } from "@birr/db";
 import { nisabBasisFor, processingFeeCover, validateRulings, ZakahInputError, type ZakahRulings } from "@birr/zakah";
 import { EncryptionService } from "../../common/settings/encryption.service";
@@ -43,6 +45,7 @@ export type ZakahMonthlyMode =
 
 /** A monthly zakah payer adding the identity the AML threshold asks for. */
 export class ZakahPayerIdentityInput {
+  @Trimmed()
   @IsString()
   @MaxLength(200)
   fullName!: string;
@@ -50,6 +53,7 @@ export class ZakahPayerIdentityInput {
   @IsEnum(IdType)
   idType!: IdType;
 
+  @Trimmed()
   @IsString()
   @MaxLength(50)
   idNumber!: string;
@@ -58,6 +62,7 @@ export class ZakahPayerIdentityInput {
 const CURRENCY = "NGN";
 
 export class HoldZakahPaymentInput {
+  @Trimmed()
   @IsString()
   @MinLength(10, { message: "reason must say, in a sentence, why this payment is being held." })
   @MaxLength(2000)
@@ -95,19 +100,20 @@ export class InitiateZakahPaymentInput {
   coverFee!: boolean;
 
   /** Must equal ZAKAH_WAKALAH_TERMS.version — the payer accepted exactly the current wording. */
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   wakalahConsentVersion!: string;
 
   // Optional, like Vault (owner's decision, 2026-11-11): no email means no
   // receipt and no AML threshold check — see ZakahPayer's schema comment.
   @IsOptional()
-  @IsEmail()
+  @EmailField()
   payerEmail?: string;
 
   // A WhatsApp number instead of (or as well as) an email, for receipts
   // and, monthly, the manage link (owner's decision, 2026-11-16). Only used
   // once confirmed: whatsappProof comes from POST /giving/whatsapp/confirm.
   // It also counts toward the AML threshold.
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(32)
@@ -118,6 +124,7 @@ export class InitiateZakahPaymentInput {
   @MaxLength(100)
   whatsappProof?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(200)
@@ -127,6 +134,7 @@ export class InitiateZakahPaymentInput {
   @IsEnum(IdType)
   idType?: IdType;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(50)
@@ -134,6 +142,7 @@ export class InitiateZakahPaymentInput {
 
   // Which ruleset version produced the figure, when it came from the
   // calculator. Recorded, never trusted for anything else.
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(49)

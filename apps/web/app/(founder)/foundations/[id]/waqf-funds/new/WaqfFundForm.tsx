@@ -21,6 +21,7 @@ import { Alert, Button, IconShieldCheck, Select } from "@birr/ui";
 import { TYPE_GUIDE, WaqfTypeGuide } from "./WaqfTypeGuide";
 import { ChoiceCard, Field, FormSection, inputClass, MoneyInput } from "../../../../_components/form";
 import { CountrySelect } from "../../../../../../components/forms/CountrySelect";
+import { FIELD_LIMITS } from "@birr/shared";
 
 const WAQF_TYPES = ["investment", "asset", "project"] as const;
 
@@ -315,6 +316,7 @@ export function WaqfFundForm({
                 </fieldset>
                 <Field label="Purpose" optional htmlFor="purpose">
                   <textarea
+                    maxLength={FIELD_LIMITS.longText}
                     id="purpose"
                     value={purpose}
                     onChange={(e) => setPurpose(e.target.value)}

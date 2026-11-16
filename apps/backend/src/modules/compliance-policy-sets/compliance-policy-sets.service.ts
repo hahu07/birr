@@ -1,17 +1,18 @@
+import { LongTextField, NameField, UrlField } from "../../common/validation/fields";
 import { Injectable } from "@nestjs/common";
-import { IsBoolean, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsOptional } from "class-validator";
 import { prisma } from "@birr/db";
 
 export class UpsertCompliancePolicySetInput {
-  @IsString()
+  @NameField()
   frameworkName!: string;
 
   @IsOptional()
-  @IsString()
+  @UrlField()
   referenceUrl?: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   notes?: string;
 
   // Omitted defaults to `true` (schema default) on create, and leaves

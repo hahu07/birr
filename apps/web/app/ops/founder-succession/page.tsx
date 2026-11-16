@@ -236,7 +236,7 @@ function CaseCard({
               ? "What the contact said, how they reached Birr, and how you know it was them"
               : "Why it's being closed (the Founder's members are told it was closed)"}
           </label>
-          <textarea id={`note-${c.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} className={textareaClass} />
+          <textarea maxLength={2000} id={`note-${c.id}`} rows={2} value={note} onChange={(e) => setNote(e.target.value)} className={textareaClass} />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" disabled={busy !== null} onClick={() => setNoteFor(null)}>
               Cancel
@@ -369,13 +369,14 @@ function RecordForm({ onCancel, onRecorded }: { onCancel: () => void; onRecorded
             <label htmlFor="succ-reason" className="mb-1 block text-xs font-medium text-slate-700">
               Reason
             </label>
-            <textarea id="succ-reason" required minLength={10} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} className={textareaClass} />
+            <textarea maxLength={2000} id="succ-reason" required minLength={10} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} className={textareaClass} />
           </div>
           <div>
             <label htmlFor="succ-evidence" className="mb-1 block text-xs font-medium text-slate-700">
               Evidence seen
             </label>
             <textarea
+              maxLength={4000}
               id="succ-evidence"
               required
               minLength={10}

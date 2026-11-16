@@ -1,3 +1,4 @@
+import { Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsNumberString, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { prisma, Prisma, ZakahFitrCampaign } from "@birr/db";
@@ -9,6 +10,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SHOW_AFTER_EID_DAYS = 30;
 
 export class FitrCampaignFields {
+  @Trimmed()
   @IsString()
   @MinLength(2)
   @MaxLength(100)

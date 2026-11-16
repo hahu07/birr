@@ -1,7 +1,8 @@
+import { EmailField, Trimmed } from "../../common/validation/fields";
 import { randomBytes } from "crypto";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsEmail, IsEnum, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsEnum, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
 import { IdType, prisma, Prisma, type RecurringGift, type RecurringGiftKind, type RecurringGiftPauseReason } from "@birr/db";
 import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validation/max-decimal";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
@@ -40,9 +41,10 @@ export class ChangeRecurringGiftAmountInput {
 /** By email, or by a WhatsApp number confirmed with its code (2026-11-16). */
 export class RequestManageLinksInput {
   @IsOptional()
-  @IsEmail()
+  @EmailField()
   email?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(32)
@@ -57,6 +59,7 @@ export class RequestManageLinksInput {
 
 /** The name and ID the AML threshold asks a Vault or zakah giver for. */
 export class GiverIdentityInput {
+  @Trimmed()
   @IsString()
   @MaxLength(200)
   fullName!: string;
@@ -64,6 +67,7 @@ export class GiverIdentityInput {
   @IsEnum(IdType)
   idType!: IdType;
 
+  @Trimmed()
   @IsString()
   @MaxLength(50)
   idNumber!: string;
@@ -71,6 +75,7 @@ export class GiverIdentityInput {
 
 /** A monthly zakah payer accepting the current wakalah wording. */
 export class AcceptZakahTermsInput {
+  @Trimmed()
   @IsString()
   @MaxLength(64)
   version!: string;

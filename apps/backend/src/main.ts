@@ -8,7 +8,8 @@ import * as path from "path";
 import { randomUUID } from "crypto";
 import cookieParser from "cookie-parser";
 import { NestFactory } from "@nestjs/core";
-import { HttpException, ValidationPipe } from "@nestjs/common";
+import { HttpException } from "@nestjs/common";
+import { createValidationPipe } from "./common/validation/validation-pipe";
 import { FileStorageService } from "./common/storage/file-storage.service";
 import { storedFiles } from "./common/storage/stored-files.middleware";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
@@ -250,7 +251,8 @@ async function bootstrap() {
   // query-string values (always strings on the wire) to their real
   // types before a controller method ever sees them.
   app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    // Field rules and plain-worded errors (common/validation/).
+    createValidationPipe(),
   );
 
   // Last-resort safety net — see AllExceptionsFilter's own comment.

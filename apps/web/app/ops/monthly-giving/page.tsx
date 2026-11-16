@@ -278,6 +278,7 @@ function GiftDetail({ id, canCancel, onChanged }: { id: string; canCancel: boole
                 Reason (kept in the audit trail; the giver is told only that it has ended)
               </label>
               <textarea
+                maxLength={1000}
                 id="cancel-reason"
                 rows={3}
                 value={reason}

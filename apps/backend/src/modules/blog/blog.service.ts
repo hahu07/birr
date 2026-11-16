@@ -1,3 +1,4 @@
+import { Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
@@ -17,16 +18,19 @@ export class CreateBlogArticleInput {
   @MaxLength(120)
   slug!: string;
 
+  @Trimmed()
   @IsString()
   @MinLength(3)
   @MaxLength(160)
   title!: string;
 
+  @Trimmed()
   @IsString()
   @MinLength(10)
   @MaxLength(300)
   description!: string;
 
+  @Trimmed()
   @IsString()
   @MinLength(1)
   @MaxLength(60_000)
@@ -38,6 +42,7 @@ export class CreateBlogArticleInput {
   @IsIn(BLOG_ILLUSTRATION_KEYS)
   illustration!: string;
 
+  @Trimmed()
   @IsString()
   @MinLength(2)
   @MaxLength(120)
@@ -50,18 +55,21 @@ export class UpdateBlogArticleInput {
   @MaxLength(120)
   slug?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MinLength(3)
   @MaxLength(160)
   title?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MinLength(10)
   @MaxLength(300)
   description?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -76,6 +84,7 @@ export class UpdateBlogArticleInput {
   @IsIn(BLOG_ILLUSTRATION_KEYS)
   illustration?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MinLength(2)

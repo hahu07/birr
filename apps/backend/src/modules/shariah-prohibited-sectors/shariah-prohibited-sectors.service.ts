@@ -1,13 +1,14 @@
+import { LongTextField, NameField } from "../../common/validation/fields";
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { IsOptional, IsString } from "class-validator";
+import { IsOptional } from "class-validator";
 import { prisma } from "@birr/db";
 
 export class UpsertShariahProhibitedSectorInput {
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   description?: string;
 }
 

@@ -112,7 +112,9 @@ describe("Guided cause allocation", () => {
     // audit log may name them.
     await prisma.birrStaff.updateMany({ where: { userId: officerUserId }, data: { status: "suspended" } });
     await prisma.$disconnect();
-  });
+    // Nine cleanup queries against the shared database: more than the
+    // default 5s when the whole suite is running alongside.
+  }, 30_000);
 
   describe("the floor: an allocation can't go below what's committed", () => {
     test("on an Asset fund, lowering below committed is refused, and lowering to exactly committed works", async () => {

@@ -1,29 +1,31 @@
+import { IdField, LongTextField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsNumberString, IsOptional } from "class-validator";
 import { prisma } from "@birr/db";
 import { CASH_AND_BANK_ACCOUNT_CODE, VaultLedgerService } from "./vault-ledger.service";
 import { findVaultOrThrow } from "./find-vault-or-throw";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class CreateVaultExpenseInput {
-  @IsString()
+  @IdField()
   vaultId!: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   vaultMilestoneId?: string;
 
-  @IsString()
+  @IdField()
   ledgerAccountId!: string;
 
   @IsNumberString()
   @IsPositiveDecimal()
   amount!: string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   currency!: string;
 
-  @IsString()
+  @LongTextField()
   description!: string;
 }
 

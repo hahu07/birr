@@ -1,5 +1,6 @@
+import { IdField } from "../../common/validation/fields";
 import { Body, Controller, Get, NotFoundException, Param, Post, Query } from "@nestjs/common";
-import { IsEnum, IsIn, IsString } from "class-validator";
+import { IsEnum, IsIn } from "class-validator";
 import {
   WaqfCaseAssignmentsService,
   CaseAssignmentCloseStatus,
@@ -14,10 +15,10 @@ import { CaseAssignmentRole } from "@birr/db";
 const CLOSE_STATUSES = ["closed", "reassigned"] as const;
 
 class AssignBody {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
-  @IsString()
+  @IdField()
   birrStaffId!: string;
 
   @IsEnum(CaseAssignmentRole)

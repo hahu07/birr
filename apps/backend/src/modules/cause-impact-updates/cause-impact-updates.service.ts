@@ -1,3 +1,4 @@
+import { IdField, Trimmed } from "../../common/validation/fields";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from "class-validator";
 import { prisma } from "@birr/db";
@@ -10,14 +11,16 @@ const NARRATIVE_MAX_LENGTH = 2000;
 const METRIC_LABEL_MAX_LENGTH = 40;
 
 export class CreateCauseImpactUpdateInput {
-  @IsString()
+  @IdField()
   waqfCauseId!: string;
 
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "A period label is required, e.g. \"Q1 2026\"." })
   @MaxLength(PERIOD_LABEL_MAX_LENGTH)
   periodLabel!: string;
 
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "A narrative is required." })
   @MaxLength(NARRATIVE_MAX_LENGTH)
@@ -28,6 +31,7 @@ export class CreateCauseImpactUpdateInput {
   @Min(0)
   metricValue?: number;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(METRIC_LABEL_MAX_LENGTH)

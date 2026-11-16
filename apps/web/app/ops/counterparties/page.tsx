@@ -15,7 +15,7 @@ import type { Counterparty } from "../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, IconLandmark, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 import { CountrySelect } from "../../../components/forms/CountrySelect";
-import { countryName } from "@birr/shared";
+import { countryName, FIELD_LIMITS } from "@birr/shared";
 
 const INSTITUTION_TYPES: Counterparty["institutionType"][] = [
   "bank",
@@ -210,7 +210,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Name</label>
-          <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+          <Input required autoFocus maxLength={FIELD_LIMITS.name} value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Type</label>
@@ -232,7 +232,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Registration number (optional)</label>
-          <Input value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} placeholder="Company registration no." />
+          <Input maxLength={FIELD_LIMITS.code} value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} placeholder="Company registration no." />
         </div>
       </div>
 
@@ -243,7 +243,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Website (optional)</label>
-          <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
+          <Input type="url" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
         </div>
       </div>
 
@@ -259,6 +259,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         <textarea
           required
           minLength={20}
+          maxLength={FIELD_LIMITS.longText}
           rows={3}
           value={businessActivities}
           onChange={(e) => setBusinessActivities(e.target.value)}
@@ -279,7 +280,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Contact name</label>
-          <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />
+          <Input maxLength={FIELD_LIMITS.name} value={contactName} onChange={(e) => setContactName(e.target.value)} />
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Contact email</label>
@@ -287,7 +288,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Contact phone</label>
-          <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+          <Input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="0803 123 4567 or +44…" />
         </div>
       </div>
 
@@ -295,7 +296,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Regulatory license number</label>
-          <Input value={regulatoryLicenseNumber} onChange={(e) => setRegulatoryLicenseNumber(e.target.value)} />
+          <Input maxLength={FIELD_LIMITS.code} value={regulatoryLicenseNumber} onChange={(e) => setRegulatoryLicenseNumber(e.target.value)} />
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Regulating authority</label>

@@ -1,5 +1,7 @@
+import { FIELD_LIMITS } from "@birr/shared";
+import { EmailField, IdField, TextField } from "../../common/validation/fields";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
-import { IsBoolean, IsEmail, IsEnum, IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsEnum, IsNumberString, IsOptional } from "class-validator";
 import { Request } from "express";
 import { Throttle } from "@nestjs/throttler";
 import { ContributionProvider } from "@birr/db";
@@ -16,7 +18,7 @@ import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validat
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 class InitiateContributionBody {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
   // Same blunt sanity ceiling as InitiateVaultContributionInput's own
@@ -30,14 +32,14 @@ class InitiateContributionBody {
   // table (see ContributionsService.initiate), which can grow without a
   // code change, so a static @IsEnum here would just be another place
   // to keep in sync.
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   currency!: string;
 
   @IsEnum(ContributionProvider)
   provider!: ContributionProvider;
 
   @IsOptional()
-  @IsEmail()
+  @EmailField()
   payerEmail?: string;
 
   /** Top this fund up every month by card (see RecurringGift). */

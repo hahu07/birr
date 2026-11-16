@@ -1,11 +1,14 @@
+import { DateField, EmailField, LongTextField, NameField, PhoneField, TextField, UrlField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { CountryCode } from "../../common/validation/country-code";
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
+import { IsEnum, IsNotEmpty, IsOptional, MinLength, IsNumberString } from "class-validator";
 import { prisma, Prisma, CounterpartyType, CounterpartyStatus, PayoutProvider } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
 
 export class RegisterCounterpartyInput {
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsEnum(CounterpartyType)
@@ -15,11 +18,11 @@ export class RegisterCounterpartyInput {
   jurisdiction!: string;
 
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   registrationNumber?: string;
 
   @IsOptional()
-  @IsString()
+  @TextField()
   address?: string;
 
   // Required, with a real substance floor — this is the primary thing a
@@ -28,48 +31,48 @@ export class RegisterCounterpartyInput {
   // review with nothing to go on (found 2026-09-04); update() below
   // leaves it optional since a correction there is touching an already-
   // reviewed or already-populated record, not a first-time intake gap.
-  @IsString()
+  @LongTextField()
   @IsNotEmpty()
   @MinLength(20, { message: "businessActivities must describe what this counterparty actually does in enough detail for a Shariah review (at least 20 characters)." })
   businessActivities!: string;
 
   @IsOptional()
-  @IsString()
+  @UrlField()
   website?: string;
 
   @IsOptional()
-  @IsString()
+  @NameField()
   contactName?: string;
 
   @IsOptional()
-  @IsString()
+  @EmailField()
   contactEmail?: string;
 
   @IsOptional()
-  @IsString()
+  @PhoneField()
   contactPhone?: string;
 
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   regulatoryLicenseNumber?: string;
 
   @IsOptional()
-  @IsString()
+  @TextField()
   regulatingAuthority?: string;
 
   @IsOptional()
-  @IsString()
+  @DateField()
   licenseExpiresAt?: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   notes?: string;
 
   // Not itself a judgment — just a fact (name/reference of any existing
   // Shariah board or certification this counterparty already holds
   // elsewhere) for the reviewer to weigh alongside businessActivities.
   @IsOptional()
-  @IsString()
+  @TextField()
   existingShariahCertification?: string;
 }
 
@@ -83,59 +86,60 @@ export class UpdateCounterpartyInput {
   jurisdiction?: string;
 
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   registrationNumber?: string;
 
   @IsOptional()
-  @IsString()
+  @TextField()
   address?: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   businessActivities?: string;
 
   @IsOptional()
-  @IsString()
+  @UrlField()
   website?: string;
 
   @IsOptional()
-  @IsString()
+  @NameField()
   contactName?: string;
 
   @IsOptional()
-  @IsString()
+  @EmailField()
   contactEmail?: string;
 
   @IsOptional()
-  @IsString()
+  @PhoneField()
   contactPhone?: string;
 
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   regulatoryLicenseNumber?: string;
 
   @IsOptional()
-  @IsString()
+  @TextField()
   regulatingAuthority?: string;
 
   @IsOptional()
-  @IsString()
+  @DateField()
   licenseExpiresAt?: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   notes?: string;
 
   @IsOptional()
-  @IsString()
+  @TextField()
   existingShariahCertification?: string;
 }
 
 export class SetConcentrationLimitInput {
-  @IsString()
+  @IsNumberString()
+  @IsPositiveDecimal()
   amount!: Prisma.Decimal | number | string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   currency!: string;
 }
 
@@ -147,16 +151,16 @@ export class SetPayoutDetailsInput {
   @IsEnum(PayoutProvider)
   payoutProvider!: PayoutProvider;
 
-  @IsString()
+  @NameField()
   bankName!: string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   accountNumber!: string;
 
-  @IsString()
+  @NameField()
   accountName!: string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   bankCode!: string;
 }
 

@@ -1,6 +1,8 @@
+import { IdField, LongTextField, NameField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { CountryCode } from "../../common/validation/country-code";
-import { IsEnum, IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsEnum, IsNumberString, IsOptional } from "class-validator";
 import { prisma, Prisma, WaqfType, WaqfFundingPlan } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -11,20 +13,20 @@ import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { holdsAnyRole } from "../../common/auth/staff-roles";
 
 export class CreateWaqfInput {
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsEnum(WaqfType)
   type!: WaqfType;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   purpose?: string;
 
   @CountryCode()
   jurisdiction!: string;
 
-  @IsString()
+  @IdField()
   foundationId!: string;
 
   // The declared total endowment target — required for every new
@@ -35,7 +37,7 @@ export class CreateWaqfInput {
   @IsPositiveDecimal()
   corpusAmount!: string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   corpusCurrency!: string;
 
   @IsEnum(WaqfFundingPlan)

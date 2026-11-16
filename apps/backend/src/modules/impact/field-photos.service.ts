@@ -1,24 +1,27 @@
+import { IdField, TextField, Trimmed } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsIn, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 
 export class UploadFieldPhotosInput {
-  @IsString()
+  @IdField()
   vaultId!: string;
 
   @IsIn(["distribution", "milestone"])
   eventType!: "distribution" | "milestone";
 
-  @IsString()
+  @IdField()
   eventId!: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(300)
   caption?: string;
 
   // multipart form fields arrive as strings
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   consentConfirmed!: string;
 }
 

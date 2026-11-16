@@ -308,6 +308,7 @@ function IssueRow({ issue, canResolve, onChanged }: { issue: Issue; canResolve: 
                   What was found, and what was done
                 </label>
                 <textarea
+                  maxLength={2000}
                   id={`note-${issue.id}`}
                   rows={3}
                   value={note}

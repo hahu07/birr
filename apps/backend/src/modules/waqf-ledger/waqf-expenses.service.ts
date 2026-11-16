@@ -1,28 +1,30 @@
+import { IdField, LongTextField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsNumberString, IsOptional } from "class-validator";
 import { prisma } from "@birr/db";
 import { CASH_AND_BANK_ACCOUNT_CODE, WaqfLedgerService } from "./waqf-ledger.service";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class CreateWaqfExpenseInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   waqfMilestoneId?: string;
 
-  @IsString()
+  @IdField()
   ledgerAccountId!: string;
 
   @IsNumberString()
   @IsPositiveDecimal()
   amount!: string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   currency!: string;
 
-  @IsString()
+  @LongTextField()
   description!: string;
 }
 

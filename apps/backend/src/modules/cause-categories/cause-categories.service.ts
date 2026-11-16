@@ -1,3 +1,4 @@
+import { IdField, Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, WaqfType } from "@birr/db";
@@ -8,16 +9,19 @@ const DESCRIPTION_MAX_LENGTH = 500;
 const ICON_MAX_LENGTH = 8; // generous — a multi-codepoint emoji, not a URL or asset path.
 
 export class CreateCauseCategoryInput {
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "Name is required." })
   @MaxLength(NAME_MAX_LENGTH)
   name!: string;
 
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "Description is required." })
   @MaxLength(DESCRIPTION_MAX_LENGTH)
   description!: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(ICON_MAX_LENGTH)
@@ -36,7 +40,7 @@ export class CreateCauseCategoryInput {
 
   // One level only — see the schema's own comment on CauseCategory.parentId.
   @IsOptional()
-  @IsString()
+  @IdField()
   parentId?: string | null;
 
   // See CauseCategory.projectPlan's own schema comment — a default
@@ -44,6 +48,7 @@ export class CreateCauseCategoryInput {
   // shown to a donor. Same DESCRIPTION_MAX_LENGTH cap as `description`
   // above (deliberately shorter than VaultCause.projectPlan's own
   // 2000-char cap — a generic starting draft, not the full write-up).
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(DESCRIPTION_MAX_LENGTH)
@@ -51,18 +56,21 @@ export class CreateCauseCategoryInput {
 }
 
 export class UpdateCauseCategoryInput {
+  @Trimmed()
   @IsOptional()
   @IsString()
   @IsNotEmpty({ message: "Name cannot be blank." })
   @MaxLength(NAME_MAX_LENGTH)
   name?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @IsNotEmpty({ message: "Description cannot be blank." })
   @MaxLength(DESCRIPTION_MAX_LENGTH)
   description?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(ICON_MAX_LENGTH)
@@ -78,9 +86,10 @@ export class UpdateCauseCategoryInput {
   typicalWaqfTypes?: WaqfType[];
 
   @IsOptional()
-  @IsString()
+  @IdField()
   parentId?: string | null;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(DESCRIPTION_MAX_LENGTH)

@@ -1,5 +1,7 @@
+import { IdField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsNotEmpty, IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsNotEmpty, IsNumberString, IsOptional } from "class-validator";
 import { prisma, Prisma, PayoutProvider } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { BeneficiariesService } from "../beneficiaries/beneficiaries.service";
@@ -14,13 +16,13 @@ import { StablecoinPayoutAdapter } from "./providers/stablecoin-payout.adapter";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class CreateDistributionInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
-  @IsString()
+  @IdField()
   causeId!: string;
 
-  @IsString()
+  @IdField()
   beneficiaryId!: string;
 
   // Optional — see WaqfMilestone's own schema comment. When set,
@@ -29,7 +31,7 @@ export class CreateDistributionInput {
   // disbursement for a Project-type Waqf Fund, mirroring
   // CreateVaultDistributionInput.vaultMilestoneId exactly.
   @IsOptional()
-  @IsString()
+  @IdField()
   waqfMilestoneId?: string;
 
   // See AssetsService's CreateAssetInput.estimatedValue for why this is
@@ -41,7 +43,7 @@ export class CreateDistributionInput {
   // No default — every distribution must declare its own currency
   // explicitly, same posture as Contribution.currency. See the schema's
   // own comment on Distribution.currency for why this exists at all.
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   @IsNotEmpty()
   currency!: string;
 }

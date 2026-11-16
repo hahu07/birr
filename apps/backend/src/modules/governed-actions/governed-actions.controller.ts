@@ -1,3 +1,5 @@
+import { FIELD_LIMITS } from "@birr/shared";
+import { TextField } from "../../common/validation/fields";
 import {
   BadRequestException,
   Body,
@@ -10,7 +12,7 @@ import {
   Req,
   UnauthorizedException,
 } from "@nestjs/common";
-import { IsBoolean, IsObject, IsString } from "class-validator";
+import { IsBoolean, IsObject } from "class-validator";
 import { Request } from "express";
 import { GovernedActionStatus } from "@birr/db";
 import { GovernedActionsService } from "./governed-actions.service";
@@ -23,7 +25,7 @@ import { Public } from "../../common/guards/public.decorator";
 type AuthenticatedRequest = Request & { birrStaff: AuthenticatedBirrStaff };
 
 class ProposeActionBody {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   permissionKey!: string;
 
   // Deliberately not a nested DTO — a governed action's payload shape

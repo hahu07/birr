@@ -1,19 +1,20 @@
+import { IdField, LongTextField, NameField } from "../../common/validation/fields";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { CountryCode } from "../../common/validation/country-code";
 import { randomUUID } from "crypto";
-import { IsArray, IsString } from "class-validator";
+import { IsArray } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
 
 export class CreateFoundationInput {
-  @IsString()
+  @NameField()
   name!: string;
 
   // Required, not optional — "Foundation establishment should be
   // standard," per the stakeholder: a Foundation with no recorded
   // purpose is an incomplete dedication, not a valid one.
-  @IsString()
+  @LongTextField()
   purpose!: string;
 
   @CountryCode({ optional: true })
@@ -28,7 +29,7 @@ export class CreateFoundationInput {
   // 2026-08-30 fix comment for why "no session" no longer counts as
   // trusted here.
   @IsArray()
-  @IsString({ each: true })
+  @IdField({ each: true })
   founderIds!: string[];
 }
 

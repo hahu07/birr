@@ -1,3 +1,4 @@
+import { Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { prisma, Prisma, type ReconciliationDirection } from "@birr/db";
@@ -32,6 +33,7 @@ export class RunReconciliationInput {
 }
 
 export class ResolveReconciliationIssueInput {
+  @Trimmed()
   @IsString()
   @MinLength(5)
   @MaxLength(2000)

@@ -1,5 +1,6 @@
+import { IdField, LongTextField } from "../../common/validation/fields";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsNotEmpty, IsString } from "class-validator";
+import { IsNotEmpty } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { resolveFounderRecipientUserIdsForFoundation } from "../../common/notifications/resolve-founder-recipients";
@@ -7,10 +8,10 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { MessageAttachmentStorageService } from "./message-attachment-storage.service";
 
 export class SendMessageInput {
-  @IsString()
+  @IdField()
   foundationId!: string;
 
-  @IsString()
+  @LongTextField()
   @IsNotEmpty({ message: "Message can't be empty." })
   body!: string;
 }
