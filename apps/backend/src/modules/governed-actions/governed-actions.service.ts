@@ -90,6 +90,27 @@ function parseStaffInvitePayload(payload: unknown): { email: string; staffRole: 
 }
 
 
+/**
+ * The proposer's reason on a staff change (2026-11-16): required for every
+ * new proposal to invite, add or remove a role, or reset two-factor (as it
+ * already was to suspend or reinstate), shown to whoever approves and kept
+ * in the audit trail. Read as optional at approval, so a proposal made
+ * before reasons were required can still be decided.
+ */
+function parseStaffChangeReason(payload: unknown, { required }: { required: boolean }): string | null {
+  const { reason } = (payload ?? {}) as { reason?: unknown };
+  const text = typeof reason === "string" ? reason.trim() : "";
+  if (required && (text.length < 10 || text.length > 1000)) {
+    throw new BadRequestException("Give a reason of 10 to 1,000 characters; whoever approves it reads it first.");
+  }
+  return text || null;
+}
+
+const withReason = (summary: string, payload: unknown) => {
+  const reason = parseStaffChangeReason(payload, { required: false });
+  return reason ? `${summary} Reason: "${reason}".` : summary;
+};
+
 // staff.role_add / staff.role_remove payload: which staff member, which role.
 function parseStaffRolePayload(payload: unknown): { staffId: string; role: BirrStaffRole } {
   const { staffId, role } = (payload ?? {}) as { staffId?: unknown; role?: unknown };
@@ -1457,6 +1478,7 @@ export class GovernedActionsService {
         "staff.mfa_reset",
         {
           validatePropose: async (payload) => {
+            parseStaffChangeReason(payload, { required: true });
             const { staffId } = payload as { staffId: string };
             const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true } });
             if (!staff) throw new NotFoundException(`Staff member "${staffId}" not found.`);
@@ -1482,7 +1504,10 @@ export class GovernedActionsService {
             const { staffId } = payload as { staffId: string };
             const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true, ...ROLE_NAMES } });
             return staff
-              ? `Reset two-factor authentication for ${staff.user.fullName} (${roleNames(staff).join(", ")}, ${staff.user.email}) — they must re-enrol on next sign-in. Confirm the request through a separate channel before approving.`
+              ? withReason(
+                  `Reset two-factor authentication for ${staff.user.fullName} (${roleNames(staff).join(", ")}, ${staff.user.email}) — they must re-enrol on next sign-in. Confirm the request through a separate channel before approving.`,
+                  payload,
+                )
               : `Staff member "${staffId}" not found.`;
           },
           describeCurrentState: async (payload) => {
@@ -1498,7 +1523,7 @@ export class GovernedActionsService {
               entityType: "User",
               entityId: target.userId,
               before: { mfaEnabled: true },
-              after: { mfaEnabled: false, approvedByUserId: ctx.checkerUserId },
+              after: { mfaEnabled: false, reason: parseStaffChangeReason(payload, { required: false }), approvedByUserId: ctx.checkerUserId },
             };
           },
         },
@@ -1514,6 +1539,7 @@ export class GovernedActionsService {
         "staff.invite",
         {
           validatePropose: async (payload) => {
+            parseStaffChangeReason(payload, { required: true });
             await assertStaffInvitable(parseStaffInvitePayload(payload).email, prisma);
           },
           checkDuplicate: async (payload) => {
@@ -1532,7 +1558,10 @@ export class GovernedActionsService {
           describePayload: (payload) => {
             const { email, staffRole } = parseStaffInvitePayload(payload);
             return Promise.resolve(
-              `Invite ${email} as ${staffRole.replace(/_/g, " ")}. Confirm through a separate channel (e.g. a phone call) that this is a real, new staff member before approving.`,
+              withReason(
+                `Invite ${email} as ${staffRole.replace(/_/g, " ")}. Confirm through a separate channel (e.g. a phone call) that this is a real, new staff member before approving.`,
+                payload,
+              ),
             );
           },
           onApprove: async (payload, tx, ctx) => {
@@ -1552,7 +1581,7 @@ export class GovernedActionsService {
               entityType: "Invitation",
               entityId: invitation.id,
               before: null,
-              after: { ...invitationAuditSnapshot(invitation), approvedByUserId: ctx.checkerUserId },
+              after: { ...invitationAuditSnapshot(invitation), reason: parseStaffChangeReason(payload, { required: false }), approvedByUserId: ctx.checkerUserId },
             };
           },
         },
@@ -1566,6 +1595,7 @@ export class GovernedActionsService {
         "staff.role_add",
         {
           validatePropose: async (payload, ctx) => {
+            parseStaffChangeReason(payload, { required: true });
             const { staffId, role } = parseStaffRolePayload(payload);
             const target = await loadRoleChangeTarget(staffId, prisma);
             assertNotOwnRoles(target, ctx.makerUserId, "propose");
@@ -1578,7 +1608,7 @@ export class GovernedActionsService {
             const { staffId, role } = parseStaffRolePayload(payload);
             const target = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true, ...ROLE_NAMES } });
             return target
-              ? `Add ${role.replace(/_/g, " ")} to ${target.user.fullName} (currently: ${roleNames(target).join(", ")}). Confirm through a separate channel before approving.`
+              ? withReason(`Add ${role.replace(/_/g, " ")} to ${target.user.fullName} (currently: ${roleNames(target).join(", ")}). Confirm through a separate channel before approving.`, payload)
               : `Staff member "${staffId}" not found.`;
           },
           describeCurrentState: async (payload) => {
@@ -1599,7 +1629,7 @@ export class GovernedActionsService {
               entityType: "BirrStaff",
               entityId: staffId,
               before: { roles: target.roleList },
-              after: { roles: [...target.roleList, role].sort(), approvedByUserId: ctx.checkerUserId },
+              after: { roles: [...target.roleList, role].sort(), reason: parseStaffChangeReason(payload, { required: false }), approvedByUserId: ctx.checkerUserId },
             };
           },
         },
@@ -1608,6 +1638,7 @@ export class GovernedActionsService {
         "staff.role_remove",
         {
           validatePropose: async (payload, ctx) => {
+            parseStaffChangeReason(payload, { required: true });
             const { staffId, role } = parseStaffRolePayload(payload);
             const target = await loadRoleChangeTarget(staffId, prisma);
             assertNotOwnRoles(target, ctx.makerUserId, "propose");
@@ -1620,7 +1651,7 @@ export class GovernedActionsService {
             const { staffId, role } = parseStaffRolePayload(payload);
             const target = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: true, ...ROLE_NAMES } });
             return target
-              ? `Remove ${role.replace(/_/g, " ")} from ${target.user.fullName} (currently: ${roleNames(target).join(", ")}). Confirm through a separate channel before approving.`
+              ? withReason(`Remove ${role.replace(/_/g, " ")} from ${target.user.fullName} (currently: ${roleNames(target).join(", ")}). Confirm through a separate channel before approving.`, payload)
               : `Staff member "${staffId}" not found.`;
           },
           describeCurrentState: async (payload) => {
@@ -1646,7 +1677,7 @@ export class GovernedActionsService {
               entityType: "BirrStaff",
               entityId: staffId,
               before: { roles: target.roleList },
-              after: { roles: target.roleList.filter((r) => r !== role), approvedByUserId: ctx.checkerUserId },
+              after: { roles: target.roleList.filter((r) => r !== role), reason: parseStaffChangeReason(payload, { required: false }), approvedByUserId: ctx.checkerUserId },
             };
           },
         },

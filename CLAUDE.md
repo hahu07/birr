@@ -846,6 +846,20 @@ decisions, after reviewing the Ops Console page:
   most weekly (`access-review-scheduler.ts`). Test reviews from the spec
   stay in a dev database, since the table can't be deleted from.
 
+**Update, 2026-11-16 — Team page rebuilt to the Roles & Access standard.**
+Every staff change now needs a written reason (10–1,000 characters) shown
+to the approver and kept in the audit row: inviting, adding or removing a
+role, and resetting two-factor (suspend/reinstate already did). Proposals
+from before still decide. Changes are proposed from a person's panel with
+a confirm step naming the effect; nothing is one click any more (the old ×
+on a role proposed a removal at once). The roster marks what's awaiting
+approval (`GET /birr-staff/pending-changes`) and blocks further changes for
+that person until it's decided, shows two-factor status and **last
+sign-in** (`User.lastSignInAt`, set when a staff session is issued), and
+flags accounts with no sign-in for 90 days — flagged only, never suspended
+automatically. Staff managers (`roles.view`) see each person's history
+(`GET /birr-staff/:id/history`). The roster defaults to active staff.
+
 **Update, 2026-11-16 — re-running the seed never undoes what staff have
 set.** It used to: every run put the contribution and corpus minimums,
 the Vault AML donor thresholds, the cause catalog, the Shariah-prohibited
