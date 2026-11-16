@@ -105,12 +105,41 @@ describe("PayZakahForm", { timeout: 15_000 }, () => {
     const { user, redirectTo } = setup();
     await user.click(screen.getByLabelText(/Pay this every month, in advance/));
     expect(screen.getByText(/paid ahead of when it falls due/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Email/)).toBeRequired();
-    await user.type(screen.getByLabelText(/^Email/), "yusuf@example.com");
+    expect(screen.getByRole("textbox", { name: /^Email/ })).toBeRequired();
+    await user.type(screen.getByRole("textbox", { name: /^Email/ }), "yusuf@example.com");
     await user.click(screen.getByLabelText(/I appoint Birr as my agent/));
     await user.click(screen.getByRole("button", { name: "Pay ₦95,000.00 now, then monthly" }));
     await waitFor(() => expect(redirectTo).toHaveBeenCalled());
     expect(sentBodies()[0]).toMatchObject({ amount: "95000.00", payerEmail: "yusuf@example.com", monthly: true });
+  });
+
+  test("a receipt by WhatsApp: the number is confirmed with a code first, and only then can the payer pay", async () => {
+    mockedApiFetchJson.mockImplementation(async (path: string) => {
+      if (path === "/giving/whatsapp/code") return { sent: true, number: "+2348031234567" };
+      if (path === "/giving/whatsapp/confirm") return { whatsapp: "+2348031234567", proof: "proof-123" };
+      return { payment: { id: "p-1" }, clientPayload: { checkoutUrl: "https://checkout.paystack.test/p-1" } };
+    });
+    const { user, redirectTo } = setup();
+    await user.click(screen.getByRole("radio", { name: "WhatsApp" }));
+    expect(screen.queryByRole("textbox", { name: /^Email/ })).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText(/I appoint Birr as my agent/));
+    const pay = screen.getByRole("button", { name: "Pay ₦95,000.00" });
+    // A chosen WhatsApp number has to be confirmed before paying.
+    expect(pay).toBeDisabled();
+
+    await user.type(screen.getByLabelText("WhatsApp number"), "0803 123 4567");
+    await user.click(screen.getByRole("button", { name: "Send code" }));
+    expect(await screen.findByText(/Enter the code we sent by WhatsApp/)).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Digit 1"));
+    await user.paste("123456");
+    expect(await screen.findByText(/WhatsApp \+234 803 ••• 4567 confirmed/)).toBeInTheDocument();
+    expect(mockedApiFetchJson).toHaveBeenCalledWith("/giving/whatsapp/confirm", { method: "POST", body: JSON.stringify({ whatsapp: "+2348031234567", code: "123456" }) });
+
+    await user.click(pay);
+    await waitFor(() => expect(redirectTo).toHaveBeenCalled());
+    const body = sentBodies()[0];
+    expect(body).toMatchObject({ payerWhatsApp: "+2348031234567", whatsappProof: "proof-123" });
+    expect(body.payerEmail).toBeUndefined();
   });
 
   test("Zakah al-Fitr has no monthly option", () => {

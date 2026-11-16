@@ -12,6 +12,8 @@ import { ZAKAH_WAKALAH_TERMS } from "./zakah-terms";
 import { ZakahFitrService } from "./zakah-fitr.service";
 import { unusedFitrSeason } from "./test-support-fitr";
 import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
+import { createGiverWhatsApp } from "../../common/whatsapp/test-support/fake-whatsapp";
+import type { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
 
 // A fake Paystack: records what would be sent, and lets each test decide
 // what the "webhook" or "verify" call reports. Nothing reaches Paystack.
@@ -334,6 +336,71 @@ describe("ZakahPaymentsService", () => {
       await expect(
         service.initiate({ ...base, amount: "100", payerEmail: email("aml"), idType: "national_id", idNumber: "123 4567 8901" }),
       ).resolves.toMatchObject({ payment: { status: "pending" } });
+    });
+  });
+
+  // Owner's decisions, 2026-11-16: a confirmed WhatsApp number instead of
+  // (or as well as) an email, and it adds up toward the AML threshold.
+  describe("paying with a WhatsApp number", () => {
+    const giver = createGiverWhatsApp();
+    const recurringCore = createFakeRecurringGiftsCore().core;
+    const withWhatsApp = new ZakahPaymentsService(
+      encryption,
+      settings,
+      paystack as unknown as PaystackAdapter,
+      new ZakahLedgerService(),
+      receipts as unknown as ResendZakahReceiptEmailAdapter,
+      fitr,
+      recurringCore,
+      giver.service,
+      giver.fake as unknown as TwilioWhatsAppAdapter,
+    );
+    let threshold: Prisma.Decimal;
+
+    beforeAll(async () => {
+      threshold = (await prisma.vaultDonorThreshold.findUniqueOrThrow({ where: { currency: "NGN" } })).thresholdAmount;
+    });
+
+    test("a confirmed number alone is enough: the payer has no email, Paystack gets none, and the receipt comes by WhatsApp", async () => {
+      const { number, proof } = await giver.confirmed();
+      const { payment } = await withWhatsApp.initiate({ ...base, payerWhatsApp: number, whatsappProof: proof });
+      const payer = await prisma.zakahPayer.findFirstOrThrow({ where: { whatsappNumber: number } });
+      expect(payer.email).toBeNull();
+      expect(paystack.created.at(-1)).toMatchObject({ reference: payment.id, payerEmail: undefined });
+
+      paystack.nextWebhook = { providerReference: payment.id, status: "confirmed", providerPaymentId: "ps-wa" };
+      await withWhatsApp.handleWebhook("paystack", Buffer.from("{}"), {});
+      await new Promise((r) => setImmediate(r));
+      const receipt = giver.fake.messages.find((m) => m.to === number);
+      expect(receipt?.body).toContain("₦95,000.00 of zakah");
+      expect(receipt?.body).toContain(payment.id);
+    });
+
+    test("a number that hasn't been confirmed is refused", async () => {
+      await expect(withWhatsApp.initiate({ ...base, payerWhatsApp: "0803 000 0000" })).rejects.toThrow(/Confirm your WhatsApp number/);
+      await expect(withWhatsApp.initiate({ ...base, payerWhatsApp: "0803 000 0000", whatsappProof: "made-up" })).rejects.toThrow(/expired/);
+    });
+
+    test("two different emails sharing a confirmed number count together toward the threshold", async () => {
+      const { number, proof } = await giver.confirmed();
+      await withWhatsApp.initiate({ ...base, amount: threshold.times(0.6).toFixed(2), payerEmail: email("wa-first"), payerWhatsApp: number, whatsappProof: proof });
+      // A different email, the same number: 0.6 + 0.5 of the threshold.
+      await expect(
+        withWhatsApp.initiate({ ...base, amount: threshold.times(0.5).toFixed(2), payerEmail: email("wa-second"), payerWhatsApp: number, whatsappProof: proof }),
+      ).rejects.toThrow(expect.objectContaining({ response: expect.objectContaining({ code: "IDENTITY_REQUIRED" }) }));
+      // Under the second email alone it would have passed.
+      await expect(withWhatsApp.initiate({ ...base, amount: threshold.times(0.5).toFixed(2), payerEmail: email("wa-second") })).resolves.toBeDefined();
+    });
+
+    test("monthly zakah with only a number: the gift has no email and Paystack saves the card under its stand-in", async () => {
+      const { number, proof } = await giver.confirmed();
+      const { payment } = await withWhatsApp.initiate({ ...base, monthly: true, payerWhatsApp: number, whatsappProof: proof });
+      const row = await prisma.zakahPayment.findUniqueOrThrow({ where: { id: payment.id } });
+      const gift = await prisma.recurringGift.findUniqueOrThrow({ where: { id: row.recurringGiftId! } });
+      expect(gift).toMatchObject({ email: null, whatsappNumber: number });
+      expect(paystack.created.at(-1)).toMatchObject({ payerEmail: `giver+${gift.id}@example.com`, cardOnly: true });
+      // Without an email or a number it's refused.
+      await expect(withWhatsApp.initiate({ ...base, monthly: true })).rejects.toThrow(/email or WhatsApp number/);
     });
   });
 

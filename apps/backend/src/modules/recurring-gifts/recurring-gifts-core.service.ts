@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from "crypto";
+import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
+import { whatsAppTextFromEmail } from "../../common/giving/giver-contact";
 import { Injectable, Logger } from "@nestjs/common";
 import { prisma, Prisma, type RecurringGift, type RecurringGiftKind } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
@@ -9,7 +11,9 @@ import { type GiftTarget, endedEmail, setUpEmail } from "./recurring-gift-emails
 
 export interface RecurringGiftSetupInput {
   kind: RecurringGiftKind;
-  email: string;
+  /** At least one of email and whatsappNumber (a CHECK). */
+  email: string | null;
+  whatsappNumber?: string | null;
   amount: Prisma.Decimal | string;
   /** The first payment's own id: its confirmation saves the card. */
   reference: string;
@@ -49,6 +53,8 @@ export class RecurringGiftsCoreService {
     private readonly paystack: PaystackAdapter,
     private readonly encryption: EncryptionService,
     private readonly emails: ResendRecurringGiftEmailAdapter,
+    // Last, so tests that never send WhatsApp needn't pass it.
+    private readonly whatsApp?: TwilioWhatsAppAdapter,
   ) {}
 
   /**
@@ -63,6 +69,7 @@ export class RecurringGiftsCoreService {
       data: {
         kind: input.kind,
         email: input.email,
+        whatsappNumber: input.whatsappNumber ?? null,
         amount: input.amount,
         currency: "NGN",
         dayOfMonth: dayOfMonthFor(now),
@@ -200,12 +207,31 @@ export class RecurringGiftsCoreService {
     return { phrase: "towards your zakah" };
   }
 
-  /** Emails never hold up or undo a change that's already made. */
-  async sendSafely(email: RecurringGiftEmail): Promise<void> {
-    try {
-      await this.emails.send(email);
-    } catch (err) {
-      this.logger.error(`Failed to send "${email.subject}":`, err instanceof Error ? err.stack : String(err));
+  /**
+   * Sends a gift's message by email and/or WhatsApp, whichever the giver
+   * gave (2026-11-16); a founder's top-up also goes to their verified
+   * account number. Messages never hold up or undo a change already made.
+   */
+  async sendSafely(message: RecurringGiftEmail): Promise<void> {
+    if (message.to) {
+      try {
+        await this.emails.send({ ...message, to: message.to });
+      } catch (err) {
+        this.logger.error(`Failed to email "${message.subject}":`, err instanceof Error ? err.stack : String(err));
+      }
+    }
+    let whatsapp = message.whatsappTo ?? null;
+    if (!whatsapp && message.founderAccountEmail) {
+      const user = await prisma.user.findUnique({ where: { email: message.founderAccountEmail }, select: { whatsappNumber: true, whatsappVerifiedAt: true } });
+      if (user?.whatsappNumber && user.whatsappVerifiedAt) whatsapp = user.whatsappNumber;
+    }
+    if (whatsapp) {
+      try {
+        if (!this.whatsApp) throw new Error("WhatsApp isn't available here.");
+        await this.whatsApp.sendMessage(whatsapp, whatsAppTextFromEmail(message));
+      } catch (err) {
+        this.logger.error(`Failed to send "${message.subject}" by WhatsApp:`, err instanceof Error ? err.stack : String(err));
+      }
     }
   }
 

@@ -8,6 +8,8 @@ import type {
 import type { PaystackAdapter } from "../../contributions/providers/paystack.adapter";
 import type { RecurringGiftEmail, ResendRecurringGiftEmailAdapter } from "../email/resend-recurring-gift-email.adapter";
 import { RecurringGiftsCoreService } from "../recurring-gifts-core.service";
+import type { FakeWhatsApp } from "../../../common/whatsapp/test-support/fake-whatsapp";
+import type { TwilioWhatsAppAdapter } from "../../../common/whatsapp/twilio-whatsapp.adapter";
 
 /** A reusable test card, as Paystack reports one after a card payment. */
 export const REUSABLE_CARD: SavedCardAuthorization = {
@@ -70,11 +72,12 @@ export class FakeRecurringGiftEmails {
 }
 
 /** A real RecurringGiftsCoreService around the fakes above. */
-export function createFakeRecurringGiftsCore(paystack = new FakeRecurringPaystack(), emails = new FakeRecurringGiftEmails()) {
+export function createFakeRecurringGiftsCore(paystack = new FakeRecurringPaystack(), emails = new FakeRecurringGiftEmails(), whatsApp?: FakeWhatsApp) {
   const core = new RecurringGiftsCoreService(
     paystack as unknown as PaystackAdapter,
     new EncryptionService(),
     emails as unknown as ResendRecurringGiftEmailAdapter,
+    whatsApp as unknown as TwilioWhatsAppAdapter | undefined,
   );
-  return { core, paystack, emails };
+  return { core, paystack, emails, whatsApp };
 }

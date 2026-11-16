@@ -125,8 +125,9 @@ export class ZakahStructuringReviewService {
     }
     const vaultByEmail = new Map<string, ReturnType<typeof vaultRow>[]>();
     for (const g of vaultGifts) {
-      const email = g.donor!.email.toLowerCase();
-      if (zakahByEmail.has(email)) vaultByEmail.set(email, [...(vaultByEmail.get(email) ?? []), vaultRow(g)]);
+      // A WhatsApp-only donor has no email to match on (2026-11-16).
+      const email = g.donor!.email?.toLowerCase();
+      if (email && zakahByEmail.has(email)) vaultByEmail.set(email, [...(vaultByEmail.get(email) ?? []), vaultRow(g)]);
     }
     const sum = (amounts: string[]) => amounts.reduce((t, a) => t.plus(a), new Prisma.Decimal(0));
     const sameEmail = [...vaultByEmail.entries()]
@@ -153,7 +154,7 @@ export class ZakahStructuringReviewService {
       .filter(([ip]) => vaultByIp.has(ip))
       .map(([ipAddress, zakah]) => {
         const vault = vaultByIp.get(ipAddress)!;
-        const emails = new Set([...zakah.map((p) => p.payerEmail!), ...vault.map((g) => g.donorEmail.toLowerCase())]);
+        const emails = new Set([...zakah.map((p) => p.payerEmail!), ...vault.flatMap((g) => (g.donorEmail ? [g.donorEmail.toLowerCase()] : []))]);
         return { ipAddress, distinctEmailCount: emails.size, zakah, vault };
       })
       // One person giving to both from their own device isn't a pattern.

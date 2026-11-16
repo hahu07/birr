@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { WhatsAppOtpModule } from "../../common/whatsapp/whatsapp-otp.module";
 import { VaultsService } from "./vaults.service";
 import { VaultsController } from "./vaults.controller";
 import { VaultCoverStorageService } from "./vault-cover-storage.service";
@@ -35,7 +36,7 @@ import { FunnelEventsModule } from "../funnel-events/funnel-events.module";
 import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-core.module";
 
 @Module({
-  imports: [SettingsModule, FunnelEventsModule, RecurringGiftsCoreModule],
+  imports: [SettingsModule, FunnelEventsModule, RecurringGiftsCoreModule, WhatsAppOtpModule],
   controllers: [
     VaultsController,
     VaultContributionsController,

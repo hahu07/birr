@@ -22,23 +22,28 @@ export interface GiftTarget {
   phrase: string;
 }
 
+/** Where a gift's messages go: its email and/or WhatsApp number, and a founder's own number for a top-up. */
+function recipients(gift: RecurringGift) {
+  return { to: gift.email, whatsappTo: gift.whatsappNumber, founderAccountEmail: gift.kind === "waqf" ? gift.email : null };
+}
+
 function card(gift: RecurringGift): string {
   return gift.cardLast4 ? `the card ending ${gift.cardLast4}` : "your saved card";
 }
 
 const KEEP_LINK =
-  "<p>Keep this email: the button below is your private link to change the amount, update your card or cancel, any time. Anyone with the link can manage this gift.</p>";
+  "<p>Keep this message: the link below is your private link to change the amount, update your card or cancel, any time. Anyone with the link can manage this gift.</p>";
 
 export function setUpEmail(gift: RecurringGift, target: GiftTarget, manageUrl: string): RecurringGiftEmail {
   const zakah = gift.kind === "zakah";
   return {
-    to: gift.email,
+    ...recipients(gift),
     subject: zakah ? "Your monthly zakah is set up" : "Your monthly gift is set up",
     heading: zakah ? "Monthly zakah set up" : "Monthly gift set up",
     bodyHtml:
       `<p>Thank you. ${formatNaira(gift.amount)} ${target.phrase} will be charged to ${card(gift)} on the ${ordinal(gift.dayOfMonth)} of every month` +
       (gift.nextChargeAt ? `, starting ${formatDay(gift.nextChargeAt)}` : "") +
-      `. We'll email you a few days before each charge.</p>` +
+      `. We'll remind you a few days before each charge.</p>` +
       (zakah ? "<p>Each payment is zakah paid in advance towards your annual zakah.</p>" : "") +
       (gift.kind === "waqf" ? "" : KEEP_LINK),
     ctaLabel: gift.kind === "waqf" ? "View your Waqf Fund" : "Manage your monthly gift",
@@ -48,7 +53,7 @@ export function setUpEmail(gift: RecurringGift, target: GiftTarget, manageUrl: s
 
 export function reminderEmail(gift: RecurringGift, target: GiftTarget, manageUrl: string): RecurringGiftEmail {
   return {
-    to: gift.email,
+    ...recipients(gift),
     subject: `${formatNaira(gift.amount)} will be charged on ${gift.nextChargeAt ? formatDay(gift.nextChargeAt) : "your next date"}`,
     heading: "Your next monthly gift",
     bodyHtml: `<p>On ${gift.nextChargeAt ? formatDay(gift.nextChargeAt) : "your next date"} we'll charge ${formatNaira(gift.amount)} ${target.phrase} to ${card(gift)}.</p><p>Nothing to do if that's fine. To change the amount or stop, use the button below before then.</p>`,
@@ -59,7 +64,7 @@ export function reminderEmail(gift: RecurringGift, target: GiftTarget, manageUrl
 
 export function chargeFailedEmail(gift: RecurringGift, target: GiftTarget, manageUrl: string, retryAt: Date | null): RecurringGiftEmail {
   return {
-    to: gift.email,
+    ...recipients(gift),
     subject: "Your monthly gift didn't go through",
     heading: "Payment didn't go through",
     bodyHtml:
@@ -81,7 +86,7 @@ export function pausedEmail(gift: RecurringGift, target: GiftTarget, manageUrl: 
     below_minimum: `The minimum gift has gone up above ${formatNaira(gift.amount)}. Raise your monthly amount to carry on.`,
   };
   return {
-    to: gift.email,
+    ...recipients(gift),
     subject: "Your monthly gift is paused",
     heading: "Monthly gift paused",
     bodyHtml: `<p>We haven't charged your monthly gift ${target.phrase}. ${why[gift.pauseReason ?? ""] ?? ""}</p>`,
@@ -92,7 +97,7 @@ export function pausedEmail(gift: RecurringGift, target: GiftTarget, manageUrl: 
 
 export function endedEmail(gift: RecurringGift, target: GiftTarget, reason: string): RecurringGiftEmail {
   return {
-    to: gift.email,
+    ...recipients(gift),
     subject: "Your monthly gift has ended",
     heading: "Monthly gift ended",
     bodyHtml: `<p>Your monthly gift of ${formatNaira(gift.amount)} ${target.phrase} has ended${reason ? `: ${reason}` : ""}. No further payments will be taken.</p>`,
@@ -101,16 +106,17 @@ export function endedEmail(gift: RecurringGift, target: GiftTarget, reason: stri
 
 export function cancelledEmail(gift: RecurringGift, target: GiftTarget): RecurringGiftEmail {
   return {
-    to: gift.email,
+    ...recipients(gift),
     subject: "Your monthly gift is cancelled",
     heading: "Monthly gift cancelled",
     bodyHtml: `<p>Your monthly gift of ${formatNaira(gift.amount)} ${target.phrase} is cancelled. No further payments will be taken. Thank you for everything you've given.</p>`,
   };
 }
 
-export function manageLinksEmail(to: string, links: { label: string; url: string }[]): RecurringGiftEmail {
+export function manageLinksEmail(contact: { email: string | null; whatsapp: string | null }, links: { label: string; url: string }[]): RecurringGiftEmail {
   return {
-    to,
+    to: contact.email,
+    whatsappTo: contact.whatsapp,
     subject: "Your monthly gift links",
     heading: "Manage your monthly giving",
     bodyHtml:

@@ -1,4 +1,7 @@
 import { randomUUID } from "crypto";
+import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
+import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
+import { type GiverContact, hasContact, lockGiverContact, paystackEmailForGift } from "../../common/giving/giver-contact";
 import {
   BadRequestException,
   ConflictException,
@@ -101,6 +104,20 @@ export class InitiateZakahPaymentInput {
   @IsEmail()
   payerEmail?: string;
 
+  // A WhatsApp number instead of (or as well as) an email, for receipts
+  // and, monthly, the manage link (owner's decision, 2026-11-16). Only used
+  // once confirmed: whatsappProof comes from POST /giving/whatsapp/confirm.
+  // It also counts toward the AML threshold.
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  payerWhatsApp?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  whatsappProof?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(200)
@@ -181,6 +198,9 @@ export class ZakahPaymentsService {
     private readonly receiptEmail: ResendZakahReceiptEmailAdapter,
     private readonly fitr: ZakahFitrService,
     private readonly recurring: RecurringGiftsCoreService,
+    // Last, so tests that never use WhatsApp needn't pass them.
+    private readonly giverWhatsApp?: GiverWhatsAppService,
+    private readonly whatsApp?: TwilioWhatsAppAdapter,
   ) {}
 
   private async zakahSubaccount(): Promise<string | undefined> {
@@ -202,7 +222,9 @@ export class ZakahPaymentsService {
     if (input.monthly && !monthly) monthly = { type: "setup" };
     if (monthly?.type === "setup") {
       if (input.kind === "fitr") throw new BadRequestException("Zakah al-Fitr is paid once a year, so it can't be monthly.");
-      if (!input.payerEmail) throw new BadRequestException("Monthly zakah needs your email, for receipts and to manage or cancel it.");
+      if (!input.payerEmail && !input.payerWhatsApp) {
+        throw new BadRequestException("Monthly zakah needs your email or WhatsApp number, for receipts and to manage or cancel it.");
+      }
     }
     const subaccount = await this.zakahSubaccount();
     if (!subaccount) {
@@ -228,22 +250,35 @@ export class ZakahPaymentsService {
         ? { id: monthly.gift.zakahMetalPriceId }
         : await prisma.zakahMetalPrice.findFirst({ orderBy: [{ asOf: "desc" }, { createdAt: "desc" }] });
 
-    const payerEmail = normalizeEmail(monthly && monthly.type !== "setup" ? monthly.gift.email : input.payerEmail);
+    // Who pays: an email, a confirmed WhatsApp number, or both. A later
+    // month's charge or card update reuses the gift's own; anything a payer
+    // starts must prove the number first.
+    const scheduledGift = monthly && monthly.type !== "setup" ? monthly.gift : null;
+    const scheduled = scheduledGift !== null;
+    const contact: GiverContact = scheduledGift
+      ? { email: normalizeEmail(scheduledGift.email ?? undefined) ?? null, whatsapp: scheduledGift.whatsappNumber }
+      : {
+          email: normalizeEmail(input.payerEmail) ?? null,
+          whatsapp: input.payerWhatsApp ? await this.requireGiverWhatsApp().assertProof(input.payerWhatsApp, input.whatsappProof) : null,
+        };
+    const payerEmail = contact.email;
     const id = randomUUID();
 
     // Reserve the row before calling Paystack, under a per-email lock, so
     // two payments started together see each other in the threshold check.
+    // A monthly gift's card is saved under the gift's email, or its stand-in.
+    let giftForPaystack: { id: string; email: string | null } | null = null;
     const payment = await prisma.$transaction(async (tx) => {
-      if (payerEmail) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"zakah_payer:" + payerEmail}))`;
-      const payer = payerEmail
-        ? await this.findOrCreatePayer(tx, payerEmail, input, amount, { scheduledCharge: monthly !== undefined && monthly.type !== "setup" })
-        : null;
+      await lockGiverContact(tx, "zakah_payer:", contact);
+      const payer = hasContact(contact) ? await this.findOrCreatePayer(tx, contact, input, amount, { scheduledCharge: scheduled }) : null;
       let recurringGiftId: string | undefined;
       let recurringPeriod: string | null = null;
+      if (scheduledGift) giftForPaystack = scheduledGift;
       if (monthly?.type === "setup") {
         const gift = await this.recurring.createSetup(tx, {
           kind: "zakah",
-          email: payerEmail!,
+          email: payerEmail,
+          whatsappNumber: contact.whatsapp,
           amount,
           reference: id,
           coverFee: input.coverFee,
@@ -254,6 +289,7 @@ export class ZakahPaymentsService {
         });
         recurringGiftId = gift.id;
         recurringPeriod = gift.nextPeriod;
+        giftForPaystack = gift;
       } else if (monthly?.type === "card_update") {
         if (!(await this.recurring.startCardUpdate(tx, monthly.gift, id))) {
           throw new BadRequestException("This monthly zakah isn't waiting for a new card.");
@@ -297,7 +333,7 @@ export class ZakahPaymentsService {
         // Into the zakah subaccount, fee cover to the main account, exactly as a checkout.
         charge = await this.paystack.chargeSavedCard({
           authorizationCode: this.recurring.decryptAuthorization(monthly.gift),
-          email: payerEmail!,
+          email: paystackEmailForGift(monthly.gift),
           amount: amount.plus(feeCover).toFixed(2),
           currency: CURRENCY,
           reference: id,
@@ -309,7 +345,7 @@ export class ZakahPaymentsService {
           amount: amount.plus(feeCover).toFixed(2),
           currency: CURRENCY,
           reference: id,
-          payerEmail,
+          payerEmail: giftForPaystack ? paystackEmailForGift(giftForPaystack) : (payerEmail ?? undefined),
           returnPath: "zakah-payments",
           split,
           cardOnly: monthly !== undefined,
@@ -398,21 +434,35 @@ export class ZakahPaymentsService {
    * blank fields filled. Same rules, and the same accepted gaps, as
    * VaultContributionsService.findOrCreateDonor.
    */
+  //
+  // 2026-11-16: a payer is an email, a confirmed WhatsApp number, or both.
+  // Payments under any payer record sharing either one count together
+  // toward the threshold, as for Vault donors.
   private async findOrCreatePayer(
     tx: Prisma.TransactionClient,
-    email: string,
+    contact: GiverContact,
     input: InitiateZakahPaymentInput,
     amount: Prisma.Decimal,
     options: { scheduledCharge?: boolean } = {},
   ) {
-    const existing = await tx.zakahPayer.findUnique({ where: { email } });
+    const email = contact.email;
+    const matches = await tx.zakahPayer.findMany({
+      where: { OR: [...(email ? [{ email }] : []), ...(contact.whatsapp ? [{ whatsappNumber: contact.whatsapp }] : [])] },
+      orderBy: { createdAt: "asc" },
+    });
+    // The email's record; else one with this number and no email yet (it
+    // gains the email); else a new one.
+    const existing =
+      (email ? matches.find((p) => p.email === email) : undefined) ??
+      matches.find((p) => p.whatsappNumber === contact.whatsapp && (!email || p.email === null)) ??
+      null;
     const threshold = await tx.vaultDonorThreshold.findUnique({ where: { currency: CURRENCY } });
 
     let total = amount;
-    if (existing) {
+    if (matches.length) {
       const prior = await tx.zakahPayment.aggregate({
         where: {
-          payerId: existing.id,
+          payerId: { in: matches.map((p) => p.id) },
           OR: [{ status: "confirmed" }, { status: "pending", createdAt: { gte: new Date(Date.now() - PENDING_COUNTS_TOWARD_THRESHOLD_MS) } }],
         },
         _sum: { amount: true },
@@ -440,7 +490,7 @@ export class ZakahPaymentsService {
           throw new BadRequestException({
             statusCode: 400,
             code: "IDENTITY_MISMATCH",
-            message: "Those ID details don't match what we have on file for this email. Please check them, or contact Birr.",
+            message: "Those ID details don't match what we have on file for this email or number. Please check them, or contact Birr.",
           });
         }
       } else if (!input.payerFullName || !input.idType || !input.idNumber) {
@@ -454,6 +504,10 @@ export class ZakahPaymentsService {
 
     const fill: Prisma.ZakahPayerUpdateInput = {};
     if (!existing?.fullName && input.payerFullName?.trim()) fill.fullName = input.payerFullName.trim();
+    // A confirmed number or an email joins the record it was given with;
+    // one already on the record is never replaced from this input.
+    if (existing && !existing.whatsappNumber && contact.whatsapp) fill.whatsappNumber = contact.whatsapp;
+    if (existing && !existing.email && email) fill.email = email;
     if (!identifiedOnFile && input.idType && input.idNumber) {
       fill.idType = input.idType;
       fill.idNumberEncrypted = this.encryption.encrypt(input.idNumber);
@@ -477,6 +531,7 @@ export class ZakahPaymentsService {
     const created = await tx.zakahPayer.create({
       data: {
         email,
+        whatsappNumber: contact.whatsapp,
         fullName: fill.fullName as string | undefined,
         idType: fill.idType as IdType | undefined,
         idNumberEncrypted: fill.idNumberEncrypted as string | undefined,
@@ -588,7 +643,10 @@ export class ZakahPaymentsService {
     }
 
     // No payer means an anonymous payment — nowhere to send a receipt.
-    if (status === "confirmed" && payment.payer) {
+    if (status === "confirmed" && payment.payer?.whatsappNumber) {
+      this.sendWhatsAppReceipt(payment.payer.whatsappNumber, outcome);
+    }
+    if (status === "confirmed" && payment.payer?.email) {
       this.receiptEmail
         .sendReceipt({
           to: payment.payer.email,
@@ -601,6 +659,30 @@ export class ZakahPaymentsService {
         .catch((err) => this.logger.error(`Failed to send the receipt for zakah payment "${outcome.id}":`, err instanceof Error ? err.stack : String(err)));
     }
     return this.publicView(outcome);
+  }
+
+  private requireGiverWhatsApp(): GiverWhatsAppService {
+    if (!this.giverWhatsApp) throw new BadRequestException("Paying by WhatsApp isn't available.");
+    return this.giverWhatsApp;
+  }
+
+  /** A short WhatsApp receipt, like the email one; never holds up the confirmation. */
+  private sendWhatsAppReceipt(to: string, payment: { id: string; amount: Prisma.Decimal; feeCover: Prisma.Decimal; fitrPeople: number | null }): void {
+    if (!this.whatsApp) return;
+    const naira = (v: Prisma.Decimal) => `₦${Number(v).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const text = [
+      payment.fitrPeople ? "*Your Zakah al-Fitr is received*" : "*Your zakah is received*",
+      "",
+      `We received ${naira(payment.amount)} of zakah${payment.fitrPeople ? ` for ${payment.fitrPeople} ${payment.fitrPeople === 1 ? "person" : "people"}` : ""}` +
+        (Number(payment.feeCover) > 0 ? `, and ${naira(payment.feeCover)} you added to cover the processing fee` : "") +
+        ". All of your zakah goes to people eligible to receive it.",
+      `Receipt reference: ${payment.id}`,
+      "",
+      "— *Birr* | A digital trustee for Islamic waqf",
+    ].join("\n");
+    this.whatsApp.sendMessage(to, text).catch((err) =>
+      this.logger.error(`Failed to send the WhatsApp receipt for zakah payment "${payment.id}":`, err instanceof Error ? err.stack : String(err)),
+    );
   }
 
   private audit(tx: Prisma.TransactionClient, action: string, entityId: string, before: unknown, after: unknown) {
@@ -662,18 +744,21 @@ export class ZakahPaymentsService {
    * and ID, from their manage link. An ID already on file must match;
    * existing identity is never overwritten, only blank fields filled.
    */
-  async recordPayerIdentity(email: string, input: ZakahPayerIdentityInput) {
-    const payerEmail = normalizeEmail(email)!;
+  async recordPayerIdentity(gift: { email: string | null; whatsappNumber: string | null }, input: ZakahPayerIdentityInput) {
+    const payerEmail = normalizeEmail(gift.email ?? undefined) ?? null;
+    const contact: GiverContact = { email: payerEmail, whatsapp: gift.whatsappNumber };
     return prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"zakah_payer:" + payerEmail}))`;
-      const existing = await tx.zakahPayer.findUnique({ where: { email: payerEmail } });
+      await lockGiverContact(tx, "zakah_payer:", contact);
+      const existing = payerEmail
+        ? await tx.zakahPayer.findUnique({ where: { email: payerEmail } })
+        : await tx.zakahPayer.findFirst({ where: { whatsappNumber: contact.whatsapp }, orderBy: { createdAt: "asc" } });
       if (existing?.idType && existing.idNumberEncrypted) {
         const onFile = normalizeIdNumber(this.encryption.decrypt(existing.idNumberEncrypted));
         if (existing.idType !== input.idType || onFile !== normalizeIdNumber(input.idNumber)) {
           throw new BadRequestException({
             statusCode: 400,
             code: "IDENTITY_MISMATCH",
-            message: "Those ID details don't match what we have on file for this email. Please check them, or contact Birr.",
+            message: "Those ID details don't match what we have on file for this email or number. Please check them, or contact Birr.",
           });
         }
         return existing;
@@ -684,7 +769,7 @@ export class ZakahPaymentsService {
             where: { id: existing.id },
             data: { idType: input.idType, idNumberEncrypted, ...(!existing.fullName && { fullName: input.fullName.trim() }) },
           })
-        : await tx.zakahPayer.create({ data: { email: payerEmail, fullName: input.fullName.trim(), idType: input.idType, idNumberEncrypted } });
+        : await tx.zakahPayer.create({ data: { email: payerEmail, whatsappNumber: contact.whatsapp, fullName: input.fullName.trim(), idType: input.idType, idNumberEncrypted } });
       await tx.auditLog.create({
         data: {
           actorType: "public_donor",

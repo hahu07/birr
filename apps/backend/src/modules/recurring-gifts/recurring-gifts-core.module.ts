@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { WhatsAppOtpModule } from "../../common/whatsapp/whatsapp-otp.module";
 import { SettingsModule } from "../../common/settings/settings.module";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
@@ -7,7 +8,7 @@ import { ResendRecurringGiftEmailAdapter } from "./email/resend-recurring-gift-e
 
 /** What the product modules (Vault, waqf contributions, zakah) need for monthly giving; see RecurringGiftsCoreService. */
 @Module({
-  imports: [SettingsModule],
+  imports: [SettingsModule, WhatsAppOtpModule],
   // PaystackAdapter and EncryptionService: each consuming module provides its own, as VaultsModule does.
   providers: [RecurringGiftsCoreService, ResendRecurringGiftEmailAdapter, PaystackAdapter, EncryptionService],
   exports: [RecurringGiftsCoreService, ResendRecurringGiftEmailAdapter],

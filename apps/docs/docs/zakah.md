@@ -120,8 +120,9 @@ Once paying is open, you can pay straight from your result.
    payment. You can tick a box to add it on top. Either way, **all of
    your zakah reaches recipients**: if you don't add it, Birr pays the
    fee from its own funds. It is never taken out of your zakah.
-3. **Add an email if you want a receipt.** It's optional. Without one,
-   Birr can't send you a receipt.
+3. **Say where your receipt should go, if you want one:** your email,
+   your WhatsApp number (confirmed with a 6-digit code Birr sends to it),
+   or both. It's optional. Without either, Birr can't send you a receipt.
 4. **Pay with Paystack:** card, bank transfer or USSD.
 
 **Amina** pays her ₦95,000 and ticks the fee box, which adds
@@ -149,12 +150,13 @@ monthly instalments, ahead of when it falls due. This is called
   scholar. Birr's Shariah Supervisory Board has not yet issued its own
   ruling on monthly zakah.
 - Tick **Pay this every month, in advance** when you pay. You need to
-  give your email, and pay the first instalment by **card**.
+  give your email or a confirmed WhatsApp number, and pay the first
+  instalment by **card**.
 - Birr then charges the same amount to the same card on the same day
   each month, into the same separate zakah account, with your choice
-  about the processing fee. You get an email three days before each
-  charge, with a private link to change the amount, update your card
-  or stop.
+  about the processing fee. You get a reminder, by email or WhatsApp,
+  three days before each charge, with a private link to change the
+  amount, update your card or stop.
 - Each payment records the calculation you started from: the same
   approved rulings and prices.
 - If the agency wording changes, your monthly zakah pauses until you

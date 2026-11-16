@@ -11,6 +11,7 @@
 // PaymentProviderAdapter (stripe/paystack/stablecoin) returns the same
 // { checkoutUrl } clientPayload shape regardless of rail.
 import Link from "next/link";
+import { contactPayload, contactReady, EMPTY_CONTACT, GiverContactFields, type GiverContactValue } from "../../_components/GiverContactFields";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ApiError, apiFetchJson } from "../../../../lib/api";
@@ -330,8 +331,9 @@ function ContributionForm({
   const [amount, setAmount] = useState("");
   const [vaultCauseId, setVaultCauseId] = useState("");
   const [provider, setProvider] = useState<(typeof PROVIDERS)[number]["value"]>(availableProviders[0]?.value ?? "paystack");
-  const [donorEmail, setDonorEmail] = useState("");
-  // Monthly giving (2026-11-15): card only, naira only, needs an email.
+  // Email, a confirmed WhatsApp number, or both (2026-11-16).
+  const [contact, setContact] = useState<GiverContactValue>(EMPTY_CONTACT);
+  // Monthly giving (2026-11-15): card only, naira only, needs an email or WhatsApp.
   const [monthly, setMonthly] = useState(false);
   const monthlyAvailable = currency === "NGN" && availableProviders.some((p) => p.value === "paystack");
   const giveMonthly = monthly && monthlyAvailable;
@@ -355,7 +357,7 @@ function ContributionForm({
           amount,
           currency,
           provider,
-          donorEmail: donorEmail || undefined,
+          ...contactPayload(contact, { email: "donorEmail", whatsapp: "donorWhatsApp" }),
           donorFullName: donorFullName || undefined,
           idType: showIdentity ? idType : undefined,
           idNumber: showIdentity && idNumber ? idNumber : undefined,
@@ -480,24 +482,19 @@ function ContributionForm({
         )}
 
         <div className="grid gap-4">
-          <div>
-            <label htmlFor="contribution-donor-email" className="mb-1.5 block text-sm font-medium text-slate-700">
-              {giveMonthly ? "Email" : "Email (optional)"}
-            </label>
-            <Input
-              id="contribution-donor-email"
-              type="email"
-              placeholder="you@example.com"
-              required={giveMonthly}
-              value={donorEmail}
-              onChange={(e) => setDonorEmail(e.target.value)}
-            />
-            <p className="mt-1 text-xs text-slate-500">
-              {giveMonthly
+          <GiverContactFields
+            idPrefix="contribution-donor"
+            value={contact}
+            onChange={setContact}
+            required={giveMonthly}
+            legend={giveMonthly ? "Send receipts and reminders to" : "Send my receipt to"}
+            emailLabel={giveMonthly ? "Email" : "Email (optional)"}
+            emailHint={
+              giveMonthly
                 ? "For your receipts, a reminder before each charge, and your private link to change or cancel."
-                : "For your receipt. Leave blank to give anonymously, without a receipt."}
-            </p>
-          </div>
+                : "For your receipt. Leave blank to give anonymously, without a receipt."
+            }
+          />
           <div>
             <label htmlFor="contribution-donor-name" className="mb-1.5 block text-sm font-medium text-slate-700">
               Full name (optional)
@@ -549,7 +546,7 @@ function ContributionForm({
           </div>
         )}
 
-        <Button type="submit" disabled={submitting} className="w-full py-3 text-base">
+        <Button type="submit" disabled={submitting || !contactReady(contact, giveMonthly)} className="w-full py-3 text-base">
           {submitting ? "Processing…" : giveMonthly ? "Set up monthly gift" : "Continue to payment"}
         </Button>
         <p className="text-center text-xs text-slate-500">You'll finish on a secure checkout page, then come back here.</p>

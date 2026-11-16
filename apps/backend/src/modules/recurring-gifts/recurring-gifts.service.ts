@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
+import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsEmail, IsEnum, IsNumberString, IsString, MaxLength } from "class-validator";
+import { IsEmail, IsEnum, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
 import { IdType, prisma, Prisma, type RecurringGift, type RecurringGiftKind, type RecurringGiftPauseReason } from "@birr/db";
 import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validation/max-decimal";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
@@ -36,9 +37,22 @@ export class ChangeRecurringGiftAmountInput {
   amount!: string;
 }
 
+/** By email, or by a WhatsApp number confirmed with its code (2026-11-16). */
 export class RequestManageLinksInput {
+  @IsOptional()
   @IsEmail()
-  email!: string;
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  whatsapp?: string;
+
+  /** From POST /giving/whatsapp/confirm. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  whatsappProof?: string;
 }
 
 /** The name and ID the AML threshold asks a Vault or zakah giver for. */
@@ -82,6 +96,8 @@ export class RecurringGiftsService {
     vaultProduct: VaultMonthlyProduct,
     waqfProduct: WaqfMonthlyProduct,
     zakahProduct: ZakahMonthlyProduct,
+    // Last, so tests that never use WhatsApp needn't pass it.
+    private readonly giverWhatsApp?: GiverWhatsAppService,
   ) {
     this.products = new Map<RecurringGiftKind, MonthlyGiftProduct>([
       ["vault", vaultProduct],
@@ -453,14 +469,18 @@ export class RecurringGiftsService {
   }
 
   /**
-   * "Email me my links": fresh private links for every running gift under
-   * this email, replacing the old ones. Always answers the same way, so
-   * it never reveals whether an email gives monthly.
+   * "Send me my links": fresh private links for every running gift under
+   * this email, or this confirmed WhatsApp number, replacing the old ones,
+   * sent the same way they were asked for. Always answers the same way, so
+   * it never reveals whether someone gives monthly.
    */
   async requestManageLinks(input: RequestManageLinksInput): Promise<{ sent: true }> {
-    const email = input.email.trim().toLowerCase();
+    const email = input.whatsapp ? null : input.email?.trim().toLowerCase() || null;
+    if (input.whatsapp && !this.giverWhatsApp) throw new BadRequestException("WhatsApp isn't available here.");
+    const whatsapp = input.whatsapp ? await this.giverWhatsApp!.assertProof(input.whatsapp, input.whatsappProof) : null;
+    if (!email && !whatsapp) throw new BadRequestException("Give the email or WhatsApp number your monthly gift uses.");
     const gifts = await prisma.recurringGift.findMany({
-      where: { email, kind: { in: ["vault", "zakah"] }, status: { in: ["active", "paused"] } },
+      where: { ...(email ? { email } : { whatsappNumber: whatsapp }), kind: { in: ["vault", "zakah"] }, status: { in: ["active", "paused"] } },
     });
     const links: { label: string; url: string }[] = [];
     for (const gift of gifts) {
@@ -472,7 +492,7 @@ export class RecurringGiftsService {
       const target = await this.product(gift).describe(gift);
       links.push({ label: `${target.name}${target.detail ? ` (${target.detail})` : ""}: ₦${Number(gift.amount).toLocaleString("en-NG")} a month`, url: this.core.manageUrl(gift, token) });
     }
-    if (links.length > 0) await this.core.sendSafely(manageLinksEmail(email, links));
+    if (links.length > 0) await this.core.sendSafely(manageLinksEmail({ email, whatsapp }, links));
     return { sent: true };
   }
 

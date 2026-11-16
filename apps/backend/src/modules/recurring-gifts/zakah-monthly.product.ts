@@ -38,7 +38,7 @@ export class ZakahMonthlyProduct implements MonthlyGiftProduct {
       amount: new Prisma.Decimal(gift.amount).toFixed(2),
       coverFee: gift.coverFee,
       wakalahConsentVersion: gift.wakalahConsentVersion!,
-      payerEmail: gift.email,
+      payerEmail: gift.email ?? undefined,
       rulesetKey: gift.zakahRulesetKey ?? undefined,
       rulesetVersion: gift.zakahRulesetVersion ?? undefined,
     };
@@ -80,6 +80,6 @@ export class ZakahMonthlyProduct implements MonthlyGiftProduct {
   }
 
   async recordIdentity(gift: RecurringGift, identity: GiverIdentity) {
-    await this.payments.recordPayerIdentity(gift.email, identity);
+    await this.payments.recordPayerIdentity(gift, identity);
   }
 }

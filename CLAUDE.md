@@ -723,6 +723,30 @@ sleeping instance. The CI `deploy` job is paused until the repository
 variable `DEPLOY_ENABLED` is `true`. Steps for that first deploy:
 `docs/deploy-checklist-2026-11.md`.
 
+**Update, 2026-11-16 — givers can use WhatsApp instead of email.** Owner's
+decisions:
+- **Where:** one-off zakah and Vault gifts (receipts; zakah refund
+  notices), monthly zakah and Vault gifts (receipts, reminders and the
+  private manage link), and founder Waqf top-up notices (also sent to the
+  founder's verified account number).
+- **Always confirmed first:** a 6-digit WhatsApp code
+  (`GiverWhatsAppService`; `POST /giving/whatsapp/code` and `/confirm`),
+  rationed per number and per IP. Confirming returns a short-lived proof
+  that every giving route checks, so an unconfirmed number is never used.
+- **It counts for AML:** gifts sharing an email *or* a confirmed number add
+  up toward the threshold (`findOrCreateDonor`, `findOrCreatePayer`). This
+  narrows the "different email each time" gap accepted on 2026-09-15; it
+  doesn't close it (a different number each time still splits giving).
+- `ZakahPayer`, `VaultDonor` and `RecurringGift` take an email, a
+  `whatsappNumber`, or both (a CHECK requires one). Paystack still needs
+  an email: a WhatsApp-only monthly gift uses a stand-in worked out from
+  its id (`paystackEmailForGift`), the same every month, since a saved
+  card is charged under the email it was saved with.
+- **Before launch:** production WhatsApp needs Meta-approved message
+  templates for business-initiated messages. Every WhatsApp Birr sends
+  today, the codes included, is free text, which works in Twilio's
+  sandbox only.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

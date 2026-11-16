@@ -2437,7 +2437,13 @@ enum VaultRefundStatus {
 // together and is how a receipt is even possible without an account.
 model VaultDonor {
   id                String   @id @default(uuid())
-  email             String   @unique
+  /// The donor's email, or null when they gave only a confirmed WhatsApp
+  /// number. A CHECK requires one or the other (2026-11-16).
+  email             String?  @unique
+  /// A WhatsApp number (E.164) confirmed by code before it was stored; it
+  /// counts toward the AML threshold alongside the email. (`phone` below
+  /// is an older, unconfirmed field and isn't used for either.)
+  whatsappNumber    String?
   fullName          String?
   phone             String?
   country           String?
@@ -2453,6 +2459,7 @@ model VaultDonor {
   contributions VaultContribution[]
   auditLogs     AuditLog[]
 
+  @@index([whatsappNumber])
   @@map("vault_donors")
 }
 
@@ -3102,7 +3109,12 @@ model ZakahMetalPrice {
 // to Compliance's off-platform review (see CLAUDE.md's 2026-09-15 note).
 model ZakahPayer {
   id                String   @id @default(uuid())
-  email             String   @unique
+  /// The payer's email, or null when they gave only a confirmed WhatsApp
+  /// number. A CHECK requires one or the other (2026-11-16).
+  email             String?  @unique
+  /// A WhatsApp number (E.164) confirmed by code before it was stored; it
+  /// counts toward the AML threshold alongside the email.
+  whatsappNumber    String?
   fullName          String?
   idType            IdType?
   idNumberEncrypted String?
@@ -3111,6 +3123,7 @@ model ZakahPayer {
 
   payments ZakahPayment[]
 
+  @@index([whatsappNumber])
   @@map("zakah_payers")
 }
 
@@ -3515,9 +3528,13 @@ model RecurringGift {
   kind            RecurringGiftKind
   status          RecurringGiftStatus       @default(pending_setup)
   pauseReason     RecurringGiftPauseReason?
-  /// The giver's email: receipts, reminders, the manage link, and the
-  /// Paystack customer the saved card belongs to.
-  email           String
+  /// The giver's email: receipts, reminders and the manage link. Null when
+  /// they gave only a confirmed WhatsApp number (a CHECK requires one or
+  /// the other); Paystack, which needs an email, then gets a stand-in
+  /// worked out from the gift's id (recurring-gift-contact.ts).
+  email           String?
+  /// A confirmed WhatsApp number (E.164) for the same messages.
+  whatsappNumber  String?
   amount          Decimal
   /// NGN only (a CHECK).
   currency        String                    @default("NGN")
@@ -3753,4 +3770,29 @@ model PrimaryContactSuccession {
 
   @@index([founderId])
   @@map("primary_contact_successions")
+}
+
+/// A giver (no account) confirming a WhatsApp number with a 6-digit code
+/// before Birr uses it for receipts, the manage link, or the AML total
+/// (2026-11-16). A confirmed row hands back a short-lived proof the giving
+/// routes check; only hashes of the code and proof are kept.
+model GiverWhatsAppConfirmation {
+  id             String    @id @default(uuid())
+  /// E.164, e.g. +2348031234567.
+  phoneNumber    String
+  /// sha256(code + id).
+  codeHash       String
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  expiresAt      DateTime
+  confirmedAt    DateTime?
+  /// sha256 of the proof handed back on confirmation.
+  proofHash      String?   @unique
+  proofExpiresAt DateTime?
+  requestIp      String?
+  createdAt      DateTime  @default(now())
+
+  @@index([phoneNumber, createdAt])
+  @@index([requestIp, createdAt])
+  @@map("giver_whatsapp_confirmations")
 }

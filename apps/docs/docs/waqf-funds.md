@@ -52,7 +52,8 @@ add to it automatically each month. On the fund's **Overview**, under
 then charges the same card on the same day each month and adds it to
 the fund, just like a contribution made by hand.
 
-- Reminders and receipts go to the email of the founder who set it up.
+- Reminders and receipts go to the email of the founder who set it up,
+  and to their WhatsApp number if they confirmed one when signing up.
 - Any member of your Foundation can see the top-up; only the primary
   contact can change the amount, update the card or stop it.
 - It stops by itself if the fund stops being active.
