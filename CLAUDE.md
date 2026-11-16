@@ -846,6 +846,34 @@ decisions, after reviewing the Ops Console page:
   most weekly (`access-review-scheduler.ts`). Test reviews from the spec
   stay in a dev database, since the table can't be deleted from.
 
+**Update, 2026-11-16 — every scheduled job is watched, and backups are
+real.** The five scheduled jobs (monthly giving, Paystack reconciliation,
+portfolio drift, trustee-licence expiry, access-review reminders) used to
+only log their failures. Each tick now goes through `runMonitoredJob`
+(`common/jobs/job-monitor.ts`):
+- every run is recorded in `job_runs`;
+- a failure goes to Sentry and to platform admins' bell (at most every 6h
+  per job), and never throws;
+- a job is overdue when it hasn't succeeded within twice its interval plus
+  slack.
+
+Where it shows:
+- Ops → System health (`system.health_view`, platform_admin);
+- `GET /health/jobs` (503 naming overdue or failing jobs; for an external
+  uptime monitor). `GET /health` stays the liveness check.
+
+Backups:
+- `scripts/backup-postgres.sh` (daily cron): `pg_dump`, GPG-encrypted to
+  a public key the server can't decrypt with, checksummed, an optional
+  rclone off-site copy, and it records its own run (job
+  `database_backup`).
+- `scripts/restore-check.sh` (monthly drill) restores into a scratch
+  database and verifies the checksum, the audit hash chain and core
+  tables.
+- Both were verified on the dev database.
+- Setup and runbook: `docs/monitoring-and-recovery.md`. None of it is
+  live until the deploy sets it up.
+
 **Update, 2026-11-16 — Team page rebuilt to the Roles & Access standard.**
 Every staff change now needs a written reason (10–1,000 characters) shown
 to the approver and kept in the audit row: inviting, adding or removing a

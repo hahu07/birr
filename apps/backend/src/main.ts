@@ -18,6 +18,7 @@ import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { NotificationsService } from "./modules/notifications/notifications.service";
 import { startTrusteeLicenseExpiryScheduler } from "./modules/trustee-licenses/trustee-license-expiry-scheduler";
 import { startAccessReviewScheduler } from "./modules/roles/access-review-scheduler";
+import { configureJobMonitor, pruneJobRuns } from "./common/jobs/job-monitor";
 import { startPortfolioDriftScheduler } from "./modules/investments/portfolio-drift-scheduler";
 import { startRecurringGiftsScheduler } from "./modules/recurring-gifts/recurring-gifts-scheduler";
 import { RecurringGiftsService } from "./modules/recurring-gifts/recurring-gifts.service";
@@ -321,6 +322,13 @@ async function bootstrap() {
   // The one time-based (not event-triggered) notification this backend
   // sends — see the scheduler's own comment for why this lives here
   // rather than a governed-actions-style call site.
+  // Every scheduled job below is recorded and watched (common/jobs/job-monitor.ts):
+  // a failure reaches Sentry and platform admins, and a stalled job shows in
+  // Ops → System health and GET /health/jobs.
+  configureJobMonitor({ notifications: app.get(NotificationsService) });
+  const pruneTick = () => void pruneJobRuns().catch(() => undefined);
+  pruneTick();
+  setInterval(pruneTick, 24 * 60 * 60 * 1000);
   startTrusteeLicenseExpiryScheduler(app.get(NotificationsService));
   // Reminds the Board when the 90-day access review is due (see the scheduler's own comment).
   startAccessReviewScheduler(app.get(NotificationsService));

@@ -122,6 +122,8 @@ const NAV_GROUPS: {
       // only (no reason to show a nav item that 403s for everyone else).
       { href: "/ops/platform-settings", label: "Settings", icon: IconSettings, requiresPermission: "platform_settings.manage" },
       { href: "/ops/waqf-funding", label: "Waqf Funding", icon: IconSettings, requiresPermission: "waqf_funding.configure" },
+      // Scheduled jobs, failures and backups (2026-11-16).
+      { href: "/ops/system-health", label: "System Health", icon: IconShieldCheck, requiresPermission: "system.health_view" },
     ],
   },
 ];

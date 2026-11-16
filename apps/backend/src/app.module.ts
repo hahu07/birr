@@ -42,6 +42,7 @@ import { BeneficiaryNominationsModule } from "./modules/beneficiary-nominations/
 import { MessagesModule } from "./modules/messages/messages.module";
 import { FinancialReportsModule } from "./modules/financial-reports/financial-reports.module";
 import { HealthModule } from "./modules/health/health.module";
+import { SystemHealthModule } from "./modules/system-health/system-health.module";
 import { BanksModule } from "./modules/banks/banks.module";
 import { VaultsModule } from "./modules/vaults/vaults.module";
 import { WaqfLedgerModule } from "./modules/waqf-ledger/waqf-ledger.module";
@@ -99,6 +100,7 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     MessagesModule,
     FinancialReportsModule,
     HealthModule,
+    SystemHealthModule,
     BanksModule,
     VaultsModule,
     RecurringGiftsModule,

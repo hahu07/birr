@@ -34,8 +34,16 @@ When hosting is chosen, these come on top of the checklist below:
   Birr's contact email and phone.
 - **Paystack webhook.** Point Paystack's webhook URL at the deployed
   backend, and check one test payment confirms.
-- **Backups.** Include off-site Postgres backups before any real money
-  arrives.
+- **Monitoring and backups.** Before any real money arrives, follow
+  `docs/monitoring-and-recovery.md`:
+  - set `SENTRY_DSN`;
+  - put an uptime monitor on `/health` and `/health/jobs`;
+  - make the backup key pair;
+  - install the daily `scripts/backup-postgres.sh` cron with an off-site
+    copy;
+  - run the first restore drill.
+
+  Ops → System health should then show every job on time.
 
 ## Before 2026-11-16: nothing from this batch had been deployed
 

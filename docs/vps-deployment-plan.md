@@ -86,7 +86,7 @@ correct by CI, no Dockerfile changes needed):
 `NEXT_PUBLIC_BACKEND_URL`/`CORS_ALLOWED_ORIGINS` need. Never committed
 with real values.
 
-**`scripts/backup-postgres.sh`** — `pg_dump` against the running
+**`scripts/backup-postgres.sh`** (built 2026-11-16 — see `docs/monitoring-and-recovery.md`) — `pg_dump` against the running
 `postgres` container, compressed, uploaded off-box via an S3-compatible
 CLI call (Backblaze B2/Cloudflare R2/AWS — whichever the user
 configures). A backup living only on the VPS's own disk protects against

@@ -1,10 +1,9 @@
-import { Logger } from "@nestjs/common";
+import { runMonitoredJob } from "../../common/jobs/job-monitor";
 import { prisma } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
 import { holdsAnyRole } from "../../common/auth/staff-roles";
 import { ACCESS_REVIEW_INTERVAL_DAYS } from "./roles.service";
 
-const logger = new Logger("AccessReviewScheduler");
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** While a review is overdue, the Board is reminded at most this often. */
 const REMINDER_EVERY_DAYS = 7;
@@ -18,9 +17,7 @@ const REMINDER_EVERY_DAYS = 7;
 export function startAccessReviewScheduler(notificationsService: NotificationsService): void {
   const intervalMs = Number(process.env.ACCESS_REVIEW_CHECK_INTERVAL_MS ?? DAY_MS);
   const tick = () => {
-    remindIfAccessReviewDue(notificationsService).catch((err) => {
-      logger.error("Access review check failed:", err instanceof Error ? err.stack : String(err));
-    });
+    void runMonitoredJob("access_review_reminder", () => remindIfAccessReviewDue(notificationsService));
   };
   tick();
   setInterval(tick, intervalMs);

@@ -1,4 +1,4 @@
-import { Logger } from "@nestjs/common";
+import { runMonitoredJob } from "../../common/jobs/job-monitor";
 import { prisma } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
 import { InvestmentTargetsService } from "./investment-targets.service";
@@ -6,7 +6,6 @@ import { VaultInvestmentTargetsService } from "../vaults/vault-investment-target
 import { PORTFOLIO_DRIFT_THRESHOLD_PERCENT } from "./investment-drift.constants";
 import { holdsAnyRole } from "../../common/auth/staff-roles";
 
-const logger = new Logger("PortfolioDriftScheduler");
 
 /**
  * Same "start simple" posture as trustee-license-expiry-scheduler.ts —
@@ -32,9 +31,7 @@ export function startPortfolioDriftScheduler(
   const intervalMs = Number(process.env.PORTFOLIO_DRIFT_CHECK_INTERVAL_MS ?? 24 * 60 * 60 * 1000);
 
   const tick = () => {
-    checkPortfolioDrift(investmentTargetsService, vaultInvestmentTargetsService, notificationsService).catch((err) => {
-      logger.error("Portfolio drift check failed:", err instanceof Error ? err.stack : String(err));
-    });
+    void runMonitoredJob("portfolio_drift", () => checkPortfolioDrift(investmentTargetsService, vaultInvestmentTargetsService, notificationsService));
   };
 
   tick();

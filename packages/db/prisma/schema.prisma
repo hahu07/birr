@@ -532,6 +532,25 @@ model Permission {
 
 // Role-level maker/checker eligibility. This is necessary but not
 // sufficient — see GovernedAction below for the individual-level guarantee.
+// One run of a scheduled job (2026-11-16): monthly charges, the daily
+// Paystack reconciliation, the drift / licence / access-review checks, and
+// the database backup, which records its own runs from outside the app.
+// So a job that fails, or silently stops, shows in Ops → System health and
+// GET /health/jobs instead of only in a log. Pruned after 90 days.
+model JobRun {
+  id         String    @id @default(uuid())
+  job        String
+  status     String    @default("running") /// running | succeeded | failed
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  /// What went wrong, truncated; never secrets or personal data.
+  error      String?
+  detail     String?
+
+  @@index([job, startedAt])
+  @@map("job_runs")
+}
+
 // A periodic access review (owner's decision, 2026-11-16): a Board member
 // confirms each staff role's permissions are still right, or notes what
 // needs changing (any change then goes through role.permission_change).

@@ -1,7 +1,6 @@
-import { Logger } from "@nestjs/common";
+import { runMonitoredJob } from "../../common/jobs/job-monitor";
 import type { RecurringGiftsService } from "./recurring-gifts.service";
 
-const logger = new Logger("RecurringGiftsScheduler");
 
 /**
  * Runs monthly giving (RecurringGiftsService.tick) on a plain interval,
@@ -17,9 +16,8 @@ export function startRecurringGiftsScheduler(service: RecurringGiftsService): vo
   const tick = () => {
     if (running) return;
     running = true;
-    service
-      .tick()
-      .catch((err) => logger.error("Monthly giving run failed:", err instanceof Error ? err.stack : String(err)))
+    // Recorded and alerted on by the job monitor (2026-11-16), never thrown.
+    void runMonitoredJob("monthly_giving", () => service.tick())
       .finally(() => {
         running = false;
       });
