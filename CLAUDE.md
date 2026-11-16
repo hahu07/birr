@@ -839,6 +839,19 @@ decisions, after reviewing the Ops Console page:
   most weekly (`access-review-scheduler.ts`). Test reviews from the spec
   stay in a dev database, since the table can't be deleted from.
 
+**Update, 2026-11-16 — re-running the seed never undoes what staff have
+set.** It used to: every run put the contribution and corpus minimums,
+the Vault AML donor thresholds, the cause catalog, the Shariah-prohibited
+sectors and ledger account names back to `seed-data.ts`, reset the
+bootstrap admin's password (lifting a suspension), and reset AI agent
+keys (switching a disabled agent back on). Now all of those are
+create-only (ledger account type and system-default flag still follow
+the code). Outside a local dev database the bootstrap admin and the
+agents are left exactly as they are; the local dev logins still reset,
+so their documented passwords keep working. Verified by seeding a
+scratch database as production, changing each value as staff would, and
+seeding again.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
