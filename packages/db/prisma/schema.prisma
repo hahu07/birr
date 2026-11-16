@@ -393,6 +393,7 @@ model User {
   successionsRecorded            PrimaryContactSuccession[]      @relation("SuccessionRecorder")
 
   @@map("users")
+  accessReviews AccessReview[] @relation("AccessReviewReviewer")
 }
 
 // Generated 10-at-a-time by BirrStaffService.confirmMfaEnrollment(),
@@ -528,6 +529,28 @@ model Permission {
 
 // Role-level maker/checker eligibility. This is necessary but not
 // sufficient — see GovernedAction below for the individual-level guarantee.
+// A periodic access review (owner's decision, 2026-11-16): a Board member
+// confirms each staff role's permissions are still right, or notes what
+// needs changing (any change then goes through role.permission_change).
+// Records who reviewed, when, each role's outcome and a snapshot of every
+// grant at that moment. Due every 90 days; insert-only (a database
+// trigger refuses UPDATE and DELETE).
+model AccessReview {
+  id               String   @id @default(uuid())
+  reviewedByUserId String
+  reviewedBy       User     @relation("AccessReviewReviewer", fields: [reviewedByUserId], references: [id], onDelete: Restrict)
+  completedAt      DateTime @default(now())
+  /// [{ roleKey, outcome: "confirmed" | "changes_needed", note }] — every role.
+  outcomes         Json
+  notes            String?
+  /// Every role's grants when the review was completed, and its SHA-256.
+  snapshot         Json
+  snapshotHash     String
+
+  @@index([completedAt])
+  @@map("access_reviews")
+}
+
 model RolePermission {
   roleId       String
   role         Role       @relation(fields: [roleId], references: [id])

@@ -587,6 +587,78 @@ export interface Role {
   rolePermissions: RolePermissionGrant[];
 }
 
+// Roles & Access (GET /roles and friends, 2026-11-16).
+export interface RoleHolder {
+  id: string;
+  fullName: string;
+  email: string;
+}
+
+export interface RolesOverview {
+  roles: Role[];
+  /** Every permission, including any no role holds today. */
+  permissions: GovernedActionPermission[];
+  /** Active staff in each role, by role key. */
+  holders: Record<string, RoleHolder[]>;
+}
+
+/** One role's desired end state on one permission (canMaker = propose, or allowed for an access permission). */
+export interface GrantChange {
+  roleKey: string;
+  permissionKey: string;
+  canMaker: boolean;
+  canChecker: boolean;
+}
+
+export interface GrantChangeCheck extends GrantChange {
+  roleName: string | null;
+  permissionDescription: string | null;
+  requiresMakerChecker: boolean;
+  before: { canMaker: boolean; canChecker: boolean };
+  problem: string | null;
+  affectedPeople: number;
+}
+
+export interface RoleChangeEntry {
+  id: string;
+  status: "proposed" | "approved" | "rejected" | "expired";
+  changes: GrantChange[];
+  reason: string | null;
+  proposedBy: string | null;
+  decidedBy: string | null;
+  proposedAt: string;
+  decidedAt: string | null;
+}
+
+export interface RoleChanges {
+  pending: RoleChangeEntry[];
+  history: RoleChangeEntry[];
+  page: number;
+  hasMore: boolean;
+}
+
+export interface AccessReviewOutcome {
+  roleKey: string;
+  outcome: "confirmed" | "changes_needed";
+  note: string | null;
+}
+
+export interface AccessReviewRow {
+  id: string;
+  completedAt: string;
+  outcomes: AccessReviewOutcome[];
+  notes: string | null;
+  snapshotHash: string;
+  reviewedBy: string;
+}
+
+export interface AccessReviewsStatus {
+  intervalDays: number;
+  lastCompletedAt: string | null;
+  nextDueAt: string | null;
+  reviews: AccessReviewRow[];
+}
+
 // Mirrors the BirrStaffRole enum in schema.prisma — kept in sync by hand,
 // same reasoning as every other type in this file.
 export type BirrStaffRole =

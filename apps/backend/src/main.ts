@@ -17,6 +17,7 @@ import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { NotificationsService } from "./modules/notifications/notifications.service";
 import { startTrusteeLicenseExpiryScheduler } from "./modules/trustee-licenses/trustee-license-expiry-scheduler";
+import { startAccessReviewScheduler } from "./modules/roles/access-review-scheduler";
 import { startPortfolioDriftScheduler } from "./modules/investments/portfolio-drift-scheduler";
 import { startRecurringGiftsScheduler } from "./modules/recurring-gifts/recurring-gifts-scheduler";
 import { RecurringGiftsService } from "./modules/recurring-gifts/recurring-gifts.service";
@@ -321,6 +322,8 @@ async function bootstrap() {
   // sends — see the scheduler's own comment for why this lives here
   // rather than a governed-actions-style call site.
   startTrusteeLicenseExpiryScheduler(app.get(NotificationsService));
+  // Reminds the Board when the 90-day access review is due (see the scheduler's own comment).
+  startAccessReviewScheduler(app.get(NotificationsService));
   startPortfolioDriftScheduler(
     app.get(InvestmentTargetsService),
     app.get(VaultInvestmentTargetsService),

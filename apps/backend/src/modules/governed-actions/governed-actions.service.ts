@@ -31,6 +31,12 @@ import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notification
 import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
 import { FounderSuccessionService } from "../founder-succession/founder-succession.service";
+import {
+  assertPermissionChangesAllowed,
+  checkPermissionChanges,
+  describeGrant,
+  parsePermissionChangePayload,
+} from "../roles/permission-changes";
 
 function extractProposedFoundationId(payload: unknown): string | null {
   if (
@@ -217,85 +223,6 @@ export async function assertRoleChangeAllowed(
       );
     }
   }
-}
-
-// role.permission_change payload: the desired end state of one role's
-// grant on one permission.
-interface PermissionChange {
-  roleKey: string;
-  permissionKey: string;
-  canMaker: boolean;
-  canChecker: boolean;
-}
-
-function parsePermissionChangePayload(payload: unknown): PermissionChange {
-  const { roleKey, permissionKey, canMaker, canChecker } = (payload ?? {}) as Record<string, unknown>;
-  if (typeof roleKey !== "string" || !roleKey || typeof permissionKey !== "string" || !permissionKey) {
-    throw new BadRequestException("A role and a permission are required.");
-  }
-  if (typeof canMaker !== "boolean" || typeof canChecker !== "boolean") {
-    throw new BadRequestException("canMaker and canChecker must both be true or false.");
-  }
-  return { roleKey, permissionKey, canMaker, canChecker };
-}
-
-/**
- * The guard rails on editing a grant (owner decisions, 2026-10-18) —
- * every permission is editable, but no Board-approved edit may:
- *  - give a role both "propose" and "approve" on the same governed action;
- *  - give external_auditor propose or approve on any governed action;
- *  - leave a governed action with nobody active able to propose it, or
- *    nobody active able to approve it (a lock-out — including of this
- *    editor itself).
- * A plain access permission has no approve side, so canChecker must stay
- * false there. Returns the role, permission and current grant.
- */
-export async function assertPermissionChangeAllowed(change: PermissionChange, db: Prisma.TransactionClient) {
-  const role = await db.role.findUnique({ where: { key: change.roleKey } });
-  if (!role) throw new NotFoundException(`Unknown role "${change.roleKey}".`);
-  const permission = await db.permission.findUnique({ where: { key: change.permissionKey } });
-  if (!permission) throw new NotFoundException(`Unknown permission "${change.permissionKey}".`);
-  const current = await db.rolePermission.findUnique({
-    where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
-  });
-  const before = { canMaker: current?.canMaker ?? false, canChecker: current?.canChecker ?? false };
-
-  if (before.canMaker === change.canMaker && before.canChecker === change.canChecker) {
-    throw new BadRequestException(`${role.name} already has exactly that on ${permission.key}.`);
-  }
-  if (!permission.requiresMakerChecker && change.canChecker) {
-    throw new BadRequestException(`${permission.key} isn't an approval action — a role can only be allowed to do it or not.`);
-  }
-  if (permission.requiresMakerChecker && change.canMaker && change.canChecker) {
-    throw new BadRequestException(`A role can't both propose and approve ${permission.key}.`);
-  }
-  if (permission.requiresMakerChecker && role.key === "external_auditor" && (change.canMaker || change.canChecker)) {
-    throw new BadRequestException("The External Auditor stays read-only on approval actions, so they stay independent of what they audit.");
-  }
-
-  if (permission.requiresMakerChecker) {
-    const grants = await db.rolePermission.findMany({
-      where: { permissionId: permission.id },
-      select: { roleId: true, canMaker: true, canChecker: true, role: { select: { key: true } } },
-    });
-    const after = (side: "canMaker" | "canChecker") =>
-      grants
-        .filter((g) => g.roleId !== role.id && g[side])
-        .map((g) => g.role.key as BirrStaffRole)
-        .concat(change[side] ? [role.key as BirrStaffRole] : []);
-    for (const [side, label] of [["canMaker", "propose"], ["canChecker", "approve"]] as const) {
-      const roles = after(side);
-      const holders = roles.length
-        ? await db.birrStaff.count({ where: { status: "active", ...holdsAnyRole(...roles) } })
-        : 0;
-      if (holders === 0) {
-        throw new BadRequestException(
-          `That would leave nobody active able to ${label} ${permission.key} — it could never be ${label === "propose" ? "proposed" : "approved"} again.`,
-        );
-      }
-    }
-  }
-  return { role, permission, before };
 }
 
 /**
@@ -1845,70 +1772,120 @@ export class GovernedActionsService {
       [
         "role.permission_change",
         {
+          // 2026-11-16 (owner's decisions): a proposal is a batch of grant
+          // changes with the proposer's reason, approved or rejected as a
+          // whole. The guard rails are judged on the batch's combined end
+          // state (checkPermissionChanges).
           validatePropose: async (payload) => {
-            await assertPermissionChangeAllowed(parsePermissionChangePayload(payload), prisma);
+            const { changes } = parsePermissionChangePayload(payload, { requireReason: true });
+            await assertPermissionChangesAllowed(changes, prisma);
           },
           checkDuplicate: async (payload) => {
-            const { roleKey, permissionKey } = parsePermissionChangePayload(payload);
+            const { changes } = parsePermissionChangePayload(payload, { requireReason: false });
             const permission = await prisma.permission.findUnique({ where: { key: "role.permission_change" } });
             const pending = await prisma.governedAction.findMany({
               where: { permissionId: permission?.id, status: "proposed" },
               select: { payload: true },
             });
-            const same = pending.some((a) => {
-              const p = a.payload as { roleKey?: string; permissionKey?: string };
-              return p.roleKey === roleKey && p.permissionKey === permissionKey;
-            });
-            if (same) {
+            const pendingPairs = new Set(
+              pending.flatMap((a) => {
+                try {
+                  return parsePermissionChangePayload(a.payload, { requireReason: false }).changes.map((c) => `${c.roleKey}:${c.permissionKey}`);
+                } catch {
+                  return [];
+                }
+              }),
+            );
+            const overlap = changes.find((c) => pendingPairs.has(`${c.roleKey}:${c.permissionKey}`));
+            if (overlap) {
               throw new ConflictException(
-                "A change to that role's grant on that permission is already awaiting approval — decide that one first.",
+                `A change to ${overlap.roleKey.replace(/_/g, " ")} on ${overlap.permissionKey} is already awaiting approval — decide that one first.`,
               );
             }
           },
           describePayload: async (payload) => {
-            const change = parsePermissionChangePayload(payload);
-            const permission = await prisma.permission.findUnique({ where: { key: change.permissionKey } });
-            const wanted = permission?.requiresMakerChecker
-              ? [change.canMaker && "propose", change.canChecker && "approve"].filter(Boolean).join(" and ") || "neither propose nor approve"
-              : change.canMaker
-                ? "be allowed to do it"
-                : "no longer be allowed to do it";
-            const ownRole =
-              change.roleKey === "board_of_trustees"
-                ? " This changes the Board of Trustees' own permissions — the approving Board member is affected by it."
-                : "";
-            return `${change.roleKey.replace(/_/g, " ")} on ${change.permissionKey} (${permission?.description ?? "unknown permission"}): ${wanted}.${ownRole}`;
+            const { changes, reason } = parsePermissionChangePayload(payload, { requireReason: false });
+            const permissions = await prisma.permission.findMany({ where: { key: { in: changes.map((c) => c.permissionKey) } } });
+            const byKey = new Map(permissions.map((p) => [p.key, p]));
+            const lines = changes.map(
+              (c) => `${c.roleKey.replace(/_/g, " ")} on ${c.permissionKey}: ${describeGrant(c, byKey.get(c.permissionKey)?.requiresMakerChecker ?? false)}`,
+            );
+            const roles = new Set(changes.map((c) => c.roleKey)).size;
+            const ownRole = changes.some((c) => c.roleKey === "board_of_trustees")
+              ? " This changes the Board of Trustees' own permissions — the approving Board member is affected by it."
+              : "";
+            const head = changes.length === 1 ? lines[0] : `${changes.length} changes to ${roles} role${roles === 1 ? "" : "s"}: ${lines.join("; ")}`;
+            return `${head}.${reason ? ` Reason: "${reason}"` : ""}${ownRole}`;
           },
           describeCurrentState: async (payload) => {
-            const change = parsePermissionChangePayload(payload);
-            const grant = await prisma.rolePermission.findFirst({
-              where: { role: { key: change.roleKey }, permission: { key: change.permissionKey } },
-            });
-            return { canMaker: grant?.canMaker ?? false, canChecker: grant?.canChecker ?? false };
+            const { changes } = parsePermissionChangePayload(payload, { requireReason: false });
+            const checks = await checkPermissionChanges(changes, prisma);
+            // Today's grant per change, with the names the Approvals page shows.
+            return {
+              changes: checks.map((c) => ({
+                roleKey: c.roleKey,
+                roleName: c.roleName,
+                permissionKey: c.permissionKey,
+                permissionDescription: c.permissionDescription,
+                requiresMakerChecker: c.requiresMakerChecker,
+                canMaker: c.before.canMaker,
+                canChecker: c.before.canChecker,
+                affectedPeople: c.affectedPeople,
+              })),
+            };
           },
           onApprove: async (payload, tx, ctx) => {
-            const change = parsePermissionChangePayload(payload);
-            // One approval at a time per permission, so two changes can't
-            // each leave one proposer/approver and together remove the last.
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"role_permissions:" + change.permissionKey}))`;
-            const { role, permission, before } = await assertPermissionChangeAllowed(change, tx);
-            await tx.rolePermission.upsert({
-              where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
-              update: { canMaker: change.canMaker, canChecker: change.canChecker },
-              create: { roleId: role.id, permissionId: permission.id, canMaker: change.canMaker, canChecker: change.canChecker },
-            });
+            const { changes, reason } = parsePermissionChangePayload(payload, { requireReason: false });
+            // One approval at a time per permission, so two batches can't
+            // each leave one proposer/approver and together remove the
+            // last. Every lock first, in a fixed order, before any write or
+            // audit row (CLAUDE.md).
+            for (const key of [...new Set(changes.map((c) => c.permissionKey))].sort()) {
+              await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"role_permissions:" + key}))`;
+            }
+            const checks = await assertPermissionChangesAllowed(changes, tx);
+            const [roles, permissions] = await Promise.all([
+              tx.role.findMany({ where: { key: { in: changes.map((c) => c.roleKey) } } }),
+              tx.permission.findMany({ where: { key: { in: changes.map((c) => c.permissionKey) } } }),
+            ]);
+            for (const check of checks) {
+              const roleId = roles.find((r) => r.key === check.roleKey)!.id;
+              const permissionId = permissions.find((p) => p.key === check.permissionKey)!.id;
+              await tx.rolePermission.upsert({
+                where: { roleId_permissionId: { roleId, permissionId } },
+                update: { canMaker: check.canMaker, canChecker: check.canChecker },
+                create: { roleId, permissionId, canMaker: check.canMaker, canChecker: check.canChecker },
+              });
+            }
+            // One audit row per grant, so each permission's history reads on its own.
+            for (const check of checks) {
+              await tx.auditLog.create({
+                data: {
+                  actorType: "birr_staff",
+                  actorUserId: ctx.checkerUserId,
+                  action: "role_permission.changed",
+                  entityType: "RolePermission",
+                  entityId: permissions.find((p) => p.key === check.permissionKey)!.id,
+                  before: { roleKey: check.roleKey, permissionKey: check.permissionKey, ...check.before },
+                  after: {
+                    roleKey: check.roleKey,
+                    permissionKey: check.permissionKey,
+                    canMaker: check.canMaker,
+                    canChecker: check.canChecker,
+                    reason,
+                    governedActionId: ctx.governedActionId,
+                    proposedByUserId: ctx.makerUserId,
+                    approvedByUserId: ctx.checkerUserId,
+                  },
+                },
+              });
+            }
             return {
-              auditAction: "role_permission.changed",
-              entityType: "RolePermission",
-              entityId: permission.id,
-              before: { roleKey: role.key, permissionKey: permission.key, ...before },
-              after: {
-                roleKey: role.key,
-                permissionKey: permission.key,
-                canMaker: change.canMaker,
-                canChecker: change.canChecker,
-                approvedByUserId: ctx.checkerUserId,
-              },
+              auditAction: "role_permission.changes_approved",
+              entityType: "GovernedAction",
+              entityId: ctx.governedActionId,
+              before: { changes: checks.map((c) => ({ roleKey: c.roleKey, permissionKey: c.permissionKey, ...c.before })) },
+              after: { changes, reason, approvedByUserId: ctx.checkerUserId },
             };
           },
         },

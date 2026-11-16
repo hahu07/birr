@@ -183,6 +183,10 @@ export const accessPermissions = [
   { key: "platform_settings.manage", category: "platform", description: "Change platform settings and provider credentials.", roles: ["platform_admin"] },
   { key: "shariah_sector.manage", category: "shariah", description: "Maintain the list of Shariah-prohibited sectors.", roles: ["platform_admin"] },
   { key: "staff.invitation_manage", category: "staff", description: "Resend or revoke a pending staff invitation.", roles: ["platform_admin"] },
+  // Roles & Access (owner's decisions, 2026-11-16): staff managers only,
+  // and a Board-recorded access review every 90 days.
+  { key: "roles.view", category: "staff", description: "Open Roles & Access: every role's permissions, who holds each role, changes and access reviews; export the access matrix.", roles: ["platform_admin", "board_of_trustees", "compliance_officer", "audit_committee"] },
+  { key: "roles.access_review", category: "staff", description: "Complete a periodic access review, confirming each role's permissions are still right.", roles: ["board_of_trustees"] },
   { key: "vault.contribution_hold", category: "vault", description: "Hold a Vault contribution for review, and release it.", roles: ["compliance_officer"] },
   { key: "vault.curate", category: "vault", description: "Create a Vault and edit its causes, goals, cover image and feasibility report.", roles: ["mutawalli_officer"] },
   { key: "vault.distribution_create", category: "vault", description: "Create a Vault distribution, and retry a failed payout.", roles: ["mutawalli_officer"] },
