@@ -339,8 +339,10 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
 
           {hasActiveWaqf && (
             <div className="mt-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Waqf Funds covered as of today</p>
-              <ul className="mt-3 space-y-2">
+              <p id="deed-funds-covered" className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Waqf Funds covered as of today
+              </p>
+              <ul aria-labelledby="deed-funds-covered" className="mt-3 space-y-2">
                 {activeWaqfs!.map((w) => (
                   <li key={w.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm">
                     <span className="flex items-center gap-2 font-medium text-slate-900">
