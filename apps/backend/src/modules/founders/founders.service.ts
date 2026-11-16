@@ -69,8 +69,7 @@ export class EstablishFounderAndFoundationInput {
   @IsEnum(InstitutionType)
   institutionType?: InstitutionType;
 
-  @IsOptional()
-  @IsString()
+  @CountryCode({ optional: true })
   homeJurisdiction?: string;
 
   @IsString()

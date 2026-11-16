@@ -852,7 +852,8 @@ as free text. That doesn't match the `NG` compliance policy or trustee
 licence looked up by jurisdiction, and 4 funds and 1 foundation already
 said "Nigeria".
 - Every jurisdiction (Waqf Fund, Foundation, counterparty, vault, trustee
-  licence, compliance policy) is a two-letter ISO 3166-1 code.
+  licence, compliance policy, and a founder's home jurisdiction) is a
+  two-letter ISO 3166-1 code.
 - **Picked:** from a searchable country list in the app (`CountrySelect`,
   "Nigeria (NG)").
 - **Checked:** by `@CountryCode()` / `ParseCountryCodePipe` in the API.

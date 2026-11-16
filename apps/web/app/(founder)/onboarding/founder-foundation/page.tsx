@@ -16,6 +16,7 @@ import type { Invitation } from "../../../../lib/types";
 import { Alert, Button, IconArrowRight, IconImage, IconShieldCheck, IconSparkle, Select } from "@birr/ui";
 import { ChoiceCard, Field, FormSection, inputClass } from "../../_components/form";
 import { FOUNDER_TYPE_GUIDE, FounderFoundationGuide, type FounderType, INSTITUTION_TYPE_GUIDE } from "./FounderFoundationGuide";
+import { countryName } from "@birr/shared";
 import { CountrySelect } from "../../../../components/forms/CountrySelect";
 
 interface PurposeSuggestion {
@@ -330,7 +331,7 @@ export default function OnboardingFounderFoundationPage() {
         <div className="mt-6 max-w-2xl space-y-4">
           <SummaryCard label="Who established it" title={alreadyEstablished.founderName}>
             {alreadyEstablished.kind === "institution" ? humanize(alreadyEstablished.institutionType ?? "") : "Individual"}
-            {alreadyEstablished.homeJurisdiction ? ` · ${alreadyEstablished.homeJurisdiction}` : ""}
+            {alreadyEstablished.homeJurisdiction ? ` · ${countryName(alreadyEstablished.homeJurisdiction)}` : ""}
           </SummaryCard>
           <SummaryCard label="Foundation" title={alreadyEstablished.foundationName}>
             {[alreadyEstablished.purpose, alreadyEstablished.jurisdiction].filter(Boolean).join(" · ")}
@@ -406,15 +407,9 @@ export default function OnboardingFounderFoundationPage() {
                   label="Home jurisdiction"
                   htmlFor="homeJurisdiction"
                   optional
-                  hint="Where you're based, as a 2-letter country code — e.g. NG for Nigeria."
+                  hint="The country where you're based."
                 >
-                  <input
-                    id="homeJurisdiction"
-                    value={homeJurisdiction}
-                    onChange={(e) => setHomeJurisdiction(e.target.value)}
-                    placeholder="NG"
-                    className={`${inputClass} sm:max-w-[12rem]`}
-                  />
+                  <CountrySelect id="homeJurisdiction" value={homeJurisdiction} onChange={setHomeJurisdiction} className="sm:max-w-sm" />
                 </Field>
               </div>
             </FormSection>
