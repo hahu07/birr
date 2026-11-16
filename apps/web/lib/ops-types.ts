@@ -691,7 +691,24 @@ export interface BirrStaff {
     mfaEnabled: boolean;
     whatsappNumber: string | null;
     whatsappVerifiedAt: string | null;
+    /** Last finished Ops Console sign-in (recorded since 2026-11-16). */
+    lastSignInAt?: string | null;
   };
+}
+
+/** A governed staff change (GET /birr-staff/pending-changes and /:id/history). */
+export interface StaffChangeEntry {
+  id: string;
+  kind: "invite" | "role_add" | "role_remove" | "mfa_reset" | "suspend" | "reinstate";
+  status: "proposed" | "approved" | "rejected" | "expired";
+  staffId: string | null;
+  email: string | null;
+  role: string | null;
+  reason: string | null;
+  proposedBy: string | null;
+  decidedBy: string | null;
+  proposedAt: string;
+  decidedAt: string | null;
 }
 
 export interface CauseImpactUpdate {

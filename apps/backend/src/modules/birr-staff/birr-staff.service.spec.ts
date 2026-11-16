@@ -158,4 +158,53 @@ describe("BirrStaffService", () => {
       );
     });
   });
+
+  // Team page (2026-11-16): each person's change history with reasons, and
+  // which changes are awaiting approval.
+  describe("history and pending changes", () => {
+    test("history lists the invitation that brought someone in and every change about them, with reasons; pending lists open ones", async () => {
+      const run = Date.now().toString(36);
+      const email = `history-${run}@example.com`;
+      const [maker, checker] = await Promise.all(
+        ["maker", "checker"].map((label) => prisma.user.create({ data: { email: `history-${label}-${run}@example.com`, fullName: `History ${label}` } })),
+      );
+      const user = await prisma.user.create({ data: { email, fullName: "History Subject" } });
+      const staff = await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: { role: "legal_adviser" } } } });
+      const permission = (key: string) => prisma.permission.findUniqueOrThrow({ where: { key } });
+      const invite = await prisma.governedAction.create({
+        data: {
+          permissionId: (await permission("staff.invite")).id, makerType: "human", makerUserId: maker.id, checkerUserId: checker.id,
+          status: "approved", decidedAt: new Date(), payload: { email: email.toUpperCase(), staffRole: "legal_adviser", reason: "New legal adviser for the NG entity." },
+        },
+      });
+      const pending = await prisma.governedAction.create({
+        data: {
+          permissionId: (await permission("staff.role_add")).id, makerType: "human", makerUserId: maker.id, status: "proposed",
+          payload: { staffId: staff.id, role: "compliance_officer", reason: "Covering compliance while the officer is away." },
+        },
+      });
+
+      const history = (await service.history(staff.id))!;
+      expect(history.map((h) => h.id)).toEqual([pending.id, invite.id]);
+      expect(history[0]).toMatchObject({ kind: "role_add", status: "proposed", role: "compliance_officer", reason: "Covering compliance while the officer is away.", proposedBy: "History maker" });
+      // Matched by email whatever the letter case it was proposed in.
+      expect(history[1]).toMatchObject({ kind: "invite", status: "approved", role: "legal_adviser", decidedBy: "History checker" });
+
+      const open = await service.pendingChanges();
+      expect(open.find((p) => p.id === pending.id)).toMatchObject({ staffId: staff.id, kind: "role_add" });
+      expect(open.find((p) => p.id === invite.id)).toBeUndefined();
+      expect(await service.history("00000000-0000-0000-0000-000000000000")).toBeNull();
+
+      await prisma.governedAction.update({ where: { id: pending.id }, data: { status: "rejected", decidedAt: new Date(), checkerUserId: checker.id } });
+    });
+
+    test("recordSignIn() stamps the time, and the roster shows it", async () => {
+      const user = await prisma.user.create({ data: { email: `signin-${Date.now()}@example.com`, fullName: "Sign In Subject" } });
+      const staff = await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: { role: "audit_committee" } } } });
+      const before = new Date();
+      await service.recordSignIn(user.id);
+      const listed = (await service.list()).find((s) => s.id === staff.id)!;
+      expect(new Date(listed.user.lastSignInAt!).getTime()).toBeGreaterThanOrEqual(before.getTime());
+    });
+  });
 });

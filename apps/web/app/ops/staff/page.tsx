@@ -1,73 +1,50 @@
 "use client";
 
-// Staff Management — the BirrStaff roster plus pending Invitations.
-// Adding a staff member is the `staff.invite` governed action (2026-10-18):
-// a platform_admin proposes it here, a Board member or the Compliance
-// Officer approves it on the Approvals page, and only then is the
-// invitation created and emailed. Staff invitation links are never shown
-// in the app — the API returns no token for them — so a failed email is
-// retried with "Resend email", not a copy-able link.
-import { useCallback, useEffect, useState } from "react";
+// Team — Birr's own staff, rebuilt 2026-11-16 to the same standard as
+// Roles & Access. Every change to a person (inviting them, adding or
+// removing a role, resetting two-factor, suspending or reinstating) is a
+// governed two-person action: proposed here with a reason, approved by a
+// Board member or Compliance officer on the Approvals page. The roster
+// shows what's awaiting approval, who hasn't set up two-factor, and who
+// hasn't signed in for 90 days (flagged for review, never suspended
+// automatically). Staff invitation links are emailed only, never shown.
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShowMoreFooter, useShowMore } from "../_components/ShowMore";
 import { apiFetchJson } from "../../../lib/api";
-import { humanize, formatDate } from "../../../lib/format";
+import { formatDate } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
-import { ProposeGovernedActionButton } from "../_components/ProposeGovernedAction";
-import type { BirrStaff, BirrStaffRole, Invitation } from "../../../lib/ops-types";
-import {
-  Alert,
-  Badge,
-  Button,
-  EmptyState,
-  IconUsers,
-  Input,
-  Select,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
-} from "@birr/ui";
+import type { BirrStaff, BirrStaffRole, Invitation, StaffChangeEntry } from "../../../lib/ops-types";
+import { Alert, Badge, Button, EmptyState, IconUsers, Input, Select, Skeleton } from "@birr/ui";
+import { MemberPanel } from "./MemberPanel";
+import { REASON_MIN, STAFF_ROLES, describeChange, isDormant, proposeStaffChange, roleLabel, signedInText } from "./staff-helpers";
 
-const STAFF_ROLES: BirrStaffRole[] = [
-  "mutawalli_officer",
-  "board_of_trustees",
-  "investment_committee",
-  "shariah_board_member",
-  "audit_committee",
-  "compliance_officer",
-  "legal_adviser",
-  "external_auditor",
-  "platform_admin",
-];
-
-/** Rows drawn per page; search still covers the whole roster. */
 const STAFF_PER_PAGE = 25;
+type Filter = "all" | "active" | "suspended" | "attention";
 
 export default function StaffPage() {
-  const { staff: currentStaff, can } = useStaffSession();
+  const { staff: me, can } = useStaffSession();
   const [staff, setStaff] = useState<BirrStaff[] | null>(null);
   const [invitations, setInvitations] = useState<Invitation[] | null>(null);
+  const [pending, setPending] = useState<StaffChangeEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [search, setSearch] = useState("");
-  const canInvite = can("staff.invite");
-  const canRequestMfaReset = can("staff.mfa_reset");
-  const canManageInvitations = can("staff.invitation_manage");
-  const canAddRole = can("staff.role_add");
-  const canRemoveRole = can("staff.role_remove");
-  // Suspending and reinstating are two-person too (2026-11-15).
-  const canSuspend = can("staff.suspend");
-  const canReinstate = can("staff.reinstate");
-  const showActions = canRequestMfaReset || canSuspend || canReinstate;
+  // Active staff first; suspended accounts are one filter away.
+  const [filter, setFilter] = useState<Filter>("active");
+  const [role, setRole] = useState<BirrStaffRole | "">("");
+  const [openId, setOpenId] = useState<string | null>(null);
+
   const load = useCallback(() => {
     setError(null);
-    Promise.all([apiFetchJson<BirrStaff[]>("/birr-staff"), apiFetchJson<Invitation[]>("/invitations")])
-      .then(([staffData, invitationsData]) => {
+    Promise.all([
+      apiFetchJson<BirrStaff[]>("/birr-staff"),
+      apiFetchJson<Invitation[]>("/invitations"),
+      apiFetchJson<StaffChangeEntry[]>("/birr-staff/pending-changes"),
+    ])
+      .then(([staffData, invitationsData, pendingData]) => {
         setStaff(staffData);
         setInvitations(invitationsData);
+        setPending(pendingData);
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, []);
@@ -76,42 +53,50 @@ export default function StaffPage() {
     load();
   }, [load]);
 
+  const pendingFor = useCallback((id: string) => pending.filter((p) => p.staffId === id), [pending]);
+  const counts = useMemo(() => {
+    const list = staff ?? [];
+    return {
+      active: list.filter((s) => s.status === "active").length,
+      suspended: list.filter((s) => s.status === "suspended").length,
+      noTwoFactor: list.filter((s) => s.status === "active" && !s.user.mfaEnabled).length,
+      dormant: list.filter((s) => isDormant(s)).length,
+    };
+  }, [staff]);
+  const needsAttention = (s: BirrStaff) => s.status === "active" && (!s.user.mfaEnabled || isDormant(s));
+
+  const query = search.trim().toLowerCase();
+  const visible = (staff ?? []).filter(
+    (s) =>
+      (!query || s.user.fullName.toLowerCase().includes(query) || s.user.email.toLowerCase().includes(query)) &&
+      (!role || s.roles.includes(role)) &&
+      (filter === "all" || (filter === "attention" ? needsAttention(s) : s.status === filter)),
+  );
+  const page = useShowMore(visible, STAFF_PER_PAGE, `${query}|${filter}|${role}`);
+
   // Fewer than two active Platform Admins means a locked-out admin has
   // nobody to request their MFA reset in the app — see
   // docs/staff-mfa-recovery.md (paths A and B).
   const activePlatformAdmins = staff?.filter((s) => s.roles.includes("platform_admin") && s.status === "active").length ?? 0;
-
-  const pendingInvitations = invitations?.filter((i) => i.status === "pending") ?? [];
-  const query = search.trim().toLowerCase();
-  const visibleStaff =
-    staff?.filter(
-      (s) =>
-        !query ||
-        s.user.fullName.toLowerCase().includes(query) ||
-        s.user.email.toLowerCase().includes(query) ||
-        s.roles.some((role) => role.toLowerCase().includes(query)),
-    ) ?? [];
-  const page = useShowMore(visibleStaff, STAFF_PER_PAGE, query);
+  const sentInvitations = invitations?.filter((i) => i.status === "pending" && i.inviteeKind === "birr_staff") ?? [];
+  const invitationPage = useShowMore(sentInvitations, STAFF_PER_PAGE, "invitations");
+  const invitesAwaiting = pending.filter((p) => p.kind === "invite");
+  const nameOfUser = (userId: string) => staff?.find((s) => s.userId === userId)?.user.fullName ?? "—";
+  const open = staff?.find((s) => s.id === openId) ?? null;
 
   return (
     <div>
-      <header className="mb-8 flex items-center justify-between gap-3">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
             <IconUsers className="h-5 w-5" />
           </span>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Team</h1>
-            <p className="mt-0.5 text-sm text-slate-500">
-              Birr's own staff roster and pending onboarding invitations.
-            </p>
+            <p className="mt-0.5 text-sm text-slate-500">Birr&apos;s staff. Every change to someone&apos;s access needs a reason and a second person&apos;s approval.</p>
           </div>
         </div>
-        {canInvite && (
-          <Button onClick={() => setShowInviteForm((v) => !v)}>
-            {showInviteForm ? "Cancel" : "Invite staff member"}
-          </Button>
-        )}
+        {can("staff.invite") && <Button onClick={() => setShowInviteForm((v) => !v)}>{showInviteForm ? "Cancel" : "Invite staff member"}</Button>}
       </header>
 
       {error && (
@@ -120,19 +105,11 @@ export default function StaffPage() {
         </Alert>
       )}
 
-      {canRequestMfaReset && staff !== null && activePlatformAdmins < 2 && (
+      {can("staff.mfa_reset") && staff !== null && activePlatformAdmins < 2 && (
         <Alert tone="warning" title="Only one active Platform Admin" className="mb-6">
-          If this account loses its authenticator and backup codes, nobody can request its MFA reset in the app — it
-          would need the server-side emergency procedure. Invite a second Platform Admin. See
-          docs/staff-mfa-recovery.md.
+          If this account loses its authenticator and backup codes, nobody can request its MFA reset in the app — it would need the server-side
+          emergency procedure. Invite a second Platform Admin. See docs/staff-mfa-recovery.md.
         </Alert>
-      )}
-
-      {canRequestMfaReset && (
-        <p className="mb-4 text-xs text-slate-500">
-          "Request MFA reset" doesn't reset anything by itself — a Board member or Compliance officer has to approve it
-          on the Approvals page, and the person is emailed once it's done.
-        </p>
       )}
 
       {showInviteForm && (
@@ -144,198 +121,144 @@ export default function StaffPage() {
         />
       )}
 
-      {!error && staff === null && <StaffSkeleton />}
+      {!error && staff === null && <Skeleton className="h-64 w-full" />}
 
-      {!error && staff !== null && (
+      {staff !== null && (
         <>
+          <dl className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Stat label="Active" value={counts.active} onClick={() => setFilter("active")} />
+            <Stat label="Suspended" value={counts.suspended} onClick={() => setFilter("suspended")} />
+            <Stat label="Two-factor not set up" value={counts.noTwoFactor} warn={counts.noTwoFactor > 0} onClick={() => setFilter("attention")} />
+            <Stat label="No sign-in for 90 days" value={counts.dormant} warn={counts.dormant > 0} onClick={() => setFilter("attention")} />
+            <Stat label="Awaiting approval" value={pending.length} />
+          </dl>
+
           {staff.length === 0 ? (
-            <EmptyState
-              title="No staff accounts yet"
-              description="Invite the first Birr staff member above."
-            />
+            <EmptyState title="No staff accounts yet" description="Invite the first Birr staff member above." />
           ) : (
             <>
-              <Input
-                placeholder="Search by name, email, or role…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="mb-4 max-w-xs"
-              />
-              {visibleStaff.length === 0 ? (
-                <p className="text-sm text-slate-500">No staff match "{search.trim()}".</p>
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <Input aria-label="Search staff" placeholder="Search by name or email…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full sm:w-64" />
+                <Select aria-label="Show" value={filter} onChange={(e) => setFilter(e.target.value as Filter)} className="w-full sm:w-52">
+                  <option value="all">Everyone</option>
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="attention">Needs attention</option>
+                </Select>
+                <Select aria-label="Role" value={role} onChange={(e) => setRole(e.target.value as BirrStaffRole | "")} className="w-full sm:w-56">
+                  <option value="">Any role</option>
+                  {STAFF_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {roleLabel(r)}
+                    </option>
+                  ))}
+                </Select>
+                <span className="text-xs text-slate-500 sm:ml-auto">
+                  {visible.length} of {staff.length}
+                </span>
+              </div>
+
+              {visible.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">No staff match.</p>
               ) : (
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableHeaderCell>Name</TableHeaderCell>
-                      <TableHeaderCell>Email</TableHeaderCell>
-                      <TableHeaderCell>Role</TableHeaderCell>
-                      <TableHeaderCell>Status</TableHeaderCell>
-                      <TableHeaderCell>2FA</TableHeaderCell>
-                      {showActions && <TableHeaderCell className="text-right">Actions</TableHeaderCell>}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {page.visible.map((s) => (
-                      <TableRow key={s.id}>
-                        <TableCell>
-                          <span className="font-medium text-slate-900">{s.user.fullName}</span>
-                          {s.id === currentStaff?.id && (
-                            <span className="ml-2 text-xs text-slate-500">(you)</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-slate-500">{s.user.email}</TableCell>
-                        <TableCell>
-                          <RolesCell
-                            member={s}
-                            // Nobody proposes a change to their own roles —
-                            // the backend refuses it too.
-                            canAdd={canAddRole && s.id !== currentStaff?.id}
-                            canRemove={canRemoveRole && s.id !== currentStaff?.id}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Badge tone={s.status === "active" ? "success" : "neutral"}>
-                            {humanize(s.status)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge tone={s.user.mfaEnabled ? "success" : "warning"}>
-                            {s.user.mfaEnabled ? "Enrolled" : "Not enrolled"}
-                          </Badge>
-                        </TableCell>
-                        {showActions && (
-                          <TableCell className="text-right">
-                            <div className="flex flex-col items-end gap-2">
-                              {canRequestMfaReset && s.user.mfaEnabled && s.status === "active" && (
-                                <ProposeGovernedActionButton
-                                  permissionKey="staff.mfa_reset"
-                                  payload={{ staffId: s.id }}
-                                  label="Request MFA reset"
-                                  onProposed={load}
-                                />
-                              )}
-                              {/* Nobody proposes their own suspension; the backend refuses it too. */}
-                              {s.id !== currentStaff?.id && s.status === "active" && canSuspend && (
-                                <StaffStatusChange member={s} kind="suspend" onProposed={load} />
-                              )}
-                              {s.id !== currentStaff?.id && s.status === "suspended" && canReinstate && (
-                                <StaffStatusChange member={s} kind="reinstate" onProposed={load} />
-                              )}
-                            </div>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  {page.visible.map((s) => {
+                    const waiting = pendingFor(s.id);
+                    return (
+                      <li key={s.id}>
+                        <button
+                          type="button"
+                          onClick={() => setOpenId(s.id)}
+                          className="grid w-full gap-2 px-5 py-3.5 text-left transition-colors hover:bg-slate-50 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.4fr)_minmax(0,1fr)]"
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium text-slate-900">
+                              {s.user.fullName}
+                              {s.id === me?.id && <span className="ml-2 text-xs font-normal text-slate-500">(you)</span>}
+                            </span>
+                            <span className="block truncate text-xs text-slate-500">{s.user.email}</span>
+                          </span>
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            {s.roles.map((r) => (
+                              <span key={r} className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs text-slate-700">
+                                {roleLabel(r)}
+                              </span>
+                            ))}
+                          </span>
+                          <span className="flex flex-wrap items-center gap-1.5 text-xs md:justify-end">
+                            {s.status === "suspended" && <Badge tone="neutral">Suspended</Badge>}
+                            {s.status === "active" && !s.user.mfaEnabled && <Badge tone="warning">No two-factor</Badge>}
+                            {isDormant(s) && <Badge tone="warning">No sign-in 90+ days</Badge>}
+                            {waiting.length > 0 && <Badge tone="info">Awaiting: {waiting.map(describeChange).join(", ")}</Badge>}
+                            <span className="text-slate-500">{signedInText(s.user.lastSignInAt)}</span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
               <ShowMoreFooter shown={page.shown} total={page.total} pageSize={STAFF_PER_PAGE} noun="staff members" onShowMore={page.showMore} />
             </>
           )}
 
-          {pendingInvitations.length > 0 && (
-            <div className="mt-8">
-              <h2 className="mb-3 text-sm font-semibold text-slate-700">Pending invitations</h2>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableHeaderCell>Email</TableHeaderCell>
-                    <TableHeaderCell>Role</TableHeaderCell>
-                    <TableHeaderCell>Expires</TableHeaderCell>
-                    <TableHeaderCell className="text-right">Actions</TableHeaderCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {pendingInvitations.map((inv) => (
-                    <InvitationRow key={inv.id} invitation={inv} canManageInvitations={canManageInvitations} onChanged={load} />
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+          {invitesAwaiting.length > 0 && (
+            <section className="mt-8">
+              <h2 className="mb-3 text-sm font-semibold text-slate-900">Invitations awaiting approval</h2>
+              <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white">
+                {invitesAwaiting.map((p) => (
+                  <li key={p.id} className="px-5 py-3 text-sm">
+                    <span className="font-medium text-slate-900">{p.email}</span> as {p.role ? roleLabel(p.role) : "—"}
+                    <span className="block text-xs text-slate-500">
+                      Proposed by {p.proposedBy ?? "—"} on {formatDate(p.proposedAt)}
+                      {p.reason && ` · “${p.reason}”`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {sentInvitations.length > 0 && (
+            <section className="mt-8">
+              <h2 className="mb-3 text-sm font-semibold text-slate-900">Invitations sent, not yet accepted</h2>
+              <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white">
+                {invitationPage.visible.map((inv) => (
+                  <InvitationRow key={inv.id} invitation={inv} invitedBy={nameOfUser(inv.invitedBy)} canManage={can("staff.invitation_manage")} onChanged={load} />
+                ))}
+              </ul>
+              <ShowMoreFooter shown={invitationPage.shown} total={invitationPage.total} pageSize={STAFF_PER_PAGE} noun="invitations" onShowMore={invitationPage.showMore} />
+            </section>
           )}
         </>
       )}
+
+      {open && <MemberPanel member={open} pending={pendingFor(open.id)} onClose={() => setOpenId(null)} onProposed={load} />}
     </div>
   );
 }
 
-/**
- * Propose suspending or reinstating someone, with a reason. Nothing
- * changes until a Board member or Compliance officer approves it on the
- * Approvals page; suspension then takes effect on the person's next click.
- */
-function StaffStatusChange({ member, kind, onProposed }: { member: BirrStaff; kind: "suspend" | "reinstate"; onProposed: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
-  const label = kind === "suspend" ? "Suspend…" : "Reinstate…";
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await apiFetchJson("/governed-actions", {
-        method: "POST",
-        body: JSON.stringify({ permissionKey: `staff.${kind}`, payload: { staffId: member.id, reason: reason.trim() } }),
-      });
-      setSent(true);
-      onProposed();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (sent) return <span className="text-xs text-slate-500">Sent for approval</span>;
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={`text-xs font-medium ${kind === "suspend" ? "text-rose-700 hover:text-rose-800" : "text-primary-700 hover:text-primary-800"}`}
-      >
-        {label}
-      </button>
-    );
-  }
-  return (
-    <form onSubmit={submit} className="w-72 space-y-2 rounded-lg border border-slate-200 bg-white p-3 text-left shadow-sm">
-      <label htmlFor={`status-reason-${member.id}`} className="block text-xs font-medium text-slate-700">
-        {kind === "suspend" ? `Why suspend ${member.user.fullName}?` : `Why reinstate ${member.user.fullName}?`}
-      </label>
-      <textarea
-        id={`status-reason-${member.id}`}
-        rows={3}
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-      />
-      {error && <p className="text-xs text-rose-700">{error}</p>}
-      <p className="text-[11px] leading-snug text-slate-500">
-        {kind === "suspend"
-          ? "A Board member or Compliance officer approves it; then they're signed out on their next click."
-          : "A Board member or Compliance officer approves it before they can sign in again."}
-      </p>
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="secondary" className="px-2.5 py-1 text-xs" onClick={() => setOpen(false)} disabled={submitting}>
-          Cancel
-        </Button>
-        <Button type="submit" variant={kind === "suspend" ? "danger" : "primary"} className="px-2.5 py-1 text-xs" disabled={submitting || reason.trim().length < 10}>
-          {submitting ? "Sending…" : "Send for approval"}
-        </Button>
-      </div>
-    </form>
+function Stat({ label, value, warn, onClick }: { label: string; value: number; warn?: boolean; onClick?: () => void }) {
+  const className = `rounded-xl border px-4 py-3 text-left ${warn ? "border-amber-200 bg-amber-50/60" : "border-slate-200 bg-white"}`;
+  const body = (
+    <>
+      <dt className="text-xs font-medium text-slate-500">{label}</dt>
+      <dd className={`mt-1 text-lg font-semibold tabular-nums ${warn ? "text-amber-700" : "text-slate-900"}`}>{value}</dd>
+    </>
+  );
+  return onClick ? (
+    <button type="button" onClick={onClick} className={`${className} transition-colors hover:border-primary-300`}>
+      {body}
+    </button>
+  ) : (
+    <div className={className}>{body}</div>
   );
 }
 
 function InviteForm({ onInvited }: { onInvited: () => void }) {
   const [email, setEmail] = useState("");
   const [roleKey, setRoleKey] = useState<BirrStaffRole>("mutawalli_officer");
+  const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [proposed, setProposed] = useState(false);
@@ -345,10 +268,7 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
     setError(null);
     setSubmitting(true);
     try {
-      await apiFetchJson("/governed-actions", {
-        method: "POST",
-        body: JSON.stringify({ permissionKey: "staff.invite", payload: { email, staffRole: roleKey } }),
-      });
+      await proposeStaffChange("staff.invite", { email, staffRole: roleKey, reason: reason.trim() });
       setProposed(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -359,240 +279,129 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
 
   if (proposed) {
     return (
-      <div className="mb-6 rounded-lg border border-primary-200 bg-primary-50 p-4">
-        <p className="text-sm font-medium text-primary-900">Sent for approval.</p>
-        <p className="mt-1 text-sm text-primary-800">
-          A Board member or the Compliance Officer needs to approve adding {email} as {humanize(roleKey)} on the Approvals
-          page. The invitation is emailed to them once it&apos;s approved.
-        </p>
-        <div className="mt-3">
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={onInvited}>
-            Done
-          </Button>
-        </div>
-      </div>
+      <Alert tone="success" title="Sent for approval" className="mb-6">
+        A Board member or Compliance officer approves adding {email} as {roleLabel(roleKey)} on the Approvals page; the invitation is emailed once
+        it&apos;s approved.{" "}
+        <button type="button" className="font-medium underline" onClick={onInvited}>
+          Done
+        </button>
+      </Alert>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mb-6 space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+    <form onSubmit={handleSubmit} className="mb-6 space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-sm font-semibold text-slate-900">Invite a staff member</p>
       {error && (
         <Alert tone="danger" title="Couldn't send for approval">
           {error}
         </Alert>
       )}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[16rem] flex-1 space-y-1.5">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
           <label htmlFor="invite-email" className="text-sm font-medium text-slate-700">
             Email
           </label>
-          <Input
-            id="invite-email"
-            type="email"
-            required
-            autoFocus
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+          <Input id="invite-email" type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <label htmlFor="invite-role" className="text-sm font-medium text-slate-700">
             Role
           </label>
-          <select
-            id="invite-role"
-            value={roleKey}
-            onChange={(e) => setRoleKey(e.target.value as BirrStaffRole)}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
-            {STAFF_ROLES.map((role) => (
-              <option key={role} value={role}>
-                {humanize(role)}
+          <Select id="invite-role" value={roleKey} onChange={(e) => setRoleKey(e.target.value as BirrStaffRole)} className="w-full">
+            {STAFF_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {roleLabel(r)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
-        <Button type="submit" disabled={submitting}>
+      </div>
+      <div className="space-y-1.5">
+        <label htmlFor="invite-reason" className="text-sm font-medium text-slate-700">
+          Why are they joining?
+        </label>
+        <textarea
+          id="invite-reason"
+          rows={2}
+          maxLength={1000}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+        />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-slate-500">A second person (Board or Compliance) approves every new staff member before the invitation is emailed.</p>
+        <Button type="submit" disabled={submitting || reason.trim().length < REASON_MIN}>
           {submitting ? "Sending…" : "Send for approval"}
         </Button>
       </div>
-      <p className="text-xs text-slate-500">
-        A second person (Board or Compliance) approves every new staff member before the invitation is emailed.
-      </p>
     </form>
   );
 }
 
-// A staff member's roles, with propose-to-add / propose-to-remove controls
-// for whoever holds staff.role_add / staff.role_remove. Every change is a
-// governed proposal a Board member or the Compliance Officer approves on
-// the Approvals page — nothing here changes anyone's roles directly.
-function RolesCell({ member, canAdd, canRemove }: { member: BirrStaff; canAdd: boolean; canRemove: boolean }) {
-  const [adding, setAdding] = useState(false);
-  const [role, setRole] = useState<BirrStaffRole | "">("");
-  const [submitting, setSubmitting] = useState(false);
-  const [sent, setSent] = useState<string | null>(null);
+function InvitationRow({ invitation, invitedBy, canManage, onChanged }: { invitation: Invitation; invitedBy: string; canManage: boolean; onChanged: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [resent, setResent] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // external_auditor stands alone: an auditor can't gain a role, and nobody
-  // who already holds one can become an auditor.
-  const addable = member.roles.includes("external_auditor")
-    ? []
-    : STAFF_ROLES.filter((r) => !member.roles.includes(r) && r !== "external_auditor");
-
-  async function propose(kind: "add" | "remove", target: BirrStaffRole) {
-    setError(null);
-    setSubmitting(true);
-    try {
-      await apiFetchJson("/governed-actions", {
-        method: "POST",
-        body: JSON.stringify({ permissionKey: `staff.role_${kind}`, payload: { staffId: member.id, role: target } }),
-      });
-      setSent(`${kind === "add" ? "Adding" : "Removing"} ${humanize(target)} — sent for approval.`);
-      setAdding(false);
-      setRole("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {member.roles.map((r) => (
-          <span
-            key={r}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs text-slate-700"
-          >
-            {humanize(r)}
-            {canRemove && member.roles.length > 1 && !sent && (
-              <button
-                type="button"
-                title={`Propose removing ${humanize(r)}`}
-                aria-label={`Propose removing ${humanize(r)}`}
-                disabled={submitting}
-                onClick={() => propose("remove", r)}
-                className="text-slate-400 hover:text-red-600"
-              >
-                ×
-              </button>
-            )}
-          </span>
-        ))}
-        {canAdd && addable.length > 0 && !adding && !sent && (
-          <button type="button" className="text-xs font-medium text-primary-700 hover:underline" onClick={() => setAdding(true)}>
-            + Add role
-          </button>
-        )}
-      </div>
-      {adding && (
-        <div className="flex items-center gap-2">
-          <Select
-            value={role}
-            onChange={(e) => setRole(e.target.value as BirrStaffRole)}
-            className="w-48 py-1 text-xs"
-            aria-label={`Role to add for ${member.user.fullName}`}
-          >
-            <option value="">Choose a role…</option>
-            {addable.map((r) => (
-              <option key={r} value={r}>
-                {humanize(r)}
-              </option>
-            ))}
-          </Select>
-          <Button className="px-2.5 py-1 text-xs" disabled={!role || submitting} onClick={() => role && propose("add", role)}>
-            Send for approval
-          </Button>
-          <button type="button" className="text-xs text-slate-500 hover:underline" onClick={() => setAdding(false)}>
-            Cancel
-          </button>
-        </div>
-      )}
-      {sent && <p className="text-xs text-slate-500">{sent}</p>}
-      {error && <p className="text-xs text-red-600">{error}</p>}
-    </div>
-  );
-}
-
-function InvitationRow({ invitation, canManageInvitations, onChanged }: { invitation: Invitation; canManageInvitations: boolean; onChanged: () => void }) {
-  const [revoking, setRevoking] = useState(false);
-  const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
-  const [error, setError] = useState<string | null>(null);
-  // Null for a staff invitation — its link is emailed only, never shown.
-  const link = invitation.token
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}/ops/accept-invitation?token=${invitation.token}`
-    : null;
 
   async function resend() {
     setError(null);
-    setResendState("sending");
+    setBusy(true);
     try {
       const { emailSent } = await apiFetchJson<{ emailSent: boolean }>(`/invitations/${invitation.id}/resend-email`, { method: "POST" });
       if (!emailSent) throw new Error("The email couldn't be sent — check the Resend settings and try again.");
-      setResendState("sent");
+      setResent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
-      setResendState("idle");
+    } finally {
+      setBusy(false);
     }
   }
 
   async function revoke() {
     setError(null);
-    setRevoking(true);
+    setBusy(true);
     try {
       await apiFetchJson(`/invitations/${invitation.id}/revoke`, { method: "POST" });
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
-      setRevoking(false);
+      setBusy(false);
     }
   }
 
   return (
-    <TableRow>
-      <TableCell>{invitation.email}</TableCell>
-      <TableCell>{invitation.roleKey ? humanize(invitation.roleKey) : "—"}</TableCell>
-      <TableCell className="text-slate-500">{formatDate(invitation.expiresAt)}</TableCell>
-      <TableCell className="text-right">
-        {error && <span className="mr-3 text-xs text-red-600">{error}</span>}
-        <div className="inline-flex gap-2">
-          {link && (
-            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => navigator.clipboard.writeText(link)}>
-              Copy link
-            </Button>
-          )}
-          {canManageInvitations && invitation.inviteeKind === "birr_staff" && (
-            <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={resendState !== "idle"} onClick={resend}>
-              {resendState === "sending" ? "Sending…" : resendState === "sent" ? "Email sent" : "Resend email"}
-            </Button>
-          )}
-          {/* A birr_staff invitation is platform_admin-only to revoke, same as to send — see InvitationsService.revoke. */}
-          {(canManageInvitations || invitation.inviteeKind !== "birr_staff") && (
-            <Button variant="danger" className="px-3 py-1.5 text-xs" disabled={revoking} onClick={revoke}>
+    <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+      <div>
+        <span className="font-medium text-slate-900">{invitation.email}</span> as {invitation.roleKey ? roleLabel(invitation.roleKey) : "—"}
+        <span className="block text-xs text-slate-500">
+          Invited by {invitedBy} · expires {formatDate(invitation.expiresAt)}
+        </span>
+        {error && <span className="block text-xs text-red-600">{error}</span>}
+      </div>
+      {canManage &&
+        (confirming ? (
+          <span className="flex items-center gap-2 text-xs">
+            <span className="text-slate-700">Revoke this invitation? The link stops working.</span>
+            <Button variant="danger" className="px-3 py-1.5 text-xs" disabled={busy} onClick={() => void revoke()}>
               Revoke
             </Button>
-          )}
-        </div>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function StaffSkeleton() {
-  return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="divide-y divide-slate-100">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="flex items-center gap-8 px-5 py-3.5">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-4 w-44" />
-            <Skeleton className="h-4 w-28" />
-            <Skeleton className="h-5 w-16 rounded-full" />
-          </div>
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setConfirming(false)}>
+              Keep
+            </Button>
+          </span>
+        ) : (
+          <span className="flex gap-2">
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={busy || resent} onClick={() => void resend()}>
+              {resent ? "Email sent" : "Resend email"}
+            </Button>
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setConfirming(true)}>
+              Revoke…
+            </Button>
+          </span>
         ))}
-      </div>
-    </div>
+    </li>
   );
 }
