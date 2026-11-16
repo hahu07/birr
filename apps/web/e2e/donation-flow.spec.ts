@@ -121,7 +121,7 @@ test.describe("donation submission", () => {
 
     await page.goto(`/vaults/${slug}`);
     await page.getByLabel("Amount").fill(minimumAmount);
-    await page.getByLabel("Email").fill("donor@e2e.birr.test");
+    await page.getByRole("textbox", { name: /^Email/ }).fill("donor@e2e.birr.test");
 
     await Promise.all([
       page.waitForURL(checkoutUrl, { timeout: 10_000 }),
@@ -145,7 +145,7 @@ test.describe("donation submission", () => {
 
     await page.goto(`/vaults/${slug}`);
     await page.getByLabel("Amount").fill(minimumAmount);
-    await page.getByLabel("Email").fill("donor@e2e.birr.test");
+    await page.getByRole("textbox", { name: /^Email/ }).fill("donor@e2e.birr.test");
     await page.getByRole("button", { name: "Continue to payment" }).click();
 
     await expect(page.getByText("Couldn't process your contribution")).toBeVisible();
@@ -167,7 +167,7 @@ test.describe("donation submission", () => {
 
     await page.goto(`/vaults/${slug}`);
     await page.getByLabel("Amount").fill(minimumAmount);
-    await page.getByLabel("Email").fill("donor@e2e.birr.test");
+    await page.getByRole("textbox", { name: /^Email/ }).fill("donor@e2e.birr.test");
     await page.getByRole("button", { name: "Continue to payment" }).click();
 
     await expect(page.getByText("Identity verification is required for this amount.")).toBeVisible();
