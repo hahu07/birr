@@ -15,6 +15,7 @@ import {
   WebhookResult,
 } from "../contributions/providers/payment-provider.interface";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
+import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
 
 /** Same configurable-fake pattern as ContributionsService's own spec. */
 class FakeAdapter implements PaymentProviderAdapter {
@@ -91,6 +92,7 @@ describe("VaultContributionsService", () => {
     receiptEmail as any,
     ledger,
     new FunnelEventsService(),
+    createFakeRecurringGiftsCore().core,
     stripeFake as any,
     paystackFake as any,
     stablecoinFake as any,
@@ -135,7 +137,9 @@ describe("VaultContributionsService", () => {
 
   afterAll(async () => {
     await prisma.vaultContribution.deleteMany({ where: { id: { in: vaultContributionIds } } });
-    await prisma.vaultDonor.deleteMany({ where: { email: { in: vaultDonorEmails } } });
+    // People the audit log names (users, founders, Vault donors) are left
+    // in place: audit_logs refuses their deletion (2026-11-15), so history
+    // is never rewritten.
     // Journal entry lines before their entries before the vault itself
     // — the confirmed-contribution auto-post hook (2026-09-13) means
     // these fixture vaults now have VaultJournalEntry rows referencing
@@ -986,7 +990,6 @@ describe("VaultContributionsService", () => {
 
     afterAll(async () => {
       await prisma.vaultContribution.deleteMany({ where: { id: { in: contributionIds } } });
-      await prisma.vaultDonor.deleteMany({ where: { id: { in: donorIds } } });
       await prisma.vaultDonorThreshold.deleteMany({ where: { currency } });
     });
 

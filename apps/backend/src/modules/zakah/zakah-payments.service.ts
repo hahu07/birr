@@ -9,7 +9,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
-import { ContributionProvider, IdType, prisma, Prisma, ZakahPool } from "@birr/db";
+import { ContributionProvider, IdType, prisma, Prisma, ZakahPool, type RecurringGift } from "@birr/db";
 import { processingFeeCover } from "@birr/zakah";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { SettingsService } from "../../common/settings/settings.service";
@@ -21,6 +21,36 @@ import { HELD_ACCOUNT_BY_POOL, ZAKAH_BANK_ACCOUNT_CODE, ZakahLedgerService } fro
 import { ZakahFitrService } from "./zakah-fitr.service";
 import { ZAKAH_MINIMUM_PAYMENT_NGN, ZAKAH_WAKALAH_TERMS } from "./zakah-terms";
 import { heldReservation, lockZakahCommitments, zakahTotals } from "./zakah-commitments";
+import { RecurringGiftsCoreService } from "../recurring-gifts/recurring-gifts-core.service";
+import type { SavedCardChargeResult } from "../contributions/providers/payment-provider.interface";
+
+/**
+ * initiate()'s monthly modes (see RecurringGift), never taken from the
+ * request body. Monthly zakah is paid in advance (ta'jil) towards the
+ * payer's annual zakah, zakah on wealth only, live before the Shariah
+ * Supervisory Board has ruled (owner's decision, 2026-11-15). "setup"
+ * starts it with a card-only checkout; "charge" is a later month on the
+ * saved card; "card_update" is a card-only checkout for the month a
+ * paused gift is due, which saves the new card.
+ */
+export type ZakahMonthlyMode =
+  | { type: "setup" }
+  | { type: "charge"; gift: RecurringGift; period: string }
+  | { type: "card_update"; gift: RecurringGift };
+
+/** A monthly zakah payer adding the identity the AML threshold asks for. */
+export class ZakahPayerIdentityInput {
+  @IsString()
+  @MaxLength(200)
+  fullName!: string;
+
+  @IsEnum(IdType)
+  idType!: IdType;
+
+  @IsString()
+  @MaxLength(50)
+  idNumber!: string;
+}
 
 const CURRENCY = "NGN";
 
@@ -96,6 +126,11 @@ export class InitiateZakahPaymentInput {
   @IsInt()
   @Min(1)
   rulesetVersion?: number;
+
+  /** Pay this every month, in advance (see ZakahMonthlyMode): zakah on wealth only, needs an email and a card. */
+  @IsOptional()
+  @IsBoolean()
+  monthly?: boolean;
 }
 
 // Same as VaultContributionsService: a pending payment counts toward the
@@ -145,6 +180,7 @@ export class ZakahPaymentsService {
     private readonly ledger: ZakahLedgerService,
     private readonly receiptEmail: ResendZakahReceiptEmailAdapter,
     private readonly fitr: ZakahFitrService,
+    private readonly recurring: RecurringGiftsCoreService,
   ) {}
 
   private async zakahSubaccount(): Promise<string | undefined> {
@@ -162,7 +198,12 @@ export class ZakahPaymentsService {
     };
   }
 
-  async initiate(input: InitiateZakahPaymentInput, ipAddress?: string) {
+  async initiate(input: InitiateZakahPaymentInput, ipAddress?: string, monthly?: ZakahMonthlyMode) {
+    if (input.monthly && !monthly) monthly = { type: "setup" };
+    if (monthly?.type === "setup") {
+      if (input.kind === "fitr") throw new BadRequestException("Zakah al-Fitr is paid once a year, so it can't be monthly.");
+      if (!input.payerEmail) throw new BadRequestException("Monthly zakah needs your email, for receipts and to manage or cancel it.");
+    }
     const subaccount = await this.zakahSubaccount();
     if (!subaccount) {
       // Owner's decision: zakah never settles into Birr's main account,
@@ -180,19 +221,53 @@ export class ZakahPaymentsService {
     const { amount, pool, fitrCampaignId, fitrPeople } =
       input.kind === "fitr" ? await this.fitrAmount(input, rulesetRef) : this.malAmount(input);
     const feeCover = new Prisma.Decimal(input.coverFee ? processingFeeCover(amount.toFixed(2)) : "0");
-    const metalPrice = await prisma.zakahMetalPrice.findFirst({ orderBy: [{ asOf: "desc" }, { createdAt: "desc" }] });
+    // A monthly charge records the prices behind the figure the payer set
+    // up, not today's: it's an advance payment of that amount.
+    const metalPrice =
+      monthly && monthly.type !== "setup" && monthly.gift.zakahMetalPriceId
+        ? { id: monthly.gift.zakahMetalPriceId }
+        : await prisma.zakahMetalPrice.findFirst({ orderBy: [{ asOf: "desc" }, { createdAt: "desc" }] });
 
-    const payerEmail = normalizeEmail(input.payerEmail);
+    const payerEmail = normalizeEmail(monthly && monthly.type !== "setup" ? monthly.gift.email : input.payerEmail);
     const id = randomUUID();
 
     // Reserve the row before calling Paystack, under a per-email lock, so
     // two payments started together see each other in the threshold check.
     const payment = await prisma.$transaction(async (tx) => {
       if (payerEmail) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"zakah_payer:" + payerEmail}))`;
-      const payer = payerEmail ? await this.findOrCreatePayer(tx, payerEmail, input, amount) : null;
+      const payer = payerEmail
+        ? await this.findOrCreatePayer(tx, payerEmail, input, amount, { scheduledCharge: monthly !== undefined && monthly.type !== "setup" })
+        : null;
+      let recurringGiftId: string | undefined;
+      let recurringPeriod: string | null = null;
+      if (monthly?.type === "setup") {
+        const gift = await this.recurring.createSetup(tx, {
+          kind: "zakah",
+          email: payerEmail!,
+          amount,
+          reference: id,
+          coverFee: input.coverFee,
+          wakalahConsentVersion: input.wakalahConsentVersion,
+          zakahRulesetKey: rulesetRef?.key,
+          zakahRulesetVersion: rulesetRef?.version,
+          zakahMetalPriceId: metalPrice?.id,
+        });
+        recurringGiftId = gift.id;
+        recurringPeriod = gift.nextPeriod;
+      } else if (monthly?.type === "card_update") {
+        if (!(await this.recurring.startCardUpdate(tx, monthly.gift, id))) {
+          throw new BadRequestException("This monthly zakah isn't waiting for a new card.");
+        }
+        recurringGiftId = monthly.gift.id;
+      } else if (monthly?.type === "charge") {
+        recurringGiftId = monthly.gift.id;
+        recurringPeriod = monthly.period;
+      }
       const payment = await tx.zakahPayment.create({
         data: {
           id,
+          recurringGiftId,
+          recurringPeriod,
           payerId: payer?.id,
           amount,
           feeCover,
@@ -215,15 +290,31 @@ export class ZakahPaymentsService {
     });
 
     let result;
+    let charge: SavedCardChargeResult | undefined;
+    const split = { subaccount, mainAccountShareMinorUnits: Number(feeCover.times(100).toFixed(0)) };
     try {
-      result = await this.paystack.createPayment({
-        amount: amount.plus(feeCover).toFixed(2),
-        currency: CURRENCY,
-        reference: id,
-        payerEmail,
-        returnPath: "zakah-payments",
-        split: { subaccount, mainAccountShareMinorUnits: Number(feeCover.times(100).toFixed(0)) },
-      });
+      if (monthly?.type === "charge") {
+        // Into the zakah subaccount, fee cover to the main account, exactly as a checkout.
+        charge = await this.paystack.chargeSavedCard({
+          authorizationCode: this.recurring.decryptAuthorization(monthly.gift),
+          email: payerEmail!,
+          amount: amount.plus(feeCover).toFixed(2),
+          currency: CURRENCY,
+          reference: id,
+          split,
+        });
+        result = { providerReference: id, clientPayload: null };
+      } else {
+        result = await this.paystack.createPayment({
+          amount: amount.plus(feeCover).toFixed(2),
+          currency: CURRENCY,
+          reference: id,
+          payerEmail,
+          returnPath: "zakah-payments",
+          split,
+          cardOnly: monthly !== undefined,
+        });
+      }
     } catch (err) {
       // Don't leave a reservation counting toward the payer's threshold
       // for a payment that never started.
@@ -234,6 +325,11 @@ export class ZakahPaymentsService {
       throw err;
     }
 
+    if (charge) {
+      // Usually settled straight away; "pending" waits for the webhook.
+      const settled = charge.status === "pending" ? this.publicView(payment) : ((await this.applyProviderOutcome(id, charge.status, charge.providerPaymentId)) ?? this.publicView(payment));
+      return { payment: settled, clientPayload: null, charge };
+    }
     if (result.providerReference === id) return { payment: this.publicView(payment), clientPayload: result.clientPayload };
     const withReference = await prisma.$transaction(async (tx) => {
       const updated = await tx.zakahPayment.update({ where: { id }, data: { providerReference: result.providerReference } });
@@ -302,7 +398,13 @@ export class ZakahPaymentsService {
    * blank fields filled. Same rules, and the same accepted gaps, as
    * VaultContributionsService.findOrCreateDonor.
    */
-  private async findOrCreatePayer(tx: Prisma.TransactionClient, email: string, input: InitiateZakahPaymentInput, amount: Prisma.Decimal) {
+  private async findOrCreatePayer(
+    tx: Prisma.TransactionClient,
+    email: string,
+    input: InitiateZakahPaymentInput,
+    amount: Prisma.Decimal,
+    options: { scheduledCharge?: boolean } = {},
+  ) {
     const existing = await tx.zakahPayer.findUnique({ where: { email } });
     const threshold = await tx.vaultDonorThreshold.findUnique({ where: { currency: CURRENCY } });
 
@@ -320,7 +422,12 @@ export class ZakahPaymentsService {
 
     const identifiedOnFile = existing?.idType != null && existing.idNumberEncrypted != null;
     if (threshold && threshold.thresholdAmount.gt(0) && total.gte(threshold.thresholdAmount)) {
-      if (identifiedOnFile) {
+      // As for Vault (VaultContributionsService.findOrCreateDonor): a
+      // monthly charge on the payer's own saved card is started by Birr's
+      // scheduler, so an ID already on file is enough.
+      if (identifiedOnFile && options.scheduledCharge) {
+        // Identity already on file: carry on.
+      } else if (identifiedOnFile) {
         if (!input.idType || !input.idNumber) {
           throw new BadRequestException({
             statusCode: 400,
@@ -473,6 +580,13 @@ export class ZakahPaymentsService {
 
     if (!outcome) return this.findPublicStatus(payment.id);
 
+    // A monthly zakah's card checkout: save the card and schedule the next month.
+    if (status === "confirmed" && outcome.recurringGiftId) {
+      this.recurring.afterPaymentConfirmed(outcome.providerReference, outcome.recurringPeriod).catch((err) => {
+        this.logger.error(`Failed to save the card for monthly zakah "${outcome.recurringGiftId}":`, err instanceof Error ? err.stack : String(err));
+      });
+    }
+
     // No payer means an anonymous payment — nowhere to send a receipt.
     if (status === "confirmed" && payment.payer) {
       this.receiptEmail
@@ -529,8 +643,60 @@ export class ZakahPaymentsService {
   }
 
   async findPublicStatus(id: string) {
-    const payment = await prisma.zakahPayment.findUnique({ where: { id } });
-    return payment ? this.publicView(payment) : null;
+    const payment = await prisma.zakahPayment.findUnique({ where: { id }, include: { recurringGift: { select: { status: true } } } });
+    // Whether this was the first payment of a monthly zakah, for the thank-you page.
+    return payment ? { ...this.publicView(payment), recurringGift: payment.recurringGift } : null;
+  }
+
+  /** A monthly zakah's payments, newest first. */
+  chargesForGift(recurringGiftId: string) {
+    return prisma.zakahPayment.findMany({
+      where: { recurringGiftId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, providerReference: true, amount: true, currency: true, status: true, recurringPeriod: true, createdAt: true, confirmedAt: true },
+    });
+  }
+
+  /**
+   * A monthly payer whose zakah reached the AML threshold adds their name
+   * and ID, from their manage link. An ID already on file must match;
+   * existing identity is never overwritten, only blank fields filled.
+   */
+  async recordPayerIdentity(email: string, input: ZakahPayerIdentityInput) {
+    const payerEmail = normalizeEmail(email)!;
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"zakah_payer:" + payerEmail}))`;
+      const existing = await tx.zakahPayer.findUnique({ where: { email: payerEmail } });
+      if (existing?.idType && existing.idNumberEncrypted) {
+        const onFile = normalizeIdNumber(this.encryption.decrypt(existing.idNumberEncrypted));
+        if (existing.idType !== input.idType || onFile !== normalizeIdNumber(input.idNumber)) {
+          throw new BadRequestException({
+            statusCode: 400,
+            code: "IDENTITY_MISMATCH",
+            message: "Those ID details don't match what we have on file for this email. Please check them, or contact Birr.",
+          });
+        }
+        return existing;
+      }
+      const idNumberEncrypted = this.encryption.encrypt(input.idNumber);
+      const saved = existing
+        ? await tx.zakahPayer.update({
+            where: { id: existing.id },
+            data: { idType: input.idType, idNumberEncrypted, ...(!existing.fullName && { fullName: input.fullName.trim() }) },
+          })
+        : await tx.zakahPayer.create({ data: { email: payerEmail, fullName: input.fullName.trim(), idType: input.idType, idNumberEncrypted } });
+      await tx.auditLog.create({
+        data: {
+          actorType: "public_donor",
+          action: existing ? "zakah_payer.identity_captured" : "zakah_payer.created",
+          entityType: "ZakahPayer",
+          entityId: saved.id,
+          before: existing ? (payerAuditSnapshot(existing) as any) : undefined,
+          after: payerAuditSnapshot(saved) as any,
+        },
+      });
+      return saved;
+    });
   }
 
   /** Ops Console list — the payer's name and email, never their ID. */

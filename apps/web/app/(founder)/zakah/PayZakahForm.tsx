@@ -24,6 +24,13 @@ const ID_TYPES = [
   { value: "other", label: "Other" },
 ];
 
+/** The day a monthly payment started today repeats on: today in Lagos, or the 28th. */
+function monthlyDay(): string {
+  const day = Math.min(Number(new Intl.DateTimeFormat("en-NG", { day: "numeric", timeZone: "Africa/Lagos" }).format(new Date())), 28);
+  const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
+  return `${day}${suffix}`;
+}
+
 function normaliseAmount(raw: string): string {
   return raw.replace(/[,\s₦]/g, "");
 }
@@ -49,6 +56,8 @@ export function PayZakahForm({
   const [amount, setAmount] = useState(zakahDue);
   const [coverFee, setCoverFee] = useState(false);
   const [email, setEmail] = useState("");
+  // Monthly zakah, paid in advance (owner's decision, 2026-11-15): zakah on wealth only, by card, needs an email.
+  const [monthly, setMonthly] = useState(false);
   const [fullName, setFullName] = useState("");
   const [idType, setIdType] = useState("national_id");
   const [idNumber, setIdNumber] = useState("");
@@ -79,6 +88,7 @@ export function PayZakahForm({
           ...(needsIdentity && { idType, idNumber }),
           ...(ruleset && { rulesetKey: ruleset.key, rulesetVersion: ruleset.version }),
           ...(fitr && { kind: "fitr", fitrPeople: fitr.people, fitrForm: fitr.form }),
+          ...(monthly && !fitr && { monthly: true }),
         }),
       });
       redirectTo(clientPayload.checkoutUrl);
@@ -118,12 +128,33 @@ export function PayZakahForm({
         </label>
       )}
 
+      {!fitr && (
+        <label className="flex items-start gap-2 rounded-xl border border-slate-200 p-3 text-sm text-slate-700 has-[:checked]:border-primary-300 has-[:checked]:bg-primary-50/60">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300" checked={monthly} onChange={(e) => setMonthly(e.target.checked)} />
+          <span>
+            <span className="font-medium text-slate-900">Pay this every month, in advance</span>
+            {monthly && (
+              <span className="mt-1 block text-xs leading-relaxed text-slate-600">
+                Each payment is zakah paid ahead of when it falls due (ta&apos;jil), towards your annual zakah. We charge your card the same amount on the{" "}
+                <strong>{monthlyDay()}</strong> of each month, and email you before each charge with a private link to change or stop it. Some
+                scholars, including the Maliki school, don&apos;t permit paying zakah early; if unsure, ask your scholar.
+              </span>
+            )}
+          </span>
+        </label>
+      )}
+
       <div>
         <label htmlFor="pay-email" className="mb-1.5 block text-sm font-medium text-slate-700">
-          Email for your receipt <span className="font-normal text-slate-500">(optional)</span>
+          {monthly && !fitr ? "Email" : "Email for your receipt"}{" "}
+          {!(monthly && !fitr) && <span className="font-normal text-slate-500">(optional)</span>}
         </label>
-        <Input id="pay-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        {!email.trim() && <p className="mt-1 text-xs text-slate-500">Without an email we can&apos;t send you a receipt.</p>}
+        <Input id="pay-email" type="email" autoComplete="email" required={monthly && !fitr} value={email} onChange={(e) => setEmail(e.target.value)} />
+        {monthly && !fitr ? (
+          <p className="mt-1 text-xs text-slate-500">For your receipts, reminders, and the link to manage your monthly zakah.</p>
+        ) : (
+          !email.trim() && <p className="mt-1 text-xs text-slate-500">Without an email we can&apos;t send you a receipt.</p>
+        )}
       </div>
 
       {needsIdentity && (
@@ -164,9 +195,17 @@ export function PayZakahForm({
       )}
 
       <Button type="submit" className="w-full" disabled={!validAmount || !consented || submitting}>
-        {submitting ? "Taking you to payment…" : total !== null ? `Pay ${formatMoney(String(total), terms.currency)}` : "Pay"}
+        {submitting
+          ? "Taking you to payment…"
+          : total !== null
+            ? `Pay ${formatMoney(String(total), terms.currency)}${monthly && !fitr ? " now, then monthly" : ""}`
+            : "Pay"}
       </Button>
-      <p className="text-center text-xs text-slate-500">You&apos;ll pay securely with Paystack — card, bank transfer or USSD.</p>
+      <p className="text-center text-xs text-slate-500">
+        {monthly && !fitr
+          ? "You'll pay securely with Paystack, by card: only a card can be charged again each month."
+          : "You'll pay securely with Paystack — card, bank transfer or USSD."}
+      </p>
     </form>
   );
 }

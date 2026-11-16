@@ -11,6 +11,7 @@ import { StripeAdapter } from "./providers/stripe.adapter";
 import { PaystackAdapter } from "./providers/paystack.adapter";
 import { StablecoinAdapter } from "./providers/stablecoin.adapter";
 import { SettingsModule } from "../../common/settings/settings.module";
+import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-core.module";
 
 // DistributionsModule/VaultsModule/ZakahModule imports are only for their own
 // webhook dispatch — both need to be tried from the same
@@ -21,7 +22,7 @@ import { SettingsModule } from "../../common/settings/settings.module";
 // payout/contribution-adjacent consumer ever shows up; not worth the
 // bigger diff for three.
 @Module({
-  imports: [AssetsModule, NotificationsModule, DistributionsModule, VaultsModule, SettingsModule, WaqfLedgerModule, ZakahModule],
+  imports: [AssetsModule, NotificationsModule, DistributionsModule, VaultsModule, SettingsModule, WaqfLedgerModule, ZakahModule, RecurringGiftsCoreModule],
   controllers: [ContributionsController],
   providers: [ContributionsService, StripeAdapter, PaystackAdapter, StablecoinAdapter],
   exports: [ContributionsService],

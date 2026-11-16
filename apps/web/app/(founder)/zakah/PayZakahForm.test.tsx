@@ -100,4 +100,21 @@ describe("PayZakahForm", { timeout: 15_000 }, () => {
     await waitFor(() => expect(redirectTo).toHaveBeenCalled());
     expect(sentBodies()[1]).toMatchObject({ payerFullName: "Amina Bello", idType: "national_id", idNumber: "12345678901" });
   });
+
+  test("monthly zakah is paid in advance, needs an email, and says so before paying", async () => {
+    const { user, redirectTo } = setup();
+    await user.click(screen.getByLabelText(/Pay this every month, in advance/));
+    expect(screen.getByText(/paid ahead of when it falls due/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Email/)).toBeRequired();
+    await user.type(screen.getByLabelText(/^Email/), "yusuf@example.com");
+    await user.click(screen.getByLabelText(/I appoint Birr as my agent/));
+    await user.click(screen.getByRole("button", { name: "Pay ₦95,000.00 now, then monthly" }));
+    await waitFor(() => expect(redirectTo).toHaveBeenCalled());
+    expect(sentBodies()[0]).toMatchObject({ amount: "95000.00", payerEmail: "yusuf@example.com", monthly: true });
+  });
+
+  test("Zakah al-Fitr has no monthly option", () => {
+    render(<PayZakahForm zakahDue="7500" ruleset={null} terms={terms} fitr={{ people: 3, form: "food" }} redirectTo={vi.fn()} />);
+    expect(screen.queryByLabelText(/Pay this every month/)).not.toBeInTheDocument();
+  });
 });

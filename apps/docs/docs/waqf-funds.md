@@ -44,6 +44,19 @@ co-founder agrees to the deed in their own name when they accept their
 invitation, and Birr keeps a dated record of that agreement. Anyone
 signing sees the full text of the deed before they sign it.
 
+## Topping up every month
+
+Once a Waqf Fund's first contribution has gone through, its founder can
+add to it automatically each month. On the fund's **Overview**, under
+**Monthly top-up**, enter an amount and pay the first one by card. Birr
+then charges the same card on the same day each month and adds it to
+the fund, just like a contribution made by hand.
+
+- Reminders and receipts go to the email of the founder who set it up.
+- Any member of your Foundation can see the top-up; only the primary
+  contact can change the amount, update the card or stop it.
+- It stops by itself if the fund stops being active.
+
 ## The three types of Waqf Fund
 
 A Founder chooses one of three types when establishing a Waqf Fund,

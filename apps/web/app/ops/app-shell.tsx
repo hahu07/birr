@@ -31,6 +31,7 @@ import {
   IconMark,
   IconMenu,
   IconMessageCircle,
+  IconRepeat,
   IconSettings,
   IconShieldCheck,
   IconShieldAlert,
@@ -105,6 +106,7 @@ const NAV_GROUPS: {
       { href: "/ops/audit-logs", label: "Audit Log", icon: IconFileText },
       { href: "/ops/vault-compliance-review", label: "Vault Giving Review", icon: IconShieldAlert },
       { href: "/ops/zakah-review", label: "Zakah Giving Review", icon: IconShieldAlert, requiresPermission: "zakah.structuring_review" },
+      { href: "/ops/monthly-giving", label: "Monthly Giving", icon: IconRepeat, requiresPermission: "giving.monthly_view" },
     ],
   },
   {

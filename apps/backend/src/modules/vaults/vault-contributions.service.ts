@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from "@nestjs/common";
-import { IsEmail, IsEnum, IsNumberString, IsOptional, IsString } from "class-validator";
-import { prisma, Prisma, ContributionProvider, IdType } from "@birr/db";
+import { IsBoolean, IsEmail, IsEnum, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
+import { prisma, Prisma, ContributionProvider, IdType, type RecurringGift } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validation/max-decimal";
 import { PaymentProviderAdapter } from "../contributions/providers/payment-provider.interface";
@@ -13,6 +13,8 @@ import { CASH_AND_BANK_ACCOUNT_CODE, DONATIONS_REVENUE_ACCOUNT_CODE, VaultLedger
 import { findVaultOrThrow } from "./find-vault-or-throw";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
+import { RecurringGiftsCoreService } from "../recurring-gifts/recurring-gifts-core.service";
+import type { SavedCardChargeResult } from "../contributions/providers/payment-provider.interface";
 
 export class HoldVaultContributionInput {
   @IsString()
@@ -66,7 +68,38 @@ export class InitiateVaultContributionInput {
   @IsOptional()
   @IsString()
   idNumber?: string;
+
+  /** Give this every month (see RecurringGift): needs an email, a card, and naira. */
+  @IsOptional()
+  @IsBoolean()
+  monthly?: boolean;
 }
+
+/** A monthly donor adding the identity the AML threshold asks for (see recordDonorIdentity). */
+export class VaultDonorIdentityInput {
+  @IsString()
+  @MaxLength(200)
+  fullName!: string;
+
+  @IsEnum(IdType)
+  idType!: IdType;
+
+  @IsString()
+  @MaxLength(50)
+  idNumber!: string;
+}
+
+/**
+ * initiate()'s monthly modes, never taken from the request body: "setup"
+ * is the first gift of a monthly gift (card-only checkout); "charge" is a
+ * later month, charged to the saved card by RecurringGiftsService;
+ * "card_update" is a card-only checkout for the month a gift paused for
+ * its card is due, which saves the new card.
+ */
+export type VaultMonthlyMode =
+  | { type: "setup" }
+  | { type: "charge"; gift: RecurringGift; period: string }
+  | { type: "card_update"; gift: RecurringGift };
 
 // A pending gift still counts toward a donor's ID threshold for this long —
 // comfortably past any provider's checkout expiry, so an abandoned checkout
@@ -107,13 +140,14 @@ export class VaultContributionsService {
     private readonly receiptEmail: ResendVaultReceiptEmailAdapter,
     private readonly ledger: VaultLedgerService,
     private readonly funnelEvents: FunnelEventsService,
+    private readonly recurring: RecurringGiftsCoreService,
     stripeAdapter: StripeAdapter,
-    paystackAdapter: PaystackAdapter,
+    private readonly paystack: PaystackAdapter,
     stablecoinAdapter: StablecoinAdapter,
   ) {
     this.adapters = new Map<ContributionProvider, PaymentProviderAdapter>([
       ["stripe", stripeAdapter],
-      ["paystack", paystackAdapter],
+      ["paystack", paystack],
       ["stablecoin", stablecoinAdapter],
     ]);
   }
@@ -132,7 +166,16 @@ export class VaultContributionsService {
    * read here, never gates this call (see VaultContribution.ipAddress's
    * own schema comment on why).
    */
-  async initiate(input: InitiateVaultContributionInput, ipAddress?: string) {
+  async initiate(input: InitiateVaultContributionInput, ipAddress?: string, monthly?: VaultMonthlyMode) {
+    if (input.monthly && !monthly) monthly = { type: "setup" };
+    if (monthly?.type === "setup") {
+      // Only a card can be charged again, Paystack is Birr's one card
+      // rail, and monthly giving is naira only (owner's decision, 2026-11-15).
+      if (!input.donorEmail) throw new BadRequestException("Monthly giving needs your email, for receipts and to manage or cancel it.");
+      if (input.provider !== "paystack" || input.currency !== "NGN") {
+        throw new BadRequestException("Monthly giving is by card, in naira.");
+      }
+    }
     const vault = await findVaultOrThrow(prisma, input.vaultId);
     if (vault.status !== "open") {
       throw new BadRequestException(`"${vault.name}" isn't currently open for contributions.`);
@@ -185,10 +228,32 @@ export class VaultContributionsService {
       if (donorEmail) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${donorEmail}))`;
       }
-      const donor = donorEmail ? await this.findOrCreateDonor(tx, donorEmail, input, amount) : null;
+      const donor = donorEmail
+        ? await this.findOrCreateDonor(tx, donorEmail, input, amount, {
+            scheduledCharge: monthly?.type === "charge" || monthly?.type === "card_update",
+          })
+        : null;
+      if (monthly?.type === "card_update" && !(await this.recurring.startCardUpdate(tx, monthly.gift, id))) {
+        throw new BadRequestException("This monthly gift isn't waiting for a new card.");
+      }
+      const gift =
+        monthly?.type === "setup"
+          ? await this.recurring.createSetup(tx, {
+              kind: "vault",
+              email: donorEmail!,
+              amount,
+              reference: id,
+              vaultId: input.vaultId,
+              vaultCauseId: input.vaultCauseId,
+            })
+          : monthly?.type === "charge" || monthly?.type === "card_update"
+            ? monthly.gift
+            : null;
       const contribution = await tx.vaultContribution.create({
         data: {
           id,
+          recurringGiftId: gift?.id,
+          recurringPeriod: monthly?.type === "charge" ? monthly.period : monthly?.type === "setup" ? gift?.nextPeriod : null,
           vaultId: input.vaultId,
           vaultCauseId: input.vaultCauseId,
           donorId: donor?.id,
@@ -218,7 +283,8 @@ export class VaultContributionsService {
     // contribution's own id for an anonymous gift (donorEmail is
     // optional) — there's no other stable per-giver handle at all in
     // that case.
-    void this.funnelEvents.record({
+    // A later month's charge isn't a visit, so it stays out of the funnel.
+    if (monthly?.type !== "charge") void this.funnelEvents.record({
       funnel: "vault",
       step: "contribution_initiated",
       sessionId: donor?.id ?? contribution.id,
@@ -227,14 +293,27 @@ export class VaultContributionsService {
     });
 
     let paymentResult;
+    let charge: SavedCardChargeResult | undefined;
     try {
-      paymentResult = await adapter.createPayment({
-        amount: input.amount,
-        currency: input.currency,
-        reference: id,
-        payerEmail: donorEmail,
-        returnPath: "vault-contributions",
-      });
+      if (monthly?.type === "charge") {
+        charge = await this.paystack.chargeSavedCard({
+          authorizationCode: this.recurring.decryptAuthorization(monthly.gift),
+          email: monthly.gift.email,
+          amount: input.amount,
+          currency: input.currency,
+          reference: id,
+        });
+        paymentResult = { providerReference: id, clientPayload: null };
+      } else {
+        paymentResult = await adapter.createPayment({
+          amount: input.amount,
+          currency: input.currency,
+          reference: id,
+          payerEmail: donorEmail,
+          returnPath: "vault-contributions",
+          cardOnly: monthly?.type === "setup" || monthly?.type === "card_update",
+        });
+      }
     } catch (err) {
       // The reservation must not linger as "pending" and keep counting
       // toward this donor's threshold for a payment that never started.
@@ -256,6 +335,13 @@ export class VaultContributionsService {
       throw err;
     }
 
+    if (charge) {
+      // Usually settled straight away: confirm or fail it now, through the
+      // same path the webhook takes. "pending" waits for the webhook.
+      const settled =
+        charge.status === "pending" ? contribution : ((await this.applyProviderOutcome(id, charge.status, charge.providerPaymentId)) ?? contribution);
+      return { contribution: settled, clientPayload: null, charge };
+    }
     if (paymentResult.providerReference === id) {
       return { contribution, clientPayload: paymentResult.clientPayload };
     }
@@ -344,6 +430,7 @@ export class VaultContributionsService {
     donorEmail: string,
     input: InitiateVaultContributionInput,
     amount: Prisma.Decimal,
+    options: { scheduledCharge?: boolean } = {},
   ) {
     const existing = await tx.vaultDonor.findFirst({ where: { email: { equals: donorEmail, mode: "insensitive" } } });
 
@@ -372,7 +459,14 @@ export class VaultContributionsService {
 
     const identifiedOnFile = existing?.idType != null && existing.idNumberEncrypted != null;
     if (fractionUsed.gte(1)) {
-      if (identifiedOnFile) {
+      // A monthly gift's later charge on the donor's own saved card is
+      // started by Birr's scheduler, not by someone typing an email, so
+      // re-entering the ID proves nothing there and no one is present to
+      // do it: an ID on file is enough. Without one, the charge stops and
+      // the gift pauses for the donor to add it (RecurringGiftsService).
+      if (identifiedOnFile && options.scheduledCharge) {
+        // Identity already on file: carry on.
+      } else if (identifiedOnFile) {
         if (!input.idType || !input.idNumber) {
           throw new BadRequestException({
             statusCode: 400,
@@ -600,6 +694,14 @@ export class VaultContributionsService {
     });
     if (!confirmed) return current();
 
+    // A monthly gift's card checkout: save the card and schedule the next
+    // month. Never holds up or undoes the confirmation itself.
+    if (confirmed.recurringGiftId) {
+      this.recurring.afterPaymentConfirmed(confirmed.providerReference, confirmed.recurringPeriod).catch((err) => {
+        this.logger.error(`Failed to save the card for monthly gift "${confirmed.recurringGiftId}":`, err instanceof Error ? err.stack : String(err));
+      });
+    }
+
     // Best-effort — record() never throws. Same sessionId fallback as
     // initiate() above, so an anonymous gift's two events still share a
     // handle even without a donor row.
@@ -656,7 +758,62 @@ export class VaultContributionsService {
         createdAt: true,
         confirmedAt: true,
         vault: { select: { name: true, slug: true } },
+        // Whether this was the first gift of a monthly gift, for the thank-you page.
+        recurringGift: { select: { status: true } },
       },
+    });
+  }
+
+  /**
+   * A monthly donor whose giving reached the AML threshold adds their
+   * name and ID, from their manage link. Same rules as initiate(): an ID
+   * already on file must match, and existing identity is never
+   * overwritten, only blank fields filled.
+   */
+  async recordDonorIdentity(email: string, input: VaultDonorIdentityInput) {
+    const donorEmail = normalizeEmail(email)!;
+    return prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${donorEmail}))`;
+      const existing = await tx.vaultDonor.findFirst({ where: { email: { equals: donorEmail, mode: "insensitive" } } });
+      if (existing?.idType && existing.idNumberEncrypted) {
+        const onFile = normalizeIdNumber(this.encryption.decrypt(existing.idNumberEncrypted));
+        if (existing.idType !== input.idType || onFile !== normalizeIdNumber(input.idNumber)) {
+          throw new BadRequestException({
+            statusCode: 400,
+            code: "IDENTITY_MISMATCH",
+            message: "Those ID details don't match what we have on file for this email. Please check them, or contact Birr if your details have changed.",
+          });
+        }
+        return existing;
+      }
+      const idNumberEncrypted = this.encryption.encrypt(input.idNumber);
+      const saved = existing
+        ? await tx.vaultDonor.update({
+            where: { id: existing.id },
+            data: { idType: input.idType, idNumberEncrypted, ...(!existing.fullName && { fullName: input.fullName }) },
+          })
+        : await tx.vaultDonor.create({ data: { email: donorEmail, fullName: input.fullName, idType: input.idType, idNumberEncrypted } });
+      await tx.auditLog.create({
+        data: {
+          actorType: "public_donor",
+          actorDonorId: saved.id,
+          action: existing ? "vault_donor.identity_captured" : "vault_donor.created",
+          entityType: "VaultDonor",
+          entityId: saved.id,
+          before: existing ? (donorAuditSnapshot(existing) as any) : undefined,
+          after: donorAuditSnapshot(saved) as any,
+        },
+      });
+      return saved;
+    });
+  }
+
+  /** A monthly gift's charges, newest first, for its manage page and the scheduler. */
+  chargesForGift(recurringGiftId: string) {
+    return prisma.vaultContribution.findMany({
+      where: { recurringGiftId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, providerReference: true, amount: true, currency: true, status: true, recurringPeriod: true, createdAt: true, confirmedAt: true },
     });
   }
 

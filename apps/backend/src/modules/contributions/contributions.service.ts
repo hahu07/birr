@@ -7,7 +7,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { prisma, Prisma, ContributionProvider } from "@birr/db";
+import { prisma, Prisma, ContributionProvider, type RecurringGift, type Waqf } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { AssetsService } from "../assets/assets.service";
@@ -18,6 +18,20 @@ import { PaymentProviderAdapter } from "./providers/payment-provider.interface";
 import { StripeAdapter } from "./providers/stripe.adapter";
 import { PaystackAdapter } from "./providers/paystack.adapter";
 import { StablecoinAdapter } from "./providers/stablecoin.adapter";
+import type { SavedCardChargeResult } from "./providers/payment-provider.interface";
+import { RecurringGiftsCoreService } from "../recurring-gifts/recurring-gifts-core.service";
+
+/**
+ * initiate()'s monthly modes (see RecurringGift), never taken from the
+ * request body: "setup" starts a founder's monthly top-up with a
+ * card-only checkout; "charge" is a later month on the saved card, run by
+ * RecurringGiftsService; "card_update" is a card-only checkout for the
+ * month a paused top-up is due, which saves the new card.
+ */
+export type WaqfMonthlyMode =
+  | { type: "setup" }
+  | { type: "charge"; gift: RecurringGift; period: string }
+  | { type: "card_update"; gift: RecurringGift };
 
 // 2026-09-26 audit fix, same problem class as
 // BeneficiariesService.MAX_UNSCOPED_LIST_ROWS (see that constant's own
@@ -35,6 +49,8 @@ export interface InitiateContributionInput {
   provider: ContributionProvider;
   founderId: string;
   payerEmail?: string;
+  /** Top this fund up every month (see RecurringGift). */
+  monthly?: boolean;
 }
 
 // Minimum gap between two provider verify calls for the same
@@ -53,13 +69,14 @@ export class ContributionsService {
     private readonly assetsService: AssetsService,
     private readonly notificationsService: NotificationsService,
     private readonly ledger: WaqfLedgerService,
+    private readonly recurring: RecurringGiftsCoreService,
     stripeAdapter: StripeAdapter,
-    paystackAdapter: PaystackAdapter,
+    private readonly paystack: PaystackAdapter,
     stablecoinAdapter: StablecoinAdapter,
   ) {
     this.adapters = new Map<ContributionProvider, PaymentProviderAdapter>([
       ["stripe", stripeAdapter],
-      ["paystack", paystackAdapter],
+      ["paystack", paystack],
       ["stablecoin", stablecoinAdapter],
     ]);
   }
@@ -76,7 +93,8 @@ export class ContributionsService {
    * needs to complete payment (a checkout URL for all three
    * providers today, see each adapter's own comment on why).
    */
-  async initiate(input: InitiateContributionInput) {
+  async initiate(input: InitiateContributionInput, monthly?: WaqfMonthlyMode) {
+    if (input.monthly && !monthly) monthly = { type: "setup" };
     // Closes a gap this method previously had: unlike
     // WaqfsService.createSelfService()/FoundationsService.create(), this
     // never checked onboarding step 1 (email + WhatsApp verification) at
@@ -121,6 +139,8 @@ export class ContributionsService {
         `This waqf's corpus was declared in ${waqf.corpusCurrency} — contributions must be made in the same currency.`,
       );
     }
+
+    if (monthly) return this.initiateMonthly(input, waqf, minimum.minAmount, monthly);
 
     // A waqf's very first payment is floored by a percentage of its
     // declared corpus — 100% for a lump-sum plan ("pay it all now" is
@@ -221,6 +241,123 @@ export class ContributionsService {
     });
 
     return { contribution, clientPayload: paymentResult.clientPayload };
+  }
+
+  /**
+   * A monthly top-up's payment: its first (card-saving) checkout, a later
+   * month on the saved card, or a card update. Top-ups only: the fund's
+   * first contribution, with its corpus rules, is always made by hand.
+   * Unlike a one-off contribution the row is reserved before Paystack is
+   * called, so a saved-card charge's webhook always finds it.
+   */
+  private async initiateMonthly(input: InitiateContributionInput, waqf: Waqf, minimum: Prisma.Decimal, monthly: WaqfMonthlyMode) {
+    if (input.provider !== "paystack" || input.currency !== "NGN") {
+      throw new BadRequestException("Monthly top-ups are by card, in naira.");
+    }
+    if (waqf.status !== "active" || (await prisma.contribution.count({ where: { waqfId: waqf.id, status: "confirmed" } })) === 0) {
+      throw new BadRequestException("A monthly top-up can start once this Waqf Fund's first contribution has gone through.");
+    }
+    const amount = new Prisma.Decimal(input.amount);
+    if (amount.lt(minimum)) {
+      throw new BadRequestException(`The minimum contribution for NGN is ${minimum}. Please increase the amount.`);
+    }
+    const email = monthly.type === "setup" ? input.payerEmail : monthly.gift.email;
+    if (!email) throw new BadRequestException("A monthly top-up needs your account email.");
+    if (monthly.type === "setup") {
+      const existing = await prisma.recurringGift.findFirst({
+        where: {
+          waqfId: waqf.id,
+          founderId: input.founderId,
+          OR: [{ status: { in: ["active", "paused"] } }, { status: "pending_setup", createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } }],
+        },
+      });
+      if (existing) throw new BadRequestException("This fund already has a monthly top-up. Change or cancel it instead.");
+    }
+
+    const id = randomUUID();
+    const contribution = await withFounderScope(input.founderId, async (tx) => {
+      let recurringGiftId: string;
+      let recurringPeriod: string | null;
+      if (monthly.type === "setup") {
+        const gift = await this.recurring.createSetup(tx, {
+          kind: "waqf",
+          email,
+          amount,
+          reference: id,
+          waqfId: waqf.id,
+          founderId: input.founderId,
+        });
+        recurringGiftId = gift.id;
+        recurringPeriod = gift.nextPeriod;
+      } else if (monthly.type === "card_update") {
+        if (!(await this.recurring.startCardUpdate(tx, monthly.gift, id))) {
+          throw new BadRequestException("This monthly top-up isn't waiting for a new card.");
+        }
+        recurringGiftId = monthly.gift.id;
+        recurringPeriod = null;
+      } else {
+        recurringGiftId = monthly.gift.id;
+        recurringPeriod = monthly.period;
+      }
+      const contribution = await tx.contribution.create({
+        data: {
+          id,
+          waqfId: waqf.id,
+          amount: input.amount,
+          currency: input.currency,
+          provider: input.provider,
+          providerReference: id,
+          status: "pending",
+          recurringGiftId,
+          recurringPeriod,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          waqfId: waqf.id,
+          ...(monthly.type === "charge" ? { actorType: "system" as const } : { actorType: "founder_user" as const, actorFounderId: input.founderId }),
+          action: "contribution.initiated",
+          entityType: "Contribution",
+          entityId: contribution.id,
+          after: contribution as any,
+        },
+      });
+      return contribution;
+    });
+
+    let clientPayload: unknown = null;
+    let charge: SavedCardChargeResult | undefined;
+    try {
+      if (monthly.type === "charge") {
+        charge = await this.paystack.chargeSavedCard({
+          authorizationCode: this.recurring.decryptAuthorization(monthly.gift),
+          email,
+          amount: input.amount,
+          currency: input.currency,
+          reference: id,
+        });
+      } else {
+        clientPayload = (await this.paystack.createPayment({ amount: input.amount, currency: input.currency, reference: id, payerEmail: email, cardOnly: true }))
+          .clientPayload;
+      }
+    } catch (err) {
+      // Don't leave the reserved row pending for a payment that never started.
+      await this.applyProviderOutcome(id, "failed");
+      throw err;
+    }
+    if (charge && charge.status !== "pending") {
+      return { contribution: (await this.applyProviderOutcome(id, charge.status)) ?? contribution, clientPayload, charge };
+    }
+    return { contribution, clientPayload, charge };
+  }
+
+  /** A monthly top-up's payments, newest first. */
+  chargesForGift(recurringGiftId: string) {
+    return prisma.contribution.findMany({
+      where: { recurringGiftId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, providerReference: true, amount: true, currency: true, status: true, recurringPeriod: true, createdAt: true, confirmedAt: true },
+    });
   }
 
   /**
@@ -458,6 +595,14 @@ export class ContributionsService {
     });
     if (!outcome) return current();
     const { confirmed, waqfActivated } = outcome;
+
+    // A monthly top-up's card checkout: save the card and schedule the
+    // next month. Never holds up or undoes the confirmation itself.
+    if (confirmed.recurringGiftId) {
+      this.recurring.afterPaymentConfirmed(confirmed.providerReference, confirmed.recurringPeriod).catch((err) => {
+        this.logger.error(`Failed to save the card for monthly top-up "${confirmed.recurringGiftId}":`, err instanceof Error ? err.stack : String(err));
+      });
+    }
 
     this.notifyContributionOutcome(contribution.waqfId, "confirmed", confirmed).catch((err) => {
       this.logger.error(

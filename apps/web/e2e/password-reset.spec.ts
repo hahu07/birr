@@ -99,6 +99,7 @@ test.describe("Password reset", () => {
 });
 
 test.afterEach(async () => {
+  // People stay: the audit log names them and refuses their deletion (2026-11-15); test staff are suspended instead.
   await prisma.notification.deleteMany({ where: { recipientUser: { email: { startsWith: "e2e-founder-" } } } });
   await prisma.founderMembership.deleteMany({
     where: { user: { email: { startsWith: "e2e-founder-" }, signedFoundationDeeds: { none: {} } } },
@@ -108,11 +109,5 @@ test.afterEach(async () => {
   });
   await prisma.foundation.deleteMany({
     where: { name: { startsWith: "E2E Fixture Foundation " }, foundationDeed: null, foundationFounders: { none: {} } },
-  });
-  await prisma.founder.deleteMany({
-    where: { name: "E2E Fixture Founder Org", signedFoundationDeeds: { none: {} } },
-  });
-  await prisma.user.deleteMany({
-    where: { email: { startsWith: "e2e-founder-" }, signedFoundationDeeds: { none: {} } },
   });
 });

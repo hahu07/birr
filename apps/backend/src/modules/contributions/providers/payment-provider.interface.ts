@@ -34,6 +34,41 @@ export interface CreatePaymentInput {
    * everything else goes to the subaccount. The main account bears
    * Paystack's fee, so the subaccount receives its share in full. */
   split?: { subaccount: string; mainAccountShareMinorUnits: number };
+  /** Paystack only: restrict the checkout to cards, for the first gift of
+   * a monthly gift (only a card can be charged again; see RecurringGift). */
+  cardOnly?: boolean;
+}
+
+/** Paystack's reusable card authorisation, as read back after a payment. */
+export interface SavedCardAuthorization {
+  authorizationCode: string;
+  /** Paystack's own word on whether it can be charged again. */
+  reusable: boolean;
+  channel: string;
+  last4: string | null;
+  brand: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+}
+
+/** A charge on a saved card (see PaystackAdapter.chargeSavedCard). */
+export interface SavedCardChargeInput {
+  authorizationCode: string;
+  /** Must be the email the card was saved under. */
+  email: string;
+  amount: string;
+  currency: string;
+  /** Our own row id, as with createPayment. */
+  reference: string;
+  split?: { subaccount: string; mainAccountShareMinorUnits: number };
+}
+
+export interface SavedCardChargeResult {
+  /** "pending" means Paystack hasn't settled it either way yet; the webhook will. */
+  status: "confirmed" | "failed" | "pending";
+  providerPaymentId?: string;
+  /** Paystack's reason, e.g. "Insufficient Funds", for the giver's email and the audit trail. */
+  gatewayResponse?: string;
 }
 
 export interface CreatePaymentResult {
@@ -70,6 +105,8 @@ export interface VerifiedPayment {
   amountMinorUnits: number;
   currency: string;
   providerPaymentId?: string;
+  /** Paystack only: the card used, when it was a card payment. */
+  authorization?: SavedCardAuthorization;
 }
 
 export interface RefundInput {

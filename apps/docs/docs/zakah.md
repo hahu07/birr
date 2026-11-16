@@ -138,6 +138,33 @@ recipients.
   and prices were in force, so the figure can always be explained later.
   It never stores the wealth you entered in the calculator.
 
+## Paying monthly, in advance
+
+Instead of paying your zakah on wealth in one go, you can pay it in
+monthly instalments, ahead of when it falls due. This is called
+**ta'jil**, paying zakah early.
+
+- **Not every school permits it.** Most scholars allow paying zakah
+  early; the Maliki school does not. If you're unsure, ask your
+  scholar. Birr's Shariah Supervisory Board has not yet issued its own
+  ruling on monthly zakah.
+- Tick **Pay this every month, in advance** when you pay. You need to
+  give your email, and pay the first instalment by **card**.
+- Birr then charges the same amount to the same card on the same day
+  each month, into the same separate zakah account, with your choice
+  about the processing fee. You get an email three days before each
+  charge, with a private link to change the amount, update your card
+  or stop.
+- Each payment records the calculation you started from: the same
+  approved rulings and prices.
+- If the agency wording changes, your monthly zakah pauses until you
+  read and accept the new wording from your link.
+- Zakah al-Fitr is paid once a year, before Eid, so it can't be monthly.
+
+**Yusuf** works out ₦1,200,000 of zakah due next Ramadan. He sets up
+₦100,000 a month on the 5th, starting in Shawwal, so it's paid by the
+time it falls due.
+
 ## Where your zakah goes
 
 Zakah may only go to the eight groups named in Qur'an 9:60:

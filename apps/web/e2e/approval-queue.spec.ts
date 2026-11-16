@@ -103,8 +103,7 @@ test.describe("governed-action approval queue", () => {
       await prisma.vault.delete({ where: { id: vault.vaultId } }).catch(() => {});
       for (const userId of [maker.userId, checker.userId]) {
         await prisma.mfaBackupCode.deleteMany({ where: { userId } });
-        await prisma.birrStaff.deleteMany({ where: { userId } });
-        await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+        await prisma.birrStaff.updateMany({ where: { userId }, data: { status: "suspended" } });
       }
     } finally {
       await makerContext.close();

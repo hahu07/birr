@@ -39,6 +39,7 @@ import { ZakahFitrService } from "../zakah/zakah-fitr.service";
 import { unusedFitrSeason } from "../zakah/test-support-fitr";
 import { lockZakahCommitments } from "../zakah/zakah-commitments";
 import { draftRulesets } from "@birr/zakah";
+import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
 // local FakeAdapter/FakeReceiptEmailAdapter — duplicated rather than
@@ -147,6 +148,7 @@ describe("GovernedActionsService", () => {
       new FakeVaultReceiptEmailAdapter() as any,
       vaultLedgerService,
       new FunnelEventsService(),
+      createFakeRecurringGiftsCore().core,
       new FakeVaultPaymentAdapter() as any,
       new FakeVaultPaymentAdapter() as any,
       new FakeVaultPaymentAdapter() as any,
@@ -327,7 +329,9 @@ describe("GovernedActionsService", () => {
     await prisma.vaultJournalEntryLine.deleteMany({ where: { journalEntry: { vaultId: { in: vaultIds } } } });
     await prisma.vaultJournalEntry.deleteMany({ where: { vaultId: { in: vaultIds } } });
     await prisma.vault.deleteMany({ where: { id: { in: vaultIds } } });
-    await prisma.vaultDonor.deleteMany({ where: { id: { in: vaultDonorIds } } });
+    // People the audit log names (users, founders, Vault donors) are left
+    // in place: audit_logs refuses their deletion (2026-11-15), so history
+    // is never rewritten.
     await prisma.counterparty.deleteMany({ where: { id: { in: counterpartyIds } } });
     await prisma.contribution.deleteMany({ where: { waqfId: { in: waqfIds } } });
     // RESTRICT on waqfId, same reasoning as vaultMilestone above.

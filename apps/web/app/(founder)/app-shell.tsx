@@ -97,8 +97,10 @@ const PUBLIC_ROUTES = [
   "/terms-of-service",
   "/blog",
   "/zakah",
+  // Monthly giving (2026-11-15): a giver's own private link, and asking for one.
+  "/giving/manage",
 ];
-const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/", "/blog/", "/zakah-payments/"];
+const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/", "/blog/", "/zakah-payments/", "/giving/manage/"];
 function isPublicRoutePath(pathname: string) {
   return PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }

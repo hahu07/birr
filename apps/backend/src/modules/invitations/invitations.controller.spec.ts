@@ -53,7 +53,9 @@ describe("InvitationsController — birr_staff invitation authorization", () => 
 
   afterAll(async () => {
     await prisma.invitation.deleteMany({ where: { id: { in: invitationIds } } });
-    await prisma.founder.deleteMany({ where: { id: { in: founderIds } } });
+    // People the audit log names (users, founders, Vault donors) are left
+    // in place: audit_logs refuses their deletion (2026-11-15), so history
+    // is never rewritten.
     await prisma.$disconnect();
   });
 
