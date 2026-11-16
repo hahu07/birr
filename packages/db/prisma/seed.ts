@@ -129,13 +129,14 @@ async function connectWithRetry(attempts = 5, delayMs = 3000) {
   }
 }
 
-// An active BirrStaff row for this user that holds `role` (adding the role
-// if they don't have it yet). Re-runnable: never removes other roles a
-// person was given since.
-async function ensureStaffWithRole(userId: string, role: BirrStaffRole) {
+// A BirrStaff row for this user that holds `role` (adding the role if they
+// don't have it yet). Re-runnable: never removes other roles a person was
+// given since. Only a local dev login is set back to active on a re-run; a
+// real person someone suspended stays suspended.
+async function ensureStaffWithRole(userId: string, role: BirrStaffRole, { reactivate }: { reactivate: boolean }) {
   const staff = await prisma.birrStaff.upsert({
     where: { userId },
-    update: { status: "active" },
+    update: reactivate ? { status: "active" } : {},
     create: { userId, roles: { create: { role } } },
   });
   await prisma.birrStaffRoleGrant.upsert({
@@ -148,16 +149,19 @@ async function ensureStaffWithRole(userId: string, role: BirrStaffRole) {
 async function main() {
   await connectWithRetry();
 
+  // Re-running the seed must never undo what staff have set since
+  // (2026-11-16): every row below is create-only, except the local dev
+  // logins and dev agent keys, which reset so their documented passwords
+  // and keys keep working.
+  const databaseHost = new URL(process.env.DATABASE_URL ?? "postgresql://unknown").hostname;
+  const isLocalDevDatabase = process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1"].includes(databaseHost);
+
   // Roles, permissions and role grants — shared with the deploy-time
   // `sync:permissions` command so the two can never drift apart.
   await syncPermissions(prisma);
 
   for (const minimum of contributionMinimums) {
-    await prisma.contributionMinimum.upsert({
-      where: { currency: minimum.currency },
-      update: { minAmount: minimum.minAmount },
-      create: minimum,
-    });
+    await prisma.contributionMinimum.upsert({ where: { currency: minimum.currency }, update: {}, create: minimum });
   }
 
   // Never overwrites a value staff have set in the Ops Console.
@@ -166,19 +170,11 @@ async function main() {
   }
 
   for (const minimum of corpusMinimums) {
-    await prisma.corpusMinimum.upsert({
-      where: { currency: minimum.currency },
-      update: { minAmount: minimum.minAmount },
-      create: minimum,
-    });
+    await prisma.corpusMinimum.upsert({ where: { currency: minimum.currency }, update: {}, create: minimum });
   }
 
   for (const threshold of vaultDonorThresholds) {
-    await prisma.vaultDonorThreshold.upsert({
-      where: { currency: threshold.currency },
-      update: { thresholdAmount: threshold.thresholdAmount },
-      create: threshold,
-    });
+    await prisma.vaultDonorThreshold.upsert({ where: { currency: threshold.currency }, update: {}, create: threshold });
   }
 
   // Singleton — no natural unique key to upsert on, so this only ever
@@ -190,60 +186,52 @@ async function main() {
   }
 
   for (const category of causeCategories) {
-    await prisma.causeCategory.upsert({
-      where: { name: category.name },
-      update: {
-        description: category.description,
-        icon: category.icon,
-        sortOrder: category.sortOrder,
-        typicalWaqfTypes: category.typicalWaqfTypes,
-      },
-      create: category,
-    });
+    // Staff curate the catalog in the Ops Console.
+    await prisma.causeCategory.upsert({ where: { name: category.name }, update: {}, create: category });
   }
 
   for (const sector of shariahProhibitedSectors) {
-    await prisma.shariahProhibitedSector.upsert({
-      where: { name: sector.name },
-      update: { description: sector.description },
-      create: sector,
-    });
+    await prisma.shariahProhibitedSector.upsert({ where: { name: sector.name }, update: {}, create: sector });
   }
 
   for (const account of vaultLedgerAccounts) {
+    // Type and system-default status are what the code relies on, so
+    // they're kept in line; the name is staff's to change.
     await prisma.vaultLedgerAccount.upsert({
       where: { code: account.code },
-      update: { name: account.name, type: account.type, isSystemDefault: account.isSystemDefault },
+      update: { type: account.type, isSystemDefault: account.isSystemDefault },
       create: account,
     });
   }
 
   for (const account of waqfLedgerAccounts) {
+    // Type and system-default status are what the code relies on, so
+    // they're kept in line; the name is staff's to change.
     await prisma.waqfLedgerAccount.upsert({
       where: { code: account.code },
-      update: { name: account.name, type: account.type, isSystemDefault: account.isSystemDefault },
+      update: { type: account.type, isSystemDefault: account.isSystemDefault },
       create: account,
     });
   }
 
-  const adminPasswordHash = await hash(SEED_ADMIN_PASSWORD, BCRYPT_ROUNDS);
-  const adminUser = await prisma.user.upsert({
-    where: { email: SEED_ADMIN_EMAIL },
-    update: { passwordHash: adminPasswordHash, status: "active" },
-    create: {
-      email: SEED_ADMIN_EMAIL,
-      fullName: SEED_ADMIN_FULL_NAME,
-      passwordHash: adminPasswordHash,
-      status: "active",
-    },
-  });
-  await ensureStaffWithRole(adminUser.id, "platform_admin");
+  // The bootstrap admin is a real account outside a local dev database:
+  // created once, never given its seed password back or reactivated.
+  const existingAdmin = await prisma.user.findUnique({ where: { email: SEED_ADMIN_EMAIL } });
+  const adminUser = existingAdmin && !isLocalDevDatabase
+    ? existingAdmin
+    : await prisma.user.upsert({
+        where: { email: SEED_ADMIN_EMAIL },
+        update: { passwordHash: await hash(SEED_ADMIN_PASSWORD, BCRYPT_ROUNDS), status: "active" },
+        create: { email: SEED_ADMIN_EMAIL, fullName: SEED_ADMIN_FULL_NAME, passwordHash: await hash(SEED_ADMIN_PASSWORD, BCRYPT_ROUNDS), status: "active" },
+      });
+  await ensureStaffWithRole(adminUser.id, "platform_admin", { reactivate: isLocalDevDatabase });
 
   console.log(`Seeded ${roles.length} roles, ${permissions.length} permissions, ${Object.values(rolePermissions).reduce((n, g) => n + Object.keys(g).length, 0)} role_permissions, ${contributionMinimums.length} contribution minimums, ${corpusMinimums.length} corpus minimums, ${vaultDonorThresholds.length} vault donor thresholds, ${causeCategories.length} cause categories, ${shariahProhibitedSectors.length} shariah prohibited sectors, ${vaultLedgerAccounts.length} vault ledger accounts, ${waqfLedgerAccounts.length} waqf ledger accounts.`);
-  console.log(`Seeded bootstrap platform_admin: ${SEED_ADMIN_EMAIL} (password: ${SEED_ADMIN_PASSWORD}) — change this before any shared/non-local use.`);
-
-  const databaseHost = new URL(process.env.DATABASE_URL ?? "postgresql://unknown").hostname;
-  const isLocalDevDatabase = process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1"].includes(databaseHost);
+  console.log(
+    existingAdmin && !isLocalDevDatabase
+      ? `Bootstrap platform_admin ${SEED_ADMIN_EMAIL} already exists — left as it is.`
+      : `Seeded bootstrap platform_admin: ${SEED_ADMIN_EMAIL} (password: ${SEED_ADMIN_PASSWORD}) — change this before any shared/non-local use.`,
+  );
   if (!isLocalDevDatabase) {
     console.log(`Skipped dev Founder and dev staff logins — only seeded against a local database (host: ${databaseHost}, NODE_ENV: ${process.env.NODE_ENV ?? "unset"}).`);
   } else {
@@ -280,7 +268,7 @@ async function main() {
         update: { passwordHash: staffPasswordHash, status: "active" },
         create: { email: s.email, fullName: s.fullName, passwordHash: staffPasswordHash, status: "active" },
       });
-      await ensureStaffWithRole(staffUser.id, s.staffRole);
+      await ensureStaffWithRole(staffUser.id, s.staffRole, { reactivate: true });
     }
     console.log(
       `Seeded ${SEED_STAFF.length} dev staff logins (password: ${SEED_STAFF_PASSWORD}) — local dev only, sign in at /ops/sign-in:\n` +
@@ -288,7 +276,14 @@ async function main() {
     );
   }
 
+  // Outside a local dev database an agent's key and status are never
+  // reset: a rotated key stays rotated, a deactivated agent stays off.
   for (const agentSeed of agentSeeds) {
+    const existing = await prisma.aiAgent.findUnique({ where: { name: agentSeed.name } });
+    if (existing && !isLocalDevDatabase) {
+      console.log(`Agent "${agentSeed.name}" already exists — left as it is.`);
+      continue;
+    }
     const apiKey = process.env[agentSeed.apiKeyEnvVar] ?? agentSeed.defaultApiKey;
     const apiKeyHash = await hash(apiKey, BCRYPT_ROUNDS);
     await prisma.aiAgent.upsert({
