@@ -1,5 +1,5 @@
+import { EmailField, SecretField } from "../../common/validation/fields";
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
-import { IsEmail, IsString } from "class-validator";
 import { prisma, Prisma, BirrStaffRole } from "@birr/db";
 import { verifyUserPassword } from "../../common/auth/password-auth";
 import { EncryptionService } from "../../common/settings/encryption.service";
@@ -8,10 +8,10 @@ import { staffAccessKeys } from "../../common/auth/staff-permissions";
 import { ROLE_NAMES, roleNames } from "../../common/auth/staff-roles";
 
 export class BirrStaffLoginInput {
-  @IsEmail()
+  @EmailField()
   email!: string;
 
-  @IsString()
+  @SecretField()
   password!: string;
 }
 

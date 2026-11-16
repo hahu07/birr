@@ -1,5 +1,6 @@
+import { IdField, NameField } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsEnum, IsNumberString, IsString } from "class-validator";
+import { IsEnum, IsNumberString } from "class-validator";
 import { prisma, Prisma, AssetCategory } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 
@@ -13,10 +14,10 @@ import { withFounderScope } from "../../common/db/founder-scope";
 export const MAX_UNSCOPED_LIST_ROWS = 200;
 
 export class CreateAssetInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsEnum(AssetCategory)

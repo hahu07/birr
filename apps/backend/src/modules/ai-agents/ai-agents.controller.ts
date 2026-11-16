@@ -1,5 +1,5 @@
+import { LongTextField } from "../../common/validation/fields";
 import { Body, Controller, Get, Headers, Param, Post } from "@nestjs/common";
-import { IsString } from "class-validator";
 import { AiAgentsService, DraftInput } from "./ai-agents.service";
 import { ImageGenerationService } from "./image-generation.service";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
@@ -9,7 +9,7 @@ import { RequiresAccess } from "../../common/guards/permission.guard";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 
 class GenerateImageInput {
-  @IsString()
+  @LongTextField()
   prompt!: string;
 }
 

@@ -1,5 +1,6 @@
+import { EmailField, IdField, Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { prisma, Prisma, type PrimaryContactSuccession } from "@birr/db";
 import { holdsAnyRole } from "../../common/auth/staff-roles";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -16,13 +17,14 @@ const OPEN = ["requested", "approved", "objected"] as const;
 /** Who takes over: an existing member, or someone new (email and name). */
 class NewContactInput {
   @IsOptional()
-  @IsString()
+  @IdField()
   newMembershipId?: string;
 
   @IsOptional()
-  @IsEmail()
+  @EmailField()
   newEmail?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(200)
@@ -30,6 +32,7 @@ class NewContactInput {
 }
 
 export class RequestHandoverInput extends NewContactInput {
+  @Trimmed()
   @IsString()
   @MinLength(10)
   @MaxLength(2000)
@@ -37,12 +40,14 @@ export class RequestHandoverInput extends NewContactInput {
 }
 
 export class ReportUnavailableInput extends NewContactInput {
+  @Trimmed()
   @IsString()
   @MinLength(10)
   @MaxLength(2000)
   reason!: string;
 
   /** What happened, and what proof the member can give Birr (a death certificate, a board resolution...). */
+  @Trimmed()
   @IsString()
   @MinLength(10)
   @MaxLength(4000)
@@ -50,11 +55,12 @@ export class ReportUnavailableInput extends NewContactInput {
 }
 
 export class RecordUnreachableInput extends ReportUnavailableInput {
-  @IsString()
+  @IdField()
   founderId!: string;
 }
 
 export class SuccessionNoteInput {
+  @Trimmed()
   @IsString()
   @MinLength(5)
   @MaxLength(2000)

@@ -1,5 +1,7 @@
+import { IdField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsObject, IsOptional, IsString } from "class-validator";
+import { IsObject, IsOptional } from "class-validator";
 import { prisma, AiAgent } from "@birr/db";
 import { AuditLogsService } from "../audit-logs/audit-logs.service";
 import { AuthenticatedBirrStaff } from "../../common/auth/current-birr-staff";
@@ -23,17 +25,17 @@ const SAFE_AGENT_SELECT = {
 } as const;
 
 export class DraftInput {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   action!: string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   entityType!: string;
 
-  @IsString()
+  @IdField()
   entityId!: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   waqfId?: string;
 
   // Deliberately not a nested DTO — shape varies per agent (Nazim's

@@ -1,5 +1,7 @@
+import { IdField, LongTextField, NameField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { ArrayMinSize, IsArray, IsEnum, IsNumberString, IsString, MinLength, ValidateNested } from "class-validator";
+import { ArrayMinSize, IsArray, IsEnum, IsNumberString, MinLength, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { prisma, Prisma, InvestmentInstrumentType } from "@birr/db";
 import { InvestmentsService } from "../investments/investments.service";
@@ -7,7 +9,7 @@ import { splitProRata } from "../../common/money/pro-rata";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class PlacementAllocationInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
   // See InvestmentsService's CreateInvestmentInput.allocatedAmount for
@@ -18,20 +20,20 @@ export class PlacementAllocationInput {
 }
 
 export class CreateInvestmentPlacementInput {
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsEnum(InvestmentInstrumentType)
   instrumentType!: InvestmentInstrumentType;
 
-  @IsString()
+  @IdField()
   counterpartyId!: string;
 
   // One instrument, spread across every leg below — a single shared
   // description, same as InvestmentsService's CreateInvestmentInput
   // .businessDescription, carried onto each leg's own ShariahScreening
   // (see createOne()'s own call sites below for why this isn't per-leg).
-  @IsString()
+  @LongTextField()
   @MinLength(20)
   businessDescription!: string;
 
@@ -47,10 +49,10 @@ export class RecordPlacementProceedsInput {
   @IsPositiveDecimal()
   amount!: Prisma.Decimal | number | string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   currency!: string;
 
-  @IsString()
+  @LongTextField()
   description!: string;
 }
 

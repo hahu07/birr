@@ -1,24 +1,26 @@
+import { IdField, LongTextField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, forwardRef, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsNumberString, IsOptional } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { WaqfCausesService } from "../waqf-causes/waqf-causes.service";
 
 export class RecordWaqfProceedsInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   investmentId?: string;
 
   @IsNumberString()
   amount!: Prisma.Decimal | number | string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   currency!: string;
 
-  @IsString()
+  @LongTextField()
   description!: string;
 }
 

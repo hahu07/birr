@@ -1,5 +1,6 @@
+import { IdField, NameField, SecretField } from "../../common/validation/fields";
 import { Body, Controller, Get, NotFoundException, Param, Post, Req, UnauthorizedException } from "@nestjs/common";
-import { IsBoolean, IsString } from "class-validator";
+import { IsBoolean } from "class-validator";
 import type { Request } from "express";
 import { FoundationDeedsService } from "./foundation-deeds.service";
 import { isBirrStaffSession } from "../../common/auth/current-birr-staff";
@@ -8,23 +9,23 @@ import { hasAnySessionCookie } from "../../common/auth/session";
 import { Public } from "../../common/guards/public.decorator";
 
 class SignFoundationDeedBody {
-  @IsString()
+  @IdField()
   foundationId!: string;
 
-  @IsString()
+  @NameField()
   typedLegalName!: string;
 
   @IsBoolean()
   affirmed!: boolean;
 
   // From GET :foundationId/preview — proves the signer saw the text stored.
-  @IsString()
+  @SecretField()
   textHash!: string;
 }
 
 class GiveConsentBody {
   // From GET :foundationId/consent — proves they saw the statement stored.
-  @IsString()
+  @SecretField()
   statementHash!: string;
 }
 

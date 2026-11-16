@@ -1,3 +1,4 @@
+import { IdField, Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, WaqfType } from "@birr/db";
@@ -18,22 +19,25 @@ const DESCRIPTION_MAX_LENGTH = 500;
 const REVIEW_NOTES_MAX_LENGTH = 500;
 
 export class ProposeCauseSuggestionInput {
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "Name is required." })
   @MaxLength(NAME_MAX_LENGTH)
   name!: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(DESCRIPTION_MAX_LENGTH)
   description?: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   waqfId?: string;
 }
 
 export class RejectCauseSuggestionInput {
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "A reason is required when rejecting a suggestion." })
   @MaxLength(REVIEW_NOTES_MAX_LENGTH)

@@ -1,6 +1,7 @@
+import { IdField, JsonObjectField, Trimmed } from "../../common/validation/fields";
 import { BadRequestException, Body, Controller, Get, Post, Query } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
-import { IsIn, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsIn, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, FunnelName, Prisma } from "@birr/db";
 import { FunnelEventsService } from "./funnel-events.service";
 import { Public } from "../../common/guards/public.decorator";
@@ -23,20 +24,22 @@ export class RecordFunnelEventInput {
   @IsIn(["founder", "vault"])
   funnel!: FunnelName;
 
+  @Trimmed()
   @IsString()
   @MaxLength(64)
   step!: string;
 
+  @Trimmed()
   @IsString()
   @MaxLength(128)
   sessionId!: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   vaultId?: string;
 
   @IsOptional()
-  @IsObject()
+  @JsonObjectField(2_000)
   metadata?: Record<string, unknown>;
 }
 

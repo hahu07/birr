@@ -1,6 +1,7 @@
 "use client";
 
 import { InputHTMLAttributes, useId } from "react";
+import { FIELD_LIMITS } from "@birr/shared";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   /** When present: red border, an aria-invalid input, and a role="alert"
@@ -10,7 +11,32 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
-export function Input({ className = "", error, id, ...props }: InputProps) {
+/**
+ * The most a field takes when a page doesn't say (2026-11-16): the same
+ * limits the API enforces, so a form stops at the length the server would
+ * accept. A page passes its own maxLength for a field with a different
+ * limit (a name, a code).
+ */
+function defaultMaxLength(type: InputProps["type"]): number | undefined {
+  switch (type) {
+    case "email":
+      return FIELD_LIMITS.email;
+    case "url":
+      return FIELD_LIMITS.url;
+    case "password":
+      return 200; // as PasswordInput
+    case undefined:
+    case "text":
+    case "search":
+    case "tel":
+      return FIELD_LIMITS.text;
+    default:
+      // Numbers, dates, files, checkboxes: maxLength doesn't apply.
+      return undefined;
+  }
+}
+
+export function Input({ className = "", error, id, maxLength, ...props }: InputProps) {
   const generatedId = useId();
   const errorId = error ? `${id ?? generatedId}-error` : undefined;
   const input = (
@@ -23,6 +49,7 @@ export function Input({ className = "", error, id, ...props }: InputProps) {
       } ${className}`}
       aria-invalid={error ? true : undefined}
       aria-describedby={errorId}
+      maxLength={maxLength ?? defaultMaxLength(props.type)}
       {...props}
     />
   );

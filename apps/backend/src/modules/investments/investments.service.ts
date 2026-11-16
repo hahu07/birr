@@ -1,5 +1,6 @@
+import { IdField, LongTextField, NameField } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsNumberString, IsOptional, IsString, MinLength } from "class-validator";
+import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsNumberString, IsOptional, MinLength } from "class-validator";
 import { prisma, Prisma, InvestmentInstrumentType, InvestmentStatus, ShariahScreeningDecision } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
@@ -20,10 +21,10 @@ const COMMITTED_INVESTMENT_STATUSES: InvestmentStatus[] = ["pending_shariah_revi
 export const MAX_UNSCOPED_LIST_ROWS = 200;
 
 export class CreateInvestmentInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsEnum(InvestmentInstrumentType)
@@ -38,14 +39,14 @@ export class CreateInvestmentInput {
   // Required — who actually holds this money (see Counterparty's own
   // schema comment). Must already be `active` (both fiduciary gates
   // passed) before it can receive a single dollar of waqf money.
-  @IsString()
+  @IdField()
   counterpartyId!: string;
 
   // What the underlying business/asset/fund actually does — the
   // material a shariah_board_member evaluates when deciding this
   // investment's ShariahScreening. Same role/validation as
   // Counterparty.businessActivities.
-  @IsString()
+  @LongTextField()
   @MinLength(20)
   businessDescription!: string;
 }
@@ -64,13 +65,13 @@ export class RecordShariahScreeningInput {
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IdField({ each: true })
   flaggedSectorIds?: string[];
 
   // Required regardless of decision — a religious/compliance judgment
   // should always leave a real, human-written reason on file, not just
   // a rubber-stamped click.
-  @IsString()
+  @LongTextField()
   @IsNotEmpty()
   reviewerNotes!: string;
 }

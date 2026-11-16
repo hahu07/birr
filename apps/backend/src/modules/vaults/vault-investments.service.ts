@@ -1,5 +1,6 @@
+import { IdField, LongTextField, NameField } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsNumberString, IsOptional, IsString, MinLength } from "class-validator";
+import { IsArray, IsBoolean, IsEnum, IsNotEmpty, IsNumberString, IsOptional, MinLength } from "class-validator";
 import { prisma, Prisma, InvestmentInstrumentType, InvestmentStatus, ShariahScreeningDecision } from "@birr/db";
 import { findVaultOrThrow } from "./find-vault-or-throw";
 import { SPENDABLE_CONTRIBUTION_WHERE } from "./spendable-contributions";
@@ -9,10 +10,10 @@ import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 const COMMITTED_INVESTMENT_STATUSES: InvestmentStatus[] = ["pending_shariah_review", "active"];
 
 export class CreateVaultInvestmentInput {
-  @IsString()
+  @IdField()
   vaultId!: string;
 
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsEnum(InvestmentInstrumentType)
@@ -22,12 +23,12 @@ export class CreateVaultInvestmentInput {
   @IsPositiveDecimal()
   allocatedAmount!: Prisma.Decimal | number | string;
 
-  @IsString()
+  @IdField()
   counterpartyId!: string;
 
   // See InvestmentsService's CreateInvestmentInput.businessDescription
   // for what this is and why it's required.
-  @IsString()
+  @LongTextField()
   @MinLength(20)
   businessDescription!: string;
 }
@@ -46,10 +47,10 @@ export class RecordVaultShariahScreeningInput {
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IdField({ each: true })
   flaggedSectorIds?: string[];
 
-  @IsString()
+  @LongTextField()
   @IsNotEmpty()
   reviewerNotes!: string;
 }

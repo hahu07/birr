@@ -1,9 +1,11 @@
+import { EmailField, IdField, LongTextField, NameField, TextField, Trimmed } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { randomUUID } from "crypto";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
 import { type GiverContact, hasContact, lockGiverContact, moneyText, paystackEmailForGift, whatsAppNotice } from "../../common/giving/giver-contact";
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from "@nestjs/common";
-import { IsBoolean, IsEmail, IsEnum, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsBoolean, IsEnum, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, ContributionProvider, IdType, type RecurringGift } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validation/max-decimal";
@@ -20,16 +22,16 @@ import { RecurringGiftsCoreService } from "../recurring-gifts/recurring-gifts-co
 import type { SavedCardChargeResult } from "../contributions/providers/payment-provider.interface";
 
 export class HoldVaultContributionInput {
-  @IsString()
+  @LongTextField()
   reason!: string;
 }
 
 export class InitiateVaultContributionInput {
-  @IsString()
+  @IdField()
   vaultId!: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   vaultCauseId?: string;
 
   // Unauthenticated, public route — MaxDecimal is a blunt sanity
@@ -41,7 +43,7 @@ export class InitiateVaultContributionInput {
   @IsPositiveDecimal()
   amount!: string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   currency!: string;
 
   @IsEnum(ContributionProvider)
@@ -52,13 +54,14 @@ export class InitiateVaultContributionInput {
   // identity thread for the AML anti-structuring check to match repeat
   // anonymous gifts against (see findOrCreateDonor's own comment).
   @IsOptional()
-  @IsEmail()
+  @EmailField()
   donorEmail?: string;
 
   // A WhatsApp number instead of (or as well as) an email, for receipts
   // and, monthly, the manage link (owner's decision, 2026-11-16). Only
   // used once confirmed: whatsappProof comes from POST
   // /giving/whatsapp/confirm. It also counts toward the AML threshold.
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(32)
@@ -70,7 +73,7 @@ export class InitiateVaultContributionInput {
   whatsappProof?: string;
 
   @IsOptional()
-  @IsString()
+  @NameField()
   donorFullName?: string;
 
   // Only actually required when the AML threshold check below triggers
@@ -83,7 +86,7 @@ export class InitiateVaultContributionInput {
   idType?: IdType;
 
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   idNumber?: string;
 
   /** Give this every month (see RecurringGift): needs an email, a card, and naira. */
@@ -94,6 +97,7 @@ export class InitiateVaultContributionInput {
 
 /** A monthly donor adding the identity the AML threshold asks for (see recordDonorIdentity). */
 export class VaultDonorIdentityInput {
+  @Trimmed()
   @IsString()
   @MaxLength(200)
   fullName!: string;
@@ -101,6 +105,7 @@ export class VaultDonorIdentityInput {
   @IsEnum(IdType)
   idType!: IdType;
 
+  @Trimmed()
   @IsString()
   @MaxLength(50)
   idNumber!: string;

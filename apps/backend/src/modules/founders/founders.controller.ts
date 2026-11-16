@@ -1,3 +1,5 @@
+import { FIELD_LIMITS } from "@birr/shared";
+import { PhoneField, TextField } from "../../common/validation/fields";
 import {
   Body,
   Controller,
@@ -14,7 +16,6 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { Throttle } from "@nestjs/throttler";
-import { IsString } from "class-validator";
 import type { Request, Response } from "express";
 import {
   FoundersService,
@@ -44,17 +45,17 @@ import {
 import { Public } from "../../common/guards/public.decorator";
 
 class VerifyLoginMfaBody {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   code!: string;
 }
 
 class RequestWhatsAppOtpBody {
-  @IsString()
+  @PhoneField()
   whatsappNumber!: string;
 }
 
 class VerifyWhatsAppOtpBody {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   code!: string;
 }
 

@@ -1,3 +1,4 @@
+import { Trimmed } from "../../common/validation/fields";
 import { Body, Controller, Get, Param, Post, Req } from "@nestjs/common";
 import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 import { Request } from "express";
@@ -18,11 +19,13 @@ import { Public } from "../../common/guards/public.decorator";
 // shape as creating a category directly, just sourced from a proposal's
 // name/description instead of a fresh form.
 class ApproveBody implements ApproveCauseSuggestionFields {
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "Description is required." })
   @MaxLength(500)
   description!: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(8)

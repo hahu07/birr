@@ -32,7 +32,7 @@ import {
 } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 import { CountrySelect } from "../../../components/forms/CountrySelect";
-import { countryName } from "@birr/shared";
+import { countryName, FIELD_LIMITS } from "@birr/shared";
 
 const VAULT_TYPES: VaultType[] = ["project", "investment"];
 
@@ -442,6 +442,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-slate-700">Description (optional)</label>
         <textarea
+          maxLength={FIELD_LIMITS.longText}
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}

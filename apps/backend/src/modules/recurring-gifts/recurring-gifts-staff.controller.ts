@@ -1,3 +1,4 @@
+import { Trimmed } from "../../common/validation/fields";
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { IsString, MaxLength, MinLength } from "class-validator";
 import { RequiresAccess } from "../../common/guards/permission.guard";
@@ -5,6 +6,7 @@ import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/curr
 import { RecurringGiftsService } from "./recurring-gifts.service";
 
 export class StaffCancelRecurringGiftInput {
+  @Trimmed()
   @IsString()
   @MinLength(10)
   @MaxLength(1000)

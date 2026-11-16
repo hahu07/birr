@@ -16,7 +16,7 @@ import type { Invitation } from "../../../../lib/types";
 import { Alert, Button, IconArrowRight, IconImage, IconShieldCheck, IconSparkle, Select } from "@birr/ui";
 import { ChoiceCard, Field, FormSection, inputClass } from "../../_components/form";
 import { FOUNDER_TYPE_GUIDE, FounderFoundationGuide, type FounderType, INSTITUTION_TYPE_GUIDE } from "./FounderFoundationGuide";
-import { countryName } from "@birr/shared";
+import { countryName, FIELD_LIMITS } from "@birr/shared";
 import { CountrySelect } from "../../../../components/forms/CountrySelect";
 
 interface PurposeSuggestion {
@@ -447,6 +447,7 @@ export default function OnboardingFounderFoundationPage() {
                     </button>
                   </div>
                   <textarea
+                    maxLength={FIELD_LIMITS.longText}
                     id="purpose"
                     value={purpose}
                     onChange={(e) => setPurpose(e.target.value)}

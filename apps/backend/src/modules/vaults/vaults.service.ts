@@ -1,3 +1,5 @@
+import { IdField, LongTextField, NameField, TextField, UrlField, Trimmed } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { CountryCode } from "../../common/validation/country-code";
 import { IsArray, IsEnum, IsNumberString, IsOptional, IsString, Matches, MaxLength, ValidateIf } from "class-validator";
@@ -16,7 +18,7 @@ const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 export class CreateVaultInput {
-  @IsString()
+  @NameField()
   name!: string;
 
   @Matches(SLUG_PATTERN, {
@@ -25,13 +27,13 @@ export class CreateVaultInput {
   slug!: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   description?: string;
 
   @IsEnum(VaultType)
   type!: VaultType;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   currency!: string;
 
   // Other currencies this vault also accepts for giving, beyond
@@ -40,14 +42,14 @@ export class CreateVaultInput {
   // slice (contributions only, not targetAmount/allocation/payouts).
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IdField({ each: true, max: 16 })
   additionalCurrencies?: string[];
 
   @CountryCode()
   jurisdiction!: string;
 
   @IsOptional()
-  @IsString()
+  @UrlField()
   coverImageUrl?: string;
 }
 
@@ -58,30 +60,31 @@ export class UpdateVaultStatusInput {
 
 export class UpdateVaultFeasibilityReportInput {
   @IsOptional()
-  @IsString()
+  @TextField()
   title?: string;
 }
 
 export class CreateVaultCauseInput {
-  @IsString()
+  @IdField()
   vaultId!: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   causeCategoryId?: string;
 
   @IsOptional()
-  @IsString()
+  @NameField()
   name?: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   description?: string;
 
   // See VaultCause.projectPlan's own schema comment — cause-specific,
   // unlike Vault.feasibilityReportUrl. A real bound (unlike `description`
   // above, which has none — a separate pre-existing gap, not fixed here),
   // matching CauseCategoriesService's own MaxLength convention.
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(2000)
@@ -89,6 +92,7 @@ export class CreateVaultCauseInput {
 }
 
 export class UpdateVaultCauseProjectPlanInput {
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(2000)

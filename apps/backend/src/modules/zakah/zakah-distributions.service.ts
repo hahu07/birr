@@ -1,19 +1,6 @@
+import { IdField, PhoneField, Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import {
-  ArrayMinSize,
-  ArrayUnique,
-  IsArray,
-  IsBoolean,
-  IsEnum,
-  IsInt,
-  IsNumberString,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-  Min,
-  MinLength,
-} from "class-validator";
+import { ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEnum, IsInt, IsNumberString, IsOptional, IsString, Matches, MaxLength, Min, MinLength } from "class-validator";
 import { prisma, Prisma, ZakahCategory, ZakahDistribution, ZakahPool } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
@@ -33,6 +20,7 @@ export const POOL_LABELS: Record<ZakahPool, string> = {
 export { CLOSED_ZAKAH_CATEGORIES, ZAKAH_CATEGORY_LABELS };
 
 export class CreateZakahRecipientInput {
+  @Trimmed()
   @IsString()
   @MinLength(2)
   @MaxLength(200)
@@ -44,17 +32,18 @@ export class CreateZakahRecipientInput {
   @IsEnum(ZakahCategory, { each: true })
   categories!: ZakahCategory[];
 
+  @Trimmed()
   @IsString()
   @MinLength(10, { message: "eligibilityReason must say, in a sentence, why this person qualifies." })
   @MaxLength(2000)
   eligibilityReason!: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(30)
+  @PhoneField()
   phone?: string;
 
   // All three, or none: what finance needs to pay them by bank transfer.
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(100)
@@ -64,6 +53,7 @@ export class CreateZakahRecipientInput {
   @Matches(/^\d{10}$/, { message: "accountNumber must be a 10-digit NUBAN." })
   accountNumber?: string;
 
+  @Trimmed()
   @IsOptional()
   @IsString()
   @MaxLength(200)
@@ -86,11 +76,11 @@ export class CreateZakahDistributionInput {
   pool?: ZakahPool;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   recipientId?: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   counterpartyId?: string;
 
   @IsEnum(ZakahCategory)
@@ -100,6 +90,7 @@ export class CreateZakahDistributionInput {
   @IsPositiveDecimal()
   amount!: string;
 
+  @Trimmed()
   @IsString()
   @MinLength(10, { message: "reason must say, in a sentence, why this payment fits this category." })
   @MaxLength(2000)
@@ -111,6 +102,7 @@ export class RecordPartnerReportInput {
   @Min(1)
   reachedCount!: number;
 
+  @Trimmed()
   @IsString()
   @MinLength(10)
   @MaxLength(5000)

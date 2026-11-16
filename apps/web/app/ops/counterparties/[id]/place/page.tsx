@@ -22,6 +22,7 @@ import { apiFetchJson } from "../../../../../lib/api";
 import { formatAmount, humanize } from "../../../../../lib/format";
 import type { Counterparty, Investment, InvestmentInstrumentType, Waqf } from "../../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, Input } from "@birr/ui";
+import { FIELD_LIMITS } from "@birr/shared";
 
 const INSTRUMENT_TYPES: InvestmentInstrumentType[] = ["sukuk", "equity_fund", "real_estate_fund", "murabaha", "other"];
 
@@ -200,6 +201,7 @@ export default function PlaceInvestmentPage() {
           <div className="mt-3 space-y-1.5">
             <label className="text-sm font-medium text-slate-700">Business description</label>
             <textarea
+              maxLength={FIELD_LIMITS.longText}
               required
               minLength={20}
               rows={2}

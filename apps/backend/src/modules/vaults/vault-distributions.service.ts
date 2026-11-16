@@ -1,5 +1,7 @@
+import { IdField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { IsNotEmpty, IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsNotEmpty, IsNumberString, IsOptional } from "class-validator";
 import { prisma, Prisma, PayoutProvider } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { assertWithinAllocation as assertWithinAllocationShared } from "../../common/money/allocation-ceiling";
@@ -10,13 +12,13 @@ import { SPENDABLE_CONTRIBUTION_WHERE } from "./spendable-contributions";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 
 export class CreateVaultDistributionInput {
-  @IsString()
+  @IdField()
   vaultId!: string;
 
-  @IsString()
+  @IdField()
   vaultCauseId!: string;
 
-  @IsString()
+  @IdField()
   counterpartyId!: string;
 
   // Optional — see VaultMilestone's own schema comment. When set,
@@ -24,14 +26,14 @@ export class CreateVaultDistributionInput {
   // status is already "completed" (see below) — the real gate on
   // milestone-tranche disbursement, not just a UI-level restriction.
   @IsOptional()
-  @IsString()
+  @IdField()
   vaultMilestoneId?: string;
 
   @IsNumberString()
   @IsPositiveDecimal()
   amount!: Prisma.Decimal | number | string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   @IsNotEmpty()
   currency!: string;
 }

@@ -27,6 +27,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@birr/ui";
+import { FIELD_LIMITS } from "@birr/shared";
 
 const STATUS_TONE: Record<ConflictOfInterestDeclaration["status"], "warning" | "success" | "neutral" | "danger"> = {
   declared: "warning",
@@ -259,6 +260,7 @@ function DeclareForm({ onDeclared }: { onDeclared: () => void }) {
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-slate-700">Declaration</label>
         <textarea
+          maxLength={FIELD_LIMITS.longText}
           required
           autoFocus
           rows={3}

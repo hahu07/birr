@@ -1,3 +1,4 @@
+import { IdField, Trimmed } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, Logger } from "@nestjs/common";
 import { moneyText, whatsAppNotice } from "../../common/giving/giver-contact";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
@@ -17,7 +18,7 @@ export const ZAKAH_REFUND_REASON_LABELS: Record<ZakahRefundReason, string> = {
 };
 
 export class CreateZakahRefundInput {
-  @IsString()
+  @IdField()
   paymentId!: string;
 
   @IsNumberString()
@@ -27,12 +28,14 @@ export class CreateZakahRefundInput {
   @IsEnum(ZakahRefundReason)
   reason!: ZakahRefundReason;
 
+  @Trimmed()
   @IsString()
   @MinLength(10, { message: "details must say what happened, in a sentence." })
   @MaxLength(2000)
   details!: string;
 
   // Where finance sends the money back — collected from the payer.
+  @Trimmed()
   @IsString()
   @MinLength(2)
   @MaxLength(100)
@@ -41,6 +44,7 @@ export class CreateZakahRefundInput {
   @Matches(/^\d{10}$/, { message: "accountNumber must be a 10-digit NUBAN." })
   accountNumber!: string;
 
+  @Trimmed()
   @IsString()
   @MinLength(2)
   @MaxLength(200)

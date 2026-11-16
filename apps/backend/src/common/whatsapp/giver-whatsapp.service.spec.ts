@@ -91,13 +91,17 @@ describe("GiverWhatsAppService", () => {
 
   test("codes are rationed: three per number from one IP, eight per number, ten per IP per hour", async () => {
     const number = testNumber();
-    for (let i = 0; i < 3; i++) await service.requestCode(number, "198.51.100.30");
-    await expect(service.requestCode(number, "198.51.100.30")).rejects.toThrow(HttpException);
+    // Addresses unique to this run: requests are counted per IP for an
+    // hour, so fixed ones run out when the suite is run a few times.
+    const run = Date.now();
+    const at = (n: number) => `198.51.100.${n}-${run}`;
+    for (let i = 0; i < 3; i++) await service.requestCode(number, at(30));
+    await expect(service.requestCode(number, at(30))).rejects.toThrow(HttpException);
     // Someone else asking for codes to this number doesn't use up the giver's own three...
-    for (let i = 0; i < 3; i++) await service.requestCode(number, "198.51.100.31");
-    for (let i = 0; i < 2; i++) await service.requestCode(number, "198.51.100.32");
+    for (let i = 0; i < 3; i++) await service.requestCode(number, at(31));
+    for (let i = 0; i < 2; i++) await service.requestCode(number, at(32));
     // ...but a number has an overall cap.
-    await expect(service.requestCode(number, "198.51.100.33")).rejects.toThrow(/Too many codes/);
+    await expect(service.requestCode(number, at(33))).rejects.toThrow(/Too many codes/);
     const ip = `198.51.100.${Math.floor(Math.random() * 200) + 20}-${Date.now()}`;
     for (let i = 0; i < 10; i++) await service.requestCode(testNumber(), ip);
     await expect(service.requestCode(testNumber(), ip)).rejects.toThrow(/Too many codes/);

@@ -1,5 +1,7 @@
+import { EmailField, IdField, LongTextField, NameField, PhoneField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsDateString, IsEmail, IsEnum, IsOptional, IsString, ValidateNested } from "class-validator";
+import { IsDateString, IsEnum, IsOptional, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { prisma, Prisma, BeneficiaryStatus, BeneficiaryKind, PayoutProvider } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -22,50 +24,50 @@ export const MAX_UNSCOPED_LIST_ROWS = 200;
 // forward, enforced downstream, not at this DTO" posture as this file's
 // own causeId convention.
 export class BankDetailsInput {
-  @IsString()
+  @NameField()
   bankName!: string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   accountNumber!: string;
 
-  @IsString()
+  @NameField()
   accountName!: string;
 
   @IsOptional()
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   bankCode?: string;
 }
 
 export class CreateBeneficiaryInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
   // Required going forward — the DB column itself stays nullable (no
   // backfill for pre-existing rows, same convention as
   // Investment.counterpartyId), so this is an input-layer requirement,
   // not a schema one.
-  @IsString()
+  @IdField()
   causeId!: string;
 
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsOptional()
   @IsEnum(BeneficiaryKind)
   kind?: BeneficiaryKind;
 
-  @IsString()
+  @LongTextField()
   eligibilityCriteria!: string;
 
   // Deliberately not @IsPhoneNumber()/@IsEmail() strict-shape validation
   // on phone — an organization's contact info doesn't always fit a
   // personal-phone shape, and staff verify this by hand regardless.
   @IsOptional()
-  @IsString()
+  @PhoneField()
   phone?: string;
 
   @IsOptional()
-  @IsEmail()
+  @EmailField()
   email?: string;
 
   @IsOptional()

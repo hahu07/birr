@@ -17,7 +17,7 @@ import { useStaffSession } from "../../../../lib/staff-session";
 import type { Counterparty, CounterpartyExposure, GovernedAction, InvestmentPlacementSummary } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, DetailGrid, EmptyState, Input, Skeleton } from "@birr/ui";
 import { CountrySelect } from "../../../../components/forms/CountrySelect";
-import { countryLabel } from "@birr/shared";
+import { countryLabel, FIELD_LIMITS } from "@birr/shared";
 
 const STATUS_TONE: Record<Counterparty["status"], "success" | "warning" | "neutral" | "danger"> = {
   active: "success",
@@ -530,11 +530,11 @@ function EditProfileForm({
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Registration number</label>
-          <Input value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} />
+          <Input maxLength={FIELD_LIMITS.code} value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Website</label>
-          <Input value={website} onChange={(e) => setWebsite(e.target.value)} />
+          <Input type="url" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
         </div>
       </div>
       <div className="space-y-1.5">
@@ -545,6 +545,7 @@ function EditProfileForm({
         <label className="text-sm font-medium text-slate-700">Business activities</label>
         <textarea
           rows={3}
+          maxLength={FIELD_LIMITS.longText}
           value={businessActivities}
           onChange={(e) => setBusinessActivities(e.target.value)}
           className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -561,7 +562,7 @@ function EditProfileForm({
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Contact name</label>
-          <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />
+          <Input maxLength={FIELD_LIMITS.name} value={contactName} onChange={(e) => setContactName(e.target.value)} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Contact email</label>
@@ -569,13 +570,13 @@ function EditProfileForm({
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Contact phone</label>
-          <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+          <Input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="0803 123 4567 or +44…" />
         </div>
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Regulatory license number</label>
-          <Input value={regulatoryLicenseNumber} onChange={(e) => setRegulatoryLicenseNumber(e.target.value)} />
+          <Input maxLength={FIELD_LIMITS.code} value={regulatoryLicenseNumber} onChange={(e) => setRegulatoryLicenseNumber(e.target.value)} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Regulating authority</label>

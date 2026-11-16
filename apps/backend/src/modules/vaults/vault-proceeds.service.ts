@@ -1,23 +1,25 @@
+import { IdField, LongTextField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsNumberString, IsOptional } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { findVaultOrThrow } from "./find-vault-or-throw";
 
 export class RecordVaultProceedsInput {
-  @IsString()
+  @IdField()
   vaultId!: string;
 
   @IsOptional()
-  @IsString()
+  @IdField()
   vaultInvestmentId?: string;
 
   @IsNumberString()
   amount!: Prisma.Decimal | number | string;
 
-  @IsString()
+  @TextField(FIELD_LIMITS.currency)
   currency!: string;
 
-  @IsString()
+  @LongTextField()
   description!: string;
 }
 

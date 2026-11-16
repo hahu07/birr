@@ -244,6 +244,7 @@ export function ArticleForm({
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Body</label>
           <textarea
+            maxLength={60_000}
             ref={bodyArea}
             required
             rows={22}

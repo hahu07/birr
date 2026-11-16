@@ -22,6 +22,7 @@ import { Alert, Badge, Button, EmptyState, Input, Table, TableBody, TableCell, T
 import { RowsSkeleton, SectionHeader } from "../../_components/SectionChrome";
 import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAction";
 import { useStaffSession } from "../../../../lib/staff-session";
+import { FIELD_LIMITS } from "@birr/shared";
 
 const STATUS_TONE: Record<WaqfMilestone["status"], "neutral" | "warning" | "success"> = {
   pending: "neutral",
@@ -267,6 +268,7 @@ function MilestoneForm({ waqfId, nextSequence, onCreated }: { waqfId: string; ne
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-slate-700">Description (optional)</label>
         <textarea
+          maxLength={FIELD_LIMITS.longText}
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -329,6 +331,7 @@ function EvidencePanel({ milestone, canEdit, onSaved }: { milestone: WaqfMilesto
         <div className="min-w-[16rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Notes</label>
           <textarea
+            maxLength={FIELD_LIMITS.longText}
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}

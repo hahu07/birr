@@ -1,5 +1,6 @@
+import { IdField, LongTextField, NameField } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsInt, IsNumberString, IsOptional, IsString } from "class-validator";
+import { IsInt, IsNumberString, IsOptional } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
@@ -8,19 +9,19 @@ const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
 export class UpdateWaqfMilestoneEvidenceInput {
   @IsOptional()
-  @IsString()
+  @LongTextField()
   evidenceNotes?: string;
 }
 
 export class CreateWaqfMilestoneInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   description?: string;
 
   @IsInt()
@@ -32,7 +33,7 @@ export class CreateWaqfMilestoneInput {
   targetAmount?: string;
 
   @IsOptional()
-  @IsString()
+  @LongTextField()
   evidenceNotes?: string;
 }
 

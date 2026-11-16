@@ -1,3 +1,4 @@
+import { Trimmed } from "../../common/validation/fields";
 import { Body, Controller, Post, Req } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { IsString, Length, MaxLength } from "class-validator";
@@ -6,16 +7,19 @@ import { Public } from "../../common/guards/public.decorator";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
 
 class RequestWhatsAppCodeBody {
+  @Trimmed()
   @IsString()
   @MaxLength(32)
   whatsapp!: string;
 }
 
 class ConfirmWhatsAppCodeBody {
+  @Trimmed()
   @IsString()
   @MaxLength(32)
   whatsapp!: string;
 
+  @Trimmed()
   @IsString()
   @Length(6, 6)
   code!: string;

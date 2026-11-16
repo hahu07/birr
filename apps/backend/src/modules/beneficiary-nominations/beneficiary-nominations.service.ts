@@ -1,15 +1,6 @@
+import { EmailField, IdField, PhoneField, Trimmed } from "../../common/validation/fields";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import {
-  ArrayMaxSize,
-  ArrayMinSize,
-  IsEmail,
-  IsEnum,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MaxLength,
-  ValidateNested,
-} from "class-validator";
+import { ArrayMaxSize, ArrayMinSize, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
 import { prisma, Prisma, BeneficiaryKind, PayoutProvider } from "@birr/db";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -28,14 +19,15 @@ const REVIEW_NOTES_MAX_LENGTH = 500;
 const MAX_BULK_ROWS = 500;
 
 export class ProposeBeneficiaryNominationInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
   // Required going forward — see Beneficiary.causeId's own comment on
   // why the DB column itself stays nullable.
-  @IsString()
+  @IdField()
   causeId!: string;
 
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "Name is required." })
   @MaxLength(NAME_MAX_LENGTH)
@@ -45,17 +37,18 @@ export class ProposeBeneficiaryNominationInput {
   @IsEnum(BeneficiaryKind)
   kind?: BeneficiaryKind;
 
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "Eligibility is required." })
   @MaxLength(ELIGIBILITY_MAX_LENGTH)
   eligibilityCriteria!: string;
 
   @IsOptional()
-  @IsString()
+  @PhoneField()
   phone?: string;
 
   @IsOptional()
-  @IsEmail()
+  @EmailField()
   email?: string;
 
   // A Founder can include these in the nomination itself (confirmed
@@ -83,6 +76,7 @@ export class ProposeBeneficiaryNominationInput {
 // existing single-nomination bank details field is optional anyway —
 // added per-beneficiary later if needed, not a bulk-import requirement.
 export class BulkBeneficiaryNominationRow {
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "Name is required." })
   @MaxLength(NAME_MAX_LENGTH)
@@ -92,29 +86,30 @@ export class BulkBeneficiaryNominationRow {
   @IsEnum(BeneficiaryKind)
   kind?: BeneficiaryKind;
 
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "Eligibility is required." })
   @MaxLength(ELIGIBILITY_MAX_LENGTH)
   eligibilityCriteria!: string;
 
   @IsOptional()
-  @IsString()
+  @PhoneField()
   phone?: string;
 
   @IsOptional()
-  @IsEmail()
+  @EmailField()
   email?: string;
 
   // The frontend resolves a CSV "Cause" column (a name, not an id) to
   // this before submitting — same reasoning as WaqfCause names being
   // what a founder actually recognizes, not the underlying id.
-  @IsString()
+  @IdField()
   @IsNotEmpty({ message: "Cause is required." })
   causeId!: string;
 }
 
 export class ProposeBulkBeneficiaryNominationsInput {
-  @IsString()
+  @IdField()
   waqfId!: string;
 
   @ValidateNested({ each: true })
@@ -125,6 +120,7 @@ export class ProposeBulkBeneficiaryNominationsInput {
 }
 
 export class RejectBeneficiaryNominationInput {
+  @Trimmed()
   @IsString()
   @IsNotEmpty({ message: "A reason is required when rejecting a nomination." })
   @MaxLength(REVIEW_NOTES_MAX_LENGTH)

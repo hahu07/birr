@@ -1,16 +1,18 @@
+import { FIELD_LIMITS } from "@birr/shared";
+import { IdField, TextField } from "../../common/validation/fields";
 import { BadRequestException, Body, Controller, Get, Param, Post, Put, Req } from "@nestjs/common";
 import { Request } from "express";
-import { IsBoolean, IsString } from "class-validator";
+import { IsBoolean } from "class-validator";
 import { NOTIFICATION_PREFERENCE_CATEGORIES, NotificationPreferenceCategory, NotificationsService } from "./notifications.service";
 import { isBirrStaffSession, resolveBirrStaffFromSession } from "../../common/auth/current-birr-staff";
 import { resolveUserFromSession } from "../../common/auth/current-founder";
 import { Public } from "../../common/guards/public.decorator";
 
 class MarkReadForEntityBody {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   relatedEntityType!: string;
 
-  @IsString()
+  @IdField()
   relatedEntityId!: string;
 }
 

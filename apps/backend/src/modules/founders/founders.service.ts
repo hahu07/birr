@@ -1,3 +1,5 @@
+import { EmailField, IdField, LongTextField, NameField, SecretField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { CountryCode } from "../../common/validation/country-code";
 import {
   BadRequestException,
@@ -9,7 +11,7 @@ import {
 } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { hash, compare } from "bcryptjs";
-import { IsEnum, IsIn, IsOptional, IsString, Matches, MinLength } from "class-validator";
+import { IsEnum, IsIn, IsOptional, Matches, MinLength } from "class-validator";
 import { prisma, Prisma, FounderKind, InstitutionType } from "@birr/db";
 import { assertUserEmailVerified, assertUserWhatsAppVerified } from "../../common/auth/current-founder";
 import { ResendVerificationEmailAdapter } from "./email/resend.adapter";
@@ -22,10 +24,10 @@ const MIN_PASSWORD_LENGTH = 8;
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/;
 
 export class SignUpInput {
-  @IsString()
+  @NameField()
   fullName!: string;
 
-  @IsString()
+  @EmailField()
   email!: string;
 
   @Matches(USERNAME_PATTERN, {
@@ -34,32 +36,34 @@ export class SignUpInput {
   username!: string;
 
   @MinLength(MIN_PASSWORD_LENGTH)
+  @SecretField(200)
   password!: string;
 }
 
 export class LoginInput {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   username!: string;
 
-  @IsString()
+  @SecretField()
   password!: string;
 }
 
 export class RequestPasswordResetInput {
-  @IsString()
+  @EmailField()
   email!: string;
 }
 
 export class ResetPasswordInput {
-  @IsString()
+  @SecretField()
   token!: string;
 
   @MinLength(MIN_PASSWORD_LENGTH)
+  @SecretField(200)
   newPassword!: string;
 }
 
 export class EstablishFounderAndFoundationInput {
-  @IsString()
+  @NameField()
   founderName!: string;
 
   @IsEnum(FounderKind)
@@ -72,10 +76,10 @@ export class EstablishFounderAndFoundationInput {
   @CountryCode({ optional: true })
   homeJurisdiction?: string;
 
-  @IsString()
+  @NameField()
   foundationName!: string;
 
-  @IsString()
+  @LongTextField()
   purpose!: string;
 
   @CountryCode({ optional: true })
@@ -90,7 +94,7 @@ export class EstablishFounderAndFoundationInput {
   // responds to. See onboarding_assist.disposition_recorded's own
   // write site below for what this becomes.
   @IsOptional()
-  @IsString()
+  @IdField()
   rafiqDraftId?: string;
 
   // "Jointly, with family or friends" (2026-11-14): the Foundation's deed
@@ -106,7 +110,7 @@ export class EstablishFounderAndFoundationInput {
 // Step 2's own fields, minus the ones Rafiq has no use for (logo) —
 // whatever the Founder has already typed by the time they ask for help.
 export class DraftPurposeSuggestionInput {
-  @IsString()
+  @NameField()
   founderName!: string;
 
   @IsEnum(FounderKind)
@@ -116,7 +120,7 @@ export class DraftPurposeSuggestionInput {
   @IsEnum(InstitutionType)
   institutionType?: InstitutionType;
 
-  @IsString()
+  @NameField()
   foundationName!: string;
 
   @CountryCode({ optional: true })

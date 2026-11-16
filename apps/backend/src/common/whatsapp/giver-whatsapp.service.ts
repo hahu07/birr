@@ -1,3 +1,4 @@
+import { normalizePhoneNumber } from "@birr/shared";
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger } from "@nestjs/common";
 import { createHash, randomBytes, randomInt } from "crypto";
 import { prisma } from "@birr/db";
@@ -18,23 +19,14 @@ const PER_IP_LIMIT = { count: 10, windowMs: 60 * 60 * 1000 };
 const LIVE_CODES_CHECKED = 8;
 /** Guesses per code (each row's maxAttempts defaults to this). */
 const MAX_ATTEMPTS = 5;
-const E164 = /^\+[1-9]\d{7,14}$/;
 
 /**
  * A WhatsApp number as typed, in E.164: "0803 123 4567", "2348031234567"
  * and "+234 803 123 4567" all become "+2348031234567". A leading 0 is read
- * as a Nigerian number. Null when it can't be a phone number.
+ * as a Nigerian number. Null when it can't be a phone number. The same rule
+ * every phone field uses (@birr/shared).
  */
-export function normalizeWhatsAppNumber(raw: string): string | null {
-  const digits = raw.replace(/[\s\-().]/g, "");
-  let e164: string;
-  if (digits.startsWith("+")) e164 = digits;
-  else if (digits.startsWith("00")) e164 = `+${digits.slice(2)}`;
-  else if (digits.startsWith("0")) e164 = `+234${digits.slice(1)}`;
-  else if (digits.startsWith("234")) e164 = `+${digits}`;
-  else return null;
-  return E164.test(e164) ? e164 : null;
-}
+export const normalizeWhatsAppNumber = normalizePhoneNumber;
 
 function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");

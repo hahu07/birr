@@ -1,14 +1,16 @@
+import { NameField, TextField } from "../../common/validation/fields";
+import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsEnum, IsString } from "class-validator";
+import { IsEnum } from "class-validator";
 import { prisma, Prisma, LedgerAccountType } from "@birr/db";
 
 const UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
 export class CreateVaultLedgerAccountInput {
-  @IsString()
+  @TextField(FIELD_LIMITS.code)
   code!: string;
 
-  @IsString()
+  @NameField()
   name!: string;
 
   @IsEnum(LedgerAccountType)
