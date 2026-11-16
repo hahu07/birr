@@ -148,7 +148,7 @@ describe("Monthly Vault gifts", () => {
     actorUserId = actor.id;
     await prisma.birrStaff.create({ data: { userId: actor.id, roles: { create: { role: "mutawalli_officer" } } } });
     vaultId = await openVault("Monthly Giving Vault");
-    minimum = (await prisma.contributionMinimum.findUniqueOrThrow({ where: { currency: "NGN" } })).minAmount.toFixed(2);
+    minimum = (await prisma.vaultGiftMinimum.findUniqueOrThrow({ where: { currency: "NGN" } })).minAmount.toFixed(2);
   });
 
   beforeEach(() => {
@@ -189,6 +189,8 @@ describe("Monthly Vault gifts", () => {
     expect(gift.authorizationEncrypted).not.toContain(REUSABLE_CARD.authorizationCode);
     expect(gift.manageTokenHash).toMatch(/^[0-9a-f]{64}$/);
 
+    // The set-up email goes out just after the gift turns active.
+    await waitUntil(() => emails.sent.some((e) => e.to === gift.email && e.subject === "Your monthly gift is set up"));
     const token = tokenFor(gift);
     expect(token.length).toBeGreaterThan(30);
     expect((await service.view(token)).status).toBe("active");

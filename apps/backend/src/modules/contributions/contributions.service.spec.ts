@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, UnauthorizedException } from "@nestjs/common";
-import { prisma, Asset, Waqf } from "@birr/db";
+import { prisma, Prisma, Asset, Waqf } from "@birr/db";
 import { ContributionsService } from "./contributions.service";
 import { AssetsService } from "../assets/assets.service";
 import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
@@ -321,6 +321,53 @@ describe("ContributionsService", () => {
         founderId,
       }),
     ).rejects.toThrow(/same currency/);
+  });
+
+  // Owner's decision, 2026-11-16: a one-off top-up of exactly what's left
+  // to reach the declared corpus is always allowed, even below the
+  // top-up floor, so an installment plan can always be finished.
+  describe("paying exactly what's left to reach the target", () => {
+    let nearTargetWaqfId: string;
+    let floor: Prisma.Decimal;
+
+    beforeAll(async () => {
+      floor = (await prisma.contributionMinimum.findUniqueOrThrow({ where: { currency: "NGN" } })).minAmount;
+      // The target is the floor + 1,000 above what's been raised, so the rest is below the floor.
+      const raised = new Prisma.Decimal(500000);
+      const rest = floor.minus(1);
+      const waqf = await prisma.waqf.create({
+        data: {
+          name: "Contributions Spec Near Target Waqf", type: "asset", jurisdiction: "NG", foundationId,
+          fundingPlan: "installment", corpusAmount: raised.plus(rest), corpusCurrency: "NGN",
+        },
+      });
+      nearTargetWaqfId = waqf.id;
+      waqfIds.push(waqf.id);
+      const first = await prisma.contribution.create({
+        data: { waqfId: waqf.id, amount: raised, currency: "NGN", provider: "paystack", providerReference: `near-target-${waqf.id}`, status: "confirmed" },
+      });
+      contributionIds.push(first.id);
+    });
+
+    const pay = (amount: Prisma.Decimal, extra: Record<string, unknown> = {}) =>
+      service.initiate({ waqfId: nearTargetWaqfId, amount: amount.toFixed(2), currency: "NGN", provider: "paystack", founderId, ...extra } as never);
+
+    test("exactly the rest is accepted even below the floor; anything else below the floor isn't", async () => {
+      const rest = floor.minus(1);
+      await expect(pay(rest.minus(1))).rejects.toThrow(/minimum contribution/);
+      const result = await pay(rest);
+      contributionIds.push(result.contribution.id);
+      expect(result.contribution.amount.toString()).toBe(rest.toString());
+    });
+
+    test("paying more than the rest, at or above the floor, is still fine", async () => {
+      const result = await pay(floor);
+      contributionIds.push(result.contribution.id);
+    });
+
+    test("a monthly top-up doesn't get the exception: it repeats every month", async () => {
+      await expect(pay(floor.minus(1), { monthly: true, payerEmail: "near-target@example.com" })).rejects.toThrow(BadRequestException);
+    });
   });
 
   test("initiate() rejects when the founder's primary contact hasn't verified email + WhatsApp yet", async () => {

@@ -68,7 +68,8 @@ export default function VaultDonationPage() {
           setLoadError(true);
         }
       });
-    apiFetchJson<ContributionMinimum[]>("/waqf-funding/contribution-minimums").then(setMinimums).catch(() => setMinimums([]));
+    // Vault's own minimum gift (2026-11-16), not the Waqf top-up floor.
+    apiFetchJson<ContributionMinimum[]>("/vault-gift-minimums").then(setMinimums).catch(() => setMinimums([]));
   }, [slug]);
 
   if (loadError) {

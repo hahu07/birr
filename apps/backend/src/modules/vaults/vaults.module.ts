@@ -16,6 +16,8 @@ import { VaultDistributionsService } from "./vault-distributions.service";
 import { VaultDistributionsController } from "./vault-distributions.controller";
 import { VaultDonorThresholdsService } from "./vault-donor-thresholds.service";
 import { VaultDonorThresholdsController } from "./vault-donor-thresholds.controller";
+import { VaultGiftMinimumsService } from "./vault-gift-minimums.service";
+import { VaultGiftMinimumsController } from "./vault-gift-minimums.controller";
 import { VaultLedgerService } from "./vault-ledger.service";
 import { VaultLedgerController } from "./vault-ledger.controller";
 import { VaultLedgerAccountsService } from "./vault-ledger-accounts.service";
@@ -45,6 +47,7 @@ import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-cor
     VaultProceedsController,
     VaultDistributionsController,
     VaultDonorThresholdsController,
+    VaultGiftMinimumsController,
     VaultLedgerController,
     VaultLedgerAccountsController,
     VaultExpensesController,
@@ -55,6 +58,7 @@ import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-cor
     VaultCoverStorageService,
     VaultDocumentStorageService,
     VaultDonorThresholdsService,
+    VaultGiftMinimumsService,
     VaultContributionsService,
     VaultInvestmentsService,
     VaultInvestmentTargetsService,

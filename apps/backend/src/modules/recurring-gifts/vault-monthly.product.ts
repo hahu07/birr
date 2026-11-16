@@ -75,7 +75,8 @@ export class VaultMonthlyProduct implements MonthlyGiftProduct {
   }
 
   async minimum() {
-    const minimum = await prisma.contributionMinimum.findUnique({ where: { currency: "NGN" } });
+    // Vault's own floor, not the Waqf top-up one (2026-11-16).
+    const minimum = await prisma.vaultGiftMinimum.findUnique({ where: { currency: "NGN" } });
     return minimum?.minAmount ?? new Prisma.Decimal(0);
   }
 

@@ -187,7 +187,7 @@ export class ContributionsService {
             : `An installment plan's first payment must be at least ${firstPaymentPercent}% of the declared corpus (${firstPaymentFloor} ${input.currency}).`,
         );
       }
-    } else if (amount.lt(minimum.minAmount)) {
+    } else if (amount.lt(minimum.minAmount) && !(await this.isExactlyTheRest(waqf, amount))) {
       throw new BadRequestException(
         `The minimum contribution for ${input.currency} is ${minimum.minAmount}. Please increase the amount.`,
       );
@@ -250,6 +250,22 @@ export class ContributionsService {
    * Unlike a one-off contribution the row is reserved before Paystack is
    * called, so a saved-card charge's webhook always finds it.
    */
+  /**
+   * Whether a one-off top-up is exactly what's left to reach the fund's
+   * declared corpus (owner's decision, 2026-11-16): always allowed, even
+   * below the top-up floor, so an installment plan can always be
+   * finished. Not offered for monthly top-ups, which repeat.
+   */
+  private async isExactlyTheRest(waqf: Waqf, amount: Prisma.Decimal): Promise<boolean> {
+    if (!waqf.corpusAmount || !waqf.corpusCurrency) return false;
+    const raised = await prisma.contribution.aggregate({
+      where: { waqfId: waqf.id, status: "confirmed", currency: waqf.corpusCurrency },
+      _sum: { amount: true },
+    });
+    const rest = new Prisma.Decimal(waqf.corpusAmount).minus(raised._sum.amount ?? 0);
+    return rest.gt(0) && amount.eq(rest);
+  }
+
   private async initiateMonthly(input: InitiateContributionInput, waqf: Waqf, minimum: Prisma.Decimal, monthly: WaqfMonthlyMode) {
     if (input.provider !== "paystack" || input.currency !== "NGN") {
       throw new BadRequestException("Monthly top-ups are by card, in naira.");

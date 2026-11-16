@@ -32,12 +32,6 @@ import {
 } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 
-interface VaultDonorThreshold {
-  id: string;
-  currency: string;
-  thresholdAmount: string;
-}
-
 const VAULT_TYPES: VaultType[] = ["project", "investment"];
 
 const STATUS_TONE: Record<Vault["status"], "success" | "warning" | "neutral" | "danger"> = {
@@ -158,54 +152,109 @@ export default function VaultsPage() {
         )}
       </section>
 
-      <section className="mt-10">
-        <VaultDonorThresholdsCard />
+      <section className="mt-10 grid gap-6 lg:grid-cols-2">
+        <CurrencySettingCard setting={GIFT_MINIMUMS} />
+        <CurrencySettingCard setting={DONOR_THRESHOLDS} />
       </section>
     </div>
   );
 }
 
-// AML anti-structuring control — see VaultContributionsService
-// .findOrCreateDonor's own comment: crossing this (a single
-// contribution, or a donor's running total) requires identity capture
-// on the public donation form. Staff-only to even view (unlike the
-// Waqf side's corpus/contribution minimums, which are public-by-design
-// informational floors — see /ops/waqf-funding and this endpoint's own
-// controller comment for why this one isn't); only compliance_officer
-// can change it, enforced server-side regardless of what this page hides.
-function VaultDonorThresholdsCard() {
+// Two per-currency Vault giving settings, one card shape:
+//
+// - Donor identity thresholds: the AML anti-structuring control (see
+//   VaultContributionsService.findOrCreateDonor). Staff-only to view;
+//   only compliance_officer can change it.
+// - Minimum gift (2026-11-16): the smallest public gift, one-off or
+//   monthly. Vault's own, so it never moves with the Waqf top-up floor in
+//   Ops → Waqf Funding. Shown on the public giving page.
+//
+// Editing is enforced server-side regardless of what this page hides.
+interface CurrencyAmount {
+  id: string;
+  currency: string;
+  amount: string;
+}
+
+interface CurrencySetting {
+  title: string;
+  description: string;
+  endpoint: string;
+  /** The amount's field name in the API. */
+  field: "thresholdAmount" | "minAmount";
+  permission: string;
+  amountLabel: string;
+  emptyText: string;
+  whoCanChange: string;
+}
+
+const DONOR_THRESHOLDS: CurrencySetting = {
+  title: "Donor identity thresholds",
+  description:
+    "Per-currency AML control — a single contribution at or above this, or a donor's running total crossing it, requires their full name and an ID on the public donation form.",
+  endpoint: "/vault-donor-thresholds",
+  field: "thresholdAmount",
+  permission: "vault.donor_threshold_set",
+  amountLabel: "Threshold amount",
+  emptyText: "No currency has an identity-capture threshold configured yet.",
+  whoCanChange: "a compliance officer",
+};
+
+const GIFT_MINIMUMS: CurrencySetting = {
+  title: "Minimum gift",
+  description:
+    "The smallest gift a donor can give to any Vault, one-off or monthly, shown on the public giving page. Separate from the Waqf top-up minimum.",
+  endpoint: "/vault-gift-minimums",
+  field: "minAmount",
+  permission: "vault.gift_minimum_set",
+  amountLabel: "Minimum amount",
+  emptyText: "No currency has a minimum gift configured yet, so no gift can be taken in it.",
+  whoCanChange: "a Mutawalli Officer",
+};
+
+function CurrencySettingCard({ setting }: { setting: CurrencySetting }) {
   const { staff, can } = useStaffSession();
-  const [thresholds, setThresholds] = useState<VaultDonorThreshold[] | null>(null);
+  const [rows, setRows] = useState<CurrencyAmount[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newCurrency, setNewCurrency] = useState("");
   const [newAmount, setNewAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const canEdit = can("vault.donor_threshold_set");
+  const canEdit = can(setting.permission);
+  const toRow = useCallback(
+    (raw: Record<string, string>): CurrencyAmount => ({ id: raw.id, currency: raw.currency, amount: raw[setting.field] }),
+    [setting.field],
+  );
 
   useEffect(() => {
-    apiFetchJson<VaultDonorThreshold[]>("/vault-donor-thresholds")
-      .then(setThresholds)
+    apiFetchJson<Record<string, string>[]>(setting.endpoint)
+      .then((data) => setRows(data.map(toRow)))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, []);
+  }, [setting.endpoint, toRow]);
+
+  async function save(currency: string, amount: string): Promise<CurrencyAmount> {
+    const updated = await apiFetchJson<Record<string, string>>(`${setting.endpoint}/${currency}`, {
+      method: "PUT",
+      body: JSON.stringify({ [setting.field]: amount }),
+    });
+    return toRow(updated);
+  }
+
+  function upsertRow(row: CurrencyAmount) {
+    setRows((prev) => {
+      const list = prev ?? [];
+      return list.some((r) => r.currency === row.currency)
+        ? list.map((r) => (r.currency === row.currency ? row : r))
+        : [...list, row].sort((a, b) => a.currency.localeCompare(b.currency));
+    });
+  }
 
   async function handleAdd() {
     if (!newCurrency.trim() || !newAmount.trim()) return;
     setSubmitting(true);
     setError(null);
     try {
-      const currency = newCurrency.trim().toUpperCase();
-      const updated = await apiFetchJson<VaultDonorThreshold>(`/vault-donor-thresholds/${currency}`, {
-        method: "PUT",
-        body: JSON.stringify({ thresholdAmount: newAmount }),
-      });
-      setThresholds((prev) => {
-        const list = prev ?? [];
-        const existingIndex = list.findIndex((t) => t.currency === currency);
-        return existingIndex >= 0
-          ? list.map((t, i) => (i === existingIndex ? updated : t))
-          : [...list, updated].sort((a, b) => a.currency.localeCompare(b.currency));
-      });
+      upsertRow(await save(newCurrency.trim().toUpperCase(), newAmount));
       setNewCurrency("");
       setNewAmount("");
     } catch (err) {
@@ -217,11 +266,8 @@ function VaultDonorThresholdsCard() {
 
   return (
     <Card>
-      <p className="mb-1 text-base font-semibold text-slate-900">Donor identity thresholds</p>
-      <p className="mb-4 text-sm text-slate-500">
-        Per-currency AML control — a single contribution at or above this, or a donor's running total crossing it,
-        requires their full name and an ID on the public donation form.
-      </p>
+      <p className="mb-1 text-base font-semibold text-slate-900">{setting.title}</p>
+      <p className="mb-4 text-sm text-slate-500">{setting.description}</p>
 
       {error && (
         <Alert tone="danger" title="Couldn't load or save" className="mb-4">
@@ -229,23 +275,14 @@ function VaultDonorThresholdsCard() {
         </Alert>
       )}
 
-      {!error && thresholds === null && <RowsSkeleton columns={2} />}
+      {!error && rows === null && <RowsSkeleton columns={2} />}
 
-      {!error && thresholds !== null && thresholds.length === 0 && (
-        <EmptyState title="No thresholds set" description="No currency has an identity-capture threshold configured yet." />
-      )}
+      {!error && rows !== null && rows.length === 0 && <EmptyState title="Nothing set" description={setting.emptyText} />}
 
-      {!error && thresholds !== null && thresholds.length > 0 && (
+      {!error && rows !== null && rows.length > 0 && (
         <div className="space-y-3">
-          {thresholds.map((threshold) => (
-            <ThresholdRow
-              key={threshold.currency}
-              threshold={threshold}
-              canEdit={canEdit}
-              onChanged={(next) =>
-                setThresholds((prev) => (prev ?? []).map((t) => (t.currency === next.currency ? next : t)))
-              }
-            />
+          {rows.map((row) => (
+            <CurrencyAmountRow key={row.currency} row={row} canEdit={canEdit} onSave={(amount) => save(row.currency, amount)} onChanged={upsertRow} />
           ))}
         </div>
       )}
@@ -257,7 +294,7 @@ function VaultDonorThresholdsCard() {
             <Input value={newCurrency} onChange={(e) => setNewCurrency(e.target.value)} placeholder="e.g. NGN" />
           </div>
           <div className="flex-1">
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">Threshold amount</label>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">{setting.amountLabel}</label>
             <Input type="number" min="0" value={newAmount} onChange={(e) => setNewAmount(e.target.value)} placeholder="0.00" />
           </div>
           <Button type="button" onClick={handleAdd} disabled={submitting || !newCurrency.trim() || !newAmount.trim()}>
@@ -268,24 +305,27 @@ function VaultDonorThresholdsCard() {
 
       {!canEdit && staff && (
         <p className="mt-4 text-xs text-slate-500">
-          Your role{staff.roles.length > 1 ? "s" : ""} ({humanizeRoles(staff.roles)}) can view these but not change them — reach out to a compliance officer.
+          Your role{staff.roles.length > 1 ? "s" : ""} ({humanizeRoles(staff.roles)}) can view these but not change them — reach out to{" "}
+          {setting.whoCanChange}.
         </p>
       )}
     </Card>
   );
 }
 
-function ThresholdRow({
-  threshold,
+function CurrencyAmountRow({
+  row,
   canEdit,
+  onSave,
   onChanged,
 }: {
-  threshold: VaultDonorThreshold;
+  row: CurrencyAmount;
   canEdit: boolean;
-  onChanged: (next: VaultDonorThreshold) => void;
+  onSave: (amount: string) => Promise<CurrencyAmount>;
+  onChanged: (next: CurrencyAmount) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(threshold.thresholdAmount);
+  const [value, setValue] = useState(row.amount);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -294,11 +334,7 @@ function ThresholdRow({
     setSubmitting(true);
     setError(null);
     try {
-      const updated = await apiFetchJson<VaultDonorThreshold>(`/vault-donor-thresholds/${threshold.currency}`, {
-        method: "PUT",
-        body: JSON.stringify({ thresholdAmount: value }),
-      });
-      onChanged(updated);
+      onChanged(await onSave(value));
       setEditing(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -315,10 +351,10 @@ function ThresholdRow({
         </Alert>
       )}
       <div className="flex items-center gap-2">
-        <span className="w-16 shrink-0 font-mono text-sm text-slate-700">{threshold.currency}</span>
+        <span className="w-16 shrink-0 font-mono text-sm text-slate-700">{row.currency}</span>
         {editing ? (
           <>
-            <Input type="number" min="0" value={value} onChange={(e) => setValue(e.target.value)} className="flex-1" />
+            <Input type="number" min="0" value={value} onChange={(e) => setValue(e.target.value)} className="flex-1" aria-label={`${row.currency} amount`} />
             <Button type="button" onClick={handleSave} disabled={submitting || !value.trim()}>
               {submitting ? "Saving…" : "Save"}
             </Button>
@@ -328,9 +364,7 @@ function ThresholdRow({
           </>
         ) : (
           <>
-            <span className="flex-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-500">
-              {threshold.thresholdAmount}
-            </span>
+            <span className="flex-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-500">{row.amount}</span>
             {canEdit && (
               <Button type="button" variant="secondary" onClick={() => setEditing(true)}>
                 Change

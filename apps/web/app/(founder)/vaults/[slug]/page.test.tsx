@@ -40,7 +40,7 @@ describe("VaultDonationPage — a fetch failure is not the same as a real 404", 
     // Both calls in the effect go through the same mocked apiFetchJson —
     // the second (contribution minimums) just needs to not hang.
     mockedFetch.mockImplementation((path: string) => {
-      if (path.includes("contribution-minimums")) return Promise.resolve([]);
+      if (path.includes("vault-gift-minimums")) return Promise.resolve([]);
       return new Promise(() => {}); // overridden per-test for the vault fetch itself
     });
   });
@@ -53,7 +53,7 @@ describe("VaultDonationPage — a fetch failure is not the same as a real 404", 
 
   it("shows 'This vault isn't open right now' only for a genuine 404 from our own backend", async () => {
     mockedFetch.mockImplementation((path: string) => {
-      if (path.includes("contribution-minimums")) return Promise.resolve([]);
+      if (path.includes("vault-gift-minimums")) return Promise.resolve([]);
       return Promise.reject(new ApiError('Vault "ramadan-relief" not found.', 404));
     });
     render(<VaultDonationPage />);
@@ -63,7 +63,7 @@ describe("VaultDonationPage — a fetch failure is not the same as a real 404", 
 
   it("shows a distinct 'couldn't load' message for a non-404 failure — never claims the vault is closed", async () => {
     mockedFetch.mockImplementation((path: string) => {
-      if (path.includes("contribution-minimums")) return Promise.resolve([]);
+      if (path.includes("vault-gift-minimums")) return Promise.resolve([]);
       return Promise.reject(new TypeError("Failed to fetch"));
     });
     render(<VaultDonationPage />);
@@ -77,7 +77,7 @@ describe("VaultDonationPage — a fetch failure is not the same as a real 404", 
 
   it("shows a distinct 'couldn't load' message for a non-404 ApiError (e.g. a 500) too", async () => {
     mockedFetch.mockImplementation((path: string) => {
-      if (path.includes("contribution-minimums")) return Promise.resolve([]);
+      if (path.includes("vault-gift-minimums")) return Promise.resolve([]);
       return Promise.reject(new ApiError("Internal server error", 500));
     });
     render(<VaultDonationPage />);
@@ -87,7 +87,7 @@ describe("VaultDonationPage — a fetch failure is not the same as a real 404", 
 
   it("renders the real vault once the fetch succeeds", async () => {
     mockedFetch.mockImplementation((path: string) => {
-      if (path.includes("contribution-minimums")) return Promise.resolve([]);
+      if (path.includes("vault-gift-minimums")) return Promise.resolve([]);
       return Promise.resolve(vault());
     });
     render(<VaultDonationPage />);
@@ -101,7 +101,7 @@ describe("VaultDonationPage — giving monthly", { timeout: 20_000 }, () => {
   beforeEach(() => {
     mockedFetch.mockReset();
     mockedFetch.mockImplementation((path: string) => {
-      if (path.includes("contribution-minimums")) return Promise.resolve([{ currency: "NGN", minAmount: "250000" }]);
+      if (path.includes("vault-gift-minimums")) return Promise.resolve([{ currency: "NGN", minAmount: "5000" }]);
       if (path === "/vault-contributions") return Promise.resolve({ clientPayload: { checkoutUrl: "https://checkout.test/x" } });
       return Promise.resolve(vault());
     });
@@ -119,20 +119,20 @@ describe("VaultDonationPage — giving monthly", { timeout: 20_000 }, () => {
     expect(screen.getByRole("textbox", { name: "Email" })).toBeRequired();
     expect(screen.getByText(/of every month, starting today/)).toBeTruthy();
 
-    await user.type(screen.getByLabelText(/^Amount/), "250000");
+    await user.type(screen.getByLabelText(/^Amount/), "10000");
     await user.type(screen.getByRole("textbox", { name: "Email" }), "amina@example.com");
     await user.click(screen.getByRole("button", { name: "Set up monthly gift" }));
 
     await waitFor(() => expect(window.location.href).toBe("https://checkout.test/x"));
     const [, init] = mockedFetch.mock.calls.find(([path]) => path === "/vault-contributions")!;
-    expect(JSON.parse(init!.body as string)).toMatchObject({ amount: "250000", currency: "NGN", provider: "paystack", donorEmail: "amina@example.com", monthly: true });
+    expect(JSON.parse(init!.body as string)).toMatchObject({ amount: "10000", currency: "NGN", provider: "paystack", donorEmail: "amina@example.com", monthly: true });
   });
 
   it("a one-time gift doesn't ask for monthly", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
     render(<VaultDonationPage />);
-    await user.type(await screen.findByLabelText(/^Amount/), "250000");
+    await user.type(await screen.findByLabelText(/^Amount/), "10000");
     await user.click(screen.getByRole("button", { name: "Continue to payment" }));
     await waitFor(() => expect(window.location.href).toBe("https://checkout.test/x"));
     const [, init] = mockedFetch.mock.calls.find(([path]) => path === "/vault-contributions")!;

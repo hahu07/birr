@@ -8,6 +8,7 @@ import {
   permissions,
   rolePermissions,
   contributionMinimums,
+  vaultGiftMinimums,
   corpusMinimums,
   vaultDonorThresholds,
   causeCategories,
@@ -157,6 +158,11 @@ async function main() {
       update: { minAmount: minimum.minAmount },
       create: minimum,
     });
+  }
+
+  // Never overwrites a value staff have set in the Ops Console.
+  for (const minimum of vaultGiftMinimums) {
+    await prisma.vaultGiftMinimum.upsert({ where: { currency: minimum.currency }, update: {}, create: minimum });
   }
 
   for (const minimum of corpusMinimums) {
