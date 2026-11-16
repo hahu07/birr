@@ -1,7 +1,17 @@
 /** @type {import('jest').Config} */
 module.exports = {
   preset: "ts-jest",
+  // Transpile-only; see tsconfig.spec.json for why.
+  transform: {
+    "^.+\\.tsx?$": ["ts-jest", { tsconfig: "<rootDir>/../tsconfig.spec.json" }],
+  },
   testEnvironment: "node",
+  // Jest's default (cores - 1 workers, 7 on an 8-core laptop) let the
+  // ts-jest workers grow past the machine's RAM, and Ubuntu's systemd-oomd
+  // killed VS Code mid-run (2026-11-16: 12.8 GB peak). Three workers, each
+  // recycled once it holds more than 1 GB, keep a full run within memory.
+  maxWorkers: 3,
+  workerIdleMemoryLimit: "1GB",
   rootDir: "src",
   testRegex: ".*\\.spec\\.ts$",
   setupFiles: ["<rootDir>/../jest.setup.ts"],

@@ -1,0 +1,11 @@
+{
+  // Used only by Jest (jest.config.js). isolatedModules makes ts-jest
+  // transpile each file on its own instead of type-checking the whole
+  // program in every worker, which is what filled the laptop's memory
+  // (2026-11-16). Type errors in spec files are still caught by
+  // `pnpm typecheck`, which reads tsconfig.json and includes src/.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "isolatedModules": true
+  }
+}
