@@ -252,7 +252,7 @@ describe("InvitationsService", () => {
       inviteeKind: "founder_user",
       email: `accept-founder-${Date.now()}@example.com`,
       founderId: existingFounderId,
-      roleKey: "primary_contact",
+      roleKey: "viewer",
       invitedByUserId: inviterUserId,
     });
     invitationIds.push(invitation.id);
@@ -263,8 +263,20 @@ describe("InvitationsService", () => {
     expect(result.membershipOrStaff).toMatchObject({
       founderId: existingFounderId,
       userId: result.user.id,
-      permissionLevel: "primary_contact",
+      permissionLevel: "viewer",
     });
+  });
+
+  test("a second primary contact can't be invited: that only changes through a succession Birr confirms", async () => {
+    await expect(
+      service.invite({
+        inviteeKind: "founder_user",
+        email: `second-primary-${Date.now()}@example.com`,
+        founderId: existingFounderId,
+        roleKey: "primary_contact",
+        invitedByUserId: inviterUserId,
+      }),
+    ).rejects.toThrow(BadRequestException);
   });
 
   test("accept() rejects an expired invitation and flips its status to expired", async () => {

@@ -549,7 +549,7 @@ export class FoundersService {
     assertUserWhatsAppVerified(user);
 
     const existing = await prisma.founderMembership.findFirst({
-      where: { userId, permissionLevel: "primary_contact" },
+      where: { userId, permissionLevel: "primary_contact", status: "active" },
     });
     if (existing) {
       throw new ConflictException("You've already established a Founder account.");

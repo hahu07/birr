@@ -96,6 +96,10 @@ const governedPermissions = [
   // they've left); same two-person rule as role changes (owner's decision).
   { key: "staff.suspend", category: "staff", requiresMakerChecker: true, description: "Suspend a staff member: they're refused on their next request until reinstated." },
   { key: "staff.reinstate", category: "staff", requiresMakerChecker: true, description: "Reinstate a suspended staff member." },
+  // 2026-11-15: hand a Founder's primary contact role to someone new, on
+  // the founder's request or when the contact is gone; Mutawalli proposes,
+  // Compliance or the Board approves (owner's decision).
+  { key: "founder.primary_contact_change", category: "founder", requiresMakerChecker: true, description: "Make someone else a Founder's primary contact, after a handover request or when the current one is gone." },
   // Changing what a role may do, from the Ops Console (2026-10-18). Owner's
   // decisions: proposed by platform_admin, approved by board_of_trustees
   // only, and every permission is editable — this one included — subject
@@ -213,6 +217,9 @@ export const accessPermissions = [
   // Compliance alone, with a reason; the giver is never told why.
   // Paystack reconciliation (2026-11-15): flag-only. Seeing mismatches is
   // the same four roles as the review lists; acting on them is Compliance.
+  // Primary contact succession (2026-11-15).
+  { key: "founder.succession_view", category: "founder", description: "See requests to change a Founder's primary contact, with their evidence and history.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "mutawalli_officer"] },
+  { key: "founder.succession_record", category: "founder", description: "Record a request to replace a Founder's primary contact on behalf of family or an institution, with evidence.", roles: ["mutawalli_officer"] },
   { key: "payments.reconciliation_view", category: "compliance", description: "See daily Paystack reconciliation runs and the mismatches they found.", roles: ["audit_committee", "board_of_trustees", "compliance_officer", "mutawalli_officer"] },
   { key: "payments.reconciliation_resolve", category: "compliance", description: "Ask Paystack again about a mismatch, and mark it resolved with a note.", roles: ["compliance_officer"] },
   { key: "payments.reconciliation_run", category: "compliance", description: "Reconcile a chosen past day with Paystack now.", roles: ["compliance_officer"] },
@@ -245,6 +252,7 @@ type Grants = Record<string, { canMaker?: boolean; canChecker?: boolean }>;
 
 const governedRolePermissions: Record<string, Grants> = {
   mutawalli_officer: {
+    "founder.primary_contact_change": { canMaker: true },
     "asset.dispose": { canMaker: true },
     "distribution.approve": { canMaker: true },
     "waqf.milestone_complete": { canMaker: true },
@@ -296,6 +304,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.role_remove": { canChecker: true },
     "staff.suspend": { canChecker: true },
     "staff.reinstate": { canChecker: true },
+    "founder.primary_contact_change": { canChecker: true },
     "role.permission_change": { canChecker: true },
     "zakah.refund_approve": { canChecker: true },
   },
@@ -361,6 +370,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "staff.role_remove": { canChecker: true },
     "staff.suspend": { canChecker: true },
     "staff.reinstate": { canChecker: true },
+    "founder.primary_contact_change": { canChecker: true },
     "zakah.metal_price_set": { canChecker: true },
     "zakah.distribution_approve": { canChecker: true },
     "zakah.distribution_mark_paid": { canChecker: true },

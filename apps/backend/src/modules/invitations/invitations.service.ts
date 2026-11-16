@@ -20,6 +20,7 @@ import {
   renderCoFounderStatement,
 } from "../foundation-deeds/co-founder-consent";
 import { staffHasAccess } from "../../common/auth/staff-permissions";
+import { stepDownOutgoing, stepUpAndComplete, successionForInvitation } from "../founder-succession/succession-swap";
 
 const INVITATION_VALIDITY_DAYS = 7;
 const MIN_PASSWORD_LENGTH = 8;
@@ -180,6 +181,14 @@ export class InvitationsService {
       }
       if (!Object.values(FounderPermissionLevel).includes(input.roleKey as any)) {
         throw new BadRequestException(`"${input.roleKey}" is not a valid FounderPermissionLevel.`);
+      }
+      // A Founder has one primary contact (a database rule since
+      // 2026-11-15). Changing who it is goes through a succession, which
+      // Birr confirms (FounderSuccessionService), never a plain invite.
+      if (input.roleKey === "primary_contact") {
+        throw new BadRequestException(
+          "A Founder has one primary contact. To hand the role to someone else, use \"Hand over primary contact\" on your Team page.",
+        );
       }
     } else {
       if (input.founderId) {
@@ -467,6 +476,18 @@ export class InvitationsService {
       let newFounderId: string | undefined;
 
       if (invitation.inviteeKind === "founder_user") {
+        // An approved succession's invitation: the outgoing contact steps
+        // down before the new one joins as primary contact (one per
+        // Founder), and the succession completes in this transaction.
+        const succession = invitation.roleKey === "primary_contact" ? await successionForInvitation(tx, invitation.id) : null;
+        if (invitation.roleKey === "primary_contact" && succession?.status !== "approved") {
+          throw new BadRequestException("This invitation is no longer valid.");
+        }
+        if (succession) {
+          const outgoing = await tx.founderMembership.findUniqueOrThrow({ where: { id: succession.outgoingMembershipId } });
+          // Approval already stepped them down; re-checking guards a race with another change.
+          if (outgoing.permissionLevel === "primary_contact" && outgoing.status === "active") await stepDownOutgoing(tx, succession);
+        }
         membershipOrStaff = await tx.founderMembership.create({
           data: {
             founderId: invitation.founderId!,
@@ -475,6 +496,7 @@ export class InvitationsService {
             invitedBy: invitation.invitedBy,
           },
         });
+        if (succession) await stepUpAndComplete(tx, succession, membershipOrStaff.id);
       } else if (invitation.inviteeKind === "co_founder") {
         // Mirrors FoundersService.establishFounderAndFoundation()'s own
         // Founder-create + primary_contact-membership-create + audit

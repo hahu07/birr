@@ -30,6 +30,7 @@ import { ZakahFitrService } from "../zakah/zakah-fitr.service";
 import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notifications/resolve-founder-recipients";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
+import { FounderSuccessionService } from "../founder-succession/founder-succession.service";
 
 function extractProposedFoundationId(payload: unknown): string | null {
   if (
@@ -432,6 +433,7 @@ export class GovernedActionsService {
     private readonly zakahDistributionsService: ZakahDistributionsService,
     private readonly zakahRefundsService: ZakahRefundsService,
     private readonly zakahFitrService: ZakahFitrService,
+    private readonly founderSuccessionService: FounderSuccessionService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       [
@@ -1722,6 +1724,20 @@ export class GovernedActionsService {
           },
         },
       ],
+      // ---- Primary contact succession (2026-11-15). Owner's decisions:
+      // Mutawalli proposes, Compliance or the Board approves; an
+      // unreachable contact's case waits 7 days for an objection. See
+      // FounderSuccessionService. ----
+      [
+        "founder.primary_contact_change",
+        {
+          validatePropose: (payload) => this.founderSuccessionService.validateChange(payload),
+          checkDuplicate: (payload) => this.founderSuccessionService.checkDuplicateChange(payload),
+          describePayload: (payload) => this.founderSuccessionService.describeChange(payload),
+          onApprove: (payload, tx, ctx) => this.founderSuccessionService.approveChange(payload, tx, ctx),
+          onReject: (payload, tx) => this.founderSuccessionService.rejectChange(payload, tx),
+        },
+      ],
       // ---- Suspending and reinstating staff (2026-11-15). Owner's
       // decision: the same two-person rule as role changes (maker
       // platform_admin; checkers board_of_trustees / compliance_officer).
@@ -2229,6 +2245,12 @@ export class GovernedActionsService {
     // staff.invite: the invitation email goes out only once the approval
     // that created it has committed. Never throws for a failed send — the
     // inviter can resend from the Staff page.
+    // Primary contact succession: tell the Founder's members what was decided, after commit.
+    if (action.permission.key === "founder.primary_contact_change") {
+      this.founderSuccessionService.afterDecision(action.payload, input.approve).catch((err: unknown) => {
+        this.logger.error("Failed to notify on a primary contact decision:", err instanceof Error ? err.stack : String(err));
+      });
+    }
     if (input.approve && result.fulfillment?.entityType === "Invitation") {
       const invitationId = result.fulfillment.entityId;
       this.invitationsService.deliverById(invitationId).catch((err: unknown) => {
