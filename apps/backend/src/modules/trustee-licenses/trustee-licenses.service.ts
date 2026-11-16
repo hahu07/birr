@@ -1,5 +1,4 @@
-import { LongTextField, TextField } from "../../common/validation/fields";
-import { FIELD_LIMITS } from "@birr/shared";
+import { LongTextField, NameField, ReferenceField } from "../../common/validation/fields";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { CountryCode } from "../../common/validation/country-code";
 import { IsDateString, IsEnum, IsOptional } from "class-validator";
@@ -13,11 +12,11 @@ export class CreateTrusteeLicenseInput {
   @IsEnum(TrusteeLicenseStatus)
   status!: TrusteeLicenseStatus;
 
-  @TextField()
+  @NameField()
   licensingAuthority!: string;
 
   @IsOptional()
-  @TextField(FIELD_LIMITS.code)
+  @ReferenceField()
   licenseNumber?: string;
 
   @IsOptional()
@@ -38,7 +37,7 @@ export class UpdateTrusteeLicenseInput {
   status!: TrusteeLicenseStatus;
 
   @IsOptional()
-  @TextField(FIELD_LIMITS.code)
+  @ReferenceField()
   licenseNumber?: string;
 
   @IsOptional()

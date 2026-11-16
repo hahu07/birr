@@ -66,6 +66,19 @@ export function EmailField() {
   );
 }
 
+/**
+ * A registration or licence number: up to 100 characters, and it has a
+ * digit in it (a licence number of "adewale" is a mistake, 2026-11-16).
+ */
+export function ReferenceField() {
+  return applyDecorators(
+    trimmed(),
+    IsString(),
+    MaxLength(FIELD_LIMITS.code, { message: tooLong(FIELD_LIMITS.code) }),
+    Matches(/\d/, { message: "$property should include digits, like RC 1909785." }),
+  );
+}
+
 /** A phone number, stored in E.164 (a Nigerian "0803 123 4567" becomes "+2348031234567"). */
 export function PhoneField() {
   return applyDecorators(
@@ -124,4 +137,4 @@ export function JsonObjectField(max: number) {
 }
 
 /** Names of every rule above, for dto-coverage.spec.ts. */
-export const FIELD_RULES = ["Trimmed", "TextField", "LongTextField", "NameField", "EmailField", "PhoneField", "UrlField", "DateField", "IdField", "SecretField", "JsonObjectField"];
+export const FIELD_RULES = ["Trimmed", "TextField", "LongTextField", "NameField", "EmailField", "PhoneField", "UrlField", "DateField", "IdField", "ReferenceField", "SecretField", "JsonObjectField"];

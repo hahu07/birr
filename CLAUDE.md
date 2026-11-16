@@ -890,6 +890,16 @@ an email, "call me" as a phone):
 - **Guard test:** `dto-coverage.spec.ts` fails on any text field in an
   API input that has no length limit or rule, or free text that isn't
   trimmed, the same idea as `route-role-coverage.spec.ts`.
+- **Forms check as you type, too** (same day, after the owner typed a
+  24-digit phone, a licence number of "adewale" and an authority of
+  "345666"): `@birr/ui` `Input` checks phone (`type="tel"`: phone
+  characters only, at most 20), email and url inputs on its own, and
+  `check="name"` (needs letters) / `check="reference"` (needs a digit)
+  where a page asks. The message shows once the person leaves the field,
+  and the browser won't submit while it's wrong. The rules are
+  `fieldProblem` in `@birr/shared`; the API has the matching
+  `ReferenceField` (registration and licence numbers) and `NameField`
+  (licensing and regulating authorities).
 
 **Update, 2026-11-16 — every scheduled job is watched, and backups are
 real.** The five scheduled jobs (monthly giving, Paystack reconciliation,

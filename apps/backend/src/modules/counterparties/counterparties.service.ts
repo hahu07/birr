@@ -1,4 +1,4 @@
-import { DateField, EmailField, LongTextField, NameField, PhoneField, TextField, UrlField } from "../../common/validation/fields";
+import { DateField, EmailField, LongTextField, NameField, PhoneField, ReferenceField, TextField, UrlField } from "../../common/validation/fields";
 import { FIELD_LIMITS } from "@birr/shared";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
@@ -18,7 +18,7 @@ export class RegisterCounterpartyInput {
   jurisdiction!: string;
 
   @IsOptional()
-  @TextField(FIELD_LIMITS.code)
+  @ReferenceField()
   registrationNumber?: string;
 
   @IsOptional()
@@ -53,11 +53,11 @@ export class RegisterCounterpartyInput {
   contactPhone?: string;
 
   @IsOptional()
-  @TextField(FIELD_LIMITS.code)
+  @ReferenceField()
   regulatoryLicenseNumber?: string;
 
   @IsOptional()
-  @TextField()
+  @NameField()
   regulatingAuthority?: string;
 
   @IsOptional()
@@ -86,7 +86,7 @@ export class UpdateCounterpartyInput {
   jurisdiction?: string;
 
   @IsOptional()
-  @TextField(FIELD_LIMITS.code)
+  @ReferenceField()
   registrationNumber?: string;
 
   @IsOptional()
@@ -114,11 +114,11 @@ export class UpdateCounterpartyInput {
   contactPhone?: string;
 
   @IsOptional()
-  @TextField(FIELD_LIMITS.code)
+  @ReferenceField()
   regulatoryLicenseNumber?: string;
 
   @IsOptional()
-  @TextField()
+  @NameField()
   regulatingAuthority?: string;
 
   @IsOptional()

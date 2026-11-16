@@ -124,6 +124,22 @@ describe("registering a counterparty", () => {
   test("a name of spaces, or no name, is refused", async () => {
     expect(await errorsFor(RegisterCounterpartyInput, { ...valid, name: "   " })).toEqual(["Name is required."]);
   });
+
+  test("what the owner typed on 2026-11-16 is refused: a 24-digit phone, a licence number with no digits, an authority with no letters", async () => {
+    const errors = await errorsFor(RegisterCounterpartyInput, {
+      ...valid,
+      contactPhone: "070578781111111111111111",
+      regulatoryLicenseNumber: "adewale",
+      regulatingAuthority: "345666",
+    });
+    expect(errors).toEqual([
+      "Contact phone must be a phone number, like 0803 123 4567 or +234 803 123 4567.",
+      "Regulatory license number should include digits, like RC 1909785.",
+      "Regulating authority must contain letters.",
+    ]);
+    const ok = (await run(RegisterCounterpartyInput, { ...valid, regulatoryLicenseNumber: " CBN/MFB/2019/045 ", regulatingAuthority: "Central Bank of Nigeria" })) as RegisterCounterpartyInput;
+    expect(ok).toMatchObject({ regulatoryLicenseNumber: "CBN/MFB/2019/045", regulatingAuthority: "Central Bank of Nigeria" });
+  });
 });
 
 describe("fields that keep their own rules are trimmed too", () => {

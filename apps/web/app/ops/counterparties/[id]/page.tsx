@@ -523,26 +523,26 @@ function EditProfileForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="w-32 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Jurisdiction</label>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="w-52 space-y-1.5">
+          <label className="block text-sm font-medium text-slate-700">Jurisdiction</label>
           <CountrySelect value={jurisdiction} onChange={setJurisdiction} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Registration number</label>
-          <Input maxLength={FIELD_LIMITS.code} value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} />
+          <label className="block text-sm font-medium text-slate-700">Registration number</label>
+          <Input check="reference" value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Website</label>
+          <label className="block text-sm font-medium text-slate-700">Website</label>
           <Input type="url" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://" />
         </div>
       </div>
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">Address</label>
+        <label className="block text-sm font-medium text-slate-700">Address</label>
         <Input value={address} onChange={(e) => setAddress(e.target.value)} />
       </div>
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">Business activities</label>
+        <label className="block text-sm font-medium text-slate-700">Business activities</label>
         <textarea
           rows={3}
           maxLength={FIELD_LIMITS.longText}
@@ -552,41 +552,43 @@ function EditProfileForm({
         />
       </div>
       <div className="space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">Existing Shariah certification</label>
+        <label className="block text-sm font-medium text-slate-700">Existing Shariah certification</label>
         <Input
           value={existingShariahCertification}
           onChange={(e) => setExistingShariahCertification(e.target.value)}
           placeholder="Name/reference of any Shariah board or certification this counterparty already holds, if any"
         />
       </div>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Contact name</label>
-          <Input maxLength={FIELD_LIMITS.name} value={contactName} onChange={(e) => setContactName(e.target.value)} />
+          <label className="block text-sm font-medium text-slate-700">Contact name</label>
+          <Input check="name" value={contactName} onChange={(e) => setContactName(e.target.value)} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Contact email</label>
+          <label className="block text-sm font-medium text-slate-700">Contact email</label>
           <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Contact phone</label>
+          <label className="block text-sm font-medium text-slate-700">Contact phone</label>
           <Input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="0803 123 4567 or +44…" />
         </div>
       </div>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Regulatory license number</label>
-          <Input maxLength={FIELD_LIMITS.code} value={regulatoryLicenseNumber} onChange={(e) => setRegulatoryLicenseNumber(e.target.value)} />
+          <label className="block text-sm font-medium text-slate-700">Regulatory license number</label>
+          <Input check="reference" value={regulatoryLicenseNumber} onChange={(e) => setRegulatoryLicenseNumber(e.target.value)} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">Regulating authority</label>
-          <Input value={regulatingAuthority} onChange={(e) => setRegulatingAuthority(e.target.value)} />
+          <label className="block text-sm font-medium text-slate-700">Regulating authority</label>
+          <Input check="name" value={regulatingAuthority} onChange={(e) => setRegulatingAuthority(e.target.value)} />
         </div>
-        <Button type="submit" disabled={disabled}>
-          Save
-        </Button>
+      </div>
+      <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
+        </Button>
+        <Button type="submit" disabled={disabled}>
+          Save
         </Button>
       </div>
     </form>
@@ -608,11 +610,11 @@ function ConcentrationLimitForm({
   return (
     <div className="flex flex-wrap items-end gap-3">
       <div className="w-40 space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">Concentration limit</label>
+        <label className="block text-sm font-medium text-slate-700">Concentration limit</label>
         <Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
       </div>
       <div className="w-28 space-y-1.5">
-        <label className="text-sm font-medium text-slate-700">Currency</label>
+        <label className="block text-sm font-medium text-slate-700">Currency</label>
         <Input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} />
       </div>
       <Button disabled={disabled || !amount.trim()} onClick={() => onSet(amount.trim(), currency.trim())}>
