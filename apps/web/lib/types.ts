@@ -101,6 +101,23 @@ export interface WaqfCause {
   // WaqfCausesService.listForFounder's own comment on why an unselect
   // needs to warn about these too, not just approved beneficiaries.
   _count?: { beneficiaries: number; distributions: number; pendingNominations: number };
+  // Founder-facing listing only (2026-11-16): what's already committed
+  // to this cause (pending, approved, disbursing or paid distributions),
+  // the floor its allocation can't go below. Null on an Investment fund,
+  // whose corpus allocation is a target, not what's spent.
+  committedAmount?: string | null;
+}
+
+/** GET /waqf-causes/allocation-summary — where a fund's corpus allocation stands. */
+export interface CauseAllocationSummary {
+  currency: string | null;
+  raised: string;
+  allocated: string;
+  /** Already committed on causes the founder removed: stays counted. */
+  heldByRemovedCauses: string;
+  available: string;
+  /** Asset and Project funds: a cause can't go below what's committed to it. */
+  appliesFloor: boolean;
 }
 
 export interface WaqfProceeds {

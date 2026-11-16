@@ -76,6 +76,7 @@ const UNGATED_WRITE_ROUTES: Record<string, string> = {
   "POST /waqf-causes/select": FOUNDER_SELF_SERVICE,
   "POST /waqf-causes/:id/unselect": FOUNDER_SELF_SERVICE,
   "POST /waqf-causes/:id/allocate": FOUNDER_SELF_SERVICE,
+  "POST /waqf-causes/:id/move": FOUNDER_SELF_SERVICE,
   "POST /contributions": FOUNDER_SELF_SERVICE,
   "POST /contributions/:id/verify": FOUNDER_SELF_SERVICE,
 

@@ -6,6 +6,8 @@ import {
   CreateWaqfCauseInput,
   SelectCauseCategoryInput,
   AllocateCauseInput,
+  MoveAllocationInput,
+  UnselectCauseInput,
   UpdateWaqfCauseProjectPlanInput,
 } from "./waqf-causes.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff, isBirrStaffSession } from "../../common/auth/current-birr-staff";
@@ -44,9 +46,15 @@ export class WaqfCausesController {
   // Founder-Portal self-service — the inverse of select() above.
   @Public()
   @Post(":id/unselect")
-  async unselect(@Param("id") id: string, @Req() request: Request) {
+  async unselect(@Param("id") id: string, @Body() body: UnselectCauseInput, @Req() request: Request) {
     const founder = await resolveFounderFromSession(request);
-    await this.service.unselectForFounder(id, founder.id);
+    // Removing a cause that has an allocation needs the primary contact
+    // and a reason (2026-11-16); the service decides, since only it
+    // knows whether the cause has one.
+    await this.service.unselectForFounder(id, founder.id, {
+      reason: body?.reason,
+      isPrimaryContact: founder.permissionLevel === "primary_contact",
+    });
     return { ok: true };
   }
 
@@ -60,7 +68,18 @@ export class WaqfCausesController {
   async allocate(@Param("id") id: string, @Body() body: AllocateCauseInput, @Req() request: Request) {
     const founder = await resolveFounderFromSession(request);
     assertPrimaryContact(founder);
-    return this.service.allocate(id, founder.id, String(body.amount));
+    return this.service.allocate(id, founder.id, String(body.amount), body.reason);
+  }
+
+  // Founder-Portal self-service (2026-11-16) — moves part of one cause's
+  // allocation to another cause of the same fund in one step. Same gate
+  // as allocate() above.
+  @Public()
+  @Post(":id/move")
+  async move(@Param("id") id: string, @Body() body: MoveAllocationInput, @Req() request: Request) {
+    const founder = await resolveFounderFromSession(request);
+    assertPrimaryContact(founder);
+    return this.service.moveAllocation(id, founder.id, { toCauseId: body.toCauseId, amount: String(body.amount), reason: body.reason });
   }
 
   // Birr-staff path — the second, additive proceeds pool, distinct from
@@ -131,6 +150,19 @@ export class WaqfCausesController {
       return causes;
     }
     return this.service.list(waqfId, includeInactive === "true");
+  }
+
+  // Founder-Portal — where this fund's allocation stands, worked out
+  // the way allocate() checks it (2026-11-16). Declared before ":id".
+  @Public()
+  @Get("allocation-summary")
+  async allocationSummary(@Query("waqfId") waqfId: string | undefined, @Req() request: Request) {
+    if (!waqfId) throw new BadRequestException("Query parameter waqfId is required.");
+    if (!hasAnySessionCookie(request)) throw new UnauthorizedException("Not signed in.");
+    const founder = await resolveFounderFromSession(request);
+    const summary = await this.service.allocationSummaryForFounder(waqfId, founder.id);
+    if (!summary) throw new NotFoundException(`Waqf "${waqfId}" not found.`);
+    return summary;
   }
 
   @Get(":id")

@@ -770,6 +770,33 @@ and, for monthly zakah, `RecurringGift.zakahNisabBasis`, reused for each
 later charge. This replaces "nisab basis is still the Board's open
 decision": the Board now decides whether payers choose, not which metal.
 
+**Update, 2026-11-16 — changing a cause allocation is guided, and can't
+undo money already committed.** Allocation stays founder self-service
+(2026-08-27); owner's decisions on changing one that's already set:
+- **A review before it's saved**: now → new, what that leaves
+  unallocated, and what's already committed to the cause. A first
+  allocation saves directly.
+- **Move** (`POST /waqf-causes/:id/move`) takes from one cause and adds
+  to another of the same fund in one step; the fund's total is unchanged.
+- **A written reason** for lowering, moving, or removing a cause that has
+  an allocation, kept in the audit row (`changeReason`). The fund's
+  assigned Mutawalli Officer (else every active one) gets an in-app
+  notice; it blocks nothing. Removing such a cause also needs the primary
+  contact now, like allocating.
+- **A gap this closed (Asset/Project funds):** a founder could lower a
+  cause's allocation below what was already committed to it (pending,
+  approved, disbursing or paid distributions), or remove the cause, and
+  allocate the freed money to another cause, so the causes together could
+  have more committed than was raised. Now an allocation can't go below
+  what's committed, a removed cause's committed money stays out of
+  "unallocated" (`WaqfCausesService.allocationPosition`, also behind
+  `GET /waqf-causes/allocation-summary`), and a removed cause takes no new
+  distributions (`DistributionsService.create`). Investment funds are
+  untouched: their corpus allocation is a target, not what's spent.
+- Allocation now locks the cause before the fund (`FOR NO KEY UPDATE`),
+  the same order distributions use, so the two can't both pass on stale
+  figures.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
