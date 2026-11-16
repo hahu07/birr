@@ -83,7 +83,7 @@ function ContributionRow({
   return (
     <TableRow>
       <TableCell className="text-slate-500">
-        {c.donor ? c.donor.fullName ?? c.donor.email : <span className="italic text-slate-400">Anonymous</span>}
+        {c.donor ? c.donor.fullName ?? c.donor.email ?? c.donor.whatsappNumber : <span className="italic text-slate-400">Anonymous</span>}
       </TableCell>
       <TableCell className="font-medium text-slate-900">
         {c.currency} {formatAmount(c.amount)}

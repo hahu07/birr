@@ -649,14 +649,55 @@ describe("VaultContributionsService", () => {
       });
     });
 
-    test("a number first given alone joins the email given later, on one donor record", async () => {
+    test("a number given alone and later with an email stays on its own record, still counted together", async () => {
       const { number, proof } = await giver.confirmed();
-      await give("100", { donorWhatsApp: number, whatsappProof: proof });
-      const email = uniqueEmail("wa-joins");
+      await give("600", { donorWhatsApp: number, whatsappProof: proof });
+      const email = uniqueEmail("wa-later");
+      await expect(give("600", { donorEmail: email, donorWhatsApp: number, whatsappProof: proof })).rejects.toMatchObject({
+        response: { code: "IDENTITY_REQUIRED" },
+      });
       await give("100", { donorEmail: email, donorWhatsApp: number, whatsappProof: proof });
-      const donors = await prisma.vaultDonor.findMany({ where: { whatsappNumber: number } });
-      expect(donors).toHaveLength(1);
-      expect(donors[0].email).toBe(email);
+      const byNumber = await prisma.vaultDonor.findFirstOrThrow({ where: { whatsappNumber: number, email: null } });
+      expect(byNumber.email).toBeNull();
+    });
+
+    // Review finding (2026-11-16): anyone can type an email, so typing
+    // someone else's beside your own confirmed number must never route that
+    // donor's receipts to you.
+    test("someone typing another donor's email beside their own number gets neither that donor's record nor their receipts", async () => {
+      const victimEmail = uniqueEmail("wa-victim");
+      const own = await give("50", { donorEmail: victimEmail });
+      const attacker = await giver.confirmed();
+      const theirs = await give("50", { donorEmail: victimEmail, donorWhatsApp: attacker.number, whatsappProof: attacker.proof });
+
+      const victim = await prisma.vaultDonor.findFirstOrThrow({ where: { email: victimEmail } });
+      expect(victim.whatsappNumber).toBeNull();
+      expect(theirs.contribution.donorId).toBe(victim.id);
+
+      const sentBefore = giver.fake.messages.filter((m) => m.to === attacker.number).length;
+      stripeFake.nextWebhookResult = { providerReference: own.contribution.providerReference!, status: "confirmed" };
+      await withWhatsApp.handleWebhook("stripe", Buffer.from("{}"), {});
+      stripeFake.nextWebhookResult = null;
+      await new Promise((r) => setImmediate(r));
+      // The victim's own gift: receipt by email, nothing to the attacker's number.
+      expect(receiptEmail.sent.some((r) => r.contributionId === own.contribution.id && r.to === victimEmail)).toBe(true);
+      expect(giver.fake.messages.filter((m) => m.to === attacker.number)).toHaveLength(sentBefore);
+
+      // Each payment keeps the contacts given with it.
+      const stored = await prisma.vaultContribution.findUniqueOrThrow({ where: { id: theirs.contribution.id } });
+      expect(stored).toMatchObject({ contactEmail: victimEmail, contactWhatsApp: attacker.number });
+      expect(await prisma.vaultContribution.findUniqueOrThrow({ where: { id: own.contribution.id } })).toMatchObject({ contactWhatsApp: null });
+    });
+
+    test("an ID given before under the same number is asked for again with a new email, and must match", async () => {
+      const { number, proof } = await giver.confirmed();
+      await give("600", { donorEmail: uniqueEmail("wa-id-one"), donorWhatsApp: number, whatsappProof: proof, donorFullName: "Zainab Ali", idType: "passport", idNumber: "A1234567" });
+      const second = { donorEmail: uniqueEmail("wa-id-two"), donorWhatsApp: number, whatsappProof: proof };
+      await expect(give("600", second)).rejects.toMatchObject({ response: { code: "IDENTITY_CONFIRMATION_REQUIRED" } });
+      await expect(give("600", { ...second, donorFullName: "Zainab Ali", idType: "passport", idNumber: "B7654321" })).rejects.toMatchObject({
+        response: { code: "IDENTITY_MISMATCH" },
+      });
+      await give("600", { ...second, idType: "passport", idNumber: "a 1234567" });
     });
   });
 

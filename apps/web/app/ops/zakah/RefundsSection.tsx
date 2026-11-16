@@ -162,7 +162,7 @@ export function RefundsSection({ refreshKey }: { refreshKey: number }) {
             {refunds.map((r) => (
               <TableRow key={r.id}>
                 <TableCell>
-                  <div className="font-medium text-slate-900">{r.payment.payer?.fullName ?? r.payment.payer?.email ?? "Anonymous"}</div>
+                  <div className="font-medium text-slate-900">{r.payment.payer?.fullName ?? r.payment.payer?.email ?? r.payment.payer?.whatsappNumber ?? "Anonymous"}</div>
                   <div className="max-w-xs truncate text-xs text-slate-500" title={r.details}>
                     {REASON_LABEL[r.reason]} · {r.details}
                   </div>

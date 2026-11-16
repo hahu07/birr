@@ -2498,6 +2498,11 @@ model VaultContribution {
   // fully anonymous contribution at all.
   donorId            String?
   donor              VaultDonor?          @relation(fields: [donorId], references: [id])
+  /// Where this payment's receipt goes: the email and/or confirmed WhatsApp
+  /// number given with it (2026-11-16). Never taken from the giver record,
+  /// which anyone could have linked a contact to.
+  contactEmail       String?
+  contactWhatsApp    String?
   amount             Decimal
   currency           String
   provider           ContributionProvider
@@ -3139,6 +3144,11 @@ model ZakahPayment {
   id                    String               @id @default(uuid())
   payerId               String?
   payer                 ZakahPayer?          @relation(fields: [payerId], references: [id], onDelete: Restrict)
+  /// Where this payment's receipt goes: the email and/or confirmed WhatsApp
+  /// number given with it (2026-11-16). Never taken from the giver record,
+  /// which anyone could have linked a contact to.
+  contactEmail          String?
+  contactWhatsApp       String?
   // The zakah itself — what reaches recipients, in full.
   amount                Decimal
   // What the payer chose to add so the processing fee is covered too
@@ -3536,7 +3546,7 @@ model RecurringGift {
   /// The giver's email: receipts, reminders and the manage link. Null when
   /// they gave only a confirmed WhatsApp number (a CHECK requires one or
   /// the other); Paystack, which needs an email, then gets a stand-in
-  /// worked out from the gift's id (recurring-gift-contact.ts).
+  /// worked out from the gift's id (common/giving/giver-contact.ts).
   email           String?
   /// A confirmed WhatsApp number (E.164) for the same messages.
   whatsappNumber  String?

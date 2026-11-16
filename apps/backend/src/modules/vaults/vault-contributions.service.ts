@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
-import { type GiverContact, hasContact, lockGiverContact, paystackEmailForGift } from "../../common/giving/giver-contact";
+import { type GiverContact, hasContact, lockGiverContact, moneyText, paystackEmailForGift, whatsAppNotice } from "../../common/giving/giver-contact";
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { IsBoolean, IsEmail, IsEnum, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, ContributionProvider, IdType, type RecurringGift } from "@birr/db";
@@ -291,6 +291,9 @@ export class VaultContributionsService {
           vaultId: input.vaultId,
           vaultCauseId: input.vaultCauseId,
           donorId: donor?.id,
+          // The receipt goes only to what was given with this gift.
+          contactEmail: donorEmail,
+          contactWhatsApp: contact.whatsapp,
           amount: input.amount,
           currency: input.currency,
           provider: input.provider,
@@ -484,7 +487,9 @@ export class VaultContributionsService {
       orderBy: { createdAt: "asc" },
     });
     // The record this gift is recorded under: the email's; else one with
-    // this number and no email yet (it gains the email); else a new one.
+    // this number and no email; else a new one. A record never gains a
+    // contact from this input: anyone can type an email, so linking their
+    // number to its record would send that donor's receipts to them.
     // Either way, the threshold below counts every matching record.
     const existing =
       (donorEmail ? matches.find((d) => d.email?.toLowerCase() === donorEmail) : undefined) ??
@@ -514,7 +519,11 @@ export class VaultContributionsService {
       fractionOf(amount, input.currency),
     );
 
-    const identifiedOnFile = existing?.idType != null && existing.idNumberEncrypted != null;
+    // An ID on any linked record counts: a giver can't step round the ID
+    // they gave before by pairing their confirmed number with a new email.
+    const identified = matches.filter((d) => d.idType != null && d.idNumberEncrypted != null);
+    const identifiedOnFile = identified.length > 0;
+    const existingIdentified = existing?.idType != null && existing.idNumberEncrypted != null;
     if (fractionUsed.gte(1)) {
       // A monthly gift's later charge on the donor's own saved card is
       // started by Birr's scheduler, not by someone typing an email, so
@@ -531,8 +540,9 @@ export class VaultContributionsService {
             message: "For a gift of this size we need to confirm your identity. Please re-enter the ID you gave us before.",
           });
         }
-        const onFile = normalizeIdNumber(this.encryption.decrypt(existing!.idNumberEncrypted!));
-        if (existing!.idType !== input.idType || onFile !== normalizeIdNumber(input.idNumber)) {
+        const given = normalizeIdNumber(input.idNumber);
+        const matchesOnFile = identified.some((d) => d.idType === input.idType && normalizeIdNumber(this.encryption.decrypt(d.idNumberEncrypted!)) === given);
+        if (!matchesOnFile) {
           throw new BadRequestException({
             statusCode: 400,
             code: "IDENTITY_MISMATCH",
@@ -550,11 +560,7 @@ export class VaultContributionsService {
 
     const fill: Prisma.VaultDonorUpdateInput = {};
     if (!existing?.fullName && input.donorFullName) fill.fullName = input.donorFullName;
-    // A confirmed number joins the record it was given with; one already
-    // on the record is never replaced from this input.
-    if (existing && !existing.whatsappNumber && contact.whatsapp) fill.whatsappNumber = contact.whatsapp;
-    if (existing && !existing.email && donorEmail) fill.email = donorEmail;
-    if (!identifiedOnFile && input.idType && input.idNumber) {
+    if (!existingIdentified && input.idType && input.idNumber) {
       fill.idType = input.idType;
       fill.idNumberEncrypted = this.encryption.encrypt(input.idNumber);
     }
@@ -778,14 +784,15 @@ export class VaultContributionsService {
     // No donor row at all means an anonymous contribution (donorEmail
     // was optional) — nowhere to send a receipt, an accepted tradeoff of
     // allowing anonymous giving (see findOrCreateDonor's own comment).
-    if (contribution.donor?.whatsappNumber) this.sendWhatsAppReceipt(contribution.donor.whatsappNumber, contribution);
-    if (contribution.donor?.email) {
+    // Only to what was given with this gift (see contactEmail).
+    if (contribution.contactWhatsApp) this.sendWhatsAppReceipt(contribution.contactWhatsApp, contribution);
+    if (contribution.contactEmail) {
       // Deliberately NOT awaited — a payment provider's webhook response
       // time shouldn't depend on a Resend round-trip, same posture as
       // ContributionsService's own fire-and-forget notify calls.
       this.receiptEmail
         .sendReceipt({
-          to: contribution.donor.email,
+          to: contribution.contactEmail,
           vaultName: contribution.vault.name,
           causeName: contribution.vaultCause?.name,
           amount: contribution.amount.toString(),
@@ -885,15 +892,10 @@ export class VaultContributionsService {
     contribution: { id: string; amount: Prisma.Decimal; currency: string; vault: { name: string }; vaultCause: { name: string } | null },
   ): void {
     if (!this.whatsApp) return;
-    const amount = `${contribution.currency === "NGN" ? "₦" : `${contribution.currency} `}${Number(contribution.amount).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
-    const text = [
-      "*Thank you for your gift*",
-      "",
-      `We received ${amount} for ${contribution.vault.name}${contribution.vaultCause ? ` (${contribution.vaultCause.name})` : ""}.`,
+    const text = whatsAppNotice("Thank you for your gift", [
+      `We received ${moneyText(contribution.amount, contribution.currency)} for ${contribution.vault.name}${contribution.vaultCause ? ` (${contribution.vaultCause.name})` : ""}.`,
       `Receipt reference: ${contribution.id}`,
-      "",
-      "— *Birr* | A digital trustee for Islamic waqf",
-    ].join("\n");
+    ]);
     this.whatsApp.sendMessage(to, text).catch((err) =>
       this.logger.error(`Failed to send the WhatsApp receipt for vault contribution "${contribution.id}":`, err instanceof Error ? err.stack : String(err)),
     );
@@ -918,7 +920,7 @@ export class VaultContributionsService {
     return prisma.vaultContribution.findMany({
       where: { vaultId },
       orderBy: { createdAt: "desc" },
-      include: { donor: { select: { id: true, email: true, fullName: true } } },
+      include: { donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true } } },
     });
   }
 
@@ -949,7 +951,7 @@ export class VaultContributionsService {
 
     const contributions = await prisma.vaultContribution.findMany({
       where: { status: "confirmed", currency: { in: [...thresholdByCurrency.keys()] } },
-      include: { vault: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, fullName: true, idType: true } } },
+      include: { vault: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
       orderBy: { createdAt: "desc" },
     });
 
@@ -989,6 +991,7 @@ export class VaultContributionsService {
               id: r.contribution.id,
               donorId: r.contribution.donorId,
               donorEmail: r.contribution.donor?.email ?? null,
+              donorWhatsApp: r.contribution.donor?.whatsappNumber ?? null,
               donorFullName: r.contribution.donor?.fullName ?? null,
               donorIdCaptured: r.contribution.donor?.idType != null,
               amount: r.contribution.amount.toString(),
@@ -1030,7 +1033,7 @@ export class VaultContributionsService {
   private async getIpClusters() {
     const contributions = await prisma.vaultContribution.findMany({
       where: { status: "confirmed", ipAddress: { not: null }, donorId: { not: null } },
-      include: { vault: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, fullName: true, idType: true } } },
+      include: { vault: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
       orderBy: { createdAt: "desc" },
     });
 
@@ -1053,6 +1056,7 @@ export class VaultContributionsService {
             vaultName: r.vault.name,
             donorId: r.donorId,
             donorEmail: r.donor?.email ?? null,
+            donorWhatsApp: r.donor?.whatsappNumber ?? null,
             donorFullName: r.donor?.fullName ?? null,
             donorIdCaptured: r.donor?.idType != null,
             amount: r.amount.toString(),

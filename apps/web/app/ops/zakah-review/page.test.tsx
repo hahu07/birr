@@ -22,7 +22,7 @@ function staffWith(roles: string[], permissions: string[]): BirrStaff {
 function payment(id: string, overrides: Partial<ZakahReviewPayment> = {}): ZakahReviewPayment {
   return {
     id, pool: "mal", amount: "9000000.00", createdAt: "2027-02-10T00:00:00.000Z", heldAt: null, payerId: `payer-${id}`,
-    payerEmail: `${id}@example.com`, payerFullName: null, payerIdCaptured: false, ...overrides,
+    payerEmail: `${id}@example.com`, payerWhatsApp: null, payerFullName: null, payerIdCaptured: false, ...overrides,
   };
 }
 
@@ -36,10 +36,18 @@ const review: ZakahStructuringReview = {
       {
         email: "amina@example.com", zakahTotal: "9000000.00", vaultTotal: "7000000.00", combinedTotal: "16000000.00",
         zakah: [payment("p-3", { payerEmail: "amina@example.com", payerFullName: "Amina Bello" })],
-        vault: [{ id: "v-1", vaultName: "Ramadan Relief", amount: "7000000.00", createdAt: "2027-02-09T00:00:00.000Z", donorEmail: "amina@example.com", donorFullName: null, donorIdCaptured: false }],
+        vault: [{ id: "v-1", vaultName: "Ramadan Relief", amount: "7000000.00", createdAt: "2027-02-09T00:00:00.000Z", donorEmail: "amina@example.com", donorWhatsApp: null, donorFullName: null, donorIdCaptured: false }],
       },
     ],
-    sharedNetworks: [],
+    // A WhatsApp-only giver: no email on either side, so only the number joins them.
+    sameWhatsApp: [
+      {
+        whatsapp: "+2348031234567", zakahTotal: "8500000.00", vaultTotal: "8000000.00", combinedTotal: "16500000.00",
+        zakah: [payment("p-4", { amount: "8500000.00", payerEmail: null, payerWhatsApp: "+2348031234567", heldAt: "2027-02-11T00:00:00.000Z" })],
+        vault: [{ id: "v-2", vaultName: "Clean Water", amount: "8000000.00", createdAt: "2027-02-09T00:00:00.000Z", donorEmail: null, donorWhatsApp: "+2348031234567", donorFullName: null, donorIdCaptured: false }],
+      },
+    ],
+    sharedNetworks: [{ ipAddress: "102.89.1.1", distinctGiverCount: 3, zakah: [], vault: [] }],
   },
 };
 
@@ -69,7 +77,11 @@ describe("Ops Console — Zakah giving review", { timeout: 15_000 }, () => {
     expect(screen.getByText(/zakah ₦9,000,000.00 \+ Vault ₦7,000,000.00 =/)).toBeInTheDocument();
     expect(screen.getByText("₦16,000,000.00")).toBeInTheDocument();
     expect(screen.getByText("Ramadan Relief")).toBeInTheDocument();
-    expect(screen.getByText("on AML hold")).toBeInTheDocument();
+    expect(screen.getAllByText("on AML hold")).toHaveLength(2);
+    // Giving joined only by a confirmed WhatsApp number is shown by that number.
+    expect(screen.getByText(/WhatsApp \+2348031234567 · zakah ₦8,500,000.00 \+ Vault ₦8,000,000.00 =/)).toBeInTheDocument();
+    expect(screen.getAllByText("+2348031234567")).toHaveLength(2);
+    expect(screen.getByText(/3 different givers across Vault and zakah/)).toBeInTheDocument();
     // The Audit Committee can see the list but not place holds.
     expect(screen.queryByRole("button", { name: "Hold" })).not.toBeInTheDocument();
   });

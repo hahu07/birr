@@ -136,7 +136,7 @@ describe("Ops Console — Zakah", { timeout: 15_000 }, () => {
   test("lists payments with the payer, or Anonymous, and the zakah held for recipients", async () => {
     setup(staffWith(["compliance_officer"], []), {
       payments: [
-        { id: "p-1", amount: "95000.00", feeCover: "1548.23", currency: "NGN", status: "confirmed", rulesetKey: "maliki", rulesetVersion: 1, createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: { email: "amina@example.com", fullName: "Amina Bello" } },
+        { id: "p-1", amount: "95000.00", feeCover: "1548.23", currency: "NGN", status: "confirmed", rulesetKey: "maliki", rulesetVersion: 1, createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: { email: "amina@example.com", whatsappNumber: null, fullName: "Amina Bello" } },
         { id: "p-2", amount: "5000.00", feeCover: "0.00", currency: "NGN", status: "pending", rulesetKey: null, rulesetVersion: null, createdAt: "2027-02-11T00:00:00.000Z", confirmedAt: null, payer: null },
       ],
     });
@@ -152,7 +152,7 @@ describe("Ops Console — Zakah", { timeout: 15_000 }, () => {
     const user = userEvent.setup();
     setup(staffWith(["compliance_officer"], ["zakah.refund_request", "zakah.refund_approve"]), {
       payments: [
-        { id: "p-1", amount: "95000.00", feeCover: "0.00", currency: "NGN", status: "confirmed", rulesetKey: null, rulesetVersion: null, createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: { email: "amina@example.com", fullName: "Amina Bello" } },
+        { id: "p-1", amount: "95000.00", feeCover: "0.00", currency: "NGN", status: "confirmed", rulesetKey: null, rulesetVersion: null, createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: { email: "amina@example.com", whatsappNumber: null, fullName: "Amina Bello" } },
         { id: "p-2", amount: "5000.00", feeCover: "0.00", currency: "NGN", status: "pending", rulesetKey: null, rulesetVersion: null, createdAt: "2027-02-11T00:00:00.000Z", confirmedAt: null, payer: null },
       ],
     });
@@ -233,7 +233,7 @@ describe("Ops Console — Zakah", { timeout: 15_000 }, () => {
     const user = userEvent.setup();
     const confirmed: ZakahPaymentRow = {
       id: "p-9", amount: "95000.00", feeCover: "0.00", currency: "NGN", status: "confirmed", rulesetKey: null, rulesetVersion: null,
-      createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: { email: "x@example.com", fullName: null },
+      createdAt: "2027-02-10T00:00:00.000Z", confirmedAt: "2027-02-10T00:01:00.000Z", payer: { email: "x@example.com", whatsappNumber: null, fullName: null },
     };
     setup(staffWith(["mutawalli_officer"], ["zakah.payment_hold"]), {
       payments: [confirmed, { ...confirmed, id: "p-10", heldAt: "2027-02-11T00:00:00.000Z", heldReason: "Same card, five emails.", heldBy: "Test Officer" }],

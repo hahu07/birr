@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, Logger } from "@nestjs/common";
+import { moneyText, whatsAppNotice } from "../../common/giving/giver-contact";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
 import { IsEnum, IsNumberString, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { prisma, Prisma, ZakahPool, ZakahRefund, ZakahRefundReason } from "@birr/db";
@@ -102,21 +103,22 @@ export class ZakahRefundsService {
     if (!refund?.payment.payer) return;
     const bank = JSON.parse(this.encryption.decrypt(refund.payeeBankDetailsEncrypted)) as BankDetails;
     const date = (d: Date) => d.toISOString().slice(0, 10);
-    const payer = refund.payment.payer;
+    // Only to what was given with the payment (see ZakahPayment.contactEmail).
+    const payer = { email: refund.payment.contactEmail, whatsappNumber: refund.payment.contactWhatsApp };
     if (payer.whatsappNumber && this.whatsApp) {
-      const lines =
+      const last4 = bank.accountNumber.slice(-4);
+      const text =
         stage === "approved"
-          ? [`*Your zakah refund is approved*`, "", `Birr will refund ₦${Number(refund.amount).toLocaleString("en-NG", { minimumFractionDigits: 2 })} to your account ending ${bank.accountNumber.slice(-4)}.`]
-          : [
-              `*Your zakah refund is paid*`,
-              "",
-              `₦${Number(refund.amount).toLocaleString("en-NG", { minimumFractionDigits: 2 })} was sent to your account ending ${bank.accountNumber.slice(-4)}` +
+          ? whatsAppNotice("Your zakah refund is approved", [`Birr will refund ${moneyText(refund.amount)} to your account ending ${last4}.`, `Refund reference: ${refund.id}`])
+          : whatsAppNotice("Your zakah refund is paid", [
+              `${moneyText(refund.amount)} was sent to your account ending ${last4}` +
                 (refund.paidOn ? ` on ${date(refund.paidOn)}` : "") +
                 (refund.bankReference ? ` (bank reference ${refund.bankReference})` : "") +
                 ".",
-            ];
+              `Refund reference: ${refund.id}`,
+            ]);
       await this.whatsApp
-        .sendMessage(payer.whatsappNumber, [...lines, `Refund reference: ${refund.id}`, "", "— *Birr* | A digital trustee for Islamic waqf"].join("\n"))
+        .sendMessage(payer.whatsappNumber, text)
         .catch((err) => this.logger.error(`Failed to send the WhatsApp refund notice for "${refund.id}":`, err instanceof Error ? err.stack : String(err)));
     }
     if (!payer.email) return;
@@ -147,7 +149,7 @@ export class ZakahRefundsService {
     const rows = await prisma.zakahRefund.findMany({
       orderBy: { createdAt: "desc" },
       take: 200,
-      include: { payment: { select: { id: true, amount: true, createdAt: true, payer: { select: { email: true, fullName: true } } } } },
+      include: { payment: { select: { id: true, amount: true, createdAt: true, payer: { select: { email: true, whatsappNumber: true, fullName: true } } } } },
     });
     return rows.map((r) => this.view(r));
   }

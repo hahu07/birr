@@ -28,9 +28,11 @@ describe("ZakahRefundsService", () => {
   async function confirmedPayment(amount: string, feeCover = "0", payerId?: string) {
     return prisma.$transaction(async (tx) => {
       const id = randomUUID();
+      // A payment's notices go to the contacts given with it (2026-11-16).
+      const contactEmail = payerId ? (await tx.zakahPayer.findUniqueOrThrow({ where: { id: payerId } })).email : null;
       const payment = await tx.zakahPayment.create({
         data: {
-          id, amount, feeCover, currency, payerId, provider: "paystack", providerReference: id, status: "confirmed",
+          id, amount, feeCover, currency, payerId, contactEmail, provider: "paystack", providerReference: id, status: "confirmed",
           confirmedAt: new Date(), settlementSubaccount: "ACCT_test_zakah", wakalahConsentVersion: "test",
         },
       });

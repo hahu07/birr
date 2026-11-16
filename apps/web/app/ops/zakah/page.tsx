@@ -144,8 +144,8 @@ function PaymentsSection({ onRefundRequested }: { onRefundRequested: () => void 
                 <TableCell>
                   {p.payer ? (
                     <>
-                      <div className="font-medium text-slate-900">{p.payer.fullName ?? p.payer.email}</div>
-                      {p.payer.fullName && <div className="text-xs text-slate-500">{p.payer.email}</div>}
+                      <div className="font-medium text-slate-900">{p.payer.fullName ?? p.payer.email ?? p.payer.whatsappNumber}</div>
+                      {p.payer.fullName && <div className="text-xs text-slate-500">{p.payer.email ?? p.payer.whatsappNumber}</div>}
                     </>
                   ) : (
                     <span className="text-slate-500">Anonymous</span>
