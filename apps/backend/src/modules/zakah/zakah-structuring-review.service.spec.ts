@@ -76,10 +76,10 @@ describe("ZakahStructuringReviewService", () => {
   test("flags the same email giving to both Vault and zakah when the combined NGN total reaches the threshold", async () => {
     const both = await payer("both");
     await zakahPayment(threshold.times(0.6).toDecimalPlaces(2), both.id);
-    await vaultGift(both.email, threshold.times(0.5).toDecimalPlaces(2));
+    await vaultGift(both.email!, threshold.times(0.5).toDecimalPlaces(2));
     const small = await payer("both-small");
     await zakahPayment("1000", small.id);
-    await vaultGift(small.email, "1000");
+    await vaultGift(small.email!, "1000");
 
     const { acrossVault } = await service.review();
     const flagged = acrossVault.sameEmail.find((m) => m.email === both.email)!;
@@ -98,7 +98,7 @@ describe("ZakahStructuringReviewService", () => {
     await vaultGift(`review-net-vault-${run}@example.com`, "4000", `cross-${run}`);
     const same = await payer("net-same");
     await zakahPayment("3000", same.id, `own-${run}`);
-    await vaultGift(same.email, "4000", `own-${run}`);
+    await vaultGift(same.email!, "4000", `own-${run}`);
 
     const { acrossVault } = await service.review();
     expect(acrossVault.sharedNetworks.find((n) => n.ipAddress === `cross-${run}`)).toMatchObject({ distinctEmailCount: 2 });

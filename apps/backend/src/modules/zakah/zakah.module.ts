@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { WhatsAppOtpModule } from "../../common/whatsapp/whatsapp-otp.module";
 import { ZakahController } from "./zakah.controller";
 import { ZakahService } from "./zakah.service";
 import { ZakahPaymentsController } from "./zakah-payments.controller";
@@ -17,7 +18,7 @@ import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-cor
 import { EncryptionService } from "../../common/settings/encryption.service";
 
 @Module({
-  imports: [SettingsModule, RecurringGiftsCoreModule],
+  imports: [SettingsModule, RecurringGiftsCoreModule, WhatsAppOtpModule],
   controllers: [ZakahController, ZakahPaymentsController, ZakahDistributionsController, ZakahRefundsController],
   // PaystackAdapter and EncryptionService: each consuming module provides
   // its own instance, same convention as VaultsModule.

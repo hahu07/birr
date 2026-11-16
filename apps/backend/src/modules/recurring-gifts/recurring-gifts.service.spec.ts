@@ -19,6 +19,8 @@ import { AssetsService } from "../assets/assets.service";
 import { WaqfLedgerService } from "../waqf-ledger/waqf-ledger.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 import { addMonths, cardExpiredBy, chargeDateFor, dayOfMonthFor, periodOf } from "./recurring-gift-dates";
+import { createGiverWhatsApp, testNumber } from "../../common/whatsapp/test-support/fake-whatsapp";
+import type { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
 import { createFakeRecurringGiftsCore, FakeRecurringPaystack, REUSABLE_CARD } from "./test-support/fake-recurring-gifts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -59,7 +61,8 @@ describe("recurring-gift dates (Lagos time)", () => {
 
 describe("Monthly Vault gifts", () => {
   const paystack = new FakeRecurringPaystack();
-  const { core, emails } = createFakeRecurringGiftsCore(paystack);
+  const giver = createGiverWhatsApp();
+  const { core, emails } = createFakeRecurringGiftsCore(paystack, undefined, giver.fake);
   const ledger = new VaultLedgerService();
   const unused = { createPayment: jest.fn(), verifyAndParseWebhook: jest.fn() };
   const contributions = new VaultContributionsService(
@@ -71,9 +74,11 @@ describe("Monthly Vault gifts", () => {
     unused as any,
     paystack as any,
     unused as any,
+    giver.service,
+    giver.fake as unknown as TwilioWhatsAppAdapter,
   );
   // Waqf top-ups have their own describe block below.
-  const service = new RecurringGiftsService(core, new VaultMonthlyProduct(contributions), new WaqfMonthlyProduct(null as any), new ZakahMonthlyProduct(null as any));
+  const service = new RecurringGiftsService(core, new VaultMonthlyProduct(contributions), new WaqfMonthlyProduct(null as any), new ZakahMonthlyProduct(null as any), giver.service);
   const vaultsService = new VaultsService(new VaultProceedsService(), ledger);
 
   const run = Date.now().toString(36);
@@ -152,7 +157,8 @@ describe("Monthly Vault gifts", () => {
   });
 
   afterAll(async () => {
-    const gifts = await prisma.recurringGift.findMany({ where: { email: { in: emailsUsed } }, select: { id: true } });
+    // By vault, so gifts given with only a WhatsApp number go too.
+    const gifts = await prisma.recurringGift.findMany({ where: { OR: [{ email: { in: emailsUsed } }, { vaultId: { in: vaultIds } }] }, select: { id: true } });
     const giftIds = gifts.map((g) => g.id);
     const rows = await prisma.vaultContribution.findMany({ where: { vaultId: { in: vaultIds } }, select: { id: true } });
     await prisma.vaultJournalEntryLine.deleteMany({ where: { journalEntry: { vaultId: { in: vaultIds } } } });
@@ -192,6 +198,33 @@ describe("Monthly Vault gifts", () => {
     // The audit trail never holds the saved card.
     const trail = JSON.stringify(await prisma.auditLog.findMany({ where: { entityId: gift.id } }));
     expect(trail).not.toContain(gift.authorizationEncrypted!);
+  });
+
+  test("a gift with only a WhatsApp number: its messages and manage link come by WhatsApp, and each month uses its stand-in email", async () => {
+    const { number, proof } = await giver.confirmed();
+    const result = await contributions.initiate({ vaultId, amount: minimum, currency: "NGN", provider: "paystack", donorWhatsApp: number, whatsappProof: proof, monthly: true });
+    await contributions.reconcile(result.contribution.id);
+    const gift = await waitFor(
+      () => prisma.recurringGift.findUniqueOrThrow({ where: { id: result.contribution.recurringGiftId! } }),
+      (g) => g.status !== "pending_setup",
+    );
+    expect(gift).toMatchObject({ status: "active", email: null, whatsappNumber: number });
+    await waitUntil(() => giver.fake.messages.some((m) => m.to === number && m.body.includes("/giving/manage/")));
+    const setUp = giver.fake.messages.find((m) => m.to === number && m.body.includes("/giving/manage/"))!;
+    expect(setUp.body).toContain("*Monthly gift set up*");
+    expect(setUp.body).toContain("Keep this message");
+    expect(emails.sent.some((e) => e.to === null)).toBe(false);
+
+    // The next month is charged under the email the card was saved under: the gift's stand-in.
+    await due(gift);
+    await service.processDue(gift.id);
+    expect(paystack.charges.at(-1)).toMatchObject({ email: `giver+${gift.id}@example.com` });
+
+    // Fresh manage links, by WhatsApp, for a confirmed number only.
+    const before = giver.fake.messages.length;
+    expect(await service.requestManageLinks({ whatsapp: number, whatsappProof: proof })).toEqual({ sent: true });
+    expect(giver.fake.messages.slice(before).find((m) => m.to === number)?.body).toContain("/giving/manage/");
+    await expect(service.requestManageLinks({ whatsapp: number })).rejects.toThrow(/Confirm your WhatsApp number/);
   });
 
   test("monthly giving needs an email, a card and naira", async () => {
@@ -306,7 +339,7 @@ describe("Monthly Vault gifts", () => {
     await service.provideIdentity(tokenFor(gift), { fullName: "Amina Bello", idType: "national_id", idNumber: "12345678901" });
     const resumed = await reload(gift);
     expect(resumed.status).toBe("active");
-    expect(await prisma.auditLog.count({ where: { entityType: "VaultDonor", action: { in: ["vault_donor.identity_captured", "vault_donor.created"] }, after: { path: ["email"], equals: gift.email } } })).toBeGreaterThan(0);
+    expect(await prisma.auditLog.count({ where: { entityType: "VaultDonor", action: { in: ["vault_donor.identity_captured", "vault_donor.created"] }, after: { path: ["email"], equals: gift.email! } } })).toBeGreaterThan(0);
 
     // An ID on file is enough for a scheduled charge on the donor's own card.
     await service.processDue(resumed.id);
@@ -339,7 +372,7 @@ describe("Monthly Vault gifts", () => {
     const oldToken = tokenFor(gift);
     const sentBefore = emails.sent.length;
 
-    expect(await service.requestManageLinks({ email: gift.email.toUpperCase() })).toEqual({ sent: true });
+    expect(await service.requestManageLinks({ email: gift.email!.toUpperCase() })).toEqual({ sent: true });
     const mail = emails.sent.slice(sentBefore).find((e) => e.to === gift.email)!;
     const newToken = mail.bodyHtml.match(/giving\/manage\/([A-Za-z0-9_-]+)/)![1];
     await expect(service.view(oldToken)).rejects.toThrow(NotFoundException);
@@ -379,7 +412,8 @@ describe("Monthly Vault gifts", () => {
 
 describe("Monthly Waqf Fund top-ups", () => {
   const paystack = new FakeRecurringPaystack();
-  const { core, emails } = createFakeRecurringGiftsCore(paystack);
+  const whatsApp = createGiverWhatsApp().fake;
+  const { core, emails } = createFakeRecurringGiftsCore(paystack, undefined, whatsApp);
   const unused = { createPayment: jest.fn(), verifyAndParseWebhook: jest.fn() };
   const contributions = new ContributionsService(
     new AssetsService(),
@@ -443,6 +477,24 @@ describe("Monthly Waqf Fund top-ups", () => {
     await prisma.recurringGift.deleteMany({ where: { id: { in: giftIds } } });
     await prisma.waqf.deleteMany({ where: { id: { in: waqfIds } } });
     await prisma.$disconnect();
+  });
+
+  test("a founder's top-up notices also reach their verified WhatsApp number", async () => {
+    const number = testNumber();
+    const email = `founder-${run}@example.com`;
+    await prisma.user.upsert({
+      where: { email },
+      create: { email, fullName: "Top-up Founder", status: "active", whatsappNumber: number, whatsappVerifiedAt: new Date() },
+      update: { whatsappNumber: number, whatsappVerifiedAt: new Date() },
+    });
+    const waqfId = await fundedWaqf("WhatsApp Top-up Fund");
+    await setUp(waqfId);
+    await waitUntil(() => whatsApp.messages.some((m) => m.to === number));
+    const message = whatsApp.messages.find((m) => m.to === number)!;
+    expect(message.body).toContain("*Monthly gift set up*");
+    expect(message.body).toContain(`/portfolio/${waqfId}`);
+    // The email still goes too.
+    expect(emails.sent.some((e) => e.to === email && e.ctaUrl?.endsWith(`/portfolio/${waqfId}`))).toBe(true);
   });
 
   test("a top-up can only start once the fund's first contribution has gone through", async () => {
@@ -608,7 +660,7 @@ describe("Monthly zakah (paid in advance)", () => {
     expect(await reload(gift)).toMatchObject({ status: "paused", pauseReason: "needs_identity" });
 
     await service.provideIdentity(tokenFor(gift), { fullName: "Yusuf Bello", idType: "national_id", idNumber: "98765432109" });
-    expect((await prisma.zakahPayer.findUniqueOrThrow({ where: { email: gift.email } })).idNumberEncrypted).not.toBeNull();
+    expect((await prisma.zakahPayer.findUniqueOrThrow({ where: { email: gift.email! } })).idNumberEncrypted).not.toBeNull();
     await service.processDue(gift.id);
     expect((await reload(gift)).nextPeriod).toBe(addMonths(gift.nextPeriod, 1));
   });

@@ -16,6 +16,8 @@ import {
 } from "../contributions/providers/payment-provider.interface";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
+import { createGiverWhatsApp } from "../../common/whatsapp/test-support/fake-whatsapp";
+import type { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
 
 /** Same configurable-fake pattern as ContributionsService's own spec. */
 class FakeAdapter implements PaymentProviderAdapter {
@@ -98,6 +100,20 @@ describe("VaultContributionsService", () => {
     stablecoinFake as any,
   );
   const vaultsService = new VaultsService(new VaultProceedsService(), ledger);
+  // The same service with WhatsApp available (2026-11-16).
+  const giver = createGiverWhatsApp();
+  const withWhatsApp = new VaultContributionsService(
+    new EncryptionService(),
+    receiptEmail as any,
+    ledger,
+    new FunnelEventsService(),
+    createFakeRecurringGiftsCore().core,
+    stripeFake as any,
+    paystackFake as any,
+    stablecoinFake as any,
+    giver.service,
+    giver.fake as unknown as TwilioWhatsAppAdapter,
+  );
 
   const vaultIds: string[] = [];
   const vaultContributionIds: string[] = [];
@@ -582,6 +598,65 @@ describe("VaultContributionsService", () => {
         service.initiate({ vaultId: openVaultId, amount: "600", currency, provider: "stripe", donorEmail: `  ${email.toUpperCase()} ` }),
       ).rejects.toMatchObject({ response: { code: "IDENTITY_REQUIRED" } });
       expect(await prisma.vaultDonor.count({ where: { email: { equals: email, mode: "insensitive" } } })).toBe(1);
+    });
+  });
+
+  // Owner's decisions, 2026-11-16: a confirmed WhatsApp number instead of
+  // (or as well as) an email, adding up toward the threshold.
+  describe("giving with a WhatsApp number", () => {
+    let currency: string;
+
+    beforeAll(async () => {
+      currency = `WA${Date.now() % 100000}`;
+      await prisma.contributionMinimum.create({ data: { currency, minAmount: "10" } });
+      await prisma.vaultDonorThreshold.create({ data: { currency, thresholdAmount: "1000" } });
+      await prisma.vault.update({ where: { id: openVaultId }, data: { currency } });
+    });
+
+    afterAll(async () => {
+      await prisma.vault.update({ where: { id: openVaultId }, data: { currency: "USD" } });
+    });
+
+    const give = (amount: string, extra: Record<string, string | undefined>) =>
+      withWhatsApp.initiate({ vaultId: openVaultId, amount, currency, provider: "stripe", ...extra }).then((r) => {
+        vaultContributionIds.push(r.contribution.id);
+        return r;
+      });
+
+    test("a confirmed number alone is enough: the donor has no email, and the receipt comes by WhatsApp", async () => {
+      const { number, proof } = await giver.confirmed();
+      const { contribution } = await give("100", { donorWhatsApp: number, whatsappProof: proof });
+      const donor = await prisma.vaultDonor.findFirstOrThrow({ where: { whatsappNumber: number } });
+      expect(donor.email).toBeNull();
+      expect(contribution.donorId).toBe(donor.id);
+
+      stripeFake.nextWebhookResult = { providerReference: contribution.providerReference!, status: "confirmed" };
+      await withWhatsApp.handleWebhook("stripe", Buffer.from("{}"), {});
+      stripeFake.nextWebhookResult = null;
+      await new Promise((r) => setImmediate(r));
+      expect(giver.fake.messages.find((m) => m.to === number)?.body).toContain("Thank you for your gift");
+    });
+
+    test("a number that hasn't been confirmed is refused", async () => {
+      await expect(give("100", { donorWhatsApp: "0803 000 0000" })).rejects.toThrow(/Confirm your WhatsApp number/);
+    });
+
+    test("different emails sharing a confirmed number count together toward the threshold", async () => {
+      const { number, proof } = await giver.confirmed();
+      await give("600", { donorEmail: uniqueEmail("wa-one"), donorWhatsApp: number, whatsappProof: proof });
+      await expect(give("600", { donorEmail: uniqueEmail("wa-two"), donorWhatsApp: number, whatsappProof: proof })).rejects.toMatchObject({
+        response: { code: "IDENTITY_REQUIRED" },
+      });
+    });
+
+    test("a number first given alone joins the email given later, on one donor record", async () => {
+      const { number, proof } = await giver.confirmed();
+      await give("100", { donorWhatsApp: number, whatsappProof: proof });
+      const email = uniqueEmail("wa-joins");
+      await give("100", { donorEmail: email, donorWhatsApp: number, whatsappProof: proof });
+      const donors = await prisma.vaultDonor.findMany({ where: { whatsappNumber: number } });
+      expect(donors).toHaveLength(1);
+      expect(donors[0].email).toBe(email);
     });
   });
 

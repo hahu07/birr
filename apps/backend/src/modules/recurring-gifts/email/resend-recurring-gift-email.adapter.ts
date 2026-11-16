@@ -5,7 +5,15 @@ import { renderEmailTemplate } from "../../../common/email/notification-template
 import { inRealDeployment, logDevEmailFallback } from "../../../common/email/dev-send-fallback";
 
 export interface RecurringGiftEmail {
-  to: string;
+  /** The giver's email, or null when they gave only a WhatsApp number. */
+  to: string | null;
+  /** A confirmed WhatsApp number to send the same message to (2026-11-16). */
+  whatsappTo?: string | null;
+  /**
+   * A founder's top-up: the account email whose verified WhatsApp number
+   * also gets the message (founders confirm theirs when they sign up).
+   */
+  founderAccountEmail?: string | null;
   subject: string;
   heading: string;
   bodyHtml: string;
@@ -26,7 +34,7 @@ export class ResendRecurringGiftEmailAdapter {
 
   constructor(private readonly settings: SettingsService) {}
 
-  async send(email: RecurringGiftEmail): Promise<void> {
+  async send(email: RecurringGiftEmail & { to: string }): Promise<void> {
     const apiKey = await this.settings.get("resend", "API_KEY");
     const from = await this.settings.get("resend", "FROM_ADDRESS");
     if (!apiKey || !from) {

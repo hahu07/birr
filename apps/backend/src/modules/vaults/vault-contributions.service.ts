@@ -1,4 +1,7 @@
 import { randomUUID } from "crypto";
+import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
+import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
+import { type GiverContact, hasContact, lockGiverContact, paystackEmailForGift } from "../../common/giving/giver-contact";
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { IsBoolean, IsEmail, IsEnum, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, ContributionProvider, IdType, type RecurringGift } from "@birr/db";
@@ -51,6 +54,20 @@ export class InitiateVaultContributionInput {
   @IsOptional()
   @IsEmail()
   donorEmail?: string;
+
+  // A WhatsApp number instead of (or as well as) an email, for receipts
+  // and, monthly, the manage link (owner's decision, 2026-11-16). Only
+  // used once confirmed: whatsappProof comes from POST
+  // /giving/whatsapp/confirm. It also counts toward the AML threshold.
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  donorWhatsApp?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  whatsappProof?: string;
 
   @IsOptional()
   @IsString()
@@ -144,6 +161,9 @@ export class VaultContributionsService {
     stripeAdapter: StripeAdapter,
     private readonly paystack: PaystackAdapter,
     stablecoinAdapter: StablecoinAdapter,
+    // Last, so tests that never use WhatsApp needn't pass them.
+    private readonly giverWhatsApp?: GiverWhatsAppService,
+    private readonly whatsApp?: TwilioWhatsAppAdapter,
   ) {
     this.adapters = new Map<ContributionProvider, PaymentProviderAdapter>([
       ["stripe", stripeAdapter],
@@ -168,10 +188,25 @@ export class VaultContributionsService {
    */
   async initiate(input: InitiateVaultContributionInput, ipAddress?: string, monthly?: VaultMonthlyMode) {
     if (input.monthly && !monthly) monthly = { type: "setup" };
+    // Who the donor is: an email, a confirmed WhatsApp number, or both. A
+    // later month's charge or card update is Birr's own call for an
+    // existing gift, so it reuses the gift's number; anything a donor
+    // starts must prove the number first.
+    const scheduled = monthly?.type === "charge" || monthly?.type === "card_update";
+    const contact: GiverContact = {
+      email: normalizeEmail(input.donorEmail) ?? null,
+      whatsapp: scheduled
+        ? (monthly as { gift: RecurringGift }).gift.whatsappNumber
+        : input.donorWhatsApp
+          ? await this.requireGiverWhatsApp().assertProof(input.donorWhatsApp, input.whatsappProof)
+          : null,
+    };
     if (monthly?.type === "setup") {
       // Only a card can be charged again, Paystack is Birr's one card
       // rail, and monthly giving is naira only (owner's decision, 2026-11-15).
-      if (!input.donorEmail) throw new BadRequestException("Monthly giving needs your email, for receipts and to manage or cancel it.");
+      if (!hasContact(contact)) {
+        throw new BadRequestException("Monthly giving needs your email or WhatsApp number, for receipts and to manage or cancel it.");
+      }
       if (input.provider !== "paystack" || input.currency !== "NGN") {
         throw new BadRequestException("Monthly giving is by card, in naira.");
       }
@@ -214,7 +249,7 @@ export class VaultContributionsService {
       );
     }
 
-    const donorEmail = normalizeEmail(input.donorEmail);
+    const donorEmail = contact.email;
     const id = randomUUID();
 
     // Reserve the row BEFORE calling the payment provider, under a
@@ -224,12 +259,10 @@ export class VaultContributionsService {
     // provider's own reference isn't known yet — our id stands in until
     // createPayment() returns (no webhook can arrive before the donor has
     // even reached checkout).
-    const { contribution, donor } = await prisma.$transaction(async (tx) => {
-      if (donorEmail) {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${donorEmail}))`;
-      }
-      const donor = donorEmail
-        ? await this.findOrCreateDonor(tx, donorEmail, input, amount, {
+    const { contribution, donor, gift } = await prisma.$transaction(async (tx) => {
+      await lockGiverContact(tx, "", contact);
+      const donor = hasContact(contact)
+        ? await this.findOrCreateDonor(tx, contact, input, amount, {
             scheduledCharge: monthly?.type === "charge" || monthly?.type === "card_update",
           })
         : null;
@@ -240,7 +273,8 @@ export class VaultContributionsService {
         monthly?.type === "setup"
           ? await this.recurring.createSetup(tx, {
               kind: "vault",
-              email: donorEmail!,
+              email: donorEmail,
+              whatsappNumber: contact.whatsapp,
               amount,
               reference: id,
               vaultId: input.vaultId,
@@ -276,7 +310,7 @@ export class VaultContributionsService {
           after: contribution as any,
         },
       });
-      return { contribution, donor };
+      return { contribution, donor, gift };
     });
 
     // Best-effort — record() never throws. sessionId falls back to the
@@ -298,7 +332,8 @@ export class VaultContributionsService {
       if (monthly?.type === "charge") {
         charge = await this.paystack.chargeSavedCard({
           authorizationCode: this.recurring.decryptAuthorization(monthly.gift),
-          email: monthly.gift.email,
+          // The email the card was saved under (a stand-in for a WhatsApp-only gift).
+          email: paystackEmailForGift(monthly.gift),
           amount: input.amount,
           currency: input.currency,
           reference: id,
@@ -309,7 +344,9 @@ export class VaultContributionsService {
           amount: input.amount,
           currency: input.currency,
           reference: id,
-          payerEmail: donorEmail,
+          // A monthly gift's card is saved under the gift's email, or its
+          // stand-in when it has only a WhatsApp number.
+          payerEmail: gift ? paystackEmailForGift(gift) : (donorEmail ?? undefined),
           returnPath: "vault-contributions",
           cardOnly: monthly?.type === "setup" || monthly?.type === "card_update",
         });
@@ -425,20 +462,40 @@ export class VaultContributionsService {
   //   threshold they must re-enter the ID on file, and it must match.
   //   Otherwise reusing a verified donor's email skipped ID capture
   //   entirely, leaving someone else's ID on file for the money.
+  //
+  // 2026-11-16: a donor is an email, a confirmed WhatsApp number, or both.
+  // Gifts under any donor record sharing either one count together toward
+  // the threshold, which narrows the "different email each time" gap.
   private async findOrCreateDonor(
     tx: Prisma.TransactionClient,
-    donorEmail: string,
+    contact: GiverContact,
     input: InitiateVaultContributionInput,
     amount: Prisma.Decimal,
     options: { scheduledCharge?: boolean } = {},
   ) {
-    const existing = await tx.vaultDonor.findFirst({ where: { email: { equals: donorEmail, mode: "insensitive" } } });
+    const donorEmail = contact.email;
+    const matches = await tx.vaultDonor.findMany({
+      where: {
+        OR: [
+          ...(donorEmail ? [{ email: { equals: donorEmail, mode: "insensitive" as const } }] : []),
+          ...(contact.whatsapp ? [{ whatsappNumber: contact.whatsapp }] : []),
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    // The record this gift is recorded under: the email's; else one with
+    // this number and no email yet (it gains the email); else a new one.
+    // Either way, the threshold below counts every matching record.
+    const existing =
+      (donorEmail ? matches.find((d) => d.email?.toLowerCase() === donorEmail) : undefined) ??
+      matches.find((d) => d.whatsappNumber === contact.whatsapp && (!donorEmail || d.email === null)) ??
+      null;
 
     const recentSince = new Date(Date.now() - PENDING_COUNTS_TOWARD_THRESHOLD_MS);
-    const prior = existing
+    const prior = matches.length
       ? await tx.vaultContribution.findMany({
           where: {
-            donorId: existing.id,
+            donorId: { in: matches.map((d) => d.id) },
             OR: [{ status: "confirmed" }, { status: "pending", createdAt: { gte: recentSince } }],
           },
           select: { amount: true, currency: true },
@@ -479,7 +536,7 @@ export class VaultContributionsService {
           throw new BadRequestException({
             statusCode: 400,
             code: "IDENTITY_MISMATCH",
-            message: "Those ID details don't match what we have on file for this email. Please check them, or contact Birr if your details have changed.",
+            message: "Those ID details don't match what we have on file for this email or number. Please check them, or contact Birr if your details have changed.",
           });
         }
       } else if (!input.donorFullName || !input.idType || !input.idNumber) {
@@ -493,6 +550,10 @@ export class VaultContributionsService {
 
     const fill: Prisma.VaultDonorUpdateInput = {};
     if (!existing?.fullName && input.donorFullName) fill.fullName = input.donorFullName;
+    // A confirmed number joins the record it was given with; one already
+    // on the record is never replaced from this input.
+    if (existing && !existing.whatsappNumber && contact.whatsapp) fill.whatsappNumber = contact.whatsapp;
+    if (existing && !existing.email && donorEmail) fill.email = donorEmail;
     if (!identifiedOnFile && input.idType && input.idNumber) {
       fill.idType = input.idType;
       fill.idNumberEncrypted = this.encryption.encrypt(input.idNumber);
@@ -518,6 +579,7 @@ export class VaultContributionsService {
     const created = await tx.vaultDonor.create({
       data: {
         email: donorEmail,
+        whatsappNumber: contact.whatsapp,
         fullName: fill.fullName as string | undefined,
         idType: fill.idType as IdType | undefined,
         idNumberEncrypted: fill.idNumberEncrypted as string | undefined,
@@ -716,7 +778,8 @@ export class VaultContributionsService {
     // No donor row at all means an anonymous contribution (donorEmail
     // was optional) — nowhere to send a receipt, an accepted tradeoff of
     // allowing anonymous giving (see findOrCreateDonor's own comment).
-    if (contribution.donor) {
+    if (contribution.donor?.whatsappNumber) this.sendWhatsAppReceipt(contribution.donor.whatsappNumber, contribution);
+    if (contribution.donor?.email) {
       // Deliberately NOT awaited — a payment provider's webhook response
       // time shouldn't depend on a Resend round-trip, same posture as
       // ContributionsService's own fire-and-forget notify calls.
@@ -770,11 +833,14 @@ export class VaultContributionsService {
    * already on file must match, and existing identity is never
    * overwritten, only blank fields filled.
    */
-  async recordDonorIdentity(email: string, input: VaultDonorIdentityInput) {
-    const donorEmail = normalizeEmail(email)!;
+  async recordDonorIdentity(gift: { email: string | null; whatsappNumber: string | null }, input: VaultDonorIdentityInput) {
+    const donorEmail = normalizeEmail(gift.email ?? undefined) ?? null;
+    const contact: GiverContact = { email: donorEmail, whatsapp: gift.whatsappNumber };
     return prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${donorEmail}))`;
-      const existing = await tx.vaultDonor.findFirst({ where: { email: { equals: donorEmail, mode: "insensitive" } } });
+      await lockGiverContact(tx, "", contact);
+      const existing = donorEmail
+        ? await tx.vaultDonor.findFirst({ where: { email: { equals: donorEmail, mode: "insensitive" } } })
+        : await tx.vaultDonor.findFirst({ where: { whatsappNumber: contact.whatsapp }, orderBy: { createdAt: "asc" } });
       if (existing?.idType && existing.idNumberEncrypted) {
         const onFile = normalizeIdNumber(this.encryption.decrypt(existing.idNumberEncrypted));
         if (existing.idType !== input.idType || onFile !== normalizeIdNumber(input.idNumber)) {
@@ -792,7 +858,7 @@ export class VaultContributionsService {
             where: { id: existing.id },
             data: { idType: input.idType, idNumberEncrypted, ...(!existing.fullName && { fullName: input.fullName }) },
           })
-        : await tx.vaultDonor.create({ data: { email: donorEmail, fullName: input.fullName, idType: input.idType, idNumberEncrypted } });
+        : await tx.vaultDonor.create({ data: { email: donorEmail, whatsappNumber: contact.whatsapp, fullName: input.fullName, idType: input.idType, idNumberEncrypted } });
       await tx.auditLog.create({
         data: {
           actorType: "public_donor",
@@ -806,6 +872,31 @@ export class VaultContributionsService {
       });
       return saved;
     });
+  }
+
+  private requireGiverWhatsApp(): GiverWhatsAppService {
+    if (!this.giverWhatsApp) throw new BadRequestException("Giving by WhatsApp isn't available.");
+    return this.giverWhatsApp;
+  }
+
+  /** A short WhatsApp receipt, like the email one; never holds up the confirmation. */
+  private sendWhatsAppReceipt(
+    to: string,
+    contribution: { id: string; amount: Prisma.Decimal; currency: string; vault: { name: string }; vaultCause: { name: string } | null },
+  ): void {
+    if (!this.whatsApp) return;
+    const amount = `${contribution.currency === "NGN" ? "₦" : `${contribution.currency} `}${Number(contribution.amount).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
+    const text = [
+      "*Thank you for your gift*",
+      "",
+      `We received ${amount} for ${contribution.vault.name}${contribution.vaultCause ? ` (${contribution.vaultCause.name})` : ""}.`,
+      `Receipt reference: ${contribution.id}`,
+      "",
+      "— *Birr* | A digital trustee for Islamic waqf",
+    ].join("\n");
+    this.whatsApp.sendMessage(to, text).catch((err) =>
+      this.logger.error(`Failed to send the WhatsApp receipt for vault contribution "${contribution.id}":`, err instanceof Error ? err.stack : String(err)),
+    );
   }
 
   /** A monthly gift's charges, newest first, for its manage page and the scheduler. */

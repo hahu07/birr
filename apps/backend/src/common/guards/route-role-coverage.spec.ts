@@ -81,6 +81,8 @@ const UNGATED_WRITE_ROUTES: Record<string, string> = {
 
   "POST /vault-contributions": PUBLIC_GIVING,
   "POST /vault-contributions/:id/verify": PUBLIC_GIVING,
+  "POST /giving/whatsapp/code": PUBLIC_GIVING,
+  "POST /giving/whatsapp/confirm": PUBLIC_GIVING,
   "POST /giving/manage-links": PUBLIC_GIVING,
   "POST /waqfs/:waqfId/monthly-top-up/amount": FOUNDER_SELF_SERVICE,
   "POST /founder-succession/handover": FOUNDER_SELF_SERVICE,

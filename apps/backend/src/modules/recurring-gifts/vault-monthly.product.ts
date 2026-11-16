@@ -38,7 +38,7 @@ export class VaultMonthlyProduct implements MonthlyGiftProduct {
           amount: new Prisma.Decimal(gift.amount).toFixed(2),
           currency: "NGN",
           provider: "paystack",
-          donorEmail: gift.email,
+          donorEmail: gift.email ?? undefined,
         },
         undefined,
         { type: "charge", gift, period },
@@ -66,7 +66,7 @@ export class VaultMonthlyProduct implements MonthlyGiftProduct {
         amount: new Prisma.Decimal(gift.amount).toFixed(2),
         currency: "NGN",
         provider: "paystack",
-        donorEmail: gift.email,
+        donorEmail: gift.email ?? undefined,
       },
       undefined,
       { type: "card_update", gift },
@@ -88,6 +88,6 @@ export class VaultMonthlyProduct implements MonthlyGiftProduct {
   }
 
   async recordIdentity(gift: RecurringGift, identity: GiverIdentity) {
-    await this.contributions.recordDonorIdentity(gift.email, identity);
+    await this.contributions.recordDonorIdentity(gift, identity);
   }
 }

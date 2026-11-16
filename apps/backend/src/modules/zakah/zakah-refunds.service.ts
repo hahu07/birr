@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException, Logger } from "@nestjs/common";
+import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
 import { IsEnum, IsNumberString, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { prisma, Prisma, ZakahPool, ZakahRefund, ZakahRefundReason } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
@@ -79,25 +80,48 @@ function naira(amount: Prisma.Decimal | string): string {
  */
 @Injectable()
 export class ZakahRefundsService {
+  private readonly logger = new Logger(ZakahRefundsService.name);
+
   constructor(
     private readonly encryption: EncryptionService,
     private readonly ledger: ZakahLedgerService,
     private readonly email: ResendZakahReceiptEmailAdapter,
+    // Last, so tests that never use WhatsApp needn't pass it.
+    private readonly whatsApp?: TwilioWhatsAppAdapter,
   ) {}
 
   /**
-   * Emails the payer once a refund is approved, and again once it's paid —
-   * called after the deciding transaction commits (GovernedActionsService
-   * .decide), never inside it. A payer who gave no email gets nothing, as
-   * with receipts. Never says why the refund was made.
+   * Tells the payer once a refund is approved, and again once it's paid,
+   * by email and/or WhatsApp, whichever they gave (2026-11-16) — called
+   * after the deciding transaction commits (GovernedActionsService
+   * .decide), never inside it. An anonymous payer gets nothing, as with
+   * receipts. Never says why the refund was made.
    */
   async notifyPayer(refundId: string, stage: "approved" | "paid"): Promise<void> {
     const refund = await prisma.zakahRefund.findUnique({ where: { id: refundId }, include: { payment: { include: { payer: true } } } });
     if (!refund?.payment.payer) return;
     const bank = JSON.parse(this.encryption.decrypt(refund.payeeBankDetailsEncrypted)) as BankDetails;
     const date = (d: Date) => d.toISOString().slice(0, 10);
+    const payer = refund.payment.payer;
+    if (payer.whatsappNumber && this.whatsApp) {
+      const lines =
+        stage === "approved"
+          ? [`*Your zakah refund is approved*`, "", `Birr will refund ₦${Number(refund.amount).toLocaleString("en-NG", { minimumFractionDigits: 2 })} to your account ending ${bank.accountNumber.slice(-4)}.`]
+          : [
+              `*Your zakah refund is paid*`,
+              "",
+              `₦${Number(refund.amount).toLocaleString("en-NG", { minimumFractionDigits: 2 })} was sent to your account ending ${bank.accountNumber.slice(-4)}` +
+                (refund.paidOn ? ` on ${date(refund.paidOn)}` : "") +
+                (refund.bankReference ? ` (bank reference ${refund.bankReference})` : "") +
+                ".",
+            ];
+      await this.whatsApp
+        .sendMessage(payer.whatsappNumber, [...lines, `Refund reference: ${refund.id}`, "", "— *Birr* | A digital trustee for Islamic waqf"].join("\n"))
+        .catch((err) => this.logger.error(`Failed to send the WhatsApp refund notice for "${refund.id}":`, err instanceof Error ? err.stack : String(err)));
+    }
+    if (!payer.email) return;
     await this.email.sendRefundNotice({
-      to: refund.payment.payer.email,
+      to: payer.email,
       stage,
       amount: refund.amount.toFixed(2),
       paymentDate: date(refund.payment.confirmedAt ?? refund.payment.createdAt),
