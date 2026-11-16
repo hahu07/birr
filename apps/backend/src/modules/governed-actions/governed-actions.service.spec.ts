@@ -1,3 +1,4 @@
+import { SettingsService } from "../../common/settings/settings.service";
 import { prisma, Beneficiary, Investment, Distribution, BirrStaffRole } from "@birr/db";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
@@ -43,6 +44,7 @@ import { unusedFitrSeason } from "../zakah/test-support-fitr";
 import { lockZakahCommitments } from "../zakah/zakah-commitments";
 import { draftRulesets } from "@birr/zakah";
 import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
+import { FounderSuccessionService } from "../founder-succession/founder-succession.service";
 
 // Minimal fake, same shape as vault-contributions.service.spec.ts's own
 // local FakeAdapter/FakeReceiptEmailAdapter — duplicated rather than
@@ -167,6 +169,7 @@ describe("GovernedActionsService", () => {
     zakahDistributionsService,
     zakahRefundsService,
     zakahFitrService,
+    new FounderSuccessionService(notificationsService, new SettingsService(new EncryptionService())),
   );
 
   const governedActionIds: string[] = [];
@@ -2441,6 +2444,87 @@ describe("GovernedActionsService", () => {
         }),
       ).rejects.toBe(rollback);
     }, 30000);
+  });
+
+  // founder.primary_contact_change (2026-11-15): a Founder's primary
+  // contact asks, or a Mutawalli Officer records an unreachable contact
+  // with evidence; Compliance or the Board approves.
+  describe("founder.primary_contact_change", () => {
+    let officerUserId: string;
+    let complianceUserId: string;
+    const successionService = new FounderSuccessionService(notificationsService, new SettingsService(new EncryptionService()));
+    const founderIds: string[] = [];
+
+    async function staffWith(label: string, role: BirrStaffRole) {
+      const user = await prisma.user.create({ data: { email: `succ-ga-${label}-${randomUUID().slice(0, 8)}@example.com`, fullName: `Succession ${label}` } });
+      await prisma.birrStaff.create({ data: { userId: user.id, roles: { create: { role } } } });
+      return user;
+    }
+    async function founderWithTeam() {
+      const founder = await prisma.founder.create({ data: { name: `Succession GA ${randomUUID().slice(0, 6)}`, kind: "institution" } });
+      founderIds.push(founder.id);
+      const mk = (label: string) => prisma.user.create({ data: { email: `succ-ga-${label}-${randomUUID().slice(0, 8)}@example.com`, fullName: `Member ${label}`, status: "active" } });
+      const contactUser = await mk("contact");
+      const memberUser = await mk("member");
+      const contact = await prisma.founderMembership.create({ data: { founderId: founder.id, userId: contactUser.id, permissionLevel: "primary_contact" } });
+      const member = await prisma.founderMembership.create({ data: { founderId: founder.id, userId: memberUser.id, permissionLevel: "viewer" } });
+      return { founder, contactUser, contact, member };
+    }
+    const propose = async (successionId: string, makerUserId = officerUserId) => {
+      const action = await service.propose({ permissionKey: "founder.primary_contact_change", payload: { successionId }, makerUserId });
+      governedActionIds.push(action.id);
+      return action;
+    };
+
+    beforeAll(async () => {
+      officerUserId = (await staffWith("officer", "mutawalli_officer")).id;
+      complianceUserId = (await staffWith("compliance", "compliance_officer")).id;
+    }, 30000);
+
+    afterAll(async () => {
+      await prisma.primaryContactSuccession.updateMany({ where: { founderId: { in: founderIds }, status: { in: ["requested", "approved", "objected"] } }, data: { status: "cancelled" } });
+    });
+
+    test("propose and approve swaps the primary contact; the case is linked to the approval", async () => {
+      const { founder, contactUser, contact, member } = await founderWithTeam();
+      const succession = await successionService.requestHandover({ userId: contactUser.id, founderId: founder.id }, { newMembershipId: member.id, reason: "Retiring as Bursar this December." });
+      const action = await propose(succession.id);
+      await service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: true });
+      expect((await prisma.founderMembership.findUniqueOrThrow({ where: { id: member.id } })).permissionLevel).toBe("primary_contact");
+      expect((await prisma.founderMembership.findUniqueOrThrow({ where: { id: contact.id } })).permissionLevel).toBe("viewer");
+      expect(await prisma.primaryContactSuccession.findUniqueOrThrow({ where: { id: succession.id } })).toMatchObject({ status: "completed", governedActionId: action.id });
+    });
+
+    test("the proposer cannot approve it, and the database refuses it too", async () => {
+      const { founder, contactUser, member } = await founderWithTeam();
+      const succession = await successionService.requestHandover({ userId: contactUser.id, founderId: founder.id }, { newMembershipId: member.id, reason: "Leaving the bank in January." });
+      const action = await propose(succession.id);
+      await expect(service.decide({ governedActionId: action.id, checkerUserId: officerUserId, approve: true })).rejects.toThrow(ForbiddenException);
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: officerUserId } })).rejects.toThrow();
+    });
+
+    test("an objected case can't be proposed, and one case can't be proposed twice", async () => {
+      const { founder, contactUser, member } = await founderWithTeam();
+      const unreachable = await successionService.recordUnreachable(officerUserId, {
+        founderId: founder.id,
+        newMembershipId: member.id,
+        reason: "Family says the chair is gravely ill.",
+        evidenceNote: "Letter from the family dated 10 Nov, filed.",
+      });
+      await propose(unreachable.id);
+      await expect(propose(unreachable.id)).rejects.toThrow(ConflictException);
+      await successionService.object(unreachable.id, contactUser.id, { note: "I am recovering and can act." });
+      await expect(propose(unreachable.id)).rejects.toThrow(BadRequestException);
+    });
+
+    test("rejecting closes the case and leaves the primary contact in place", async () => {
+      const { founder, contactUser, contact, member } = await founderWithTeam();
+      const succession = await successionService.requestHandover({ userId: contactUser.id, founderId: founder.id }, { newMembershipId: member.id, reason: "Handing over to my deputy." });
+      const action = await propose(succession.id);
+      await service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: false });
+      expect((await prisma.primaryContactSuccession.findUniqueOrThrow({ where: { id: succession.id } })).status).toBe("rejected");
+      expect((await prisma.founderMembership.findUniqueOrThrow({ where: { id: contact.id } })).permissionLevel).toBe("primary_contact");
+    });
   });
 
   describe("staff.role_add / staff.role_remove", () => {

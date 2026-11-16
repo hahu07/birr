@@ -116,8 +116,10 @@ async function findPrimaryContactMembership(
   tx: Prisma.TransactionClient | typeof prisma,
   founderId: string,
 ) {
+  // Only the active one: after a succession the outgoing contact's row
+  // stays (revoked or a viewer), and must never be mistaken for the current.
   return tx.founderMembership.findFirst({
-    where: { founderId, permissionLevel: "primary_contact" },
+    where: { founderId, permissionLevel: "primary_contact", status: "active" },
     include: { user: true },
   });
 }

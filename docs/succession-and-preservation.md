@@ -1,6 +1,8 @@
 # Succession & Long-Term Preservation — Scoping Notes
 
-Status: **policy decided (2026-08-30), not yet built**. This documents
+Status: **policy decided (2026-08-30); Founder-side succession built
+2026-11-15** (see "Built (2026-11-15)" below and the staff runbook,
+`docs/founder-succession.md`). This documents
 what these two stages mean and the open questions that blocked scoping
 real work, found and written up during the 2026-08-25/26
 production-readiness audit (see the punch list — these were the two
@@ -125,11 +127,27 @@ whether the outgoing contact is reachable), and whether reassigning
 consequential handing over control of an endowment's donor-side
 authority is — a real design fork, not yet answered.
 
-## Next step
+## Built (2026-11-15)
 
-Succession management (Founder-side scope, above) is ready to become a
-normal scoped plan once the "who can initiate, maker-checker or not"
-question is answered — vertical slice, tests asserting the audit
-trail, live verification, same as every other feature built this way
-in this codebase. Long-term preservation needs no further scoping —
-see above.
+The open question above is answered, by the owner:
+
+- **The contact can still act** (scenarios 1 and 2 where they're
+  reachable): the primary contact asks on their Team page, and Birr
+  confirms before anything changes.
+- **The contact is gone**: a remaining member asks, or a Mutawalli
+  Officer records it for family or an institution, with the evidence
+  seen. The outgoing contact is told at once, by email and WhatsApp, and
+  has 7 days to object.
+- **Both are maker-checker**: the governed
+  `founder.primary_contact_change`, proposed by a Mutawalli Officer and
+  approved by Compliance or the Board, with the database refusing
+  checker = maker.
+
+`PrimaryContactSuccession` keeps each case: who went out, who came in,
+why, the evidence, the notice and any objection. The audit log records
+every step, so who was accountable when is preserved. The database
+allows one active primary contact and one open case per Founder. The
+lifecycle's succession stage now reports this instead of "not
+available". Scenario 3 (Birr transferring trusteeship) stays out of
+scope, per the going-concern decision above. Long-term preservation
+needs no further scoping; see above.

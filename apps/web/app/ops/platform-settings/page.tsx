@@ -23,6 +23,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI (image generation)",
   replicate: "Replicate (image generation)",
   image_generation: "Image generation — active provider",
+  support: "Birr contact (shown to founders who can't sign in)",
 };
 
 export default function PlatformSettingsPage() {

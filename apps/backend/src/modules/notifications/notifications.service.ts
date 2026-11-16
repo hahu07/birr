@@ -15,6 +15,10 @@ export interface NotifyInput {
   linkUrl?: string;
   relatedEntityType?: string;
   relatedEntityId?: string;
+  /** Email only: replaces the default "you can safely ignore it" footer. */
+  emailFooter?: string;
+  /** Email only: where a reply goes, when replying is one way to respond. */
+  emailReplyTo?: string;
 }
 
 /**
@@ -44,6 +48,11 @@ const CHANNEL_PLAN: Record<string, { email: boolean; whatsapp: boolean }> = {
   "distribution.paid": { email: true, whatsapp: true },
   // A daily Paystack reconciliation found mismatches (2026-11-15): Compliance should look the same day.
   "payments.reconciliation_issues": { email: true, whatsapp: false },
+  // Primary contact succession (2026-11-15). The outgoing contact's notice
+  // matters most: they have 7 days to object, so it goes everywhere.
+  "founder_succession.requested": { email: true, whatsapp: false },
+  "founder_succession.outgoing_notice": { email: true, whatsapp: true },
+  "founder_succession.update": { email: true, whatsapp: false },
   "contribution.confirmed": { email: true, whatsapp: true },
   "contribution.failed": { email: true, whatsapp: true },
   "waqf.activated": { email: true, whatsapp: true },
@@ -168,6 +177,8 @@ export class NotificationsService {
           // itself stays relative in the in-app row created above; this
           // is a separately-resolved value for the external channel only.
           linkUrl: resolvePortalLink(input.linkUrl),
+          footerText: input.emailFooter,
+          replyTo: input.emailReplyTo,
         });
       } catch (err) {
         this.logger.error(

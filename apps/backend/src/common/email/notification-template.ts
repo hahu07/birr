@@ -16,9 +16,12 @@ export interface EmailTemplateInput {
   bodyHtml: string;
   ctaLabel?: string;
   ctaUrl?: string;
+  /** Replaces the default "you can safely ignore it" footer, for a
+   * message the recipient must not ignore. Plain text; escaped here. */
+  footerText?: string;
 }
 
-export function renderEmailTemplate({ heading, bodyHtml, ctaLabel, ctaUrl }: EmailTemplateInput): string {
+export function renderEmailTemplate({ heading, bodyHtml, ctaLabel, ctaUrl, footerText }: EmailTemplateInput): string {
   const cta =
     ctaLabel && ctaUrl
       ? `
@@ -72,8 +75,8 @@ export function renderEmailTemplate({ heading, bodyHtml, ctaLabel, ctaUrl }: Ema
             <tr>
               <td style="padding: 24px 40px 32px; border-top: 1px solid #eef1ee;">
                 <p style="margin: 0; color: #8a938e; font-size: 12px; line-height: 1.5;">
-                  This is an automated message from Birr, digital trustee for Islamic waqf. If you weren't
-                  expecting this, you can safely ignore it.
+                  ${footerText ? escapeFooter(footerText) : `This is an automated message from Birr, digital trustee for Islamic waqf. If you weren't
+                  expecting this, you can safely ignore it.`}
                 </p>
               </td>
             </tr>
@@ -83,4 +86,8 @@ export function renderEmailTemplate({ heading, bodyHtml, ctaLabel, ctaUrl }: Ema
     </table>
   </body>
 </html>`;
+}
+
+function escapeFooter(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

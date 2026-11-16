@@ -876,7 +876,7 @@ export interface WaqfLifecycleStatus {
     financialReporting: { status: LifecycleStageStatus; count?: number };
     impactMeasurement: { status: LifecycleStageStatus; count?: number };
     audit: { status: LifecycleStageStatus; count?: number };
-    successionManagement: { status: LifecycleStageStatus };
+    successionManagement: { status: LifecycleStageStatus; changeUnderWay?: boolean; lastChangedAt?: string | null };
     longTermPreservation: { status: LifecycleStageStatus };
   };
   completedCount: number;

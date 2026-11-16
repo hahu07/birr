@@ -386,6 +386,16 @@ export class WaqfsService {
         prisma.auditLog.count({ where: { waqfId, action: "financial_report.exported" } }),
       ]);
 
+    // Succession (2026-11-15): every founder of this fund's Foundation has
+    // an active primary contact, and no change of primary contact is under
+    // way (see FounderSuccessionService).
+    const founderIds = (await prisma.foundationFounder.findMany({ where: { foundationId: waqf.foundationId }, select: { founderId: true } })).map((f) => f.founderId);
+    const [openSuccessions, foundersWithContact, lastSuccession] = await Promise.all([
+      prisma.primaryContactSuccession.count({ where: { founderId: { in: founderIds }, status: { in: ["requested", "approved", "objected"] } } }),
+      prisma.founderMembership.count({ where: { founderId: { in: founderIds }, permissionLevel: "primary_contact", status: "active" } }),
+      prisma.primaryContactSuccession.findFirst({ where: { founderId: { in: founderIds }, status: "completed" }, orderBy: { completedAt: "desc" }, select: { completedAt: true } }),
+    ]);
+
     const stages = {
       establishment: { status: "complete" as const, completedAt: waqf.createdAt },
       legalDocumentation: {
@@ -422,14 +432,13 @@ export class WaqfsService {
         count: impactUpdateCount,
       },
       audit: { status: (auditLogCount > 0 ? "complete" : "pending") as "complete" | "pending", count: auditLogCount },
-      // Still not_available — the owner's 2026-08-30 going-concern
-      // decision (see docs/succession-and-preservation.md) narrowed
-      // this to a real, buildable Founder-side scope (reassigning
-      // primary_contact when the current holder is gone), but who's
-      // allowed to initiate it and whether it needs its own
-      // maker-checker gate is still an open design fork — nothing to
-      // compute here yet.
-      successionManagement: { status: "not_available" as const },
+      // Built 2026-11-15 (owner's decisions on the question the
+      // 2026-08-30 note left open: see FounderSuccessionService).
+      successionManagement: {
+        status: (openSuccessions === 0 && foundersWithContact >= founderIds.length && founderIds.length > 0 ? "complete" : "pending") as "complete" | "pending",
+        changeUnderWay: openSuccessions > 0,
+        lastChangedAt: lastSuccession?.completedAt ?? null,
+      },
       // Always complete, unconditionally — resolved, not deferred, by
       // the same 2026-08-30 decision: under a going-concern assumption,
       // "preservation independent of Birr's own existence" isn't a live
@@ -441,7 +450,7 @@ export class WaqfsService {
       longTermPreservation: { status: "complete" as const },
     };
 
-    const trackable = Object.values(stages).filter((s) => s.status !== "not_applicable" && s.status !== "not_available");
+    const trackable = Object.values(stages).filter((s) => s.status !== "not_applicable");
     const completedCount = trackable.filter((s) => s.status === "complete").length;
 
     return { waqfId, stages, completedCount, trackableCount: trackable.length };

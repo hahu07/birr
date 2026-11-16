@@ -80,6 +80,7 @@ const NAV_GROUPS: {
     label: "Portfolio",
     items: [
       { href: "/ops/foundations", label: "Foundations", icon: IconLandmark },
+      { href: "/ops/founder-succession", label: "Primary Contact Changes", icon: IconUsers, requiresPermission: "founder.succession_view" },
       { href: "/ops/waqfs", label: "Waqf Funds", icon: IconBriefcase },
       { href: "/ops/vaults", label: "Vaults", icon: IconArchive },
       { href: "/ops/zakah", label: "Zakah", icon: IconShieldCheck },

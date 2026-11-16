@@ -389,6 +389,8 @@ model User {
   zakahRecipientChangesRequested ZakahRecipient[]                @relation("ZakahRecipientChangeRequester")
   reconciliationRunsStarted      PaymentReconciliationRun[]      @relation("ReconciliationRunStarter")
   reconciliationIssuesResolved   PaymentReconciliationIssue[]    @relation("ReconciliationIssueResolver")
+  successionsRequested           PrimaryContactSuccession[]      @relation("SuccessionRequester")
+  successionsRecorded            PrimaryContactSuccession[]      @relation("SuccessionRecorder")
 
   @@map("users")
 }
@@ -425,18 +427,19 @@ model Founder {
   updatedAt        DateTime         @updatedAt
   deletedAt        DateTime?
 
-  memberships            FounderMembership[]
-  foundationFounders     FoundationFounder[]
-  invitations            Invitation[]
-  auditLogs              AuditLog[]
-  signedWaqfDeeds        WaqfDeed[]
-  signedFoundationDeeds  FoundationDeed[]
-  coFounderDeedConsents  CoFounderDeedConsent[]
-  recurringGifts         RecurringGift[]
-  causeSuggestions       CauseCategorySuggestion[]
-  beneficiaryNominations BeneficiaryNomination[]
-  founderRequests        FounderRequest[]
-  funnelEvents           FunnelEvent[]
+  memberships               FounderMembership[]
+  foundationFounders        FoundationFounder[]
+  invitations               Invitation[]
+  auditLogs                 AuditLog[]
+  signedWaqfDeeds           WaqfDeed[]
+  signedFoundationDeeds     FoundationDeed[]
+  coFounderDeedConsents     CoFounderDeedConsent[]
+  recurringGifts            RecurringGift[]
+  causeSuggestions          CauseCategorySuggestion[]
+  beneficiaryNominations    BeneficiaryNomination[]
+  founderRequests           FounderRequest[]
+  funnelEvents              FunnelEvent[]
+  primaryContactSuccessions PrimaryContactSuccession[]
 
   @@map("founders")
 }
@@ -444,17 +447,19 @@ model Founder {
 // Lightweight, deliberately — no configurable RBAC here. See CLAUDE.md:
 // "No per-founder RBAC to build."
 model FounderMembership {
-  id              String                 @id @default(uuid())
-  founderId       String
-  founder         Founder                @relation(fields: [founderId], references: [id])
-  userId          String
-  user            User                   @relation("MembershipUser", fields: [userId], references: [id])
-  permissionLevel FounderPermissionLevel
-  status          MembershipStatus       @default(active)
-  invitedBy       String?
-  invitedByUser   User?                  @relation("MembershipInvitedBy", fields: [invitedBy], references: [id])
-  createdAt       DateTime               @default(now())
-  revokedAt       DateTime?
+  id                  String                     @id @default(uuid())
+  founderId           String
+  founder             Founder                    @relation(fields: [founderId], references: [id])
+  userId              String
+  user                User                       @relation("MembershipUser", fields: [userId], references: [id])
+  permissionLevel     FounderPermissionLevel
+  status              MembershipStatus           @default(active)
+  invitedBy           String?
+  invitedByUser       User?                      @relation("MembershipInvitedBy", fields: [invitedBy], references: [id])
+  createdAt           DateTime                   @default(now())
+  revokedAt           DateTime?
+  successionsOutgoing PrimaryContactSuccession[] @relation("SuccessionOutgoing")
+  successionsIncoming PrimaryContactSuccession[] @relation("SuccessionIncoming")
 
   @@unique([founderId, userId])
   @@map("founder_memberships")
@@ -2081,25 +2086,26 @@ model NotificationPreference {
 // One table, discriminated by inviteeKind, for both founder-side and
 // Birr-staff-side invitations — same shape (email, token, expiry).
 model Invitation {
-  id            String           @id @default(uuid())
-  inviteeKind   InviteeKind
-  email         String
-  founderId     String?
-  founder       Founder?         @relation(fields: [founderId], references: [id])
+  id                       String                    @id @default(uuid())
+  inviteeKind              InviteeKind
+  email                    String
+  founderId                String?
+  founder                  Founder?                  @relation(fields: [founderId], references: [id])
+  primaryContactSuccession PrimaryContactSuccession?
   // co_founder only — the EXISTING Foundation this invitation, once
   // accepted, attaches a brand-new Founder to. Null for founder_user/
   // birr_staff invitations, which use founderId instead (an EXISTING
   // Founder a teammate joins) — the two columns are deliberately
   // separate rather than one reused for both meanings.
-  foundationId  String?
-  foundation    Foundation?      @relation(fields: [foundationId], references: [id])
-  roleKey       String?
-  invitedBy     String
-  invitedByUser User             @relation("InvitationInvitedBy", fields: [invitedBy], references: [id])
-  token         String           @unique
-  status        InvitationStatus @default(pending)
-  expiresAt     DateTime
-  createdAt     DateTime         @default(now())
+  foundationId             String?
+  foundation               Foundation?               @relation(fields: [foundationId], references: [id])
+  roleKey                  String?
+  invitedBy                String
+  invitedByUser            User                      @relation("InvitationInvitedBy", fields: [invitedBy], references: [id])
+  token                    String                    @unique
+  status                   InvitationStatus          @default(pending)
+  expiresAt                DateTime
+  createdAt                DateTime                  @default(now())
 
   @@index([founderId])
   @@index([foundationId])
@@ -3674,4 +3680,77 @@ model PaymentReconciliationIssue {
 
   @@index([status, direction])
   @@map("payment_reconciliation_issues")
+}
+
+// ─── Primary contact succession (2026-11-15) ────────────────────────────
+// Owner's decisions: a Founder's primary contact (the one member who can
+// contribute, sign the deed, allocate to causes and invite) can be handed
+// to someone new. If the contact can still act, they request it and Birr
+// confirms ("handover"). If they're gone (died, incapacitated,
+// unreachable), a member, family or the institution asks Birr; a
+// Mutawalli Officer records it with evidence ("unreachable"), the
+// outgoing contact is told and has 7 days to object. Either way the change
+// itself is the governed founder.primary_contact_change: Mutawalli
+// proposes, Compliance or the Board approves.
+
+enum SuccessionKind {
+  handover
+  unreachable
+}
+
+enum SuccessionStatus {
+  /// Asked for; a Mutawalli Officer proposes it as founder.primary_contact_change
+  /// (the pending approval shows in the Approvals queue).
+  requested
+  /// Approved; waiting for a new person to accept their invitation.
+  approved
+  completed
+  rejected
+  cancelled
+  /// The outgoing contact said no; nothing more happens until staff look.
+  objected
+}
+
+model PrimaryContactSuccession {
+  id        String           @id @default(uuid())
+  founderId String
+  founder   Founder          @relation(fields: [founderId], references: [id], onDelete: Restrict)
+  kind      SuccessionKind
+  status    SuccessionStatus @default(requested)
+
+  outgoingMembershipId String
+  outgoingMembership   FounderMembership  @relation("SuccessionOutgoing", fields: [outgoingMembershipId], references: [id], onDelete: Restrict)
+  /// An existing active member taking over...
+  newMembershipId      String?
+  newMembership        FounderMembership? @relation("SuccessionIncoming", fields: [newMembershipId], references: [id], onDelete: Restrict)
+  /// ...or someone new to Birr, invited once approved.
+  newEmail             String?
+  newFullName          String?
+
+  /// The requester's own words.
+  reason       String  @db.Text
+  /// Unreachable cases: what Birr saw, e.g. "Death certificate No. ..., seen 12 Nov".
+  evidenceNote String? @db.Text
+
+  /// A founder member who asked, or a staff member who recorded it on someone's behalf.
+  requestedByUserId String?
+  requestedBy       User?   @relation("SuccessionRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  recordedByUserId  String?
+  recordedBy        User?   @relation("SuccessionRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  outgoingNotifiedAt DateTime?
+  /// Unreachable: notified + 7 days, so a reachable person can object. Handover: at once.
+  earliestApprovalAt DateTime
+  objectedAt         DateTime?
+  objectionNote      String?   @db.Text
+
+  governedActionId String?     @unique
+  invitationId     String?     @unique
+  invitation       Invitation? @relation(fields: [invitationId], references: [id], onDelete: Restrict)
+  completedAt      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([founderId])
+  @@map("primary_contact_successions")
 }

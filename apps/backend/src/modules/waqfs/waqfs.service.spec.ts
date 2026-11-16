@@ -360,7 +360,7 @@ describe("WaqfsService", () => {
       await prisma.compliancePolicySet.deleteMany({ where: { jurisdiction: { in: policySetJurisdictions } } });
     });
 
-    test("a fresh Project waqf: every trackable stage pending except establishment and long-term preservation; investment management is not_applicable; succession management is not_available", async () => {
+    test("a fresh Project waqf: every trackable stage pending except establishment and long-term preservation; investment management is not_applicable", async () => {
       const status = await service.getLifecycleStatus(projectWaqfId);
       expect(status!.stages.establishment.status).toBe("complete");
       expect(status!.stages.legalDocumentation.status).toBe("pending");
@@ -382,17 +382,29 @@ describe("WaqfsService", () => {
       // getLifecycleStatus() checks real audit_logs rows rather than
       // assuming every waqf has one.
       expect(status!.stages.audit.status).toBe("pending");
-      expect(status!.stages.successionManagement.status).toBe("not_available");
+      // Pending: this fixture Founder has no active primary contact (built 2026-11-15).
+      expect(status!.stages.successionManagement.status).toBe("pending");
       // Always complete, unconditionally — see waqfs.service.ts's own
       // comment (the 2026-08-30 going-concern policy decision resolved
       // this one, not deferred it).
       expect(status!.stages.longTermPreservation.status).toBe("complete");
-      // 11 trackable stages (13 minus the 1 always-not_available —
-      // successionManagement — minus the 1 not_applicable-for-Project
+      // 12 trackable stages (13 minus the not_applicable-for-Project
       // investmentManagement); establishment and longTermPreservation
       // are complete from the start, everything else pending.
-      expect(status!.trackableCount).toBe(11);
+      expect(status!.trackableCount).toBe(12);
       expect(status!.completedCount).toBe(2);
+    });
+
+    test("succession management: complete once every founder has an active primary contact, pending while a change is under way", async () => {
+      const user = await prisma.user.create({ data: { email: `lifecycle-contact-${Date.now()}@example.com`, fullName: "Lifecycle Contact" } });
+      const membership = await prisma.founderMembership.create({ data: { founderId: founderAId, userId: user.id, permissionLevel: "primary_contact" } });
+      expect((await service.getLifecycleStatus(projectWaqfId))!.stages.successionManagement).toMatchObject({ status: "complete", changeUnderWay: false });
+
+      const succession = await prisma.primaryContactSuccession.create({
+        data: { founderId: founderAId, kind: "handover", outgoingMembershipId: membership.id, newEmail: "next@example.com", newFullName: "Next Contact", reason: "Retiring this year.", earliestApprovalAt: new Date() },
+      });
+      expect((await service.getLifecycleStatus(projectWaqfId))!.stages.successionManagement).toMatchObject({ status: "pending", changeUnderWay: true });
+      await prisma.primaryContactSuccession.update({ where: { id: succession.id }, data: { status: "cancelled" } });
     });
 
     test("generating a financial report flips financialReporting to complete", async () => {

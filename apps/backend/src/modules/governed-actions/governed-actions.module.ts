@@ -14,6 +14,7 @@ import { FoundersModule } from "../founders/founders.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { InvitationsModule } from "../invitations/invitations.module";
 import { ZakahModule } from "../zakah/zakah.module";
+import { FounderSuccessionModule } from "../founder-succession/founder-succession.module";
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ZakahModule } from "../zakah/zakah.module";
     NotificationsModule,
     InvitationsModule,
     ZakahModule,
+    FounderSuccessionModule,
   ],
   controllers: [GovernedActionsController],
   providers: [GovernedActionsService],
