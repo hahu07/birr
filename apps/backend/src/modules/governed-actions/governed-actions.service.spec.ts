@@ -3179,7 +3179,7 @@ describe("GovernedActionsService", () => {
       const payer = await prisma.zakahPayer.create({ data: { email: `ga-refund-payer-${id}@example.com` } });
       await prisma.zakahPayment.create({
         data: {
-          id, amount, currency, payerId: payer.id, provider: "paystack", providerReference: id, status: "confirmed", confirmedAt: new Date(),
+          id, amount, currency, payerId: payer.id, contactEmail: payer.email, provider: "paystack", providerReference: id, status: "confirmed", confirmedAt: new Date(),
           settlementSubaccount: "ACCT_test_zakah", wakalahConsentVersion: "test",
         },
       });
