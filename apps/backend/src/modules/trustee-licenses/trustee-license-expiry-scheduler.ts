@@ -1,9 +1,8 @@
-import { Logger } from "@nestjs/common";
+import { runMonitoredJob } from "../../common/jobs/job-monitor";
 import { prisma } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
 import { holdsAnyRole } from "../../common/auth/staff-roles";
 
-const logger = new Logger("TrusteeLicenseExpiryScheduler");
 
 const EXPIRY_WARNING_WINDOW_DAYS = 30;
 
@@ -30,9 +29,7 @@ export function startTrusteeLicenseExpiryScheduler(notificationsService: Notific
   const intervalMs = Number(process.env.TRUSTEE_LICENSE_EXPIRY_CHECK_INTERVAL_MS ?? 24 * 60 * 60 * 1000);
 
   const tick = () => {
-    checkExpiringLicenses(notificationsService).catch((err) => {
-      logger.error("Trustee license expiry check failed:", err instanceof Error ? err.stack : String(err));
-    });
+    void runMonitoredJob("trustee_license_expiry", () => checkExpiringLicenses(notificationsService));
   };
 
   tick();

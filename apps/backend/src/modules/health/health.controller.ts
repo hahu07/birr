@@ -1,6 +1,7 @@
 import { Controller, Get, HttpCode, HttpStatus, ServiceUnavailableException } from "@nestjs/common";
 import { prisma } from "@birr/db";
 import { Public } from "../../common/guards/public.decorator";
+import { jobHealth } from "../../common/jobs/job-monitor";
 
 /**
  * Liveness/readiness probe for a load balancer or orchestrator — no
@@ -24,6 +25,26 @@ export class HealthController {
         status: "error",
         detail: "Database unreachable.",
       });
+    }
+    return { status: "ok" };
+  }
+
+  /**
+   * For an external uptime monitor (2026-11-16): 503 while any scheduled
+   * job is overdue (stopped, or never succeeded) or its last run failed —
+   * monthly charges, reconciliation, the daily checks and the database
+   * backup. Kept apart from GET /health, which an orchestrator uses to
+   * decide whether to restart the server: a failing job isn't a reason to
+   * restart a healthy one. Names jobs only; details are in Ops → System
+   * health.
+   */
+  @Get("jobs")
+  async jobs() {
+    const health = (await jobHealth()).filter((j) => j.public);
+    const overdue = health.filter((j) => j.overdue).map((j) => j.job);
+    const failing = health.filter((j) => j.failing).map((j) => j.job);
+    if (overdue.length || failing.length) {
+      throw new ServiceUnavailableException({ status: "degraded", overdue, failing });
     }
     return { status: "ok" };
   }

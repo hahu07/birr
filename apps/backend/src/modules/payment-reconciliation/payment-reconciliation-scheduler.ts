@@ -1,7 +1,6 @@
-import { Logger } from "@nestjs/common";
+import { runMonitoredJob } from "../../common/jobs/job-monitor";
 import type { PaymentReconciliationService } from "./payment-reconciliation.service";
 
-const logger = new Logger("PaymentReconciliationScheduler");
 
 /**
  * Checks hourly whether yesterday (Lagos time) has been reconciled with
@@ -15,9 +14,7 @@ export function startPaymentReconciliationScheduler(service: PaymentReconciliati
   const tick = () => {
     if (running) return;
     running = true;
-    service
-      .runScheduled()
-      .catch((err) => logger.error("Reconciliation check failed:", err instanceof Error ? err.stack : String(err)))
+    void runMonitoredJob("payment_reconciliation", () => service.runScheduled())
       .finally(() => {
         running = false;
       });

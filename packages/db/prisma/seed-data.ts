@@ -185,6 +185,8 @@ export const accessPermissions = [
   { key: "staff.invitation_manage", category: "staff", description: "Resend or revoke a pending staff invitation.", roles: ["platform_admin"] },
   // Roles & Access (owner's decisions, 2026-11-16): staff managers only,
   // and a Board-recorded access review every 90 days.
+  // Ops → System health (2026-11-16): scheduled jobs, failures, backups.
+  { key: "system.health_view", category: "platform", description: "See System health: every scheduled job's last run, failures and backups.", roles: ["platform_admin"] },
   { key: "roles.view", category: "staff", description: "Open Roles & Access: every role's permissions, who holds each role, changes and access reviews; export the access matrix.", roles: ["platform_admin", "board_of_trustees", "compliance_officer", "audit_committee"] },
   { key: "roles.access_review", category: "staff", description: "Complete a periodic access review, confirming each role's permissions are still right.", roles: ["board_of_trustees"] },
   { key: "vault.contribution_hold", category: "vault", description: "Hold a Vault contribution for review, and release it.", roles: ["compliance_officer"] },
