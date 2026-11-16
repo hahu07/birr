@@ -11,6 +11,8 @@ interface PaymentRow {
   heldAt: Date | null;
   payerId: string | null;
   payerEmail: string | null;
+  /** A confirmed WhatsApp number (2026-11-16). */
+  payerWhatsApp: string | null;
   payerFullName: string | null;
   payerIdCaptured: boolean;
 }
@@ -27,9 +29,10 @@ interface PaymentRow {
  * - near the threshold: different payers each paying at least
  *   `minFraction` of the NGN AML threshold into the same pool;
  * - shared network: different payer identities paying from one IP;
- * - across Vault and zakah (owner's decision, 2026-11-11): the same email
- *   as both a Vault donor and a zakah payer whose combined NGN giving
- *   reaches the threshold, and networks shared between the two products.
+ * - across Vault and zakah (owner's decision, 2026-11-11): the same email,
+ *   or the same confirmed WhatsApp number (2026-11-16), as both a Vault
+ *   donor and a zakah payer whose combined NGN giving reaches the
+ *   threshold, and networks shared between the two products.
  *
  * NGN only: amounts are never converted between currencies anywhere in
  * Birr, so Vault giving in other currencies isn't added in here.
@@ -40,7 +43,7 @@ export class ZakahStructuringReviewService {
     const threshold = (await prisma.vaultDonorThreshold.findUnique({ where: { currency: CURRENCY } }))?.thresholdAmount ?? null;
     const payments = await prisma.zakahPayment.findMany({
       where: { status: "confirmed", currency: CURRENCY },
-      include: { payer: { select: { id: true, email: true, fullName: true, idType: true } } },
+      include: { payer: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
       orderBy: { createdAt: "desc" },
     });
     const rows = payments.map((p) => ({
@@ -53,6 +56,7 @@ export class ZakahStructuringReviewService {
         heldAt: p.heldAt,
         payerId: p.payerId,
         payerEmail: p.payer?.email ?? null,
+        payerWhatsApp: p.payer?.whatsappNumber ?? null,
         payerFullName: p.payer?.fullName ?? null,
         payerIdCaptured: p.payer?.idType != null,
       } satisfies PaymentRow,
@@ -105,7 +109,7 @@ export class ZakahStructuringReviewService {
   private async acrossVault(rows: { ipAddress: string | null; row: PaymentRow }[], threshold: Prisma.Decimal | null) {
     const vaultGifts = await prisma.vaultContribution.findMany({
       where: { status: "confirmed", currency: CURRENCY, donorId: { not: null } },
-      include: { donor: { select: { email: true, fullName: true, idType: true } }, vault: { select: { name: true } } },
+      include: { donor: { select: { email: true, whatsappNumber: true, fullName: true, idType: true } }, vault: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
     });
     const vaultRow = (g: (typeof vaultGifts)[number]) => ({
@@ -114,53 +118,65 @@ export class ZakahStructuringReviewService {
       amount: g.amount.toFixed(2),
       createdAt: g.createdAt,
       donorEmail: g.donor!.email,
+      donorWhatsApp: g.donor!.whatsappNumber,
       donorFullName: g.donor!.fullName,
       donorIdCaptured: g.donor!.idType != null,
     });
 
-    // Same email on both sides (both products store emails lower-cased).
-    const zakahByEmail = new Map<string, PaymentRow[]>();
-    for (const { row } of rows) {
-      if (row.payerEmail) zakahByEmail.set(row.payerEmail, [...(zakahByEmail.get(row.payerEmail) ?? []), row]);
-    }
-    const vaultByEmail = new Map<string, ReturnType<typeof vaultRow>[]>();
-    for (const g of vaultGifts) {
-      // A WhatsApp-only donor has no email to match on (2026-11-16).
-      const email = g.donor!.email?.toLowerCase();
-      if (email && zakahByEmail.has(email)) vaultByEmail.set(email, [...(vaultByEmail.get(email) ?? []), vaultRow(g)]);
-    }
     const sum = (amounts: string[]) => amounts.reduce((t, a) => t.plus(a), new Prisma.Decimal(0));
-    const sameEmail = [...vaultByEmail.entries()]
-      .map(([email, vault]) => {
-        const zakah = zakahByEmail.get(email)!;
-        const zakahTotal = sum(zakah.map((p) => p.amount));
-        const vaultTotal = sum(vault.map((g) => g.amount));
-        return { email, zakahTotal: zakahTotal.toFixed(2), vaultTotal: vaultTotal.toFixed(2), combined: zakahTotal.plus(vaultTotal), zakah, vault };
-      })
-      .filter((m) => threshold === null || m.combined.gte(threshold))
-      .sort((a, b) => b.combined.comparedTo(a.combined))
-      .map(({ combined, ...m }) => ({ ...m, combinedTotal: combined.toFixed(2) }));
+    type VaultRow = ReturnType<typeof vaultRow>;
+    // The same identity on both sides, by one key (an email, lower-cased in
+    // both products, or a confirmed WhatsApp number), where the combined
+    // NGN giving reaches the threshold.
+    const sameOn = (zakahKey: (p: PaymentRow) => string | null, vaultKey: (g: VaultRow) => string | null) => {
+      const zakahBy = new Map<string, PaymentRow[]>();
+      for (const { row } of rows) {
+        const key = zakahKey(row);
+        if (key) zakahBy.set(key, [...(zakahBy.get(key) ?? []), row]);
+      }
+      const vaultBy = new Map<string, VaultRow[]>();
+      for (const g of vaultGifts.map(vaultRow)) {
+        const key = vaultKey(g);
+        if (key && zakahBy.has(key)) vaultBy.set(key, [...(vaultBy.get(key) ?? []), g]);
+      }
+      return [...vaultBy.entries()]
+        .map(([key, vault]) => {
+          const zakah = zakahBy.get(key)!;
+          const zakahTotal = sum(zakah.map((p) => p.amount));
+          const vaultTotal = sum(vault.map((g) => g.amount));
+          return { key, zakahTotal: zakahTotal.toFixed(2), vaultTotal: vaultTotal.toFixed(2), combined: zakahTotal.plus(vaultTotal), zakah, vault };
+        })
+        .filter((m) => threshold === null || m.combined.gte(threshold))
+        .sort((a, b) => b.combined.comparedTo(a.combined))
+        .map(({ combined, ...m }) => ({ ...m, combinedTotal: combined.toFixed(2) }));
+    };
+    const sameEmail = sameOn((p) => p.payerEmail, (g) => g.donorEmail?.toLowerCase() ?? null).map(({ key, ...m }) => ({ email: key, ...m }));
+    const sameWhatsApp = sameOn((p) => p.payerWhatsApp, (g) => g.donorWhatsApp).map(({ key, ...m }) => ({ whatsapp: key, ...m }));
 
-    // A network both products' givers used, under two or more different emails.
+    // A network both products' givers used, under two or more different
+    // identities (an email, or a WhatsApp number for a giver with none).
     const vaultByIp = new Map<string, ReturnType<typeof vaultRow>[]>();
     for (const g of vaultGifts) {
       if (g.ipAddress) vaultByIp.set(g.ipAddress, [...(vaultByIp.get(g.ipAddress) ?? []), vaultRow(g)]);
     }
     const zakahByIp = new Map<string, PaymentRow[]>();
     for (const { ipAddress, row } of rows) {
-      if (ipAddress && row.payerEmail) zakahByIp.set(ipAddress, [...(zakahByIp.get(ipAddress) ?? []), row]);
+      if (ipAddress && (row.payerEmail || row.payerWhatsApp)) zakahByIp.set(ipAddress, [...(zakahByIp.get(ipAddress) ?? []), row]);
     }
     const sharedNetworks = [...zakahByIp.entries()]
       .filter(([ip]) => vaultByIp.has(ip))
       .map(([ipAddress, zakah]) => {
         const vault = vaultByIp.get(ipAddress)!;
-        const emails = new Set([...zakah.map((p) => p.payerEmail!), ...vault.flatMap((g) => (g.donorEmail ? [g.donorEmail.toLowerCase()] : []))]);
-        return { ipAddress, distinctEmailCount: emails.size, zakah, vault };
+        const givers = new Set([
+          ...zakah.map((p) => p.payerEmail ?? p.payerWhatsApp!),
+          ...vault.flatMap((g) => (g.donorEmail ? [g.donorEmail.toLowerCase()] : g.donorWhatsApp ? [g.donorWhatsApp] : [])),
+        ]);
+        return { ipAddress, distinctGiverCount: givers.size, zakah, vault };
       })
       // One person giving to both from their own device isn't a pattern.
-      .filter((n) => n.distinctEmailCount >= 2)
-      .sort((a, b) => b.distinctEmailCount - a.distinctEmailCount);
+      .filter((n) => n.distinctGiverCount >= 2)
+      .sort((a, b) => b.distinctGiverCount - a.distinctGiverCount);
 
-    return { sameEmail, sharedNetworks };
+    return { sameEmail, sameWhatsApp, sharedNetworks };
   }
 }

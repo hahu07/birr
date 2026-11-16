@@ -345,6 +345,7 @@ describe("ZakahPaymentsService", () => {
   describe("the nisab basis", () => {
     let choosingKey: string;
     let fixedKey: string;
+    let lowerOfKey: string;
 
     beforeAll(async () => {
       const officer = await prisma.user.create({ data: { email: email("nisab-officer"), fullName: "Nisab Officer" } });
@@ -358,9 +359,11 @@ describe("ZakahPaymentsService", () => {
       const shared = { personalJewellery: "exempt", debts: "deduct", nisabGoldGrams: "85", nisabSilverGrams: "595" };
       choosingKey = `test-${run}-nisab-choose`;
       fixedKey = `test-${run}-nisab-fixed`;
+      lowerOfKey = `test-${run}-nisab-lower`;
       for (const [key, rulings] of [
         [choosingKey, { ...shared, nisabBasis: "gold", payerChoosesNisab: true }],
         [fixedKey, { ...shared, nisabBasis: "gold" }],
+        [lowerOfKey, { ...shared, nisabBasis: "lower_of" }],
       ] as const) {
         await prisma.zakahRuleset.create({
           data: { key, madhhab: "maliki", version: 1, label: "Maliki", status: "approved", approvedAt: new Date(), approvedGovernedActionId: (await approval()).id, createdByUserId: officer.id, rulings },
@@ -369,7 +372,7 @@ describe("ZakahPaymentsService", () => {
     });
 
     afterAll(async () => {
-      await prisma.zakahRuleset.updateMany({ where: { key: { in: [choosingKey, fixedKey] }, status: "approved" }, data: { status: "superseded" } });
+      await prisma.zakahRuleset.updateMany({ where: { key: { in: [choosingKey, fixedKey, lowerOfKey] }, status: "approved" }, data: { status: "superseded" } });
     });
 
     const pay = (rulesetKey: string, extra: Record<string, unknown> = {}) =>
@@ -384,6 +387,16 @@ describe("ZakahPaymentsService", () => {
     test("where the ruleset fixes it: the ruleset's basis is recorded, and a choice is refused", async () => {
       expect(await basisOf((await pay(fixedKey)).payment.id)).toBe("gold");
       await expect(pay(fixedKey, { nisabBasis: "silver" })).rejects.toThrow(/sets the nisab itself/);
+    });
+
+    // Review finding (2026-11-16): "lower of" is a rule, not a metal; the
+    // payment records the metal it came to with that day's prices.
+    test("a ruleset using the lower of the two records the metal that was lower", async () => {
+      const { payment } = await pay(lowerOfKey);
+      const row = await prisma.zakahPayment.findUniqueOrThrow({ where: { id: payment.id }, include: { metalPrice: true } });
+      const silver = row.metalPrice!.silverPerGram.times(595);
+      const gold = row.metalPrice!.goldPerGram.times(85);
+      expect(row.nisabBasis).toBe(silver.lte(gold) ? "silver" : "gold");
     });
 
     test("a monthly gift keeps the basis its setup used", async () => {
@@ -448,6 +461,28 @@ describe("ZakahPaymentsService", () => {
       ).rejects.toThrow(expect.objectContaining({ response: expect.objectContaining({ code: "IDENTITY_REQUIRED" }) }));
       // Under the second email alone it would have passed.
       await expect(withWhatsApp.initiate({ ...base, amount: threshold.times(0.5).toFixed(2), payerEmail: email("wa-second") })).resolves.toBeDefined();
+    });
+
+    // Review finding (2026-11-16): anyone can type an email, so typing
+    // someone else's beside your own number must never route their receipts to you.
+    test("someone typing another payer's email beside their own number gets neither that payer's record nor their receipts", async () => {
+      const victimEmail = email("wa-victim");
+      const own = await withWhatsApp.initiate({ ...base, payerEmail: victimEmail });
+      const attacker = await giver.confirmed();
+      const theirs = await withWhatsApp.initiate({ ...base, payerEmail: victimEmail, payerWhatsApp: attacker.number, whatsappProof: attacker.proof });
+
+      const victim = await prisma.zakahPayer.findFirstOrThrow({ where: { email: victimEmail } });
+      expect(victim.whatsappNumber).toBeNull();
+      expect(await prisma.zakahPayment.findUniqueOrThrow({ where: { id: theirs.payment.id } })).toMatchObject({
+        payerId: victim.id, contactEmail: victimEmail, contactWhatsApp: attacker.number,
+      });
+
+      const before = giver.fake.messages.filter((m) => m.to === attacker.number).length;
+      paystack.nextWebhook = { providerReference: own.payment.id, status: "confirmed", providerPaymentId: `ps-own-${run}` };
+      await withWhatsApp.handleWebhook("paystack", Buffer.from("{}"), {});
+      await new Promise((r) => setImmediate(r));
+      expect(receipts.sent.some((r) => r.paymentId === own.payment.id && r.to === victimEmail)).toBe(true);
+      expect(giver.fake.messages.filter((m) => m.to === attacker.number)).toHaveLength(before);
     });
 
     test("monthly zakah with only a number: the gift has no email and Paystack saves the card under its stand-in", async () => {

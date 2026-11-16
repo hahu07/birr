@@ -1170,7 +1170,7 @@ export interface VaultContribution {
   vaultId: string;
   vaultCauseId: string | null;
   donorId: string | null;
-  donor: { id: string; email: string; fullName: string | null } | null;
+  donor: { id: string; email: string | null; whatsappNumber: string | null; fullName: string | null } | null;
   amount: string;
   currency: string;
   provider: "stripe" | "paystack" | "stablecoin";
@@ -1199,6 +1199,7 @@ export interface StructuringReviewContribution {
   id: string;
   donorId: string | null;
   donorEmail: string | null;
+  donorWhatsApp: string | null;
   donorFullName: string | null;
   donorIdCaptured: boolean;
   amount: string;
@@ -1227,6 +1228,7 @@ export interface IpClusterContribution {
   vaultName: string;
   donorId: string | null;
   donorEmail: string | null;
+  donorWhatsApp: string | null;
   donorFullName: string | null;
   donorIdCaptured: boolean;
   amount: string;
@@ -1357,7 +1359,7 @@ export interface ZakahPaymentRow {
   rulesetVersion: number | null;
   createdAt: string;
   confirmedAt: string | null;
-  payer: { email: string; fullName: string | null } | null;
+  payer: { email: string | null; whatsappNumber: string | null; fullName: string | null } | null;
 }
 
 /** One account in zakah's own ledger, with its balance. */
@@ -1437,7 +1439,7 @@ export interface ZakahRefundRow {
   bankReference: string | null;
   payeeBank: { bankName: string; accountLast4: string };
   createdAt: string;
-  payment: { id: string; amount: string; createdAt: string; payer: { email: string; fullName: string | null } | null };
+  payment: { id: string; amount: string; createdAt: string; payer: { email: string | null; whatsappNumber: string | null; fullName: string | null } | null };
 }
 
 /** One version of a season's Zakah al-Fitr campaign (see ZakahFitrCampaign). */
@@ -1468,6 +1470,7 @@ export interface ZakahReviewPayment {
   heldAt: string | null;
   payerId: string | null;
   payerEmail: string | null;
+  payerWhatsApp: string | null;
   payerFullName: string | null;
   payerIdCaptured: boolean;
   fractionOfThreshold?: number;
@@ -1479,7 +1482,8 @@ export interface ZakahReviewVaultGift {
   vaultName: string;
   amount: string;
   createdAt: string;
-  donorEmail: string;
+  donorEmail: string | null;
+  donorWhatsApp: string | null;
   donorFullName: string | null;
   donorIdCaptured: boolean;
 }
@@ -1492,6 +1496,7 @@ export interface ZakahStructuringReview {
   ipClusters: { ipAddress: string; distinctPayerCount: number; payments: ZakahReviewPayment[] }[];
   acrossVault: {
     sameEmail: { email: string; zakahTotal: string; vaultTotal: string; combinedTotal: string; zakah: ZakahReviewPayment[]; vault: ZakahReviewVaultGift[] }[];
-    sharedNetworks: { ipAddress: string; distinctEmailCount: number; zakah: ZakahReviewPayment[]; vault: ZakahReviewVaultGift[] }[];
+    sameWhatsApp: { whatsapp: string; zakahTotal: string; vaultTotal: string; combinedTotal: string; zakah: ZakahReviewPayment[]; vault: ZakahReviewVaultGift[] }[];
+    sharedNetworks: { ipAddress: string; distinctGiverCount: number; zakah: ZakahReviewPayment[]; vault: ZakahReviewVaultGift[] }[];
   };
 }

@@ -36,6 +36,19 @@ export function paystackEmailForGift(gift: { id: string; email: string | null })
   return gift.email ?? `giver+${gift.id}@example.com`;
 }
 
+const FOOTER = "— *Birr* | A digital trustee for Islamic waqf";
+
+/** "₦95,000.00", or "USD 250.00" for another currency: amounts in WhatsApp messages. */
+export function moneyText(amount: { toString(): string } | number, currency = "NGN"): string {
+  const value = Number(amount.toString()).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currency === "NGN" ? `₦${value}` : `${currency} ${value}`;
+}
+
+/** A WhatsApp message in Birr's one layout: the title in bold, the lines, the footer. */
+export function whatsAppNotice(title: string, lines: string[]): string {
+  return [`*${title}*`, "", ...lines, "", FOOTER].join("\n");
+}
+
 const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " " };
 
 /**
@@ -52,8 +65,5 @@ export function whatsAppTextFromEmail(message: { heading: string; bodyHtml: stri
     .replace(/&[a-z#0-9]+;/gi, (e) => ENTITIES[e] ?? e)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  const lines = [`*${message.heading}*`, "", body];
-  if (message.ctaUrl) lines.push("", `👉 ${message.ctaLabel ?? "Open in Birr"}: ${message.ctaUrl}`);
-  lines.push("", "— *Birr* | A digital trustee for Islamic waqf");
-  return lines.join("\n");
+  return whatsAppNotice(message.heading, message.ctaUrl ? [body, "", `👉 ${message.ctaLabel ?? "Open in Birr"}: ${message.ctaUrl}`] : [body]);
 }

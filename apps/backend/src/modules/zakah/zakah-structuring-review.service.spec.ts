@@ -92,6 +92,22 @@ describe("ZakahStructuringReviewService", () => {
     expect(acrossVault.sameEmail.find((m) => m.email === small.email)).toBeUndefined();
   });
 
+  test("flags the same WhatsApp number giving to both Vault and zakah under no email or different emails", async () => {
+    const number = `+23480${Date.now().toString().slice(-8)}`;
+    const z = await prisma.zakahPayer.create({ data: { whatsappNumber: number } });
+    await zakahPayment(threshold.times(0.6).toDecimalPlaces(2), z.id);
+    const donor = await prisma.vaultDonor.create({ data: { email: `review-wa-vault-${run}@example.com`, whatsappNumber: number } });
+    const id = randomUUID();
+    await prisma.vaultContribution.create({
+      data: { id, vaultId, donorId: donor.id, amount: threshold.times(0.5).toDecimalPlaces(2), currency: "NGN", provider: "paystack", providerReference: id, status: "confirmed", confirmedAt: new Date() },
+    });
+
+    const { acrossVault } = await service.review();
+    expect(acrossVault.sameWhatsApp.find((m) => m.whatsapp === number)).toMatchObject({ combinedTotal: threshold.times(1.1).toFixed(2) });
+    // Different emails (none, and one), so the email signal can't see it.
+    expect(acrossVault.sameEmail.find((m) => m.email === donor.email)).toBeUndefined();
+  });
+
   test("flags a network used by a Vault donor and a zakah payer under different emails, not one person giving to both", async () => {
     const z = await payer("net-zakah");
     await zakahPayment("3000", z.id, `cross-${run}`);
@@ -101,18 +117,18 @@ describe("ZakahStructuringReviewService", () => {
     await vaultGift(same.email!, "4000", `own-${run}`);
 
     const { acrossVault } = await service.review();
-    expect(acrossVault.sharedNetworks.find((n) => n.ipAddress === `cross-${run}`)).toMatchObject({ distinctEmailCount: 2 });
+    expect(acrossVault.sharedNetworks.find((n) => n.ipAddress === `cross-${run}`)).toMatchObject({ distinctGiverCount: 2 });
     expect(acrossVault.sharedNetworks.find((n) => n.ipAddress === `own-${run}`)).toBeUndefined();
   });
 
-  test("shows whether a flagged payment is already on hold, and never anything beyond name, email and whether ID is on file", async () => {
+  test("shows whether a flagged payment is already on hold, and never anything beyond name, email, number and whether ID is on file", async () => {
     const [a, b] = [await payer("hold-a"), await payer("hold-b")];
     await zakahPayment("2000", a.id, `held-${run}`);
     await zakahPayment("2000", b.id, `held-${run}`);
     const { ipClusters } = await service.review();
     const payment = ipClusters.find((x) => x.ipAddress === `held-${run}`)!.payments[0];
     expect(Object.keys(payment).sort()).toEqual(
-      ["amount", "createdAt", "heldAt", "id", "payerEmail", "payerFullName", "payerId", "payerIdCaptured", "pool"].sort(),
+      ["amount", "createdAt", "heldAt", "id", "payerEmail", "payerFullName", "payerId", "payerIdCaptured", "payerWhatsApp", "pool"].sort(),
     );
   });
 });

@@ -5,9 +5,19 @@ import { TwilioWhatsAppAdapter } from "./twilio-whatsapp.adapter";
 
 const CODE_VALIDITY_MS = 10 * 60 * 1000;
 const PROOF_VALIDITY_MS = 60 * 60 * 1000;
-/** Codes per number, and per IP, before a giver has to wait. */
-const PER_NUMBER_LIMIT = { count: 3, windowMs: 30 * 60 * 1000 };
+/**
+ * How many codes before a giver has to wait. Counted per number *from one
+ * IP*, so a stranger asking for codes to someone's number can't use up
+ * that person's own allowance; a number's overall cap is higher, and each
+ * IP has its own cap across numbers.
+ */
+const PER_NUMBER_AND_IP_LIMIT = { count: 3, windowMs: 30 * 60 * 1000 };
+const PER_NUMBER_LIMIT = { count: 8, windowMs: 30 * 60 * 1000 };
 const PER_IP_LIMIT = { count: 10, windowMs: 60 * 60 * 1000 };
+/** Unexpired codes a confirmation is checked against: any one sent recently works. */
+const LIVE_CODES_CHECKED = 8;
+/** Guesses per code (each row's maxAttempts defaults to this). */
+const MAX_ATTEMPTS = 5;
 const E164 = /^\+[1-9]\d{7,14}$/;
 
 /**
@@ -24,11 +34,6 @@ export function normalizeWhatsAppNumber(raw: string): string | null {
   else if (digits.startsWith("234")) e164 = `+${digits}`;
   else return null;
   return E164.test(e164) ? e164 : null;
-}
-
-/** "+2348031234567" → "•••• 4567", for messages and screens. */
-export function maskWhatsAppNumber(e164: string): string {
-  return `•••• ${e164.slice(-4)}`;
 }
 
 function sha256(value: string): string {
@@ -57,11 +62,13 @@ export class GiverWhatsAppService {
     // Codes cost money and land on someone's phone, so they're rationed per
     // number and per IP, not only by the route throttle.
     const now = Date.now();
-    const [forNumber, forIp] = await Promise.all([
-      prisma.giverWhatsAppConfirmation.count({ where: { phoneNumber: number, createdAt: { gte: new Date(now - PER_NUMBER_LIMIT.windowMs) } } }),
-      ip ? prisma.giverWhatsAppConfirmation.count({ where: { requestIp: ip, createdAt: { gte: new Date(now - PER_IP_LIMIT.windowMs) } } }) : Promise.resolve(0),
+    const since = (windowMs: number) => ({ gte: new Date(now - windowMs) });
+    const [forNumberAndIp, forNumber, forIp] = await Promise.all([
+      prisma.giverWhatsAppConfirmation.count({ where: { phoneNumber: number, requestIp: ip ?? null, createdAt: since(PER_NUMBER_AND_IP_LIMIT.windowMs) } }),
+      prisma.giverWhatsAppConfirmation.count({ where: { phoneNumber: number, createdAt: since(PER_NUMBER_LIMIT.windowMs) } }),
+      ip ? prisma.giverWhatsAppConfirmation.count({ where: { requestIp: ip, createdAt: since(PER_IP_LIMIT.windowMs) } }) : Promise.resolve(0),
     ]);
-    if (forNumber >= PER_NUMBER_LIMIT.count || forIp >= PER_IP_LIMIT.count) {
+    if (forNumberAndIp >= PER_NUMBER_AND_IP_LIMIT.count || forNumber >= PER_NUMBER_LIMIT.count || forIp >= PER_IP_LIMIT.count) {
       throw new HttpException("Too many codes requested. Please wait a while and try again.", HttpStatus.TOO_MANY_REQUESTS);
     }
 
@@ -80,23 +87,30 @@ export class GiverWhatsAppService {
     return { sent: true, number };
   }
 
-  /** Checks the latest code for this number; on success returns the proof the giving routes need. */
+  /**
+   * Checks the code against every unexpired code sent to this number, so a
+   * newer request (someone else's, say) never makes the giver's own code
+   * stale. On success returns the proof the giving routes need.
+   */
   async confirm(rawNumber: string, code: string): Promise<{ number: string; proof: string; expiresAt: Date }> {
     const number = normalizeWhatsAppNumber(rawNumber);
     if (!number) throw new BadRequestException("Enter a WhatsApp number, like 0803 123 4567.");
-    const row = await prisma.giverWhatsAppConfirmation.findFirst({
-      where: { phoneNumber: number, confirmedAt: null },
+    const rows = await prisma.giverWhatsAppConfirmation.findMany({
+      where: { phoneNumber: number, confirmedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: "desc" },
+      take: LIVE_CODES_CHECKED,
     });
-    if (!row || row.expiresAt < new Date()) throw new BadRequestException("That code has expired. Ask for a new one.");
-    if (row.attempts >= row.maxAttempts) throw new BadRequestException("Too many wrong codes. Ask for a new one.");
-    // Count the attempt first, so guesses are limited even if two arrive together.
-    const counted = await prisma.giverWhatsAppConfirmation.updateMany({
-      where: { id: row.id, attempts: { lt: row.maxAttempts }, confirmedAt: null },
+    if (rows.length === 0) throw new BadRequestException("That code has expired. Ask for a new one.");
+    const live = rows.filter((r) => r.attempts < r.maxAttempts);
+    if (live.length === 0) throw new BadRequestException("Too many wrong codes. Ask for a new one.");
+    // Every guess counts against every live code, first, so guesses stay
+    // limited even if several arrive together.
+    await prisma.giverWhatsAppConfirmation.updateMany({
+      where: { id: { in: live.map((r) => r.id) }, attempts: { lt: MAX_ATTEMPTS }, confirmedAt: null },
       data: { attempts: { increment: 1 } },
     });
-    if (counted.count !== 1) throw new BadRequestException("Too many wrong codes. Ask for a new one.");
-    if (sha256(code.trim() + row.id) !== row.codeHash) throw new BadRequestException("That code isn't right. Check the WhatsApp message and try again.");
+    const row = live.find((r) => sha256(code.trim() + r.id) === r.codeHash);
+    if (!row) throw new BadRequestException("That code isn't right. Check the WhatsApp message and try again.");
 
     const proof = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + PROOF_VALIDITY_MS);

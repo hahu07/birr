@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
-import { type GiverContact, hasContact, lockGiverContact, paystackEmailForGift } from "../../common/giving/giver-contact";
+import { type GiverContact, hasContact, lockGiverContact, moneyText, paystackEmailForGift, whatsAppNotice } from "../../common/giving/giver-contact";
 import {
   BadRequestException,
   ConflictException,
@@ -271,6 +271,14 @@ export class ZakahPaymentsService {
           email: normalizeEmail(input.payerEmail) ?? null,
           whatsapp: input.payerWhatsApp ? await this.requireGiverWhatsApp().assertProof(input.payerWhatsApp, input.whatsappProof) : null,
         };
+    // A fixed "lower of" basis is recorded as the metal it came to with
+    // the prices this payment used, so the record says which applied.
+    const nisabMetal =
+      nisabBasis === "lower_of" && rulesetRef && metalPrice && "goldPerGram" in metalPrice
+        ? new Prisma.Decimal(rulesetRef.rulings.nisabSilverGrams).times(metalPrice.silverPerGram).lte(new Prisma.Decimal(rulesetRef.rulings.nisabGoldGrams).times(metalPrice.goldPerGram))
+          ? "silver"
+          : "gold"
+        : nisabBasis;
     const payerEmail = contact.email;
     const id = randomUUID();
 
@@ -295,7 +303,7 @@ export class ZakahPaymentsService {
           wakalahConsentVersion: input.wakalahConsentVersion,
           zakahRulesetKey: rulesetRef?.key,
           zakahRulesetVersion: rulesetRef?.version,
-          zakahNisabBasis: nisabBasis,
+          zakahNisabBasis: nisabMetal,
           zakahMetalPriceId: metalPrice?.id,
         });
         recurringGiftId = gift.id;
@@ -316,6 +324,9 @@ export class ZakahPaymentsService {
           recurringGiftId,
           recurringPeriod,
           payerId: payer?.id,
+          // The receipt goes only to what was given with this payment.
+          contactEmail: payerEmail,
+          contactWhatsApp: contact.whatsapp,
           amount,
           feeCover,
           currency: CURRENCY,
@@ -328,7 +339,7 @@ export class ZakahPaymentsService {
           wakalahConsentVersion: input.wakalahConsentVersion,
           rulesetKey: rulesetRef?.key,
           rulesetVersion: rulesetRef?.version,
-          nisabBasis,
+          nisabBasis: nisabMetal,
           metalPriceId: metalPrice?.id,
           ipAddress,
         },
@@ -478,8 +489,9 @@ export class ZakahPaymentsService {
       where: { OR: [...(email ? [{ email }] : []), ...(contact.whatsapp ? [{ whatsappNumber: contact.whatsapp }] : [])] },
       orderBy: { createdAt: "asc" },
     });
-    // The email's record; else one with this number and no email yet (it
-    // gains the email); else a new one.
+    // The email's record; else one with this number and no email; else a
+    // new one. A record never gains a contact from this input (anyone can
+    // type an email; see VaultContributionsService.findOrCreateDonor).
     const existing =
       (email ? matches.find((p) => p.email === email) : undefined) ??
       matches.find((p) => p.whatsappNumber === contact.whatsapp && (!email || p.email === null)) ??
@@ -498,7 +510,10 @@ export class ZakahPaymentsService {
       total = total.plus(prior._sum.amount ?? 0);
     }
 
-    const identifiedOnFile = existing?.idType != null && existing.idNumberEncrypted != null;
+    // An ID on any linked record counts (see findOrCreateDonor).
+    const identified = matches.filter((p) => p.idType != null && p.idNumberEncrypted != null);
+    const identifiedOnFile = identified.length > 0;
+    const existingIdentified = existing?.idType != null && existing.idNumberEncrypted != null;
     if (threshold && threshold.thresholdAmount.gt(0) && total.gte(threshold.thresholdAmount)) {
       // As for Vault (VaultContributionsService.findOrCreateDonor): a
       // monthly charge on the payer's own saved card is started by Birr's
@@ -513,8 +528,8 @@ export class ZakahPaymentsService {
             message: "For a payment of this size we need to confirm your identity. Please re-enter the ID you gave us before.",
           });
         }
-        const onFile = normalizeIdNumber(this.encryption.decrypt(existing!.idNumberEncrypted!));
-        if (existing!.idType !== input.idType || onFile !== normalizeIdNumber(input.idNumber)) {
+        const given = normalizeIdNumber(input.idNumber);
+        if (!identified.some((p) => p.idType === input.idType && normalizeIdNumber(this.encryption.decrypt(p.idNumberEncrypted!)) === given)) {
           throw new BadRequestException({
             statusCode: 400,
             code: "IDENTITY_MISMATCH",
@@ -532,11 +547,7 @@ export class ZakahPaymentsService {
 
     const fill: Prisma.ZakahPayerUpdateInput = {};
     if (!existing?.fullName && input.payerFullName?.trim()) fill.fullName = input.payerFullName.trim();
-    // A confirmed number or an email joins the record it was given with;
-    // one already on the record is never replaced from this input.
-    if (existing && !existing.whatsappNumber && contact.whatsapp) fill.whatsappNumber = contact.whatsapp;
-    if (existing && !existing.email && email) fill.email = email;
-    if (!identifiedOnFile && input.idType && input.idNumber) {
+    if (!existingIdentified && input.idType && input.idNumber) {
       fill.idType = input.idType;
       fill.idNumberEncrypted = this.encryption.encrypt(input.idNumber);
     }
@@ -671,13 +682,14 @@ export class ZakahPaymentsService {
     }
 
     // No payer means an anonymous payment — nowhere to send a receipt.
-    if (status === "confirmed" && payment.payer?.whatsappNumber) {
-      this.sendWhatsAppReceipt(payment.payer.whatsappNumber, outcome);
+    // Only to what was given with this payment (see contactEmail).
+    if (status === "confirmed" && outcome.contactWhatsApp) {
+      this.sendWhatsAppReceipt(outcome.contactWhatsApp, outcome);
     }
-    if (status === "confirmed" && payment.payer?.email) {
+    if (status === "confirmed" && outcome.contactEmail) {
       this.receiptEmail
         .sendReceipt({
-          to: payment.payer.email,
+          to: outcome.contactEmail,
           amount: outcome.amount.toFixed(2),
           feeCover: outcome.feeCover.toFixed(2),
           paymentId: outcome.id,
@@ -697,17 +709,12 @@ export class ZakahPaymentsService {
   /** A short WhatsApp receipt, like the email one; never holds up the confirmation. */
   private sendWhatsAppReceipt(to: string, payment: { id: string; amount: Prisma.Decimal; feeCover: Prisma.Decimal; fitrPeople: number | null }): void {
     if (!this.whatsApp) return;
-    const naira = (v: Prisma.Decimal) => `₦${Number(v).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    const text = [
-      payment.fitrPeople ? "*Your Zakah al-Fitr is received*" : "*Your zakah is received*",
-      "",
-      `We received ${naira(payment.amount)} of zakah${payment.fitrPeople ? ` for ${payment.fitrPeople} ${payment.fitrPeople === 1 ? "person" : "people"}` : ""}` +
-        (Number(payment.feeCover) > 0 ? `, and ${naira(payment.feeCover)} you added to cover the processing fee` : "") +
+    const text = whatsAppNotice(payment.fitrPeople ? "Your Zakah al-Fitr is received" : "Your zakah is received", [
+      `We received ${moneyText(payment.amount)} of zakah${payment.fitrPeople ? ` for ${payment.fitrPeople} ${payment.fitrPeople === 1 ? "person" : "people"}` : ""}` +
+        (Number(payment.feeCover) > 0 ? `, and ${moneyText(payment.feeCover)} you added to cover the processing fee` : "") +
         ". All of your zakah goes to people eligible to receive it.",
       `Receipt reference: ${payment.id}`,
-      "",
-      "— *Birr* | A digital trustee for Islamic waqf",
-    ].join("\n");
+    ]);
     this.whatsApp.sendMessage(to, text).catch((err) =>
       this.logger.error(`Failed to send the WhatsApp receipt for zakah payment "${payment.id}":`, err instanceof Error ? err.stack : String(err)),
     );
@@ -817,7 +824,7 @@ export class ZakahPaymentsService {
     const rows = await prisma.zakahPayment.findMany({
       orderBy: { createdAt: "desc" },
       take: 200,
-      include: { payer: { select: { email: true, fullName: true } }, heldBy: { select: { fullName: true } } },
+      include: { payer: { select: { email: true, whatsappNumber: true, fullName: true } }, heldBy: { select: { fullName: true } } },
     });
     return rows.map((r) => ({
       id: r.id,

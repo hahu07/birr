@@ -497,6 +497,32 @@ describe("Monthly Waqf Fund top-ups", () => {
     expect(emails.sent.some((e) => e.to === email && e.ctaUrl?.endsWith(`/portfolio/${waqfId}`))).toBe(true);
   });
 
+  // Review finding (2026-11-16): the founder's own notification settings apply.
+  test("a founder who turned off WhatsApp for money notices gets their top-up notices by email only", async () => {
+    const number = testNumber();
+    const email = `founder-${run}@example.com`;
+    const user = await prisma.user.upsert({
+      where: { email },
+      create: { email, fullName: "Top-up Founder", status: "active", whatsappNumber: number, whatsappVerifiedAt: new Date() },
+      update: { whatsappNumber: number, whatsappVerifiedAt: new Date() },
+    });
+    await prisma.notificationPreference.upsert({
+      where: { userId_category: { userId: user.id, category: "money" } },
+      create: { userId: user.id, category: "money", whatsappEnabled: false },
+      update: { whatsappEnabled: false },
+    });
+    try {
+      const waqfId = await fundedWaqf("Email-only Top-up Fund");
+      await setUp(waqfId);
+      await waitUntil(() => emails.sent.some((e) => e.to === email && e.ctaUrl?.endsWith(`/portfolio/${waqfId}`)));
+      // The WhatsApp would follow the email; give it time to have been sent.
+      await new Promise((r) => setTimeout(r, 500));
+      expect(whatsApp.messages.some((m) => m.to === number)).toBe(false);
+    } finally {
+      await prisma.notificationPreference.delete({ where: { userId_category: { userId: user.id, category: "money" } } });
+    }
+  });
+
   test("a top-up can only start once the fund's first contribution has gone through", async () => {
     const unfunded = await fundedWaqf("Unfunded Fund", false);
     await expect(

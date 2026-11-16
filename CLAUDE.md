@@ -742,6 +742,16 @@ decisions:
   an email: a WhatsApp-only monthly gift uses a stand-in worked out from
   its id (`paystackEmailForGift`), the same every month, since a saved
   card is charged under the email it was saved with.
+- **Receipts go to the contacts given with that payment**
+  (`contactEmail`/`contactWhatsApp` on `VaultContribution` and
+  `ZakahPayment`), never to the giver record (review fix, 2026-11-16).
+  A giver record never gains an email or number from a later gift, since
+  anyone can type an email: pairing someone else's email with your own
+  number must not redirect their receipts. Records sharing an email or
+  number still add up for the threshold, and an ID on any of them must be
+  re-entered and match. A founder's top-up WhatsApp honours their "money"
+  notification setting. A ruleset's "lower of" nisab is recorded as the
+  metal it came to that day.
 - **Before launch:** production WhatsApp needs Meta-approved message
   templates for business-initiated messages. Every WhatsApp Birr sends
   today, the codes included, is free text, which works in Twilio's

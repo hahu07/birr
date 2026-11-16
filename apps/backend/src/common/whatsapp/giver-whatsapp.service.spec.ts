@@ -1,6 +1,6 @@
 import { BadRequestException, HttpException } from "@nestjs/common";
 import { prisma } from "@birr/db";
-import { maskWhatsAppNumber, normalizeWhatsAppNumber } from "./giver-whatsapp.service";
+import { normalizeWhatsAppNumber } from "./giver-whatsapp.service";
 import { createGiverWhatsApp, testNumber } from "./test-support/fake-whatsapp";
 
 describe("normalizeWhatsAppNumber", () => {
@@ -15,10 +15,6 @@ describe("normalizeWhatsAppNumber", () => {
     expect(normalizeWhatsAppNumber("8031234567")).toBeNull();
     expect(normalizeWhatsAppNumber("+234")).toBeNull();
     expect(normalizeWhatsAppNumber("hello")).toBeNull();
-  });
-
-  test("masks all but the last four digits", () => {
-    expect(maskWhatsAppNumber("+2348031234567")).toBe("•••• 4567");
   });
 });
 
@@ -56,6 +52,28 @@ describe("GiverWhatsAppService", () => {
     await expect(service.confirm(number, code)).rejects.toThrow(/Too many wrong codes/);
   });
 
+  // Review finding (2026-11-16): a newer request, someone else's say,
+  // mustn't make the giver's own code stale.
+  test("an older code still works after a newer one is requested", async () => {
+    const number = testNumber();
+    await service.requestCode(number, "198.51.100.40");
+    const older = fake.lastCode(number);
+    await service.requestCode(number, "198.51.100.41");
+    const { proof } = await service.confirm(number, older);
+    expect(await service.assertProof(number, proof)).toBe(number);
+  });
+
+  test("a wrong guess counts against every live code, so asking for more codes doesn't buy more guesses", async () => {
+    const number = testNumber();
+    await service.requestCode(number, "198.51.100.42");
+    await service.requestCode(number, "198.51.100.43");
+    const rows = () => prisma.giverWhatsAppConfirmation.findMany({ where: { phoneNumber: number } });
+    const codes = new Set(fake.codes.filter((c) => c.to === number).map((c) => c.code));
+    const wrong = ["000000", "111111", "222222"].find((c) => !codes.has(c))!;
+    await expect(service.confirm(number, wrong)).rejects.toThrow(/isn't right/);
+    expect((await rows()).map((r) => r.attempts)).toEqual([1, 1]);
+  });
+
   test("an expired code is refused", async () => {
     const number = testNumber();
     await service.requestCode(number);
@@ -71,10 +89,15 @@ describe("GiverWhatsAppService", () => {
     await expect(service.assertProof(number, proof)).rejects.toThrow(/expired/);
   });
 
-  test("codes are rationed: three per number per half hour, ten per IP per hour", async () => {
+  test("codes are rationed: three per number from one IP, eight per number, ten per IP per hour", async () => {
     const number = testNumber();
-    for (let i = 0; i < 3; i++) await service.requestCode(number);
-    await expect(service.requestCode(number)).rejects.toThrow(HttpException);
+    for (let i = 0; i < 3; i++) await service.requestCode(number, "198.51.100.30");
+    await expect(service.requestCode(number, "198.51.100.30")).rejects.toThrow(HttpException);
+    // Someone else asking for codes to this number doesn't use up the giver's own three...
+    for (let i = 0; i < 3; i++) await service.requestCode(number, "198.51.100.31");
+    for (let i = 0; i < 2; i++) await service.requestCode(number, "198.51.100.32");
+    // ...but a number has an overall cap.
+    await expect(service.requestCode(number, "198.51.100.33")).rejects.toThrow(/Too many codes/);
     const ip = `198.51.100.${Math.floor(Math.random() * 200) + 20}-${Date.now()}`;
     for (let i = 0; i < 10; i++) await service.requestCode(testNumber(), ip);
     await expect(service.requestCode(testNumber(), ip)).rejects.toThrow(/Too many codes/);

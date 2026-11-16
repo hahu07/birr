@@ -19,7 +19,8 @@ interface MonthlyGiftRow {
   kind: Kind;
   status: Status;
   pauseReason: string | null;
-  email: string;
+  email: string | null;
+  whatsappNumber: string | null;
   amount: string;
   currency: string;
   dayOfMonth: number;
@@ -156,7 +157,7 @@ export default function MonthlyGivingPage() {
                 className={`cursor-pointer ${selected === row.id ? "bg-primary-50/60" : "hover:bg-slate-50"}`}
               >
                 <TableCell>
-                  <span className="font-medium text-slate-900">{row.email}</span>
+                  <span className="font-medium text-slate-900">{row.email ?? row.whatsappNumber}</span>
                   <span className="block text-xs text-slate-500">{KIND_LABEL[row.kind]}</span>
                 </TableCell>
                 <TableCell>
@@ -223,7 +224,7 @@ function GiftDetail({ id, canCancel, onChanged }: { id: string; canCancel: boole
             {formatMoney(gift.amount, gift.currency, { decimals: 0 })} a month · {gift.target.name}
           </p>
           <p className="mt-0.5 text-sm text-slate-500">
-            {gift.email} · on the {gift.dayOfMonth}
+            {[gift.email, gift.whatsappNumber].filter(Boolean).join(" · ")} · on the {gift.dayOfMonth}
             {gift.dayOfMonth === 1 ? "st" : gift.dayOfMonth === 2 ? "nd" : gift.dayOfMonth === 3 ? "rd" : "th"} · since {formatDate(gift.createdAt)}
             {gift.failedAttempts > 0 && gift.status === "active" && ` · ${gift.failedAttempts} declined this month`}
           </p>

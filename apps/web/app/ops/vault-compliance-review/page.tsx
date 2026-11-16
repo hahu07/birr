@@ -116,7 +116,7 @@ export default function VaultComplianceReviewPage() {
                       {group.contributions.map((c) => (
                         <TableRow key={c.id}>
                           <TableCell className="font-medium text-slate-900">
-                            {c.donorEmail ?? "Anonymous"}
+                            {c.donorEmail ?? c.donorWhatsApp ?? "Anonymous"}
                             {c.donorFullName && <span className="ml-1.5 font-normal text-slate-500">({c.donorFullName})</span>}
                           </TableCell>
                           <TableCell className="tabular-nums text-slate-500">
@@ -159,7 +159,7 @@ export default function VaultComplianceReviewPage() {
                       {cluster.contributions.map((c) => (
                         <TableRow key={c.id}>
                           <TableCell className="font-medium text-slate-900">
-                            {c.donorEmail}
+                            {c.donorEmail ?? c.donorWhatsApp}
                             {c.donorFullName && <span className="ml-1.5 font-normal text-slate-500">({c.donorFullName})</span>}
                           </TableCell>
                           <TableCell className="text-slate-500">{c.vaultName}</TableCell>

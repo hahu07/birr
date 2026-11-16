@@ -17,7 +17,7 @@ import { PaymentHoldActions } from "../zakah/PaymentHoldActions";
 const POOL_LABEL = { mal: "Zakah on wealth", fitr_food: "Zakah al-Fitr (food)", fitr_cash: "Zakah al-Fitr (cash)" } as const;
 
 function payerLabel(p: ZakahReviewPayment): string {
-  return p.payerFullName ?? p.payerEmail ?? "Anonymous";
+  return p.payerFullName ?? p.payerEmail ?? p.payerWhatsApp ?? "Anonymous";
 }
 
 /** The Hold action wants a payment row; a flagged payment is always confirmed. */
@@ -65,7 +65,7 @@ export default function ZakahReviewPage() {
             <TableCell>
               <div className="font-medium text-slate-900">{payerLabel(p)}</div>
               <div className="text-xs text-slate-500">
-                {p.payerFullName && p.payerEmail ? `${p.payerEmail} · ` : ""}
+                {p.payerFullName && (p.payerEmail ?? p.payerWhatsApp) ? `${p.payerEmail ?? p.payerWhatsApp} · ` : ""}
                 {p.payerIdCaptured ? "ID on file" : "no ID on file"}
               </div>
             </TableCell>
@@ -94,7 +94,7 @@ export default function ZakahReviewPage() {
         {gifts.map((g) => (
           <TableRow key={g.id}>
             <TableCell>
-              <div className="font-medium text-slate-900">{g.donorFullName ?? g.donorEmail}</div>
+              <div className="font-medium text-slate-900">{g.donorFullName ?? g.donorEmail ?? g.donorWhatsApp ?? "Anonymous"}</div>
               <div className="text-xs text-slate-500">{g.donorIdCaptured ? "ID on file" : "no ID on file"}</div>
             </TableCell>
             <TableCell className="tabular-nums">
@@ -174,9 +174,9 @@ export default function ZakahReviewPage() {
           <section className="mb-10">
             <SectionHeader
               title="Giving across Vault and zakah"
-              description="Each product's ID check counts only its own giving. These are NGN totals that together reach the threshold, or a network both products' givers used under different emails."
+              description="Each product's ID check counts only its own giving. These are NGN totals that together reach the threshold, or a network both products' givers used under different emails or numbers."
             />
-            {review.acrossVault.sameEmail.length === 0 && review.acrossVault.sharedNetworks.length === 0 && (
+            {review.acrossVault.sameEmail.length === 0 && review.acrossVault.sameWhatsApp.length === 0 && review.acrossVault.sharedNetworks.length === 0 && (
               <EmptyState title="Nothing flagged" description="No one's combined Vault and zakah giving reaches the threshold, and no network is shared across the two." />
             )}
             {review.acrossVault.sameEmail.map((m) => (
@@ -189,10 +189,20 @@ export default function ZakahReviewPage() {
                 <div className="mt-2">{vaultTable(m.vault)}</div>
               </div>
             ))}
+            {review.acrossVault.sameWhatsApp.map((m) => (
+              <div key={m.whatsapp} className="mb-6">
+                <p className="mb-2 text-sm font-medium text-slate-700">
+                  WhatsApp {m.whatsapp} · zakah {formatMoney(m.zakahTotal, "NGN")} + Vault {formatMoney(m.vaultTotal, "NGN")} ={" "}
+                  <span className="text-slate-900">{formatMoney(m.combinedTotal, "NGN")}</span>
+                </p>
+                {paymentsTable(m.zakah)}
+                <div className="mt-2">{vaultTable(m.vault)}</div>
+              </div>
+            ))}
             {review.acrossVault.sharedNetworks.map((n) => (
               <div key={n.ipAddress} className="mb-6">
                 <p className="mb-2 text-sm font-medium text-slate-700">
-                  <span className="font-mono">{n.ipAddress}</span> · {n.distinctEmailCount} different emails across Vault and zakah
+                  <span className="font-mono">{n.ipAddress}</span> · {n.distinctGiverCount} different givers across Vault and zakah
                 </p>
                 {paymentsTable(n.zakah)}
                 <div className="mt-2">{vaultTable(n.vault)}</div>

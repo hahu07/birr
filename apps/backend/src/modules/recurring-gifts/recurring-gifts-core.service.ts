@@ -224,8 +224,11 @@ export class RecurringGiftsCoreService {
     }
     let whatsapp = message.whatsappTo ?? null;
     if (!whatsapp && message.founderAccountEmail) {
-      const user = await prisma.user.findUnique({ where: { email: message.founderAccountEmail }, select: { whatsappNumber: true, whatsappVerifiedAt: true } });
-      if (user?.whatsappNumber && user.whatsappVerifiedAt) whatsapp = user.whatsappNumber;
+      try {
+        whatsapp = await this.founderWhatsApp(message.founderAccountEmail);
+      } catch (err) {
+        this.logger.error(`Couldn't look up a founder's WhatsApp for "${message.subject}":`, err instanceof Error ? err.stack : String(err));
+      }
     }
     if (whatsapp) {
       try {
@@ -235,6 +238,18 @@ export class RecurringGiftsCoreService {
         this.logger.error(`Failed to send "${message.subject}" by WhatsApp:`, err instanceof Error ? err.stack : String(err));
       }
     }
+  }
+
+  /**
+   * A founder's verified WhatsApp number for their top-up notices, unless
+   * they've turned WhatsApp off for money notices in their notification
+   * preferences (the same switch their other money notices honour).
+   */
+  private async founderWhatsApp(accountEmail: string): Promise<string | null> {
+    const user = await prisma.user.findUnique({ where: { email: accountEmail }, select: { id: true, whatsappNumber: true, whatsappVerifiedAt: true } });
+    if (!user?.whatsappNumber || !user.whatsappVerifiedAt) return null;
+    const preference = await prisma.notificationPreference.findUnique({ where: { userId_category: { userId: user.id, category: "money" } } });
+    return preference?.whatsappEnabled === false ? null : user.whatsappNumber;
   }
 
   /** One audit row per change to a gift. The saved card is never written to the trail. */
