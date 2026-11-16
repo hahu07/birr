@@ -141,4 +141,44 @@ describe("GovernedActionsPage", () => {
       );
     });
   });
+
+  // 2026-11-16: a role.permission_change proposal reads as role,
+  // permission, today's setting → the proposed one, and the reason.
+  test("a batch of role permission changes shows each change readably, with the reason", async () => {
+    const batch: GovernedAction = {
+      ...fakeAction,
+      id: "action-2",
+      waqfId: null,
+      waqf: null,
+      payload: {
+        changes: [{ roleKey: "compliance_officer", permissionKey: "vault.curate", canMaker: true, canChecker: false }],
+        reason: "Compliance curates the Ramadan vault this year.",
+      },
+      permission: { id: "perm-2", key: "role.permission_change", description: null, category: "staff", requiresMakerChecker: true },
+    } as GovernedAction;
+    mockedApiFetchJson.mockImplementation((path: string) => {
+      if (path.startsWith("/governed-actions?status=proposed")) return Promise.resolve([batch]);
+      if (path === "/governed-actions/action-2") {
+        return Promise.resolve({
+          ...batch,
+          currentState: {
+            changes: [
+              {
+                roleKey: "compliance_officer", roleName: "Compliance Officer", permissionKey: "vault.curate",
+                permissionDescription: "Create and edit vaults and their causes.", requiresMakerChecker: false, canMaker: false, canChecker: false, affectedPeople: 14,
+              },
+            ],
+          },
+        });
+      }
+      return routeApiFetchJson(path);
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText("Role · Permission Change"));
+    expect(await screen.findByText("Compliance Officer · Create and edit vaults and their causes.")).toBeInTheDocument();
+    expect(screen.getByText(/Off →/)).toBeInTheDocument();
+    expect(screen.getByText(/affects 14 people/)).toBeInTheDocument();
+    expect(screen.getByText("Compliance curates the Ramadan vault this year.")).toBeInTheDocument();
+  });
 });

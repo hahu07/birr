@@ -815,6 +815,30 @@ have their own minimum.** Owner's decisions:
   meant no one could give a Vault less. The migration copied every
   currency's existing value; the seed never overwrites a staff-set one.
 
+**Update, 2026-11-16 — Roles & Access rebuilt for production.** Owner's
+decisions, after reviewing the Ops Console page:
+- **Changes are batched, with a reason.** A platform admin stages edits
+  in place (each control starts from the current grant), sees every
+  change with the guard rails already run (`POST
+  /roles/permission-changes/preview`) and how many people it affects, and
+  sends them as one `role.permission_change` with a required reason. The
+  Board approves or rejects the set; one `role_permission.changed` audit
+  row per change carries the reason, proposer and approver. Lock-outs are
+  judged on the batch's combined end state. Proposals from before
+  (one change, no reason) still decide.
+- **Staff managers only:** `roles.view` (platform_admin, Board,
+  Compliance, Audit Committee) gates the page and every `/roles` route.
+- **Shows** who holds each role, every permission (including ones no
+  role holds, which previously vanished from the UI for good), changes
+  awaiting the Board and the history, and a dated CSV export of the full
+  matrix (`roles.matrix_exported` audit row).
+- **Access review every 90 days:** a Board member (`roles.access_review`)
+  confirms each role or notes what needs changing (`AccessReview`,
+  insert-only by trigger, with a hashed snapshot of every grant). It
+  changes nothing itself. The Board is reminded in-app when it's due, at
+  most weekly (`access-review-scheduler.ts`). Test reviews from the spec
+  stay in a dev database, since the table can't be deleted from.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
@@ -931,7 +955,7 @@ Ops Console: (1) no lock-outs, so every governed action keeps at least
 one role able to propose it and one able to approve it, each held by an
 active person; (2) no role both proposes and approves the same governed
 action; (3) external_auditor gets neither propose nor approve on any
-governed action (to change this, change assertPermissionChangeAllowed). The database is now the source of truth for grants:
+governed action (to change this, change checkPermissionChanges in modules/roles/permission-changes.ts). The database is now the source of truth for grants:
 `sync-permissions` (every deploy, and the full seed) only adds new
 roles, permissions and missing grant rows; it leaves existing grants as
 they are unless run with `--reset`. A changed default in `seed-data.ts` for an existing

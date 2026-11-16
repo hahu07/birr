@@ -2710,22 +2710,30 @@ describe("GovernedActionsService", () => {
       boardUserId = await make("board", "board_of_trustees");
     }, 30000);
 
-    const propose = async (payload: Record<string, unknown>) => {
+    const REASON = "Needed for the quarterly access review.";
+    const proposeRaw = async (payload: Record<string, unknown>) => {
       const action = await service.propose({ permissionKey: "role.permission_change", payload, makerUserId: adminUserId });
       governedActionIds.push(action.id);
       return action;
     };
+    // Since 2026-11-16 a proposal is a batch with a reason.
+    const propose = (...changes: Record<string, unknown>[]) => proposeRaw({ changes, reason: REASON });
     const change = (roleKey: string, permissionKey: string, canMaker: boolean, canChecker = false) => ({
       roleKey,
       permissionKey,
       canMaker,
       canChecker,
     });
+    const grantRow = async (roleKey: string, permissionKey: string) => {
+      const [role, permission] = await Promise.all([
+        prisma.role.findUniqueOrThrow({ where: { key: roleKey } }),
+        prisma.permission.findUniqueOrThrow({ where: { key: permissionKey } }),
+      ]);
+      return { role, permission, where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } } };
+    };
 
-    test("approve → the grant changes, takes effect at once, and is audit-logged with before/after", async () => {
-      const role = await prisma.role.findUniqueOrThrow({ where: { key: "legal_adviser" } });
-      const permission = await prisma.permission.findUniqueOrThrow({ where: { key: "vault.expense_record" } });
-      const where = { roleId_permissionId: { roleId: role.id, permissionId: permission.id } };
+    test("approve → the grant changes, takes effect at once, and is audit-logged with before/after and the reason", async () => {
+      const { role, permission, where } = await grantRow("legal_adviser", "vault.expense_record");
       expect(await prisma.rolePermission.findUnique({ where })).toBeNull();
       try {
         const action = await propose(change("legal_adviser", "vault.expense_record", true));
@@ -2738,9 +2746,63 @@ describe("GovernedActionsService", () => {
           orderBy: { createdAt: "desc" },
         });
         expect(log?.before).toMatchObject({ roleKey: "legal_adviser", canMaker: false });
-        expect(log?.after).toMatchObject({ roleKey: "legal_adviser", canMaker: true, approvedByUserId: boardUserId });
+        expect(log?.after).toMatchObject({
+          roleKey: "legal_adviser", canMaker: true, approvedByUserId: boardUserId, proposedByUserId: adminUserId, reason: REASON, governedActionId: action.id,
+        });
       } finally {
         // Shared test database — put the grant back as it was (no row).
+        await prisma.rolePermission.deleteMany({ where: { roleId: role.id, permissionId: permission.id } });
+      }
+    });
+
+    test("a batch is approved as a whole, with one audit row per change", async () => {
+      const a = await grantRow("legal_adviser", "vault.milestone_manage");
+      const b = await grantRow("audit_committee", "vault.expense_record");
+      try {
+        const action = await propose(change("legal_adviser", "vault.milestone_manage", true), change("audit_committee", "vault.expense_record", true));
+        await service.decide({ governedActionId: action.id, checkerUserId: boardUserId, approve: true });
+        expect(await prisma.rolePermission.findUniqueOrThrow({ where: a.where })).toMatchObject({ canMaker: true });
+        expect(await prisma.rolePermission.findUniqueOrThrow({ where: b.where })).toMatchObject({ canMaker: true });
+        const logs = await prisma.auditLog.findMany({ where: { action: "role_permission.changed", after: { path: ["governedActionId"], equals: action.id } } });
+        expect(logs).toHaveLength(2);
+      } finally {
+        await prisma.rolePermission.deleteMany({ where: { OR: [a.where.roleId_permissionId, b.where.roleId_permissionId] } });
+      }
+    });
+
+    test("lock-outs are judged on the batch's end state: moving the only approver works in one batch, not as a lone removal", async () => {
+      // role.permission_change: only the Board approves it.
+      await expect(propose(change("board_of_trustees", "role.permission_change", false))).rejects.toThrow(/nobody active able to approve/);
+      const { checks } = await new (await import("../roles/roles.service")).RolesService().preview([
+        change("board_of_trustees", "role.permission_change", false),
+        change("compliance_officer", "role.permission_change", false, true),
+      ]);
+      expect(checks.map((c) => c.problem)).toEqual([null, null]);
+    });
+
+    test("a new proposal needs a reason, and a batch can't repeat a change or exceed 50", async () => {
+      await expect(proposeRaw({ changes: [change("legal_adviser", "vault.curate", true)] })).rejects.toThrow(/Say why/);
+      await expect(proposeRaw({ changes: [change("legal_adviser", "vault.curate", true)], reason: "too short" })).rejects.toThrow(/Say why/);
+      await expect(propose(change("legal_adviser", "vault.curate", true), change("legal_adviser", "vault.curate", false))).rejects.toThrow(/appears twice/);
+      const many = Array.from({ length: 51 }, (_, i) => change("legal_adviser", `p${i}`, true));
+      await expect(propose(...many)).rejects.toThrow(/At most 50/);
+    });
+
+    test("a proposal from before batches (one change, no reason) is still approvable", async () => {
+      const { role, permission, where } = await grantRow("legal_adviser", "vault.investment_create");
+      try {
+        // Straight into the table, as one made before 2026-11-16 would be.
+        const permissionRow = await prisma.permission.findUniqueOrThrow({ where: { key: "role.permission_change" } });
+        const legacy = await prisma.governedAction.create({
+          data: {
+            permissionId: permissionRow.id, makerType: "human", makerUserId: adminUserId, status: "proposed",
+            payload: change("legal_adviser", "vault.investment_create", true),
+          },
+        });
+        governedActionIds.push(legacy.id);
+        await service.decide({ governedActionId: legacy.id, checkerUserId: boardUserId, approve: true });
+        expect(await prisma.rolePermission.findUniqueOrThrow({ where })).toMatchObject({ canMaker: true });
+      } finally {
         await prisma.rolePermission.deleteMany({ where: { roleId: role.id, permissionId: permission.id } });
       }
     });
@@ -2775,17 +2837,20 @@ describe("GovernedActionsService", () => {
       await expect(propose(change("platform_admin", "staff.invite", false))).rejects.toThrow(/nobody active able to propose/);
     });
 
-    test("a second pending change to the same role and permission is a duplicate", async () => {
+    test("a change overlapping one already awaiting approval is a duplicate", async () => {
       await propose(change("audit_committee", "vault.structuring_review", false));
-      await expect(propose(change("audit_committee", "vault.structuring_review", false))).rejects.toThrow(ConflictException);
+      await expect(
+        propose(change("legal_adviser", "vault.curate", true), change("audit_committee", "vault.structuring_review", false)),
+      ).rejects.toThrow(ConflictException);
     });
 
-    test("a change to the Board's own permissions says so plainly to the approver", async () => {
+    test("a change to the Board's own permissions says so plainly to the approver, with the reason", async () => {
       const action = await propose(change("board_of_trustees", "vault.structuring_review", false));
       // list() summarizes every pending proposal in the shared test
       // database, so give it room under a full parallel run.
       const listed = (await service.list({ status: "proposed" })).find((a) => a.id === action.id);
       expect(listed?.summary).toMatch(/Board of Trustees' own permissions/);
+      expect(listed?.summary).toContain(`Reason: "${REASON}"`);
     }, 30000);
   });
   // founder.mfa_reset (2026-10-01) — the Founder Portal counterpart of

@@ -115,9 +115,8 @@ const NAV_GROUPS: {
     label: "Admin",
     items: [
       { href: "/ops/staff", label: "Team", icon: IconUsers },
-      // Open to every staff role — see roles.controller.ts's own comment
-      // on why this one isn't platform_admin-gated like its siblings.
-      { href: "/ops/roles", label: "Roles & Access", icon: IconKey },
+      // Staff managers only (roles.view, 2026-11-16).
+      { href: "/ops/roles", label: "Roles & Access", icon: IconKey, requiresPermission: "roles.view" },
       // Backend enforces platform_admin-only via StaffRoleGuard regardless
       // of this filtering — see Sidebar()'s own filter below, which is UX
       // only (no reason to show a nav item that 403s for everyone else).

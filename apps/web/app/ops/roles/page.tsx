@@ -1,468 +1,207 @@
 "use client";
 
-// Roles & Access — a live read of everything each staff role can do (GET
-// /roles): the governed actions it may propose (maker) or approve
-// (checker), and every plain access permission it holds. Since 2026-10-18
-// every route's gate is a named permission in these same tables (no more
-// role names scattered across controllers), so nothing here is
-// hand-maintained.
-import { useEffect, useState } from "react";
-import { apiFetchJson } from "../../../lib/api";
-import { humanize, humanizePermissionKey } from "../../../lib/format";
+// Roles & Access, rebuilt 2026-11-16 (owner's decisions): what each staff
+// role may do, who holds it, changes and their history, and the periodic
+// access review. Staff managers only (roles.view). Grants change only
+// through the governed role.permission_change: a platform admin stages
+// changes here and sends them, with a reason, as one proposal; a Board
+// member approves or rejects the set on the Approvals page.
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { apiFetch, apiFetchJson } from "../../../lib/api";
 import { useStaffSession } from "../../../lib/staff-session";
-import type { Role } from "../../../lib/ops-types";
-import {
-  Alert,
-  Badge,
-  Button,
-  Card,
-  IconKey,
-  Select,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
-} from "@birr/ui";
+import { ROLE_ORDER } from "../../../lib/permission-labels";
+import type { AccessReviewsStatus, GrantChange, RoleChanges, RolesOverview } from "../../../lib/ops-types";
+import { Alert, Button, IconKey, Skeleton, Tabs } from "@birr/ui";
+import { ByRoleTab } from "./ByRoleTab";
+import { ByPermissionTab } from "./ByPermissionTab";
+import { ChangesTab } from "./ChangesTab";
+import { AccessReviewsTab } from "./AccessReviewsTab";
+import { StagedChangesBar } from "./StagedChangesBar";
+import { stageKey } from "./staging";
 
-// Display order mirrors seed-data.ts's own ordering intent (apex →
-// committees → specialists → admin), not alphabetical — Role has no
-// sortOrder column, so this is re-sorted client-side.
-const ROLE_ORDER = [
-  "mutawalli_officer",
-  "board_of_trustees",
-  "investment_committee",
-  "shariah_board_member",
-  "audit_committee",
-  "compliance_officer",
-  "legal_adviser",
-  "external_auditor",
-  "platform_admin",
-];
-
-function grantFor(role: Role, permissionKey: string) {
-  return role.rolePermissions.find((rp) => rp.permission.key === permissionKey);
-}
-
-function GrantCell({ grant }: { grant: { canMaker: boolean; canChecker: boolean } | undefined }) {
-  if (!grant || (!grant.canMaker && !grant.canChecker)) {
-    return <span className="text-slate-300">—</span>;
-  }
-  return (
-    <div className="flex flex-wrap justify-center gap-1">
-      {grant.canMaker && <Badge tone="warning">Maker</Badge>}
-      {grant.canChecker && <Badge tone="success">Checker</Badge>}
-    </div>
-  );
-}
+type TabKey = "roles" | "permissions" | "changes" | "reviews";
+const TAB_KEYS: TabKey[] = ["roles", "permissions", "changes", "reviews"];
 
 export default function RolesPage() {
-  const [roles, setRoles] = useState<Role[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const { can } = useStaffSession();
+  const [overview, setOverview] = useState<RolesOverview | null>(null);
+  const [changes, setChanges] = useState<RoleChanges | null>(null);
+  const [reviews, setReviews] = useState<AccessReviewsStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>("roles");
+  const [staged, setStaged] = useState<Map<string, GrantChange>>(new Map());
+  const [sent, setSent] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    apiFetchJson<Role[]>("/roles")
-      .then((data) => {
-        if (cancelled) return;
-        const ordered = [...data].sort((a, b) => ROLE_ORDER.indexOf(a.key) - ROLE_ORDER.indexOf(b.key));
-        setRoles(ordered);
+  const canEdit = can("role.permission_change");
+  const canReview = can("roles.access_review");
+
+  const load = useCallback(() => {
+    Promise.all([
+      apiFetchJson<RolesOverview>("/roles"),
+      apiFetchJson<RoleChanges>("/roles/changes"),
+      apiFetchJson<AccessReviewsStatus>("/roles/access-reviews"),
+    ])
+      .then(([o, c, r]) => {
+        setOverview({ ...o, roles: [...o.roles].sort((a, b) => ROLE_ORDER.indexOf(a.key) - ROLE_ORDER.indexOf(b.key)) });
+        setChanges(c);
+        setReviews(r);
       })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Something went wrong.");
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, []);
 
-  // Every governed (maker-checker) permission any role holds, grouped by
-  // category so related actions sit together.
-  const governed = [
-    ...new Map(
-      (roles ?? [])
-        .flatMap((r) => r.rolePermissions.map((rp) => rp.permission))
-        .filter((p) => p.requiresMakerChecker)
-        .map((p) => [p.key, p]),
-    ).values(),
-  ].sort((a, b) => (a.category ?? "").localeCompare(b.category ?? "") || a.key.localeCompare(b.key));
+  useEffect(() => {
+    load();
+    // A link such as the access-review reminder can open a tab directly.
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    if (wanted && TAB_KEYS.includes(wanted as TabKey)) setTab(wanted as TabKey);
+  }, [load]);
+
+  /** Stages a role's grant on a permission; staging the current value back removes it. */
+  const stage = useCallback(
+    (change: GrantChange) => {
+      setSent(false);
+      setStaged((prev) => {
+        const next = new Map(prev);
+        const role = overview?.roles.find((r) => r.key === change.roleKey);
+        const current = role?.rolePermissions.find((rp) => rp.permission.key === change.permissionKey);
+        const same = (current?.canMaker ?? false) === change.canMaker && (current?.canChecker ?? false) === change.canChecker;
+        if (same) next.delete(stageKey(change));
+        else next.set(stageKey(change), change);
+        return next;
+      });
+    },
+    [overview],
+  );
+
+  const people = useMemo(() => new Set(Object.values(overview?.holders ?? {}).flat().map((h) => h.id)).size, [overview]);
+  const reviewDue = reviews ? !reviews.nextDueAt || new Date(reviews.nextDueAt) <= new Date() : false;
+
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const res = await apiFetch("/roles/export.csv");
+      if (!res.ok) throw new Error("Couldn't export the access matrix.");
+      const blob = await res.blob();
+      const name = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "birr-access-matrix.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't export the access matrix.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
-    <div>
-      <header className="mb-8 flex items-center gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
-          <IconKey className="h-5 w-5" />
-        </span>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Roles &amp; Access</h1>
-          <p className="mt-0.5 text-sm text-slate-500">
-            What each Birr staff role can propose, approve, and reach — maker proposes a governed action, checker
-            approves or rejects it, and no one can be both on the same one.
-          </p>
+    <div className={staged.size > 0 ? "pb-28" : undefined}>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-900 text-accent-300 shadow-sm">
+            <IconKey className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Roles &amp; Access</h1>
+            <p className="mt-0.5 text-sm text-slate-500">
+              What each staff role may do and who holds it. Every change needs a reason and a Board member&apos;s approval.
+            </p>
+          </div>
         </div>
+        {overview && (
+          <Button variant="secondary" onClick={() => void exportCsv()} disabled={exporting}>
+            {exporting ? "Exporting…" : "Export CSV"}
+          </Button>
+        )}
       </header>
 
       {error && (
-        <Alert tone="danger" title="Couldn't load roles" className="mb-6">
+        <Alert tone="danger" title="Couldn't load Roles & Access" className="mb-6">
           {error}
         </Alert>
       )}
 
-      {!error && roles === null && <Skeleton className="h-64 w-full" />}
+      {!error && !overview && <Skeleton className="h-64 w-full" />}
 
-      {roles && (
+      {overview && changes && reviews && (
         <>
-          {can("role.permission_change") && <ProposeGrantChange roles={roles} />}
+          <dl className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <Stat label="Roles" value={String(overview.roles.length)} />
+            <Stat label="Permissions" value={String(overview.permissions.length)} />
+            <Stat label="People with a role" value={String(people)} />
+            <Stat label="Awaiting the Board" value={String(changes.pending.length)} onClick={() => setTab("changes")} />
+            <Stat
+              label="Access review"
+              value={reviewDue ? "Due now" : `Due ${new Date(reviews.nextDueAt!).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
+              tone={reviewDue ? "warning" : "neutral"}
+              onClick={() => setTab("reviews")}
+            />
+          </dl>
 
-          <section className="mb-10">
-            <h2 className="mb-1 text-sm font-semibold text-slate-900">Governed actions, at a glance</h2>
-            <p className="mb-4 text-xs text-slate-500">
-              Every one of these requires a maker <em>and</em> a different person as checker.
-            </p>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell>Permission</TableHeaderCell>
-                  {roles.map((role) => (
-                    <TableHeaderCell key={role.id} className="text-center">
-                      {role.name}
-                    </TableHeaderCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {governed.map((permission) => (
-                  <TableRow key={permission.key}>
-                    <TableCell className="font-medium text-slate-800" title={permission.description ?? undefined}>
-                      {humanizePermissionKey(permission.key)}
-                    </TableCell>
-                    {roles.map((role) => (
-                      <TableCell key={role.id} className="text-center">
-                        <GrantCell grant={grantFor(role, permission.key)} />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </section>
+          {sent && (
+            <Alert tone="success" title="Sent for approval" className="mb-6">
+              A Board member approves or rejects these changes on the <Link href="/ops/governed-actions" className="font-medium underline">Approvals</Link>{" "}
+              page. Nothing changes until then.
+            </Alert>
+          )}
 
-          <section>
-            <h2 className="mb-4 text-sm font-semibold text-slate-900">Every role, in full</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {roles.map((role) => {
-                const makerOf = role.rolePermissions.filter((rp) => rp.canMaker && rp.permission.requiresMakerChecker);
-                const checkerOf = role.rolePermissions.filter((rp) => rp.canChecker && rp.permission.requiresMakerChecker);
-                const canDo = role.rolePermissions
-                  .filter((rp) => rp.canMaker && !rp.permission.requiresMakerChecker)
-                  .sort((a, b) => a.permission.key.localeCompare(b.permission.key));
-                const isApex = role.key === "board_of_trustees";
-                const isReadOnly = role.key === "external_auditor";
+          <Tabs
+            className="mb-6"
+            active={tab}
+            onChange={(key) => setTab(key as TabKey)}
+            items={[
+              { key: "roles", label: "By role" },
+              { key: "permissions", label: "By permission" },
+              { key: "changes", label: changes.pending.length ? `Changes (${changes.pending.length} awaiting)` : "Changes" },
+              { key: "reviews", label: reviewDue ? "Access reviews (due)" : "Access reviews" },
+            ]}
+          />
 
-                return (
-                  <Card key={role.id} tone={isApex ? "accent" : "neutral"} className="flex flex-col gap-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-slate-900">{role.name}</p>
-                        <p className="font-mono text-[11px] text-slate-500">{role.key}</p>
-                      </div>
-                      {isApex && <Badge tone="warning">Apex checker</Badge>}
-                      {isReadOnly && <Badge tone="neutral">Read-only</Badge>}
-                    </div>
+          {tab === "roles" && <ByRoleTab overview={overview} staged={staged} onStage={stage} canEdit={canEdit} />}
+          {tab === "permissions" && <ByPermissionTab overview={overview} />}
+          {tab === "changes" && <ChangesTab overview={overview} changes={changes} onChanges={setChanges} />}
+          {tab === "reviews" && <AccessReviewsTab overview={overview} status={reviews} canReview={canReview} onCompleted={load} />}
 
-                    {role.description && <p className="text-xs text-slate-600">{role.description}</p>}
-
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                        Maker on
-                      </p>
-                      {makerOf.length === 0 ? (
-                        <p className="text-xs italic text-slate-500">Nothing.</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {makerOf.map((rp) => (
-                            <span
-                              key={rp.permission.id}
-                              className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-600"
-                            >
-                              {rp.permission.key}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                        Checker on
-                      </p>
-                      {checkerOf.length === 0 ? (
-                        <p className="text-xs italic text-slate-500">Nothing.</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {checkerOf.map((rp) => (
-                            <span
-                              key={rp.permission.id}
-                              className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-600"
-                            >
-                              {rp.permission.key}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                        Can also
-                      </p>
-                      {canDo.length === 0 ? (
-                        <p className="text-xs italic text-slate-500">Nothing else.</p>
-                      ) : (
-                        <ul className="list-disc space-y-0.5 pl-4 text-xs text-slate-600">
-                          {canDo.map((rp) => (
-                            <li key={rp.permission.id} title={rp.permission.key}>
-                              {rp.permission.description ?? humanizePermissionKey(rp.permission.key)}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </Card>
-                );
+          {canEdit && staged.size > 0 && (
+            <StagedChangesBar
+              overview={overview}
+              staged={[...staged.values()]}
+              onDiscard={() => setStaged(new Map())}
+              onUnstage={(change) => setStaged((prev) => {
+                const next = new Map(prev);
+                next.delete(stageKey(change));
+                return next;
               })}
-            </div>
-          </section>
-
-          <Alert tone="success" title="Maker ≠ checker is enforced by the database" className="mt-8">
-            Even if one person holds a role that's both maker and checker somewhere above, a CHECK constraint on{" "}
-            <code className="font-mono">governed_actions</code> rejects a self-approval outright — this table
-            describes what's normally possible, not the individual-level guarantee.
-          </Alert>
+              onSent={() => {
+                setStaged(new Map());
+                setSent(true);
+                load();
+              }}
+            />
+          )}
         </>
       )}
     </div>
   );
 }
 
-type GrantSetting = "none" | "maker" | "checker";
-
-// Propose changing one role's grant on one permission — the governed
-// role.permission_change action. The Board approves it on the Approvals
-// page; nothing here changes anyone's access directly. The backend
-// refuses a change that would leave an approval action with nobody able to
-// propose or approve it, give one role both sides, or give the External
-// Auditor either side.
-function uniquePermissions(roles: Role[]) {
-  return [
-    ...new Map(roles.flatMap((r) => r.rolePermissions.map((rp) => [rp.permission.key, rp.permission] as const))).values(),
-  ].sort((a, b) => a.key.localeCompare(b.key));
-}
-
-function ProposeGrantChange({ roles }: { roles: Role[] }) {
-  const permissions = uniquePermissions(roles);
-  const [roleKey, setRoleKey] = useState("");
-  const [permissionKey, setPermissionKey] = useState("");
-  const [setting, setSetting] = useState<GrantSetting>("none");
-  const { submit, submitting, sent, error, reset } = useProposeGrantChange();
-
-  const permission = permissions.find((p) => p.key === permissionKey);
-  const role = roles.find((r) => r.key === roleKey);
-
-  if (sent) return <SentForApproval onAnother={reset} />;
-
-  return (
-    <Card className="mb-8">
-      <ProposeHeader error={error} />
-      <div className="flex flex-wrap items-end gap-3">
-        <LabelledSelect id="grant-role" label="Role" value={roleKey} onChange={setRoleKey} className="w-52">
-          <RoleOptions roles={roles} />
-        </LabelledSelect>
-        <LabelledSelect
-          id="grant-permission"
-          label="Permission"
-          value={permissionKey}
-          onChange={(key) => {
-            setPermissionKey(key);
-            setSetting("none");
-          }}
-          className="w-72"
-        >
-          <option value="">Choose a permission…</option>
-          {permissions.map((p) => (
-            <option key={p.key} value={p.key}>
-              {humanizePermissionKey(p.key)}
-              {p.requiresMakerChecker ? " (approval)" : ""}
-            </option>
-          ))}
-        </LabelledSelect>
-        <GrantSettingSelect permission={permission} value={setting} onChange={setSetting} />
-        <Button
-          disabled={!role || !permission || submitting}
-          onClick={() => role && permission && submit(role.key, permission.key, setting)}
-        >
-          {submitting ? "Sending…" : "Send for approval"}
-        </Button>
-      </div>
-      {role && permission && <CurrentGrant role={role} permission={permission} />}
-    </Card>
-  );
-}
-
-function RoleOptions({ roles }: { roles: Role[] }) {
-  return (
+function Stat({ label, value, tone = "neutral", onClick }: { label: string; value: string; tone?: "neutral" | "warning"; onClick?: () => void }) {
+  const body = (
     <>
-      <option value="">Choose a role…</option>
-      {roles.map((r) => (
-        <option key={r.key} value={r.key}>
-          {r.name}
-        </option>
-      ))}
+      <dt className="text-xs font-medium text-slate-500">{label}</dt>
+      <dd className={`mt-1 text-lg font-semibold tabular-nums ${tone === "warning" ? "text-amber-700" : "text-slate-900"}`}>{value}</dd>
     </>
   );
-}
-
-function ProposeHeader({ error }: { error: string | null }) {
-  return (
-    <>
-      <h2 className="text-sm font-semibold text-slate-900">Propose a change</h2>
-      <p className="mb-4 mt-0.5 text-xs text-slate-500">
-        Change what one role may do. A Board member approves every change before it takes effect.
-      </p>
-      {error && (
-        <Alert tone="danger" title="Couldn't send for approval" className="mb-4">
-          {error}
-        </Alert>
-      )}
-    </>
-  );
-}
-
-function useProposeGrantChange() {
-  const [submitting, setSubmitting] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(roleKey: string, permissionKey: string, setting: GrantSetting) {
-    setError(null);
-    setSubmitting(true);
-    try {
-      await apiFetchJson("/governed-actions", {
-        method: "POST",
-        body: JSON.stringify({
-          permissionKey: "role.permission_change",
-          payload: { roleKey, permissionKey, canMaker: setting === "maker", canChecker: setting === "checker" },
-        }),
-      });
-      setSent(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return { submit, submitting, sent, error, reset: () => setSent(false) };
-}
-
-function LabelledSelect({
-  id,
-  label,
-  value,
-  onChange,
-  className,
-  children,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  className: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-xs font-medium text-slate-700">
-        {label}
-      </label>
-      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} className={className}>
-        {children}
-      </Select>
-    </div>
-  );
-}
-
-function SentForApproval({ onAnother }: { onAnother: () => void }) {
-  return (
-    <Alert tone="success" title="Sent for approval" className="mb-8">
-      A Board member needs to approve this on the Approvals page before it takes effect.{" "}
-      <button type="button" className="font-medium underline" onClick={onAnother}>
-        Propose another
-      </button>
-    </Alert>
-  );
-}
-
-type PermissionInfo = Role["rolePermissions"][number]["permission"];
-
-function GrantSettingSelect({
-  permission,
-  value,
-  onChange,
-}: {
-  permission: PermissionInfo | undefined;
-  value: GrantSetting;
-  onChange: (setting: GrantSetting) => void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor="grant-setting" className="text-xs font-medium text-slate-700">
-        New setting
-      </label>
-      <Select
-        id="grant-setting"
-        value={value}
-        onChange={(e) => onChange(e.target.value as GrantSetting)}
-        className="w-52"
-        disabled={!permission}
-      >
-        {permission?.requiresMakerChecker ? (
-          <>
-            <option value="none">Neither</option>
-            <option value="maker">Can propose</option>
-            <option value="checker">Can approve</option>
-          </>
-        ) : (
-          <>
-            <option value="none">Not allowed</option>
-            <option value="maker">Allowed</option>
-          </>
-        )}
-      </Select>
-    </div>
-  );
-}
-
-// What the chosen role has on the chosen permission today.
-function CurrentGrant({ role, permission }: { role: Role; permission: PermissionInfo }) {
-  const grant = grantFor(role, permission.key);
-  const label = permission.requiresMakerChecker
-    ? grant?.canMaker
-      ? "can propose"
-      : grant?.canChecker
-        ? "can approve"
-        : "neither proposes nor approves"
-    : grant?.canMaker
-      ? "allowed"
-      : "not allowed";
-  return (
-    <p className="mt-3 text-xs text-slate-600">
-      {permission.description ?? humanizePermissionKey(permission.key)} — {humanize(role.key)} currently{" "}
-      <span className="font-medium">{label}</span>.
-      {role.key === "board_of_trustees" && " This would change the Board's own permissions."}
-    </p>
+  const className = `rounded-xl border px-4 py-3 text-left ${tone === "warning" ? "border-amber-200 bg-amber-50/60" : "border-slate-200 bg-white"}`;
+  return onClick ? (
+    <button type="button" onClick={onClick} className={`${className} transition-colors hover:border-primary-300`}>
+      {body}
+    </button>
+  ) : (
+    <div className={className}>{body}</div>
   );
 }

@@ -10,7 +10,8 @@ import { apiFetchJson } from "../../../lib/api";
 import { agentNickname, formatDate, humanize, humanizePermissionKey } from "../../../lib/format";
 import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import { useStaffSession } from "../../../lib/staff-session";
-import type { GovernedAction } from "../../../lib/ops-types";
+import type { GovernedAction, GrantChange } from "../../../lib/ops-types";
+import { permissionLabel, settingLabel, settingOf } from "../../../lib/permission-labels";
 import {
   Alert,
   Button,
@@ -81,6 +82,64 @@ function PayloadDetails({
         );
       })}
     </dl>
+  );
+}
+
+// role.permission_change (2026-11-16): the changes as a readable list —
+// role, permission, today's setting → the proposed one, and how many
+// people each affects — with the proposer's reason. Today's settings and
+// the names come with currentState, once the row is expanded.
+interface PermissionChangeNow {
+  roleKey: string;
+  roleName: string | null;
+  permissionKey: string;
+  permissionDescription: string | null;
+  requiresMakerChecker: boolean;
+  canMaker: boolean;
+  canChecker: boolean;
+  affectedPeople: number;
+}
+
+function RolePermissionChangeDetails({ payload, currentState }: { payload: unknown; currentState?: Record<string, unknown> | null }) {
+  const body = (payload ?? {}) as { changes?: GrantChange[]; reason?: string } & Partial<GrantChange>;
+  const changes: GrantChange[] = Array.isArray(body.changes) ? body.changes : [body as GrantChange];
+  const now = (currentState?.changes as PermissionChangeNow[] | undefined) ?? [];
+  return (
+    <div className="space-y-3 text-sm">
+      {body.reason ? (
+        <p className="text-slate-700">
+          <span className="font-medium">Reason:</span> {body.reason}
+        </p>
+      ) : (
+        <p className="text-xs text-slate-500">Proposed before reasons were recorded.</p>
+      )}
+      <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
+        {changes.map((c) => {
+          const current = now.find((n) => n.roleKey === c.roleKey && n.permissionKey === c.permissionKey);
+          const approval = current?.requiresMakerChecker ?? c.canChecker;
+          const name = current ? permissionLabel({ key: c.permissionKey, description: current.permissionDescription }) : c.permissionKey;
+          return (
+            <li key={`${c.roleKey}:${c.permissionKey}`} className="px-3 py-2">
+              <p className="font-medium text-slate-900">
+                {current?.roleName ?? humanize(c.roleKey)} · {name}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-600">
+                <span className="font-mono">{c.permissionKey}</span>
+                {current && (
+                  <>
+                    {" · "}
+                    {settingLabel(settingOf(current, approval), approval)} →{" "}
+                  </>
+                )}
+                {!current && " · "}
+                <span className="font-semibold text-primary-700">{settingLabel(settingOf(c, approval), approval)}</span>
+                {current && ` · affects ${current.affectedPeople} ${current.affectedPeople === 1 ? "person" : "people"}`}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -346,7 +405,11 @@ function ApprovalCard({ action, rowState, isExpanded, hasBeenViewed, isOwnPropos
           {isExpanded && (
             <div className="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-3.5 sm:ml-12">
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">What this changes</p>
-              <PayloadDetails payload={action.payload} currentState={currentState} />
+              {action.permission.key === "role.permission_change" ? (
+                <RolePermissionChangeDetails payload={action.payload} currentState={currentState} />
+              ) : (
+                <PayloadDetails payload={action.payload} currentState={currentState} />
+              )}
             </div>
           )}
         </div>
