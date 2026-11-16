@@ -175,6 +175,8 @@ jobs:
       # @birr/zakah (main: dist/index.js) has the same gap: the zakah
       # module's specs require its compiled CommonJS.
       - run: pnpm --filter @birr/zakah build
+      # @birr/shared (countries, field limits) is compiled the same way.
+      - run: pnpm --filter @birr/shared build
       - run: pnpm --filter @birr/db exec prisma migrate deploy
       # Several specs (e.g. governed-actions.service.spec.ts, see its own
       # beforeAll comment) reuse the seeded roles/permissions/
@@ -270,6 +272,8 @@ jobs:
       # Same for @birr/zakah: the backend Playwright starts requires its
       # compiled JS, and the web app imports it.
       - run: pnpm --filter @birr/zakah build
+      # @birr/shared (countries, field limits) is compiled the same way.
+      - run: pnpm --filter @birr/shared build
       - run: pnpm --filter @birr/db exec prisma migrate deploy
       - run: pnpm --filter @birr/db exec prisma db seed
         env:
@@ -322,7 +326,10 @@ jobs:
       # @birr/db. Its own tests run here too: pure TypeScript, no
       # database, so this is the natural home for them.
       - run: pnpm --filter @birr/zakah build
+      # @birr/shared (countries, field limits) is compiled the same way.
+      - run: pnpm --filter @birr/shared build
       - run: pnpm --filter @birr/zakah test
+      - run: pnpm --filter @birr/shared test
       # Vitest + React Testing Library — jsdom-based, no Postgres/backend
       # needed (every API call the tested components make is mocked at
       # the lib/api.ts boundary).

@@ -29,6 +29,8 @@ import {
   TableRow,
 } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
+import { CountrySelect } from "../../../components/forms/CountrySelect";
+import { countryLabel } from "@birr/shared";
 
 const LICENSE_STATUSES: TrusteeLicenseStatus[] = ["active", "pending", "suspended", "expired"];
 const LICENSE_TONE: Record<TrusteeLicenseStatus, "success" | "neutral" | "warning" | "danger"> = {
@@ -140,7 +142,7 @@ function TrusteeLicensesSection({ canManage }: { canManage: boolean }) {
           <TableBody>
             {licenses.map((l) => (
               <TableRow key={l.id}>
-                <TableCell className="font-medium text-slate-900">{l.jurisdiction}</TableCell>
+                <TableCell className="font-medium text-slate-900">{countryLabel(l.jurisdiction)}</TableCell>
                 <TableCell>
                   <Badge tone={LICENSE_TONE[l.status]}>{humanize(l.status)}</Badge>
                 </TableCell>
@@ -199,9 +201,9 @@ function TrusteeLicenseForm({ onCreated }: { onCreated: () => void }) {
         </Alert>
       )}
       <div className="flex flex-wrap items-end gap-3">
-        <div className="w-32 space-y-1.5">
+        <div className="w-64 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Jurisdiction</label>
-          <Input required autoFocus placeholder="NG" value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} />
+          <CountrySelect value={jurisdiction} onChange={setJurisdiction} />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Status</label>
@@ -303,7 +305,7 @@ function CompliancePolicySetsSection({ canManage }: { canManage: boolean }) {
           <TableBody>
             {policySets.map((p) => (
               <TableRow key={p.id}>
-                <TableCell className="font-medium text-slate-900">{p.jurisdiction}</TableCell>
+                <TableCell className="font-medium text-slate-900">{countryLabel(p.jurisdiction)}</TableCell>
                 <TableCell className="text-slate-500">{p.frameworkName}</TableCell>
                 <TableCell>
                   <Badge tone={p.requiresTrusteeLicense ? "neutral" : "success"}>
@@ -374,9 +376,9 @@ function CompliancePolicySetForm({ onSaved }: { onSaved: () => void }) {
         </Alert>
       )}
       <div className="flex flex-wrap items-end gap-3">
-        <div className="w-32 space-y-1.5">
+        <div className="w-64 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Jurisdiction</label>
-          <Input required autoFocus placeholder="NG" value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} />
+          <CountrySelect value={jurisdiction} onChange={setJurisdiction} />
         </div>
         <div className="min-w-[14rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Framework name</label>

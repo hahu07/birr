@@ -4,6 +4,20 @@ import { TrusteeLicensesService } from "./trustee-licenses.service";
 import { createFakeNotificationsService } from "../notifications/test-support/fake-notifications-service";
 
 describe("TrusteeLicensesService", () => {
+  // Jurisdictions are two-letter codes (2026-11-16). ISO's user-assigned
+  // XA–XL are never a real country, so they can't clash with real data;
+  // this spec owns them and clears any left over from an earlier run.
+  const pool = "ABCDEFGHIJKL".split("").map((l) => `X${l}`);
+  let next = 0;
+  const nextJurisdiction = () => {
+    if (next >= pool.length) throw new Error("Out of test jurisdictions: add letters to the pool.");
+    return pool[next++];
+  };
+  beforeAll(async () => {
+    await prisma.trusteeLicense.deleteMany({ where: { jurisdiction: { in: pool } } });
+    await prisma.compliancePolicySet.deleteMany({ where: { jurisdiction: { in: pool } } });
+  });
+
   const service = new TrusteeLicensesService(createFakeNotificationsService());
 
   const licenseIds: string[] = [];
@@ -32,7 +46,7 @@ describe("TrusteeLicensesService", () => {
   test("create() writes the license and a matching audit_logs record", async () => {
     const license = await service.create(
       {
-        jurisdiction: `TEST-${Date.now()}`,
+        jurisdiction: nextJurisdiction(),
         status: "active",
         licensingAuthority: "Test Authority",
       },
@@ -53,7 +67,7 @@ describe("TrusteeLicensesService", () => {
   test("update() writes an audit_logs record with before/after snapshots", async () => {
     const license = await service.create(
       {
-        jurisdiction: `TEST-${Date.now()}`,
+        jurisdiction: nextJurisdiction(),
         status: "pending",
         licensingAuthority: "Test Authority",
       },
@@ -84,12 +98,12 @@ describe("TrusteeLicensesService", () => {
 
   describe("statusForJurisdiction", () => {
     test("returns 'unlicensed' when no license row and no compliance policy set exist", async () => {
-      const jurisdiction = `TEST-NONE-${Date.now()}`;
+      const jurisdiction = nextJurisdiction();
       await expect(service.statusForJurisdiction(jurisdiction)).resolves.toBe("unlicensed");
     });
 
     test("returns 'not_required' when the jurisdiction's policy set says so, even with no license row", async () => {
-      const jurisdiction = `TEST-EXEMPT-${Date.now()}`;
+      const jurisdiction = nextJurisdiction();
       policySetJurisdictions.push(jurisdiction);
       await prisma.compliancePolicySet.create({
         data: { jurisdiction, frameworkName: "Test framework", requiresTrusteeLicense: false },
@@ -99,7 +113,7 @@ describe("TrusteeLicensesService", () => {
     });
 
     test("returns 'unlicensed', not 'not_required', when the policy set explicitly requires one and none exists", async () => {
-      const jurisdiction = `TEST-REQUIRED-${Date.now()}`;
+      const jurisdiction = nextJurisdiction();
       policySetJurisdictions.push(jurisdiction);
       await prisma.compliancePolicySet.create({
         data: { jurisdiction, frameworkName: "Test framework", requiresTrusteeLicense: true },
@@ -109,7 +123,7 @@ describe("TrusteeLicensesService", () => {
     });
 
     test("a stray active license row is ignored once the jurisdiction is marked not requiring one", async () => {
-      const jurisdiction = `TEST-STRAY-${Date.now()}`;
+      const jurisdiction = nextJurisdiction();
       policySetJurisdictions.push(jurisdiction);
       const license = await service.create(
         { jurisdiction, status: "active", licensingAuthority: "Test Authority" },

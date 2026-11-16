@@ -13,6 +13,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import type { Foundation } from "../../../../lib/types";
 import { Alert, Button } from "@birr/ui";
 import { Field, FormSection, inputClass } from "../../_components/form";
+import { CountrySelect } from "../../../../components/forms/CountrySelect";
 
 export function FoundationForm({
   onSuccess,
@@ -75,14 +76,8 @@ export function FoundationForm({
                 className={inputClass}
               />
             </Field>
-            <Field label="Jurisdiction" optional htmlFor="jurisdiction" hint="As a 2-letter country code — e.g. NG for Nigeria.">
-              <input
-                id="jurisdiction"
-                value={jurisdiction}
-                onChange={(e) => setJurisdiction(e.target.value)}
-                placeholder="e.g. NG"
-                className={`${inputClass} sm:max-w-[10rem]`}
-              />
+            <Field label="Jurisdiction" optional htmlFor="jurisdiction" hint="The country whose rules govern the Foundation.">
+              <CountrySelect id="jurisdiction" value={jurisdiction} onChange={setJurisdiction} className="sm:max-w-sm" />
             </Field>
           </div>
         </FormSection>

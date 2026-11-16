@@ -16,6 +16,7 @@ import type { Invitation } from "../../../../lib/types";
 import { Alert, Button, IconArrowRight, IconImage, IconShieldCheck, IconSparkle, Select } from "@birr/ui";
 import { ChoiceCard, Field, FormSection, inputClass } from "../../_components/form";
 import { FOUNDER_TYPE_GUIDE, FounderFoundationGuide, type FounderType, INSTITUTION_TYPE_GUIDE } from "./FounderFoundationGuide";
+import { CountrySelect } from "../../../../components/forms/CountrySelect";
 
 interface PurposeSuggestion {
   suggestedPurpose: string;
@@ -469,15 +470,9 @@ export default function OnboardingFounderFoundationPage() {
                   label="Jurisdiction"
                   htmlFor="jurisdiction"
                   optional
-                  hint="The country whose rules govern the Foundation, as a 2-letter code — e.g. NG."
+                  hint="The country whose rules govern the Foundation."
                 >
-                  <input
-                    id="jurisdiction"
-                    value={jurisdiction}
-                    onChange={(e) => setJurisdiction(e.target.value)}
-                    placeholder="NG"
-                    className={`${inputClass} sm:max-w-[12rem]`}
-                  />
+                  <CountrySelect id="jurisdiction" value={jurisdiction} onChange={setJurisdiction} className="sm:max-w-sm" />
                 </Field>
                 <div>
                   <p className="mb-1.5 block text-sm font-medium text-slate-800">

@@ -16,6 +16,8 @@ import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
 import type { Counterparty, CounterpartyExposure, GovernedAction, InvestmentPlacementSummary } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, DetailGrid, EmptyState, Input, Skeleton } from "@birr/ui";
+import { CountrySelect } from "../../../../components/forms/CountrySelect";
+import { countryLabel } from "@birr/shared";
 
 const STATUS_TONE: Record<Counterparty["status"], "success" | "warning" | "neutral" | "danger"> = {
   active: "success",
@@ -154,7 +156,7 @@ export default function CounterpartyDetailPage() {
             columns={2}
             items={[
               { label: "Type", value: humanize(counterparty.institutionType) },
-              { label: "Jurisdiction", value: counterparty.jurisdiction },
+              { label: "Jurisdiction", value: countryLabel(counterparty.jurisdiction) },
               { label: "Registration number", value: counterparty.registrationNumber ?? "—" },
               { label: "Address", value: counterparty.address ?? "—" },
               { label: "Website", value: counterparty.website ?? "—" },
@@ -524,7 +526,7 @@ function EditProfileForm({
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-32 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Jurisdiction</label>
-          <Input required value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} />
+          <CountrySelect value={jurisdiction} onChange={setJurisdiction} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Registration number</label>

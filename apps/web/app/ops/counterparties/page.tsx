@@ -14,6 +14,8 @@ import { useStaffSession } from "../../../lib/staff-session";
 import type { Counterparty } from "../../../lib/ops-types";
 import { Alert, Badge, Button, EmptyState, IconLandmark, Input, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
+import { CountrySelect } from "../../../components/forms/CountrySelect";
+import { countryName } from "@birr/shared";
 
 const INSTITUTION_TYPES: Counterparty["institutionType"][] = [
   "bank",
@@ -120,7 +122,7 @@ export default function CounterpartiesPage() {
                     </Link>
                   </TableCell>
                   <TableCell>{humanize(c.institutionType)}</TableCell>
-                  <TableCell className="text-slate-500">{c.jurisdiction}</TableCell>
+                  <TableCell className="text-slate-500">{countryName(c.jurisdiction)}</TableCell>
                   <TableCell className="text-slate-500">
                     {c.concentrationLimit && c.concentrationLimitCurrency && c.totalInvested != null ? (
                       <>
@@ -226,7 +228,7 @@ function RegisterForm({ onRegistered }: { onRegistered: () => void }) {
         </div>
         <div className="w-32 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Jurisdiction</label>
-          <Input required value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} placeholder="AE" />
+          <CountrySelect value={jurisdiction} onChange={setJurisdiction} />
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Registration number (optional)</label>

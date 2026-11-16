@@ -31,6 +31,8 @@ import {
   TableRow,
 } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
+import { CountrySelect } from "../../../components/forms/CountrySelect";
+import { countryName } from "@birr/shared";
 
 const VAULT_TYPES: VaultType[] = ["project", "investment"];
 
@@ -141,7 +143,7 @@ export default function VaultsPage() {
                       <span className="text-slate-400"> + {v.additionalCurrencies.join(", ")}</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-slate-500">{v.jurisdiction}</TableCell>
+                  <TableCell className="text-slate-500">{countryName(v.jurisdiction)}</TableCell>
                   <TableCell>
                     <Badge tone={STATUS_TONE[v.status]}>{humanize(v.status)}</Badge>
                   </TableCell>
@@ -464,7 +466,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
         </div>
         <div className="w-32 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Jurisdiction</label>
-          <Input required value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} placeholder="NG" />
+          <CountrySelect value={jurisdiction} onChange={setJurisdiction} />
         </div>
         <Button type="submit" disabled={submitting}>
           {submitting ? "Creating…" : "Create"}

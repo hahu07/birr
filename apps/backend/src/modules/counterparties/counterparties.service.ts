@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { CountryCode } from "../../common/validation/country-code";
 import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from "class-validator";
 import { prisma, Prisma, CounterpartyType, CounterpartyStatus, PayoutProvider } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
@@ -10,7 +11,7 @@ export class RegisterCounterpartyInput {
   @IsEnum(CounterpartyType)
   institutionType!: CounterpartyType;
 
-  @IsString()
+  @CountryCode()
   jurisdiction!: string;
 
   @IsOptional()
@@ -78,8 +79,7 @@ export class RegisterCounterpartyInput {
 // methods (recordShariahApproval/onboard/suspend/blacklist), not this
 // generic update.
 export class UpdateCounterpartyInput {
-  @IsOptional()
-  @IsString()
+  @CountryCode({ optional: true })
   jurisdiction?: string;
 
   @IsOptional()

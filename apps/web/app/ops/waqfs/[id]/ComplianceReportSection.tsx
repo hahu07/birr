@@ -26,6 +26,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@birr/ui";
+import { countryLabel } from "@birr/shared";
 
 const LICENSE_TONE: Record<ComplianceReport["trusteeLicenseStatus"], "success" | "neutral" | "warning" | "danger"> = {
   active: "success",
@@ -103,7 +104,7 @@ export function ComplianceReportSection({ waqfId }: { waqfId: string }) {
           <DetailGrid
             columns={3}
             items={[
-              { label: "Jurisdiction", value: report.waqf.jurisdiction },
+              { label: "Jurisdiction", value: countryLabel(report.waqf.jurisdiction) },
               {
                 label: "Trustee license",
                 value: (
@@ -136,7 +137,7 @@ export function ComplianceReportSection({ waqfId }: { waqfId: string }) {
               </div>
             ) : (
               <p className="text-sm italic text-slate-500">
-                No compliance framework configured for &ldquo;{report.waqf.jurisdiction}&rdquo; yet — see
+                No compliance framework configured for &ldquo;{countryLabel(report.waqf.jurisdiction)}&rdquo; yet — see
                 Jurisdictions.
               </p>
             )}

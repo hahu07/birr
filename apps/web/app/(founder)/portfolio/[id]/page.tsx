@@ -55,6 +55,7 @@ import { RequestsSection } from "./RequestsSection";
 import { FinancialReportSection } from "./FinancialReportSection";
 import { LifecycleSection } from "./LifecycleSection";
 import { ProjectProgressSection } from "./ProjectProgressSection";
+import { countryName } from "@birr/shared";
 
 // "Overview" and "Requests" are the two tab labels most likely to be
 // mistaken for the *global* sidebar pages of similar names (Impact,
@@ -149,7 +150,7 @@ export default function WaqfFundDetailPage() {
           <Panel className="mb-6">
             <dl className="grid grid-cols-2 divide-slate-100 sm:grid-cols-3 lg:grid-cols-5 lg:divide-x">
               <Fact label="Type" value={`${humanize(waqf.type)} fund`} />
-              <Fact label="Jurisdiction" value={waqf.jurisdiction} />
+              <Fact label="Jurisdiction" value={countryName(waqf.jurisdiction)} />
               <Fact label="Established" value={formatDate(waqf.createdAt)} />
               <Fact label="Funding plan" value={humanize(waqf.fundingPlan)} />
               {/* Deed-signing is Foundation-level, not per-Waqf — see

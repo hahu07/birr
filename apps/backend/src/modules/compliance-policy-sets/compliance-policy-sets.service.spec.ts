@@ -20,8 +20,18 @@ describe("CompliancePolicySetsService", () => {
     });
   });
 
+  // Jurisdictions are two-letter codes (2026-11-16). ISO's user-assigned
+  // XM–XZ are never a real country; this spec owns them and clears any
+  // left over from an earlier run.
+  const pool = "MNOPQRSTUVWXYZ".split("").map((l) => `X${l}`);
+  let next = 0;
+  beforeAll(async () => {
+    await prisma.compliancePolicySet.deleteMany({ where: { jurisdiction: { in: pool } } });
+  });
+
   beforeEach(() => {
-    jurisdiction = `TEST-${Date.now()}`;
+    if (next >= pool.length) throw new Error("Out of test jurisdictions: add letters to the pool.");
+    jurisdiction = pool[next++];
   });
 
   afterAll(async () => {

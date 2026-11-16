@@ -58,7 +58,9 @@ test.describe("Waqf Fund establishment", () => {
       await expect(page.getByRole("heading", { name: "Establish your first Waqf Fund" })).toBeVisible();
 
       await page.getByLabel("Name").fill("E2E Fixture Scholarship Fund");
-      await page.getByLabel("Jurisdiction").fill("NG");
+      // A country picked from the list (2026-11-16), stored as its code.
+      await page.getByLabel("Jurisdiction").fill("Nigeria");
+      await page.getByRole("option", { name: "Nigeria (NG)" }).click();
       // Above packages/db/prisma/seed-data.ts's own NGN corpusMinimum
       // (1,500,000) — the lump-sum "Amount" field auto-fills to match
       // this and is read-only, so nothing else needs filling in.

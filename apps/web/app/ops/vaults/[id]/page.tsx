@@ -29,6 +29,7 @@ import { ProposeGovernedActionButton } from "../../_components/ProposeGovernedAc
 import { useLoadedResource } from "../../_components/SectionChrome";
 import { EntityHeader } from "../../_components/EntityHeader";
 import { useStaffSession } from "../../../../lib/staff-session";
+import { countryLabel } from "@birr/shared";
 
 const STATUS_TONE: Record<VaultStatus, "success" | "warning" | "neutral" | "danger"> = {
   draft: "neutral",
@@ -158,7 +159,7 @@ export default function VaultDetailPage() {
         facts={[
           { label: "Type", value: humanize(vault.type) },
           { label: "Currencies", value: [vault.currency, ...vault.additionalCurrencies].join(", ") },
-          { label: "Jurisdiction", value: vault.jurisdiction },
+          { label: "Jurisdiction", value: countryLabel(vault.jurisdiction) },
           { label: "Target", value: vault.targetAmount ? formatMoney(vault.targetAmount, vault.currency) : "—" },
           {
             label: "Public page",
