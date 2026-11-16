@@ -16,8 +16,10 @@ const prices: MetalPrices = {
 const today = "2027-02-08";
 const allowDraft = { today, allowDraftRuleset: true };
 
+/** A ruleset with some rulings changed. Setting nisabBasis fixes it (the payer can't choose) unless the test says otherwise. */
 function withRulings(ruleset: ZakahRuleset, rulings: Partial<ZakahRulings>): ZakahRuleset {
-  return { ...ruleset, rulings: { ...ruleset.rulings, ...rulings } };
+  const fixed = rulings.nisabBasis !== undefined && rulings.payerChoosesNisab === undefined ? { payerChoosesNisab: false } : {};
+  return { ...ruleset, rulings: { ...ruleset.rulings, ...fixed, ...rulings } };
 }
 
 const maliki = draftRulesets.maliki;
@@ -39,15 +41,15 @@ describe("calculateZakah", () => {
     expect(result.totalAssets).toBe("4200000.00");
     expect(result.deductedDebts).toBe("400000.00");
     expect(result.netZakatableWealth).toBe("3800000.00");
-    expect(result.nisab).toEqual({ metal: "silver", grams: "595", value: "1190000.00" });
+    expect(result.nisab).toEqual({ metal: "silver", grams: "595", value: "1190000.00", chosenByPayer: false });
     expect(result.meetsNisab).toBe(true);
     expect(result.zakahDue).toBe("95000.00");
   });
 
   it("owes nothing below the nisab — the same wealth under a gold-based nisab", () => {
-    const result = calculateZakah(amina, maliki, prices, allowDraft);
+    const result = calculateZakah(amina, withRulings(maliki, { nisabBasis: "gold" }), prices, allowDraft);
 
-    expect(result.nisab).toEqual({ metal: "gold", grams: "85", value: "12750000.00" });
+    expect(result.nisab).toEqual({ metal: "gold", grams: "85", value: "12750000.00", chosenByPayer: false });
     expect(result.meetsNisab).toBe(false);
     expect(result.zakahDue).toBe("0.00");
   });
@@ -55,6 +57,27 @@ describe("calculateZakah", () => {
   it("uses the cheaper metal for a lower_of nisab", () => {
     const result = calculateZakah(amina, withRulings(maliki, { nisabBasis: "lower_of" }), prices, allowDraft);
     expect(result.nisab.metal).toBe("silver");
+  });
+
+  describe("the payer's choice of nisab (where the Board allows it)", () => {
+    const choosing = withRulings(maliki, { nisabBasis: "gold", payerChoosesNisab: true });
+
+    it("starts on silver, whatever the ruleset's own basis", () => {
+      const result = calculateZakah(amina, choosing, prices, allowDraft);
+      expect(result.nisab).toEqual({ metal: "silver", grams: "595", value: "1190000.00", chosenByPayer: true });
+      expect(result.zakahDue).toBe("95000.00");
+    });
+
+    it("uses gold when the payer chooses it, which can mean nothing is due", () => {
+      const result = calculateZakah(amina, choosing, prices, { ...allowDraft, nisabBasis: "gold" });
+      expect(result.nisab).toMatchObject({ metal: "gold", value: "12750000.00", chosenByPayer: true });
+      expect(result.meetsNisab).toBe(false);
+      expect(result.zakahDue).toBe("0.00");
+    });
+
+    it("refuses a choice where the ruleset fixes the nisab", () => {
+      expect(() => calculateZakah(amina, malikiSilver, prices, { ...allowDraft, nisabBasis: "gold" })).toThrow(ZakahInputError);
+    });
   });
 
   it("treats wealth exactly at the nisab as meeting it", () => {

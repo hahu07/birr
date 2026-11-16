@@ -1,7 +1,7 @@
 import { Decimal, format, parseAmount, parsePositive, toKobo, ZakahInputError } from "./internal";
 import { priceFreshness } from "./freshness";
 import { validateRulings } from "./validate";
-import type { CalculationLine, MetalPrices, ZakahInput, ZakahResult, ZakahRuleset } from "./types";
+import type { CalculationLine, MetalPrices, ZakahInput, ZakahResult, ZakahRuleset, ZakahRulings } from "./types";
 
 const ZAKAH_RATE = new Decimal("0.025");
 const ZERO = new Decimal(0);
@@ -31,6 +31,26 @@ export interface CalculateOptions {
   today: string;
   /** Permit a draft ruleset. Never set this for a payer-facing result. */
   allowDraftRuleset?: boolean;
+  /**
+   * The payer's choice of nisab, only where the ruleset lets them choose
+   * (rulings.payerChoosesNisab); refused otherwise. Silver when not given.
+   */
+  nisabBasis?: "gold" | "silver";
+}
+
+/** The nisab a payer starts with when their ruleset lets them choose (owner's decision, 2026-11-16). */
+export const PAYER_DEFAULT_NISAB_BASIS = "silver" as const;
+
+/**
+ * Which metal sets the nisab: the payer's choice where the ruleset allows
+ * one (silver until they choose), else the ruleset's own basis. "lower_of"
+ * is resolved by the caller against today's prices.
+ */
+export function nisabBasisFor(rulings: ZakahRulings, choice?: "gold" | "silver"): ZakahRulings["nisabBasis"] {
+  if (choice !== undefined && !rulings.payerChoosesNisab) {
+    throw new ZakahInputError("nisabBasis", "this ruleset sets the nisab itself, so it can't be chosen");
+  }
+  return rulings.payerChoosesNisab ? (choice ?? PAYER_DEFAULT_NISAB_BASIS) : rulings.nisabBasis;
 }
 
 /** 24k is pure gold: 18k → "0.75", 21k → "0.875". */
@@ -117,8 +137,8 @@ export function calculateZakah(
 
   const goldNisab = toKobo(parsePositive("rulings.nisabGoldGrams", rulings.nisabGoldGrams).times(goldPrice));
   const silverNisab = toKobo(parsePositive("rulings.nisabSilverGrams", rulings.nisabSilverGrams).times(silverPrice));
-  const nisabMetal =
-    rulings.nisabBasis === "lower_of" ? (silverNisab.lessThanOrEqualTo(goldNisab) ? "silver" : "gold") : rulings.nisabBasis;
+  const basis = nisabBasisFor(rulings, options.nisabBasis);
+  const nisabMetal = basis === "lower_of" ? (silverNisab.lessThanOrEqualTo(goldNisab) ? "silver" : "gold") : basis;
   const nisabValue = nisabMetal === "gold" ? goldNisab : silverNisab;
 
   const meetsNisab = netZakatableWealth.greaterThan(0) && netZakatableWealth.greaterThanOrEqualTo(nisabValue);
@@ -138,6 +158,7 @@ export function calculateZakah(
       metal: nisabMetal,
       grams: nisabMetal === "gold" ? rulings.nisabGoldGrams : rulings.nisabSilverGrams,
       value: format(nisabValue),
+      chosenByPayer: rulings.payerChoosesNisab,
     },
     meetsNisab,
     zakahDue: format(zakahDue),

@@ -24,7 +24,8 @@ function approved(madhhab: "maliki" | "hanafi", rulings: Partial<ZakahRulings> =
   return {
     ...draftRulesets[madhhab],
     approval: { status: "approved", approvedAt: "2026-11-01", governedActionId: `ga-${madhhab}` },
-    rulings: { ...draftRulesets[madhhab].rulings, nisabBasis: "silver", ...rulings },
+    // Fixed to silver unless a test lets the payer choose.
+    rulings: { ...draftRulesets[madhhab].rulings, nisabBasis: "silver", payerChoosesNisab: false, ...rulings },
   };
 }
 
@@ -120,6 +121,33 @@ describe("Public zakah calculator", { timeout: 15_000 }, () => {
     expect(result().getByText("₦95,000.00")).toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: /Hanafi/ }));
     expect(result().getByText("₦151,250.00")).toBeInTheDocument();
+  });
+
+  test("where the Board allows it, the payer chooses gold or silver; silver to start, and the choice goes with the payment", async () => {
+    const user = userEvent.setup();
+    setup({ rulesets: [approved("maliki", { payerChoosesNisab: true, nisabBasis: "gold" })] });
+    await enterAmina(user);
+    await user.click(screen.getByLabelText(/held this wealth for a full lunar year/));
+    const silver = screen.getByRole("radio", { name: /Silver/ });
+    expect(silver).toBeChecked();
+    expect(result().getByText("₦95,000.00")).toBeInTheDocument();
+
+    // On gold (₦12,750,000) the same wealth is below the nisab.
+    await user.click(screen.getByRole("radio", { name: /Gold/ }));
+    expect(screen.getByText(/below the nisab/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: /Silver/ }));
+    await user.click(screen.getByLabelText(/I appoint Birr as my agent/));
+    await user.click(screen.getByRole("button", { name: /^Pay ₦/ }));
+    await waitFor(() => expect(mockedApiFetchJson.mock.calls.some(([path, init]) => path === "/zakah-payments" && init?.method === "POST")).toBe(true));
+    const [, init] = mockedApiFetchJson.mock.calls.find(([path, i]) => path === "/zakah-payments" && i?.method === "POST")!;
+    expect(JSON.parse(init!.body as string)).toMatchObject({ rulesetKey: "maliki", nisabBasis: "silver" });
+  });
+
+  test("where the ruleset fixes the nisab, there's no choice and none is sent", async () => {
+    setup();
+    await screen.findByLabelText("Cash and bank balances");
+    expect(screen.queryByRole("radiogroup", { name: "Nisab by" })).not.toBeInTheDocument();
   });
 
   test("explains a figure it can't read", async () => {

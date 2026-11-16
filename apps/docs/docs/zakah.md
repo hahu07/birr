@@ -87,11 +87,16 @@ the result, with a "How we worked it out" breakdown line by line.
 | **Zakah due (2.5%)** | **₦95,000** |
 
 ₦95,000 is due **if** ₦3,800,000 is above the nisab. Whether it is
-depends on a decision the Shariah Supervisory Board still has to make:
-whether the nisab is measured against gold or silver. A gold-based
-nisab is roughly ten times a silver-based one in Naira, so the same
-₦3,800,000 can be well above one and below the other. The calculator
-always uses the basis the Board has approved.
+depends on whether the nisab is measured against gold or silver. A
+gold-based nisab is roughly ten times a silver-based one in Naira, so the
+same ₦3,800,000 can be well above one and below the other.
+
+**You choose gold or silver**, where Birr's Shariah Supervisory Board has
+allowed the choice for your school. The calculator shows today's nisab for
+each, starts on **silver** (the lower threshold, so more people pay
+zakah, which favours those who receive it), and records your choice with
+your payment. Where the Board has fixed the basis instead, the calculator
+uses that one. If unsure, ask your scholar.
 
 A few things to know:
 

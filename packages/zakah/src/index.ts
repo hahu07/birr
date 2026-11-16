@@ -1,5 +1,5 @@
 export * from "./types";
-export { calculateZakah, karatToPurity, DraftRulesetError, PricesExpiredError } from "./calculate";
+export { calculateZakah, karatToPurity, nisabBasisFor, PAYER_DEFAULT_NISAB_BASIS, DraftRulesetError, PricesExpiredError } from "./calculate";
 export type { CalculateOptions } from "./calculate";
 export { ZakahInputError } from "./internal";
 export { validateRulings } from "./validate";

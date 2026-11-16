@@ -40,6 +40,15 @@ export interface ZakahRulings {
    * here.
    */
   nisabBasis: "gold" | "silver" | "lower_of";
+  /**
+   * Whether the payer may choose a gold or a silver nisab for their own
+   * calculation (owner's decision, 2026-11-16: the payer chooses, where the
+   * Shariah Supervisory Board allows it). When true, nisabBasis above is
+   * not used: the payer's choice is, and silver until they choose
+   * (PAYER_DEFAULT_NISAB_BASIS). Absent on rulesets approved before this
+   * existed, which read as false.
+   */
+  payerChoosesNisab: boolean;
   /** Grams of pure gold in the nisab (85 and 87.48 are both in use). */
   nisabGoldGrams: string;
   /** Grams of pure silver in the nisab (595 and 612.36 are both in use). */
@@ -134,7 +143,13 @@ export interface ZakahResult {
   deductedDebts: NairaAmount;
   /** totalAssets − deductedDebts, never below zero. */
   netZakatableWealth: NairaAmount;
-  nisab: { metal: "gold" | "silver"; grams: string; value: NairaAmount };
+  nisab: {
+    metal: "gold" | "silver";
+    grams: string;
+    value: NairaAmount;
+    /** True when the payer chose the metal (the ruleset allowed it); false when the ruleset fixed it. */
+    chosenByPayer: boolean;
+  };
   meetsNisab: boolean;
   /** 2.5% of netZakatableWealth when nisab is met, else "0". */
   zakahDue: NairaAmount;

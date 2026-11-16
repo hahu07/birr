@@ -747,6 +747,19 @@ decisions:
   today, the codes included, is free text, which works in Twilio's
   sandbox only.
 
+**Update, 2026-11-16 — the payer chooses a gold or silver nisab, where the
+Board allows it.** Owner's decisions: each ruleset carries
+`payerChoosesNisab`, set by the Shariah Supervisory Board through the
+usual `zakah.ruleset_approve` (the bundled drafts propose allowing it;
+rulesets approved before this read as fixed). Where allowed, the
+calculator shows a Gold / Silver switch with today's nisab for each,
+**silver by default** (`PAYER_DEFAULT_NISAB_BASIS`), and the ruleset's own
+`nisabBasis` isn't used; where not, the fixed basis applies and a choice is
+refused. The basis a figure used is recorded on `ZakahPayment.nisabBasis`
+and, for monthly zakah, `RecurringGift.zakahNisabBasis`, reused for each
+later charge. This replaces "nisab basis is still the Board's open
+decision": the Board now decides whether payers choose, not which metal.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

@@ -3157,6 +3157,11 @@ model ZakahPayment {
   wakalahConsentVersion String
   rulesetKey            String?
   rulesetVersion        Int?
+  /// The nisab the figure used: the payer's gold or silver choice where the
+  /// ruleset allowed one, else the ruleset's own basis (2026-11-16). Null
+  /// when the payer didn't come from the calculator. A CHECK keeps it to
+  /// gold, silver or lower_of.
+  nisabBasis            String?
   metalPriceId          String?
   metalPrice            ZakahMetalPrice?     @relation(fields: [metalPriceId], references: [id], onDelete: Restrict)
   // Captured server-side for Compliance's off-platform AML review only,
@@ -3564,6 +3569,8 @@ model RecurringGift {
   /// Zakah: the calculation behind the amount, recorded on every charge.
   zakahRulesetKey       String?
   zakahRulesetVersion   Int?
+  /// Monthly zakah: the nisab basis its setup used, recorded on each charge.
+  zakahNisabBasis       String?
   zakahMetalPriceId     String?
 
   /// Paystack's reusable card authorisation, encrypted (EncryptionService).
