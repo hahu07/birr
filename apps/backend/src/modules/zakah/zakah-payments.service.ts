@@ -13,7 +13,7 @@ import {
 } from "@nestjs/common";
 import { IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsNumberString, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
 import { ContributionProvider, IdType, prisma, Prisma, ZakahPool, type RecurringGift } from "@birr/db";
-import { processingFeeCover } from "@birr/zakah";
+import { nisabBasisFor, processingFeeCover, validateRulings, ZakahInputError, type ZakahRulings } from "@birr/zakah";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { SettingsService } from "../../common/settings/settings.service";
 import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validation/max-decimal";
@@ -144,6 +144,13 @@ export class InitiateZakahPaymentInput {
   @Min(1)
   rulesetVersion?: number;
 
+  // The payer's choice of nisab in the calculator, where their ruleset lets
+  // them choose (owner's decision, 2026-11-16). Checked against the
+  // ruleset and recorded with the payment.
+  @IsOptional()
+  @IsIn(["gold", "silver"])
+  nisabBasis?: "gold" | "silver";
+
   /** Pay this every month, in advance (see ZakahMonthlyMode): zakah on wealth only, needs an email and a card. */
   @IsOptional()
   @IsBoolean()
@@ -240,6 +247,9 @@ export class ZakahPaymentsService {
       });
     }
     const rulesetRef = await this.resolveRuleset(input);
+    // A later month records the basis its setup used.
+    const nisabBasis =
+      monthly && monthly.type !== "setup" ? monthly.gift.zakahNisabBasis : input.kind === "fitr" ? null : this.nisabBasisUsed(rulesetRef, input.nisabBasis);
     const { amount, pool, fitrCampaignId, fitrPeople } =
       input.kind === "fitr" ? await this.fitrAmount(input, rulesetRef) : this.malAmount(input);
     const feeCover = new Prisma.Decimal(input.coverFee ? processingFeeCover(amount.toFixed(2)) : "0");
@@ -285,6 +295,7 @@ export class ZakahPaymentsService {
           wakalahConsentVersion: input.wakalahConsentVersion,
           zakahRulesetKey: rulesetRef?.key,
           zakahRulesetVersion: rulesetRef?.version,
+          zakahNisabBasis: nisabBasis,
           zakahMetalPriceId: metalPrice?.id,
         });
         recurringGiftId = gift.id;
@@ -317,6 +328,7 @@ export class ZakahPaymentsService {
           wakalahConsentVersion: input.wakalahConsentVersion,
           rulesetKey: rulesetRef?.key,
           rulesetVersion: rulesetRef?.version,
+          nisabBasis,
           metalPriceId: metalPrice?.id,
           ipAddress,
         },
@@ -421,7 +433,23 @@ export class ZakahPaymentsService {
     if (!ruleset || ruleset.status === "draft") {
       throw new BadRequestException("That ruleset version isn't one the calculator has used. Please reload the page.");
     }
-    return { key: ruleset.key, version: ruleset.version, madhhab: ruleset.madhhab };
+    return { key: ruleset.key, version: ruleset.version, madhhab: ruleset.madhhab, rulings: validateRulings(ruleset.rulings) };
+  }
+
+  /**
+   * The nisab the payer's figure used: their choice where the ruleset lets
+   * them choose (silver until they do), else the ruleset's own basis. A
+   * choice the ruleset doesn't allow is refused. Null without a ruleset
+   * (the payer typed an amount without the calculator).
+   */
+  private nisabBasisUsed(rulesetRef: { rulings: ZakahRulings } | null, choice: "gold" | "silver" | undefined): string | null {
+    if (!rulesetRef) return null;
+    try {
+      return nisabBasisFor(rulesetRef.rulings, choice);
+    } catch (err) {
+      if (err instanceof ZakahInputError) throw new BadRequestException("This ruleset sets the nisab itself. Please reload the page.");
+      throw err;
+    }
   }
 
   /**

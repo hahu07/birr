@@ -52,11 +52,15 @@ function errorText(err: unknown): string {
 }
 
 function describeRulings(r: ZakahRulings): string {
-  const nisab = r.nisabBasis === "lower_of" ? "lower of gold or silver" : r.nisabBasis;
+  const nisab = r.payerChoosesNisab
+    ? "payer chooses gold or silver (silver until they do)"
+    : r.nisabBasis === "lower_of"
+      ? "lower of gold or silver"
+      : r.nisabBasis;
   return [
     `Personal jewellery ${r.personalJewellery}`,
     r.debts === "deduct" ? "debts deducted" : "debts not deducted",
-    `nisab by ${nisab} (${r.nisabGoldGrams}g gold / ${r.nisabSilverGrams}g silver)`,
+    `nisab: ${nisab} (${r.nisabGoldGrams}g gold / ${r.nisabSilverGrams}g silver)`,
   ].join(" · ");
 }
 
@@ -515,9 +519,28 @@ function RulesetForm({
             <option value="none">Not deducted</option>
           </Select>
         </div>
+        <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 p-3 text-sm text-slate-700 sm:col-span-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-primary-700"
+            checked={rulings.payerChoosesNisab}
+            onChange={(e) => set("payerChoosesNisab", e.target.checked)}
+          />
+          <span>
+            <span className="font-medium text-slate-900">Payers may choose a gold or silver nisab.</span> The calculator then offers both,
+            silver until the payer chooses, and records the choice with the payment. The basis below then doesn&apos;t apply.
+          </span>
+        </label>
         <div className="space-y-1.5">
-          <label htmlFor="ruleset-nisab" className="text-sm font-medium text-slate-700">Nisab basis</label>
-          <Select id="ruleset-nisab" value={rulings.nisabBasis} onChange={(e) => set("nisabBasis", e.target.value as ZakahRulings["nisabBasis"])}>
+          <label htmlFor="ruleset-nisab" className="text-sm font-medium text-slate-700">
+            Nisab basis {rulings.payerChoosesNisab && <span className="font-normal text-slate-500">(not used while payers choose)</span>}
+          </label>
+          <Select
+            id="ruleset-nisab"
+            value={rulings.nisabBasis}
+            disabled={rulings.payerChoosesNisab}
+            onChange={(e) => set("nisabBasis", e.target.value as ZakahRulings["nisabBasis"])}
+          >
             <option value="gold">Gold</option>
             <option value="silver">Silver</option>
             <option value="lower_of">Lower of gold or silver</option>

@@ -11,8 +11,13 @@ import type { ZakahRuleset, ZakahRulings } from "./types";
  * purpose: they're a contemporary choice for the Board, not something
  * that differs by madhhab (see ZakahRulings.nisabBasis).
  */
-const sharedNisab: Pick<ZakahRulings, "nisabBasis" | "nisabGoldGrams" | "nisabSilverGrams"> = {
+// payerChoosesNisab: the owner's direction (2026-11-16) is that payers
+// choose gold or silver, silver by default, where the Board allows it;
+// these drafts propose allowing it. nisabBasis applies only if the Board
+// turns that off.
+const sharedNisab: Pick<ZakahRulings, "nisabBasis" | "payerChoosesNisab" | "nisabGoldGrams" | "nisabSilverGrams"> = {
   nisabBasis: "gold",
+  payerChoosesNisab: true,
   nisabGoldGrams: "85",
   nisabSilverGrams: "595",
 };

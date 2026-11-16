@@ -39,6 +39,7 @@ function normaliseAmount(raw: string): string {
 export function PayZakahForm({
   zakahDue,
   ruleset,
+  nisabBasis,
   terms,
   title = "Pay your zakah through Birr",
   fitr,
@@ -47,6 +48,8 @@ export function PayZakahForm({
   zakahDue: string;
   /** The ruleset that produced the figure, if any. */
   ruleset: { key: string; version: number } | null;
+  /** The payer's gold or silver choice, where their ruleset lets them choose; recorded with the payment. */
+  nisabBasis?: "gold" | "silver";
   terms: ZakahPaymentTerms;
   title?: string;
   /** Zakah al-Fitr: the amount is fixed (people × the campaign's amount) and worked out again by the server. */
@@ -89,6 +92,7 @@ export function PayZakahForm({
           payerFullName: fullName.trim() || undefined,
           ...(needsIdentity && { idType, idNumber }),
           ...(ruleset && { rulesetKey: ruleset.key, rulesetVersion: ruleset.version }),
+          ...(nisabBasis && !fitr && { nisabBasis }),
           ...(fitr && { kind: "fitr", fitrPeople: fitr.people, fitrForm: fitr.form }),
           ...(monthly && !fitr && { monthly: true }),
         }),

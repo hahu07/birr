@@ -339,6 +339,64 @@ describe("ZakahPaymentsService", () => {
     });
   });
 
+  // Owner's decisions, 2026-11-16: the payer chooses a gold or silver
+  // nisab where the ruleset allows it (silver to start), and the basis the
+  // figure used is recorded with the payment and any monthly gift.
+  describe("the nisab basis", () => {
+    let choosingKey: string;
+    let fixedKey: string;
+
+    beforeAll(async () => {
+      const officer = await prisma.user.create({ data: { email: email("nisab-officer"), fullName: "Nisab Officer" } });
+      const shariah = await prisma.user.create({ data: { email: email("nisab-shariah"), fullName: "Nisab Shariah" } });
+      const approval = async () => {
+        const permission = await prisma.permission.findUniqueOrThrow({ where: { key: "zakah.ruleset_approve" } });
+        return prisma.governedAction.create({
+          data: { permissionId: permission.id, makerType: "human", makerUserId: officer.id, checkerUserId: shariah.id, status: "approved", decidedAt: new Date(), payload: {} },
+        });
+      };
+      const shared = { personalJewellery: "exempt", debts: "deduct", nisabGoldGrams: "85", nisabSilverGrams: "595" };
+      choosingKey = `test-${run}-nisab-choose`;
+      fixedKey = `test-${run}-nisab-fixed`;
+      for (const [key, rulings] of [
+        [choosingKey, { ...shared, nisabBasis: "gold", payerChoosesNisab: true }],
+        [fixedKey, { ...shared, nisabBasis: "gold" }],
+      ] as const) {
+        await prisma.zakahRuleset.create({
+          data: { key, madhhab: "maliki", version: 1, label: "Maliki", status: "approved", approvedAt: new Date(), approvedGovernedActionId: (await approval()).id, createdByUserId: officer.id, rulings },
+        });
+      }
+    });
+
+    afterAll(async () => {
+      await prisma.zakahRuleset.updateMany({ where: { key: { in: [choosingKey, fixedKey] }, status: "approved" }, data: { status: "superseded" } });
+    });
+
+    const pay = (rulesetKey: string, extra: Record<string, unknown> = {}) =>
+      service.initiate({ ...base, payerEmail: email(`nisab-${rulesetKey}`), rulesetKey, rulesetVersion: 1, ...extra } as never);
+    const basisOf = async (id: string) => (await prisma.zakahPayment.findUniqueOrThrow({ where: { id } })).nisabBasis;
+
+    test("where the payer may choose: their choice is recorded, and silver when they didn't say", async () => {
+      expect(await basisOf((await pay(choosingKey, { nisabBasis: "gold" })).payment.id)).toBe("gold");
+      expect(await basisOf((await pay(choosingKey)).payment.id)).toBe("silver");
+    });
+
+    test("where the ruleset fixes it: the ruleset's basis is recorded, and a choice is refused", async () => {
+      expect(await basisOf((await pay(fixedKey)).payment.id)).toBe("gold");
+      await expect(pay(fixedKey, { nisabBasis: "silver" })).rejects.toThrow(/sets the nisab itself/);
+    });
+
+    test("a monthly gift keeps the basis its setup used", async () => {
+      const { payment } = await pay(choosingKey, { nisabBasis: "gold", monthly: true });
+      const row = await prisma.zakahPayment.findUniqueOrThrow({ where: { id: payment.id } });
+      expect((await prisma.recurringGift.findUniqueOrThrow({ where: { id: row.recurringGiftId! } })).zakahNisabBasis).toBe("gold");
+    });
+
+    test("without a ruleset (an amount typed by hand) nothing is recorded", async () => {
+      expect(await basisOf((await service.initiate({ ...base })).payment.id)).toBeNull();
+    });
+  });
+
   // Owner's decisions, 2026-11-16: a confirmed WhatsApp number instead of
   // (or as well as) an email, and it adds up toward the AML threshold.
   describe("paying with a WhatsApp number", () => {

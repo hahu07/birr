@@ -23,6 +23,9 @@ export function validateRulings(raw: unknown): ZakahRulings {
       throw new ZakahInputError(`rulings.${field}`, `must be one of ${allowed.map((a) => `"${a}"`).join(", ")}`);
     }
   }
+  if (r.payerChoosesNisab !== undefined && typeof r.payerChoosesNisab !== "boolean") {
+    throw new ZakahInputError("rulings.payerChoosesNisab", "must be true or false");
+  }
   parsePositive("rulings.nisabGoldGrams", r.nisabGoldGrams);
   parsePositive("rulings.nisabSilverGrams", r.nisabSilverGrams);
 
@@ -30,6 +33,8 @@ export function validateRulings(raw: unknown): ZakahRulings {
     personalJewellery: r.personalJewellery as ZakahRulings["personalJewellery"],
     debts: r.debts as ZakahRulings["debts"],
     nisabBasis: r.nisabBasis as ZakahRulings["nisabBasis"],
+    // Rulesets approved before the choice existed read as "fixed".
+    payerChoosesNisab: r.payerChoosesNisab === true,
     nisabGoldGrams: r.nisabGoldGrams as string,
     nisabSilverGrams: r.nisabSilverGrams as string,
   };

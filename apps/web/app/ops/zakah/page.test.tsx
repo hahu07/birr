@@ -122,7 +122,9 @@ describe("Ops Console — Zakah", { timeout: 15_000 }, () => {
 
     expect(await screen.findByText("Fixture source")).toBeInTheDocument();
     expect(screen.getByText("expired")).toBeInTheDocument();
-    expect(screen.getByText(/Personal jewellery exempt · debts deducted · nisab by gold \(85g gold \/ 595g silver\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Personal jewellery exempt · debts deducted · nisab: payer chooses gold or silver \(silver until they do\) \(85g gold \/ 595g silver\)/),
+    ).toBeInTheDocument();
     expect(screen.getByText("draft")).toBeInTheDocument();
 
     expect(screen.queryByRole("button", { name: "Propose new prices" })).not.toBeInTheDocument();
@@ -324,7 +326,9 @@ describe("Ops Console — Zakah", { timeout: 15_000 }, () => {
     await user.click(await screen.findByRole("button", { name: "Edit" }));
     const form = screen.getByRole("button", { name: "Save draft" }).closest("form")!;
     expect(within(form).getByLabelText("Madhhab")).toBeDisabled();
-    await user.selectOptions(within(form).getByLabelText("Nisab basis"), "silver");
+    // The basis only applies once payers no longer choose.
+    await user.click(within(form).getByLabelText(/Payers may choose a gold or silver nisab/));
+    await user.selectOptions(within(form).getByLabelText(/^Nisab basis/), "silver");
     await user.click(within(form).getByRole("button", { name: "Save draft" }));
 
     await waitFor(() => expect(postsTo("/zakah/rulesets/ruleset-1")).toHaveLength(1));
@@ -332,7 +336,7 @@ describe("Ops Console — Zakah", { timeout: 15_000 }, () => {
     expect(init!.method).toBe("PATCH");
     expect(JSON.parse(init!.body as string)).toEqual({
       label: "Maliki",
-      rulings: { ...draftRulesets.maliki.rulings, nisabBasis: "silver" },
+      rulings: { ...draftRulesets.maliki.rulings, payerChoosesNisab: false, nisabBasis: "silver" },
     });
   });
 });

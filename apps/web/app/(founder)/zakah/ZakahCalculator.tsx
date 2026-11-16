@@ -8,6 +8,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import {
   calculateZakah,
   karatToPurity,
+  PAYER_DEFAULT_NISAB_BASIS,
   PricesExpiredError,
   ZakahInputError,
   type MetalHolding,
@@ -83,8 +84,11 @@ export function ZakahCalculator({
   const [metals, setMetals] = useState<MetalRow[]>([]);
   const [nextMetalId, setNextMetalId] = useState(1);
   const [heldAYear, setHeldAYear] = useState(false);
+  // Gold or silver nisab, where the ruleset lets the payer choose (2026-11-16).
+  const [nisabChoice, setNisabChoice] = useState<"gold" | "silver">(PAYER_DEFAULT_NISAB_BASIS);
 
   const ruleset = rulesets.find((r) => r.id === rulesetId) ?? rulesets[0];
+  const payerChooses = ruleset.rulings.payerChoosesNisab;
 
   const outcome = useMemo<Outcome>(() => {
     try {
@@ -103,7 +107,7 @@ export function ZakahCalculator({
         },
         ruleset,
         prices,
-        { today },
+        { today, ...(payerChooses && { nisabBasis: nisabChoice }) },
       );
       return { kind: "result", result };
     } catch (err) {
@@ -115,7 +119,7 @@ export function ZakahCalculator({
       }
       throw err;
     }
-  }, [amounts, metals, ruleset, prices, today]);
+  }, [amounts, metals, ruleset, prices, today, payerChooses, nisabChoice]);
 
   function setAmount(field: keyof typeof amounts, value: string) {
     setAmounts((a) => ({ ...a, [field]: value }));
@@ -228,7 +232,14 @@ export function ZakahCalculator({
           </Step>
         </div>
 
-        <ResultPanel outcome={outcome} heldAYear={heldAYear} ruleset={ruleset} prices={prices} paymentTerms={paymentTerms} />
+        <ResultPanel
+          outcome={outcome}
+          heldAYear={heldAYear}
+          ruleset={ruleset}
+          prices={prices}
+          paymentTerms={paymentTerms}
+          nisabChoice={payerChooses ? { value: nisabChoice, onChange: setNisabChoice } : null}
+        />
       </div>
 
       <MobileSummary outcome={outcome} heldAYear={heldAYear} />
@@ -372,12 +383,15 @@ function ResultPanel({
   ruleset,
   prices,
   paymentTerms,
+  nisabChoice,
 }: {
   outcome: Outcome;
   heldAYear: boolean;
   ruleset: ZakahRuleset;
   prices: MetalPrices;
   paymentTerms: ZakahPaymentTerms | null;
+  /** Set when the ruleset lets the payer choose a gold or silver nisab. */
+  nisabChoice: { value: "gold" | "silver"; onChange: (v: "gold" | "silver") => void } | null;
 }) {
   return (
     <aside id="zakah-result" className="scroll-mt-24 lg:sticky lg:top-24">
@@ -394,6 +408,7 @@ function ResultPanel({
               {outcome.message}
             </Alert>
           )}
+          {nisabChoice && <NisabChoice ruleset={ruleset} prices={prices} choice={nisabChoice} />}
           {outcome.kind === "result" && <ResultDetails result={outcome.result} heldAYear={heldAYear} />}
           {outcome.kind === "result" && heldAYear && outcome.result.meetsNisab && (
             paymentTerms?.available ? (
@@ -402,6 +417,7 @@ function ResultPanel({
                 key={outcome.result.zakahDue}
                 zakahDue={outcome.result.zakahDue}
                 ruleset={{ key: outcome.result.ruleset.id, version: outcome.result.ruleset.version }}
+                nisabBasis={nisabChoice?.value}
                 terms={paymentTerms}
               />
             ) : (
@@ -416,6 +432,55 @@ function ResultPanel({
         </p>
       </div>
     </aside>
+  );
+}
+
+/**
+ * Gold or silver nisab, for a ruleset that lets the payer choose. Shows
+ * today's figure for each, since the choice moves the threshold about
+ * tenfold.
+ */
+function NisabChoice({
+  ruleset,
+  prices,
+  choice,
+}: {
+  ruleset: ZakahRuleset;
+  prices: MetalPrices;
+  choice: { value: "gold" | "silver"; onChange: (v: "gold" | "silver") => void };
+}) {
+  const value = (metal: "gold" | "silver") =>
+    naira(
+      String(
+        Number(metal === "gold" ? ruleset.rulings.nisabGoldGrams : ruleset.rulings.nisabSilverGrams) *
+          Number(metal === "gold" ? prices.goldPerGram : prices.silverPerGram),
+      ),
+    );
+  return (
+    <fieldset className="mb-5">
+      <legend className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Nisab by</legend>
+      <div role="radiogroup" aria-label="Nisab by" className="mt-2 grid grid-cols-2 gap-2">
+        {(["silver", "gold"] as const).map((metal) => (
+          <label
+            key={metal}
+            className={`cursor-pointer rounded-xl border px-3 py-2.5 transition-colors ${
+              choice.value === metal ? "border-primary-500 bg-primary-50/70 ring-1 ring-primary-500" : "border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            <input type="radio" name="nisab-basis" value={metal} className="sr-only" checked={choice.value === metal} onChange={() => choice.onChange(metal)} />
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+              <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${metal === "gold" ? "bg-amber-400" : "bg-slate-400"}`} />
+              {metal === "gold" ? "Gold" : "Silver"}
+            </span>
+            <span className="mt-0.5 block text-xs tabular-nums text-slate-500">{value(metal)}</span>
+          </label>
+        ))}
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-slate-500">
+        Scholars differ on which metal sets the nisab today. Silver, the lower threshold, means more people pay zakah, which favours those who
+        receive it. If unsure, ask your scholar.
+      </p>
+    </fieldset>
   );
 }
 

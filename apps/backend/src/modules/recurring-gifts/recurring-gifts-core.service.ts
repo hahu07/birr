@@ -26,6 +26,7 @@ export interface RecurringGiftSetupInput {
   zakahRulesetKey?: string;
   zakahRulesetVersion?: number;
   zakahMetalPriceId?: string;
+  zakahNisabBasis?: string | null;
 }
 
 type Who = { type: "giver" } | { type: "system" } | { type: "staff"; userId: string };
@@ -83,6 +84,7 @@ export class RecurringGiftsCoreService {
         wakalahConsentVersion: input.wakalahConsentVersion,
         zakahRulesetKey: input.zakahRulesetKey,
         zakahRulesetVersion: input.zakahRulesetVersion,
+        zakahNisabBasis: input.zakahNisabBasis ?? null,
         zakahMetalPriceId: input.zakahMetalPriceId,
       },
     });
