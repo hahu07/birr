@@ -23,6 +23,17 @@ import { createFakeRecurringGiftsCore, FakeRecurringPaystack, REUSABLE_CARD } fr
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Activation commits first and sends the set-up email after, so a test
+ * that sees the gift active can still be ahead of its email. Waits (up to
+ * 10s) for a condition; returns either way, so the test's own assertion
+ * reports what's missing.
+ */
+async function waitUntil(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!condition() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
 describe("recurring-gift dates (Lagos time)", () => {
   test("a month is the month in Lagos, an hour ahead of UTC", () => {
     expect(periodOf(new Date("2026-11-30T22:59:00Z"))).toBe("2026-11");
@@ -114,6 +125,7 @@ describe("Monthly Vault gifts", () => {
       () => prisma.recurringGift.findUniqueOrThrow({ where: { id: result.contribution.recurringGiftId! } }),
       (g) => g.status !== "pending_setup",
     );
+    if (gift.status === "active") await waitUntil(() => emails.sent.some((e) => e.to === gift.email && e.subject === "Your monthly gift is set up"));
     return { gift, contributionId: result.contribution.id };
   }
 
@@ -409,6 +421,7 @@ describe("Monthly Waqf Fund top-ups", () => {
       await new Promise((r) => setTimeout(r, 50));
       gift = await prisma.recurringGift.findUniqueOrThrow({ where: { id: gift.id } });
     }
+    if (gift.status === "active") await waitUntil(() => emails.sent.some((e) => e.ctaUrl?.endsWith(`/portfolio/${waqfId}`) && e.subject === "Your monthly gift is set up"));
     return { gift, result };
   }
 
@@ -524,6 +537,7 @@ describe("Monthly zakah (paid in advance)", () => {
       await new Promise((r) => setTimeout(r, 50));
       gift = await prisma.recurringGift.findUniqueOrThrow({ where: { id: gift.id } });
     }
+    if (gift.status === "active") await waitUntil(() => emails.sent.some((e) => e.to === gift.email && e.subject === "Your monthly zakah is set up"));
     return { gift, row };
   }
 

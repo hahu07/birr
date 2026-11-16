@@ -710,6 +710,17 @@ two-person.** Answers the open question in
   (`succession-notice.ts`) is a **draft** that Legal must approve; its
   version is in the audit row.
 
+**Update, 2026-11-16 — no production hosting for now.** The Render
+services are suspended and the free Render database expired (30-day
+limit), so nothing is running. Owner's decision: keep developing
+locally and choose hosting closer to launch (Render paid plans, or the
+HarmonWeb VPS in `docs/vps-deployment-plan.md`). Whatever is chosen must
+be always on: the backend's scheduled jobs (monthly charges and retries,
+the daily Paystack reconciliation, licence checks) can't run on a
+sleeping instance. The CI `deploy` job is paused until the repository
+variable `DEPLOY_ENABLED` is `true`. Steps for that first deploy:
+`docs/deploy-checklist-2026-11.md`.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
