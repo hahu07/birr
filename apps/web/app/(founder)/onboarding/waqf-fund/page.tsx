@@ -13,6 +13,7 @@ import { ROUTE_FOR_STEP } from "../../../../lib/onboarding";
 import type { Foundation, Waqf } from "../../../../lib/types";
 import { Alert, Badge, IconArrowRight, Skeleton } from "@birr/ui";
 import { WaqfFundForm } from "../../foundations/[id]/waqf-funds/new/WaqfFundForm";
+import { countryName } from "@birr/shared";
 
 export default function OnboardingWaqfFundPage() {
   const [foundation, setFoundation] = useState<Foundation | null>(null);
@@ -92,7 +93,7 @@ export default function OnboardingWaqfFundPage() {
                 <Badge tone="success">{humanize(w.status)}</Badge>
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                {humanize(w.type)} · {w.jurisdiction}
+                {humanize(w.type)} · {countryName(w.jurisdiction)}
                 {w.purpose ? ` · ${w.purpose}` : ""}
               </p>
               {w.corpusAmount && (

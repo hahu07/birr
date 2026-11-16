@@ -25,6 +25,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@birr/ui";
+import { countryName } from "@birr/shared";
 
 /** Rows drawn per page; search still covers every Foundation. */
 const FOUNDATIONS_PER_PAGE = 25;
@@ -55,7 +56,7 @@ export default function FoundationsPage() {
         !query ||
         f.name.toLowerCase().includes(query) ||
         (f.purpose ?? "").toLowerCase().includes(query) ||
-        (f.jurisdiction ?? "").toLowerCase().includes(query) ||
+        `${f.jurisdiction ?? ""} ${countryName(f.jurisdiction)}`.toLowerCase().includes(query) ||
         f.foundationFounders.some((ff) => ff.founder.name.toLowerCase().includes(query)),
     ) ?? [];
   const page = useShowMore(filteredFoundations, FOUNDATIONS_PER_PAGE, query);
@@ -129,7 +130,7 @@ export default function FoundationsPage() {
                       {foundation.foundationFounders.map((ff) => ff.founder.name).join(", ")}
                     </TableCell>
                     <TableCell>{foundation._count.waqfs}</TableCell>
-                    <TableCell>{foundation.jurisdiction ?? "—"}</TableCell>
+                    <TableCell>{countryName(foundation.jurisdiction) || "—"}</TableCell>
                     <TableCell>
                       <Badge tone={foundation.status === "active" ? "success" : "neutral"}>
                         {foundation.status === "active" ? "Active" : "Suspended"}

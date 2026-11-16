@@ -17,6 +17,7 @@ import { humanize } from "../../lib/format";
 import type { Foundation, Waqf } from "../../lib/types";
 import { Alert, Button, IconCheckCircle, IconFileText, IconShieldCheck, Skeleton } from "@birr/ui";
 import { DEED_RECITALS_ID, DeedBody, deedSectionId, parseDeedText } from "./DeedDocument";
+import { countryName } from "@birr/shared";
 
 const MINOR_WORDS = new Set(["of", "and", "as", "the", "to", "in", "for", "a", "an", "on", "by"]);
 
@@ -383,7 +384,7 @@ export function SignFoundationDeedForm({ foundation, onSigned }: { foundation: F
                       {w.name}
                     </span>
                     <span className="shrink-0 text-xs text-slate-500">
-                      {humanize(w.type)} · {w.jurisdiction}
+                      {humanize(w.type)} · {countryName(w.jurisdiction)}
                     </span>
                   </li>
                 ))}

@@ -24,6 +24,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@birr/ui";
+import { countryName } from "@birr/shared";
 
 // CSV export (2026-09-14) — same report data already on screen,
 // reshaped for a spreadsheet rather than a fresh fetch or a new backend
@@ -165,7 +166,7 @@ export function FinancialReportSection({ waqfId }: { waqfId: string }) {
                     ? formatMoney(report.waqf.corpusAmount, report.waqf.corpusCurrency)
                     : "Not declared",
               },
-              { label: "Jurisdiction", value: report.waqf.jurisdiction },
+              { label: "Jurisdiction", value: countryName(report.waqf.jurisdiction) },
               { label: "Generated", value: formatDate(report.generatedAt) },
             ]}
             className="border-b border-slate-100 pb-5"

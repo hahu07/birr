@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { CountryCode } from "../../common/validation/country-code";
 import { IsArray, IsEnum, IsNumberString, IsOptional, IsString, Matches, MaxLength, ValidateIf } from "class-validator";
 import { prisma, Prisma, VaultType, VaultStatus } from "@birr/db";
 import { VaultProceedsService } from "./vault-proceeds.service";
@@ -42,7 +43,7 @@ export class CreateVaultInput {
   @IsString({ each: true })
   additionalCurrencies?: string[];
 
-  @IsString()
+  @CountryCode()
   jurisdiction!: string;
 
   @IsOptional()

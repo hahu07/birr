@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { CountryCode } from "../../common/validation/country-code";
 import { IsEnum, IsNumberString, IsOptional, IsString } from "class-validator";
 import { prisma, Prisma, WaqfType, WaqfFundingPlan } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
@@ -20,7 +21,7 @@ export class CreateWaqfInput {
   @IsString()
   purpose?: string;
 
-  @IsString()
+  @CountryCode()
   jurisdiction!: string;
 
   @IsString()

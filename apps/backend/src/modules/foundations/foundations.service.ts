@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { CountryCode } from "../../common/validation/country-code";
 import { randomUUID } from "crypto";
-import { IsArray, IsOptional, IsString } from "class-validator";
+import { IsArray, IsString } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { assertFounderVerified } from "../../common/auth/current-founder";
 import { withFounderScope } from "../../common/db/founder-scope";
@@ -15,8 +16,7 @@ export class CreateFoundationInput {
   @IsString()
   purpose!: string;
 
-  @IsOptional()
-  @IsString()
+  @CountryCode({ optional: true })
   jurisdiction?: string;
 
   // Not @ArrayNotEmpty() — the Founder Portal's self-service create()

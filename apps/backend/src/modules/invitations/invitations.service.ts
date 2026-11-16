@@ -1,3 +1,4 @@
+import { CountryCode } from "../../common/validation/country-code";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { IsEnum, IsOptional, IsString, MinLength } from "class-validator";
@@ -128,8 +129,7 @@ export class AcceptInput {
   @IsEnum(InstitutionType)
   institutionType?: InstitutionType;
 
-  @IsOptional()
-  @IsString()
+  @CountryCode({ optional: true })
   homeJurisdiction?: string;
 
   // co_founder only: the CO_FOUNDER_STATEMENT_VERSION of the statement

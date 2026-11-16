@@ -69,7 +69,9 @@ test.describe("Ops Console Vault curation", () => {
       await page.getByPlaceholder("ramadan-relief-2026").fill(slug);
       // exact: true — "Additional currencies"'s own placeholder
       // ("e.g. NGN, USDC") also contains the substring "NG".
-      await page.getByPlaceholder("NG", { exact: true }).fill("NG");
+      // A country picked from the list (2026-11-16), stored as its code.
+      await page.getByPlaceholder("Choose a country…").fill("Nigeria");
+      await page.getByRole("option", { name: "Nigeria (NG)" }).click();
       await page.getByRole("button", { name: "Create" }).click();
 
       // onCreated() just hides the form and reloads the list in place —

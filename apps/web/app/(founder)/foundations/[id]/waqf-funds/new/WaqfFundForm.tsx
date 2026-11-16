@@ -20,6 +20,7 @@ import type { Waqf } from "../../../../../../lib/types";
 import { Alert, Button, IconShieldCheck, Select } from "@birr/ui";
 import { TYPE_GUIDE, WaqfTypeGuide } from "./WaqfTypeGuide";
 import { ChoiceCard, Field, FormSection, inputClass, MoneyInput } from "../../../../_components/form";
+import { CountrySelect } from "../../../../../../components/forms/CountrySelect";
 
 const WAQF_TYPES = ["investment", "asset", "project"] as const;
 
@@ -322,15 +323,8 @@ export function WaqfFundForm({
                     className={inputClass}
                   />
                 </Field>
-                <Field label="Jurisdiction" htmlFor="jurisdiction" hint="The country whose rules govern this fund, as a 2-letter code — e.g. NG for Nigeria.">
-                  <input
-                    id="jurisdiction"
-                    value={jurisdiction}
-                    onChange={(e) => setJurisdiction(e.target.value)}
-                    required
-                    placeholder="e.g. NG"
-                    className={`${inputClass} sm:max-w-[10rem]`}
-                  />
+                <Field label="Jurisdiction" htmlFor="jurisdiction" hint="The country whose rules govern this fund.">
+                  <CountrySelect id="jurisdiction" value={jurisdiction} onChange={setJurisdiction} className="sm:max-w-sm" />
                 </Field>
               </div>
             </FormSection>

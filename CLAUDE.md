@@ -846,6 +846,27 @@ decisions, after reviewing the Ops Console page:
   most weekly (`access-review-scheduler.ts`). Test reviews from the spec
   stay in a dev database, since the table can't be deleted from.
 
+**Update, 2026-11-16 — jurisdiction is a country code, picked from a
+list.** Owner's decision, after the counterparty form accepted "Nigeria"
+as free text. That doesn't match the `NG` compliance policy or trustee
+licence looked up by jurisdiction, and 4 funds and 1 foundation already
+said "Nigeria".
+- Every jurisdiction (Waqf Fund, Foundation, counterparty, vault, trustee
+  licence, compliance policy, and a founder's home jurisdiction) is a
+  two-letter ISO 3166-1 code.
+- **Picked:** from a searchable country list in the app (`CountrySelect`,
+  "Nigeria (NG)").
+- **Checked:** by `@CountryCode()` / `ParseCountryCodePipe` in the API.
+- **Enforced:** by a database CHECK (`^[A-Z]{2}$`).
+- **Shown:** as the country's name.
+- **Converted:** existing names, by migration
+  `20261117000000_jurisdiction_country_codes`, which stops rather than
+  guess at anything it can't map.
+- **Where the list lives:** the new pure-TS package `@birr/shared` (built
+  like `@birr/zakah`), shared by the backend and web.
+- **Tests:** they use ISO's user-assigned codes (`XA`–`XZ`), which are
+  never a real country.
+
 **Update, 2026-11-16 — every scheduled job is watched, and backups are
 real.** The five scheduled jobs (monthly giving, Paystack reconciliation,
 portfolio drift, trustee-licence expiry, access-review reminders) used to

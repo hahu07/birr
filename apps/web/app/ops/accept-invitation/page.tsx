@@ -16,6 +16,7 @@ import {
   FounderFoundationGuide,
   INSTITUTION_TYPE_GUIDE,
 } from "../../(founder)/onboarding/founder-foundation/FounderFoundationGuide";
+import { CountrySelect } from "../../../components/forms/CountrySelect";
 
 type FounderKind = "institution" | "individual";
 const INSTITUTION_TYPES = [
@@ -244,15 +245,9 @@ function AcceptInvitationContent() {
                     label="Home jurisdiction"
                     htmlFor="homeJurisdiction"
                     optional
-                    hint="Where you're based, as a 2-letter country code — e.g. NG for Nigeria."
+                    hint="The country where you're based."
                   >
-                    <input
-                      id="homeJurisdiction"
-                      value={homeJurisdiction}
-                      onChange={(e) => setHomeJurisdiction(e.target.value)}
-                      placeholder="NG"
-                      className={`${inputClass} sm:max-w-[12rem]`}
-                    />
+                    <CountrySelect id="homeJurisdiction" value={homeJurisdiction} onChange={setHomeJurisdiction} className="sm:max-w-sm" />
                   </Field>
                 </div>
               </FormSection>

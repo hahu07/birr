@@ -1,10 +1,11 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { CountryCode } from "../../common/validation/country-code";
 import { IsDateString, IsEnum, IsOptional, IsString } from "class-validator";
 import { prisma, TrusteeLicenseStatus } from "@birr/db";
 import { NotificationsService } from "../notifications/notifications.service";
 
 export class CreateTrusteeLicenseInput {
-  @IsString()
+  @CountryCode()
   jurisdiction!: string;
 
   @IsEnum(TrusteeLicenseStatus)

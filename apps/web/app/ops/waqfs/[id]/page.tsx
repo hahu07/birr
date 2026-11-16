@@ -47,6 +47,7 @@ import { WaqfExpensesSection } from "./WaqfExpensesSection";
 import { WaqfLedgerSection } from "./WaqfLedgerSection";
 import { useLoadedResource } from "../../_components/SectionChrome";
 import { EntityHeader } from "../../_components/EntityHeader";
+import { countryLabel } from "@birr/shared";
 
 const STATUS_TONE: Record<Waqf["status"], "success" | "warning" | "neutral" | "danger"> = {
   active: "success",
@@ -193,7 +194,7 @@ export default function WaqfDetailPage() {
         }
         facts={[
           { label: "Type", value: humanize(waqf.type) },
-          { label: "Jurisdiction", value: waqf.jurisdiction },
+          { label: "Jurisdiction", value: countryLabel(waqf.jurisdiction) },
           { label: "Funding plan", value: humanize(waqf.fundingPlan) },
           { label: "Established", value: formatDate(waqf.createdAt) },
           // Deed-signing is Foundation-level, not per-Waqf — see

@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Put } from "@nestjs/common";
+import { ParseCountryCodePipe } from "../../common/validation/country-code";
 import {
   CompliancePolicySetsService,
   UpsertCompliancePolicySetInput,
@@ -17,7 +18,7 @@ export class CompliancePolicySetsController {
   @Put(":jurisdiction")
   @RequiresAccess("jurisdiction.manage")
   upsert(
-    @Param("jurisdiction") jurisdiction: string,
+    @Param("jurisdiction", ParseCountryCodePipe) jurisdiction: string,
     @Body() body: UpsertCompliancePolicySetInput,
     @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
   ) {
@@ -26,7 +27,7 @@ export class CompliancePolicySetsController {
 
   @Delete(":jurisdiction")
   @RequiresAccess("jurisdiction.manage")
-  async remove(@Param("jurisdiction") jurisdiction: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+  async remove(@Param("jurisdiction", ParseCountryCodePipe) jurisdiction: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     await this.service.remove(jurisdiction, staff.userId);
     return { ok: true };
   }
@@ -37,7 +38,7 @@ export class CompliancePolicySetsController {
   }
 
   @Get(":jurisdiction")
-  async findByJurisdiction(@Param("jurisdiction") jurisdiction: string) {
+  async findByJurisdiction(@Param("jurisdiction", ParseCountryCodePipe) jurisdiction: string) {
     const policySet = await this.service.findByJurisdiction(jurisdiction);
     if (!policySet) throw new NotFoundException(`No compliance policy set configured for jurisdiction "${jurisdiction}".`);
     return policySet;

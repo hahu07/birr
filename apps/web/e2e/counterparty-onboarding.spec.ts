@@ -66,7 +66,9 @@ test.describe("Counterparty onboarding", () => {
       // autoFocus input, same reasoning as ops-vault-curation.spec.ts's
       // own custom-cause Name field.
       await icPage.keyboard.type(counterpartyName);
-      await icPage.getByPlaceholder("AE").fill("NG");
+      // A country picked from the list (2026-11-16), stored as its code.
+      await icPage.getByPlaceholder("Choose a country…").fill("Nigeria");
+      await icPage.getByRole("option", { name: "Nigeria (NG)" }).click();
       await icPage
         .getByPlaceholder(/What this counterparty actually does/)
         .fill("Provides commercial banking and asset custody services; earns conventional interest on deposits.");

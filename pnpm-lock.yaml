@@ -71,6 +71,9 @@ importers:
       '@birr/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@birr/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@birr/zakah':
         specifier: workspace:*
         version: link:../../packages/zakah
@@ -275,6 +278,9 @@ importers:
       '@birr/db':
         specifier: workspace:^
         version: link:../../packages/db
+      '@birr/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@birr/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -376,6 +382,15 @@ importers:
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
+
+  packages/shared:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(jsdom@31.0.1(@noble/hashes@2.4.0))(vite@8.2.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15))
 
   packages/ui:
     dependencies:

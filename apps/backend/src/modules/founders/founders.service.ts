@@ -1,3 +1,4 @@
+import { CountryCode } from "../../common/validation/country-code";
 import {
   BadRequestException,
   ConflictException,
@@ -68,8 +69,7 @@ export class EstablishFounderAndFoundationInput {
   @IsEnum(InstitutionType)
   institutionType?: InstitutionType;
 
-  @IsOptional()
-  @IsString()
+  @CountryCode({ optional: true })
   homeJurisdiction?: string;
 
   @IsString()
@@ -78,8 +78,7 @@ export class EstablishFounderAndFoundationInput {
   @IsString()
   purpose!: string;
 
-  @IsOptional()
-  @IsString()
+  @CountryCode({ optional: true })
   jurisdiction?: string;
 
   // The audit_logs row id POST /founders/onboarding/purpose-suggestion
@@ -120,8 +119,7 @@ export class DraftPurposeSuggestionInput {
   @IsString()
   foundationName!: string;
 
-  @IsOptional()
-  @IsString()
+  @CountryCode({ optional: true })
   jurisdiction?: string;
 }
 

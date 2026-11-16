@@ -21,6 +21,7 @@ import { apiFetchJson } from "../../../lib/api";
 import { humanize } from "../../../lib/format";
 import type { Waqf } from "../../../lib/ops-types";
 import { Badge, Card, EmptyState, IconBriefcase, IconLandmark, Alert, Input, Skeleton } from "@birr/ui";
+import { countryName } from "@birr/shared";
 
 const STATUS_TONE: Record<Waqf["status"], "success" | "warning" | "neutral" | "danger"> = {
   active: "success",
@@ -206,7 +207,7 @@ function FoundationGroupCard({ group }: { group: FoundationGroup }) {
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-slate-900 group-hover:text-primary-700">{waqf.name}</p>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {humanize(waqf.type)} · {waqf.jurisdiction}
+                  {humanize(waqf.type)} · {countryName(waqf.jurisdiction)}
                   {typeof waqf.causesCount === "number" && (
                     <> · {waqf.causesCount} {waqf.causesCount === 1 ? "cause" : "causes"}</>
                   )}
