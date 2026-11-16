@@ -1236,6 +1236,20 @@ model ContributionMinimum {
   @@map("contribution_minimums")
 }
 
+// The smallest public Vault gift per currency, one-off or monthly (owner's
+// decision, 2026-11-16). Its own table so it never moves with
+// ContributionMinimum, the floor for a founder's Waqf top-ups: until
+// then Vault gifts silently shared that floor. Staff-set in Ops → Vaults
+// (vault.gift_minimum_set), shown on the public giving page.
+model VaultGiftMinimum {
+  id        String   @id @default(uuid())
+  currency  String   @unique
+  minAmount Decimal
+  updatedAt DateTime @updatedAt
+
+  @@map("vault_gift_minimums")
+}
+
 // The minimum TOTAL corpus a founder may declare when establishing a
 // Waqf Fund, per currency — checked once at declaration time
 // (WaqfsService.create), not per payment. Deliberately a separate table

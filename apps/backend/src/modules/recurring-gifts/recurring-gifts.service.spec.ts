@@ -148,7 +148,7 @@ describe("Monthly Vault gifts", () => {
     actorUserId = actor.id;
     await prisma.birrStaff.create({ data: { userId: actor.id, roles: { create: { role: "mutawalli_officer" } } } });
     vaultId = await openVault("Monthly Giving Vault");
-    minimum = (await prisma.contributionMinimum.findUniqueOrThrow({ where: { currency: "NGN" } })).minAmount.toFixed(2);
+    minimum = (await prisma.vaultGiftMinimum.findUniqueOrThrow({ where: { currency: "NGN" } })).minAmount.toFixed(2);
   });
 
   beforeEach(() => {

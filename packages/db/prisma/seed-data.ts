@@ -186,6 +186,7 @@ export const accessPermissions = [
   { key: "vault.contribution_hold", category: "vault", description: "Hold a Vault contribution for review, and release it.", roles: ["compliance_officer"] },
   { key: "vault.curate", category: "vault", description: "Create a Vault and edit its causes, goals, cover image and feasibility report.", roles: ["mutawalli_officer"] },
   { key: "vault.distribution_create", category: "vault", description: "Create a Vault distribution, and retry a failed payout.", roles: ["mutawalli_officer"] },
+  { key: "vault.gift_minimum_set", category: "vault", description: "Set the smallest public Vault gift per currency.", roles: ["mutawalli_officer"] },
   { key: "vault.donor_threshold_set", category: "vault", description: "Set the donor ID-capture (AML) threshold per currency.", roles: ["compliance_officer"] },
   { key: "vault.expense_record", category: "vault", description: "Record a Vault programme expense.", roles: ["mutawalli_officer"] },
   { key: "vault.investment_create", category: "vault", description: "Add an investment to a Vault.", roles: ["investment_committee"] },
@@ -430,7 +431,21 @@ export const contributionMinimums = [
   { currency: "GBP", minAmount: "100" },
   { currency: "USDC", minAmount: "100" },
   { currency: "USDT", minAmount: "100" },
-  { currency: "NGN", minAmount: "150000" },
+  // The founder chooses a top-up's amount above this (owner's decision,
+  // 2026-11-16); a small floor, not ₦150,000.
+  { currency: "NGN", minAmount: "5000" },
+] as const;
+
+// The smallest public Vault gift per currency (VaultGiftMinimum), its own
+// staff setting since 2026-11-16 so it never moves with the Waqf top-up
+// floor above.
+export const vaultGiftMinimums = [
+  { currency: "USD", minAmount: "100" },
+  { currency: "EUR", minAmount: "100" },
+  { currency: "GBP", minAmount: "100" },
+  { currency: "USDC", minAmount: "100" },
+  { currency: "USDT", minAmount: "100" },
+  { currency: "NGN", minAmount: "5000" },
 ] as const;
 
 // VaultContributionsService's AML anti-structuring guard (see that

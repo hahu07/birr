@@ -99,8 +99,8 @@ export default function WaqfFundingPage() {
             onChanged={setCorpusMinimums}
           />
           <MinimumsCard
-            title="Minimum contribution per currency"
-            description="The floor for a single payment toward a waqf — the first payment, a later top-up, or an installment."
+            title="Minimum top-up per currency"
+            description="The smallest payment a founder may make after a fund's first payment, one-off or monthly; the founder chooses any amount above it, and can always pay exactly what's left to reach their target. A fund's first payment is set by its corpus instead. Vault gifts have their own minimum, in Ops → Vaults."
             endpoint="/waqf-funding/contribution-minimums"
             minimums={contributionMinimums}
             onChanged={setContributionMinimums}

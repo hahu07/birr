@@ -114,9 +114,10 @@ export async function seedOpenVault(actorUserId: string) {
   // CI misconfiguration) should fail loudly here, not with a confusing
   // "minimum contribution not configured" error surfaced mid-test deep
   // in a form-submit assertion.
-  const minimum = await prisma.contributionMinimum.findUnique({ where: { currency: "NGN" } });
+  // A Vault gift's floor is Vault's own since 2026-11-16.
+  const minimum = await prisma.vaultGiftMinimum.findUnique({ where: { currency: "NGN" } });
   if (!minimum) {
-    throw new Error('No NGN contributionMinimum row — run `pnpm --filter @birr/db exec prisma db seed` first.');
+    throw new Error('No NGN vaultGiftMinimum row — run `pnpm --filter @birr/db exec prisma db seed` first.');
   }
   return { vaultId: vault.id, slug: vault.slug, causeId: cause.id, causeName: cause.name, minimumAmount: minimum.minAmount.toString() };
 }

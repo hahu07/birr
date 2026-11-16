@@ -5,6 +5,7 @@ import { VaultContributionsService } from "./vault-contributions.service";
 import { VaultsService } from "./vaults.service";
 import { VaultProceedsService } from "./vault-proceeds.service";
 import { VaultLedgerService } from "./vault-ledger.service";
+import { VaultGiftMinimumsService } from "./vault-gift-minimums.service";
 import {
   CreatePaymentInput,
   CreatePaymentResult,
@@ -231,9 +232,9 @@ describe("VaultContributionsService", () => {
     await prisma.$transaction((tx) => vaultsService.publish(multiCurrencyVault.id, tx));
 
     // NGN — an additionalCurrency, not the primary — succeeds. At the
-    // configured minimum, which staff can change in the Ops Console
-    // (raised to 250,000 in the dev database on 2026-11-14).
-    const ngnMinimum = await prisma.contributionMinimum.findUniqueOrThrow({ where: { currency: "NGN" } });
+    // configured Vault gift minimum, which staff can change in the Ops
+    // Console (Vault's own since 2026-11-16).
+    const ngnMinimum = await prisma.vaultGiftMinimum.findUniqueOrThrow({ where: { currency: "NGN" } });
     const ngnResult = await service.initiate({
       vaultId: multiCurrencyVault.id,
       amount: ngnMinimum.minAmount.toString(),
@@ -371,12 +372,12 @@ describe("VaultContributionsService", () => {
 
     beforeAll(async () => {
       currency = `AML${Date.now() % 100000}`;
-      await prisma.contributionMinimum.create({ data: { currency, minAmount: "10" } });
+      await prisma.vaultGiftMinimum.create({ data: { currency, minAmount: "10" } });
       await prisma.vaultDonorThreshold.create({ data: { currency, thresholdAmount: "1000" } });
       await prisma.vault.update({ where: { id: openVaultId }, data: { currency } });
 
       currencyB = `AMLB${Date.now() % 100000}`;
-      await prisma.contributionMinimum.create({ data: { currency: currencyB, minAmount: "10" } });
+      await prisma.vaultGiftMinimum.create({ data: { currency: currencyB, minAmount: "10" } });
       await prisma.vaultDonorThreshold.create({ data: { currency: currencyB, thresholdAmount: "500" } });
       const secondVault = await vaultsService.create(
         { name: "Second Currency Fixture Vault", slug: `second-currency-${Date.now()}`, type: "project", currency: currencyB, jurisdiction: "NG" },
@@ -390,7 +391,7 @@ describe("VaultContributionsService", () => {
     afterAll(async () => {
       await prisma.vault.update({ where: { id: openVaultId }, data: { currency: "USD" } });
       await prisma.vaultDonorThreshold.deleteMany({ where: { currency: { in: [currency, currencyB] } } });
-      await prisma.contributionMinimum.deleteMany({ where: { currency: { in: [currency, currencyB] } } });
+      await prisma.vaultGiftMinimum.deleteMany({ where: { currency: { in: [currency, currencyB] } } });
     });
 
     test("a single contribution at or above the threshold requires donorFullName/idType/idNumber", async () => {
@@ -601,6 +602,51 @@ describe("VaultContributionsService", () => {
     });
   });
 
+  // Owner's decision, 2026-11-16: Vault gifts have their own minimum
+  // (VaultGiftMinimum), never the Waqf top-up floor (ContributionMinimum).
+  describe("the Vault gift minimum", () => {
+    let currency: string;
+
+    beforeAll(async () => {
+      currency = `VG${Date.now() % 100000}`;
+      // A Waqf floor far above the Vault one, to prove gifts don't read it.
+      await prisma.contributionMinimum.create({ data: { currency, minAmount: "5000" } });
+      await prisma.vaultGiftMinimum.create({ data: { currency, minAmount: "50" } });
+      await prisma.vaultDonorThreshold.create({ data: { currency, thresholdAmount: "100000" } });
+      await prisma.vault.update({ where: { id: openVaultId }, data: { currency } });
+    });
+
+    afterAll(async () => {
+      await prisma.vault.update({ where: { id: openVaultId }, data: { currency: "USD" } });
+      await prisma.contributionMinimum.deleteMany({ where: { currency } });
+      await prisma.vaultGiftMinimum.deleteMany({ where: { currency } });
+    });
+
+    const give = (amount: string) =>
+      service.initiate({ vaultId: openVaultId, amount, currency, provider: "stripe", donorEmail: uniqueEmail("vault-minimum") }).then((r) => {
+        vaultContributionIds.push(r.contribution.id);
+        return r;
+      });
+
+    test("a gift is floored by the Vault minimum, not the Waqf top-up floor", async () => {
+      await expect(give("49.99")).rejects.toThrow(/minimum contribution for VG/);
+      // Far below the 5,000 Waqf floor, above the Vault one.
+      await expect(give("50")).resolves.toBeDefined();
+    });
+
+    test("staff changes to it are audited, and a Waqf floor change doesn't move it", async () => {
+      const minimums = new VaultGiftMinimumsService();
+      const actor = await prisma.user.create({ data: { email: uniqueEmail("vault-minimum-staff"), fullName: "Vault Minimum Staff" } });
+      const updated = await minimums.upsert(currency, { minAmount: "75" }, actor.id);
+      expect(await prisma.auditLog.findFirst({ where: { entityId: updated.id, action: "vault_gift_minimum.updated", actorUserId: actor.id } })).toMatchObject({
+        before: expect.objectContaining({ minAmount: "50" }),
+      });
+      await prisma.contributionMinimum.update({ where: { currency }, data: { minAmount: "1" } });
+      await expect(give("74")).rejects.toThrow(BadRequestException);
+      await expect(give("75")).resolves.toBeDefined();
+    });
+  });
+
   // Owner's decisions, 2026-11-16: a confirmed WhatsApp number instead of
   // (or as well as) an email, adding up toward the threshold.
   describe("giving with a WhatsApp number", () => {
@@ -608,7 +654,7 @@ describe("VaultContributionsService", () => {
 
     beforeAll(async () => {
       currency = `WA${Date.now() % 100000}`;
-      await prisma.contributionMinimum.create({ data: { currency, minAmount: "10" } });
+      await prisma.vaultGiftMinimum.create({ data: { currency, minAmount: "10" } });
       await prisma.vaultDonorThreshold.create({ data: { currency, thresholdAmount: "1000" } });
       await prisma.vault.update({ where: { id: openVaultId }, data: { currency } });
     });

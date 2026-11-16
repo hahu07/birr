@@ -252,6 +252,10 @@ export function WaqfFundForm({
     !submitting;
 
   const amountLocked = isFirstPayment && effectiveFundingPlan === "lump_sum" && firstPaymentFloor > 0;
+  // What's left to reach the declared target, for a top-up: always
+  // payable in full, even below the top-up minimum (2026-11-16), so an
+  // installment plan can always be finished.
+  const rest = !isFirstPayment && progress ? Math.max(0, Math.round((progress.target - progress.raised) * 100) / 100) : 0;
   // Numbered only when there's more than one step on screen (a brand-new
   // fund); a top-up/retry is the payment step alone.
   const paymentStep = waqfAlreadyExists ? undefined : 3;
@@ -446,7 +450,9 @@ export function WaqfFundForm({
                     : isFirstPayment && effectiveFundingPlan === "installment" && firstPaymentFloor > 0
                       ? `At least ${installmentPercent}% of the corpus (${formatMoney(firstPaymentFloor, currency, { decimals: 0 })}) — the rest can be paid anytime as a top-up.`
                       : !isFirstPayment && contributionMinimumForCurrency > 0
-                        ? `Minimum ${formatMoney(contributionMinimumForCurrency, currency, { decimals: 0 })}.`
+                        ? rest > 0
+                          ? `Minimum ${formatMoney(contributionMinimumForCurrency, currency, { decimals: 0 })}, or the ${formatMoney(rest, currency)} left to reach your ${formatMoney(progress!.target, currency, { decimals: 0 })} target.`
+                          : `Minimum ${formatMoney(contributionMinimumForCurrency, currency, { decimals: 0 })}.`
                         : undefined
                 }
               >
@@ -467,6 +473,18 @@ export function WaqfFundForm({
                   readOnly={amountLocked}
                   required
                 />
+                {rest > 0 && (
+                  <button
+                    type="button"
+                    className="mt-2 text-sm font-medium text-primary-700 hover:text-primary-900"
+                    onClick={() => {
+                      setAmount(String(rest));
+                      setAmountTouched(true);
+                    }}
+                  >
+                    Pay the {formatMoney(rest, currency)} left
+                  </button>
+                )}
               </Field>
             </div>
           </FormSection>

@@ -235,10 +235,10 @@ export class VaultContributionsService {
     const adapter = this.adapters.get(input.provider);
     if (!adapter) throw new NotFoundException(`Unknown payment provider "${input.provider}".`);
 
-    // Reuses ContributionMinimum as-is — genuinely shared payment infra
-    // (keyed only by currency, no FK to Waqf/Contribution), not a
-    // Founder-flow-specific rule.
-    const minimum = await prisma.contributionMinimum.findUnique({ where: { currency: input.currency } });
+    // Vault's own floor (VaultGiftMinimum, 2026-11-16) — no longer the
+    // Waqf top-up floor, which raising for founders used to raise for
+    // every public donor too.
+    const minimum = await prisma.vaultGiftMinimum.findUnique({ where: { currency: input.currency } });
     if (!minimum) {
       throw new BadRequestException(`No minimum contribution is configured for currency "${input.currency}".`);
     }

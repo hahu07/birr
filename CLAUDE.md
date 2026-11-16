@@ -797,6 +797,24 @@ undo money already committed.** Allocation stays founder self-service
   the same order distributions use, so the two can't both pass on stale
   figures.
 
+**Update, 2026-11-16 — founders choose their top-up amount; Vault gifts
+have their own minimum.** Owner's decisions:
+- **A founder decides how much to top up**, monthly or one-off, above a
+  small staff-set floor: `ContributionMinimum` ("Minimum top-up per
+  currency", Ops → Waqf Funding), now seeded at **₦5,000** (it had been
+  raised to ₦250,000). A fund's first payment is still set by its corpus,
+  and the ₦250,000 to establish one is `CorpusMinimum`, unchanged.
+- **Paying exactly what's left to reach the declared target is always
+  allowed**, even below the floor (`ContributionsService
+  .isExactlyTheRest`), so an installment plan can always be finished; the
+  top-up page offers "Pay the ₦X left". One-off only: a monthly top-up
+  repeats.
+- **Vault gifts have their own minimum**, `VaultGiftMinimum` (Ops →
+  Vaults, `vault.gift_minimum_set`, Mutawalli Officer), starting at
+  ₦5,000. Until then they silently shared the Waqf floor, so the ₦250,000
+  meant no one could give a Vault less. The migration copied every
+  currency's existing value; the seed never overwrites a staff-set one.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
