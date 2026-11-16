@@ -302,6 +302,40 @@ describe("FoundationDeedsService", () => {
     expect(await service.consentStatus(foundation.id, founder.id)).toBeNull();
   });
 
+  test("the signer can remind the co-founders the deed waits for, at most once a day each", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    const yusuf = await addCoFounderWithContact(foundation.id, "Yusuf Bello");
+    await addCoFounder(foundation.id, "No Contact Bello"); // no one who can sign in for them
+    const agreed = await addCoFounderWithContact(foundation.id, "Agreed Bello");
+    await agree(foundation.id, agreed.coFounder.id, agreed.user.id);
+
+    const first = await service.remindAwaitingCoFounders(foundation.id, founder.id, "Amina Yusuf");
+    expect(first).toEqual({ reminded: ["Yusuf Bello"], alreadyReminded: [], noPrimaryContact: ["No Contact Bello"] });
+    const reminder = await prisma.notification.findFirstOrThrow({
+      where: { recipientUserId: yusuf.user.id, type: "foundation_deed.consent_needed", relatedEntityId: foundation.id },
+    });
+    expect(reminder).toMatchObject({ linkUrl: `/foundations/${foundation.id}/deed` });
+    expect(reminder.body).toContain("Amina Yusuf is ready to sign the Deed of Waqf");
+    // Whoever has already agreed is never reminded.
+    expect(await prisma.notification.count({ where: { recipientUserId: agreed.user.id, type: "foundation_deed.consent_needed" } })).toBe(0);
+
+    // Again the same day: nobody is reminded twice.
+    expect(await service.remindAwaitingCoFounders(foundation.id, founder.id, "Amina Yusuf")).toMatchObject({ reminded: [], alreadyReminded: ["Yusuf Bello"] });
+    expect(await prisma.notification.count({ where: { recipientUserId: yusuf.user.id, type: "foundation_deed.consent_needed" } })).toBe(1);
+
+    // Once they agree there's no one left to remind them about.
+    await agree(foundation.id, yusuf.coFounder.id, yusuf.user.id);
+    expect(await service.remindAwaitingCoFounders(foundation.id, founder.id, "Amina Yusuf")).toMatchObject({ reminded: [], alreadyReminded: [] });
+  });
+
+  test("there's nothing to remind anyone about once the deed is signed, or for a Foundation that isn't yours", async () => {
+    const { founder, foundation } = await createFounderWithFoundation("active");
+    await service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash: await textHashFor(foundation.id, founder.id) });
+    await expect(service.remindAwaitingCoFounders(foundation.id, founder.id, "Amina Yusuf")).rejects.toThrow(BadRequestException);
+    const outsider = await createFounderWithFoundation("active");
+    await expect(service.remindAwaitingCoFounders(foundation.id, outsider.founder.id, "Someone Else")).rejects.toThrow(ForbiddenException);
+  });
+
   test("a co-founder with no agreement on record can adopt a deed already signed, but not with a statement they weren't shown", async () => {
     const { founder, foundation } = await createFounderWithFoundation("active");
     const deed = await service.sign({ foundationId: foundation.id, founderId: founder.id, typedLegalName: "Amina Yusuf", affirmed: true, textHash: await textHashFor(foundation.id, founder.id) });

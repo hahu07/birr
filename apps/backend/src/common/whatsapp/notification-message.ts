@@ -42,6 +42,7 @@ const TYPE_ICON: Record<string, string> = {
   "founder_membership.joined": "👥",
   "foundation.co_founder_joined": "👥",
   "foundation_deed.signed": "📝",
+  "foundation_deed.consent_needed": "✍️",
   "coi.escalated": "🚨",
   "trustee_license.expiring": "⏰",
 };

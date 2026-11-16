@@ -43,6 +43,9 @@ async function coFounderConsentsFor(db: Pick<typeof prisma, "coFounderDeedConsen
   }));
 }
 
+/** A co-founder is reminded to agree to the deed at most once a day per Foundation. */
+const REMINDER_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 function hashDeedText(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
@@ -196,6 +199,55 @@ export class FoundationDeedsService {
       awaitingConsent: awaitingConsent.map((c) => c.name),
       alreadySigned: Boolean(foundation.foundationDeed),
     };
+  }
+
+  /**
+   * Reminds the co-founders a joint deed is waiting for (see render's
+   * awaitingConsent) that their agreement is needed, so the signer isn't
+   * left to chase them. Goes to each one's active primary contact, the
+   * only person who can agree for that founder, at most once a day per
+   * Foundation; the signing page calls this when it shows who it's
+   * waiting for. Nothing is changed but the notifications sent.
+   */
+  async remindAwaitingCoFounders(foundationId: string, founderId: string, signerName: string) {
+    const { foundation, awaitingConsent } = await this.render(prisma, foundationId, founderId);
+    if (foundation.foundationDeed) throw new BadRequestException("This foundation's deed is already signed.");
+    const since = new Date(Date.now() - REMINDER_INTERVAL_MS);
+    const result = { reminded: [] as string[], alreadyReminded: [] as string[], noPrimaryContact: [] as string[] };
+    for (const coFounder of awaitingConsent) {
+      const contact = await prisma.founderMembership.findFirst({
+        where: { founderId: coFounder.id, permissionLevel: "primary_contact", status: "active" },
+        select: { userId: true },
+      });
+      if (!contact) {
+        result.noPrimaryContact.push(coFounder.name);
+        continue;
+      }
+      const recent = await prisma.notification.findFirst({
+        where: { recipientUserId: contact.userId, type: "foundation_deed.consent_needed", relatedEntityId: foundation.id, createdAt: { gte: since } },
+        select: { id: true },
+      });
+      if (recent) {
+        result.alreadyReminded.push(coFounder.name);
+        continue;
+      }
+      await this.notificationsService
+        .notify({
+          recipientType: "founder_user",
+          recipientUserId: contact.userId,
+          type: "foundation_deed.consent_needed",
+          title: `Your agreement is needed: ${foundation.name}'s deed`,
+          body:
+            `${signerName} is ready to sign the Deed of Waqf for ${foundation.name}, for every co-founder. ` +
+            `It can't be signed for ${coFounder.name} until you agree, in your own name, on the Foundation's deed page.`,
+          linkUrl: `/foundations/${foundation.id}/deed`,
+          relatedEntityType: "Foundation",
+          relatedEntityId: foundation.id,
+        })
+        .catch((err) => this.logger.error(`Couldn't remind co-founder "${coFounder.id}" about deed consent:`, err instanceof Error ? err.stack : String(err)));
+      result.reminded.push(coFounder.name);
+    }
+    return result;
   }
 
   /**
