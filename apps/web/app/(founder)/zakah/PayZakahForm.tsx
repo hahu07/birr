@@ -9,6 +9,7 @@ import { processingFeeCover } from "@birr/zakah";
 import { Alert, Button, Input, Select } from "@birr/ui";
 import { ApiError, apiFetchJson } from "../../../lib/api";
 import { formatMoney } from "../../../lib/format";
+import { contactPayload, contactReady, EMPTY_CONTACT, GiverContactFields, type GiverContactValue } from "../_components/GiverContactFields";
 
 export interface ZakahPaymentTerms {
   available: boolean;
@@ -55,8 +56,9 @@ export function PayZakahForm({
 }) {
   const [amount, setAmount] = useState(zakahDue);
   const [coverFee, setCoverFee] = useState(false);
-  const [email, setEmail] = useState("");
-  // Monthly zakah, paid in advance (owner's decision, 2026-11-15): zakah on wealth only, by card, needs an email.
+  // Email, a confirmed WhatsApp number, or both (2026-11-16).
+  const [contact, setContact] = useState<GiverContactValue>(EMPTY_CONTACT);
+  // Monthly zakah, paid in advance (owner's decision, 2026-11-15): zakah on wealth only, by card, needs an email or WhatsApp.
   const [monthly, setMonthly] = useState(false);
   const [fullName, setFullName] = useState("");
   const [idType, setIdType] = useState("national_id");
@@ -83,7 +85,7 @@ export function PayZakahForm({
           amount: cleanAmount,
           coverFee,
           wakalahConsentVersion: terms.wakalah.version,
-          payerEmail: email.trim() || undefined,
+          ...contactPayload(contact, { email: "payerEmail", whatsapp: "payerWhatsApp" }),
           payerFullName: fullName.trim() || undefined,
           ...(needsIdentity && { idType, idNumber }),
           ...(ruleset && { rulesetKey: ruleset.key, rulesetVersion: ruleset.version }),
@@ -136,7 +138,7 @@ export function PayZakahForm({
             {monthly && (
               <span className="mt-1 block text-xs leading-relaxed text-slate-600">
                 Each payment is zakah paid ahead of when it falls due (ta&apos;jil), towards your annual zakah. We charge your card the same amount on the{" "}
-                <strong>{monthlyDay()}</strong> of each month, and email you before each charge with a private link to change or stop it. Some
+                <strong>{monthlyDay()}</strong> of each month, and remind you before each charge, with a private link to change or stop it. Some
                 scholars, including the Maliki school, don&apos;t permit paying zakah early; if unsure, ask your scholar.
               </span>
             )}
@@ -144,18 +146,26 @@ export function PayZakahForm({
         </label>
       )}
 
-      <div>
-        <label htmlFor="pay-email" className="mb-1.5 block text-sm font-medium text-slate-700">
-          {monthly && !fitr ? "Email" : "Email for your receipt"}{" "}
-          {!(monthly && !fitr) && <span className="font-normal text-slate-500">(optional)</span>}
-        </label>
-        <Input id="pay-email" type="email" autoComplete="email" required={monthly && !fitr} value={email} onChange={(e) => setEmail(e.target.value)} />
-        {monthly && !fitr ? (
-          <p className="mt-1 text-xs text-slate-500">For your receipts, reminders, and the link to manage your monthly zakah.</p>
-        ) : (
-          !email.trim() && <p className="mt-1 text-xs text-slate-500">Without an email we can&apos;t send you a receipt.</p>
-        )}
-      </div>
+      <GiverContactFields
+        idPrefix="pay"
+        value={contact}
+        onChange={setContact}
+        required={monthly && !fitr}
+        legend={monthly && !fitr ? "Send receipts and reminders to" : "Send my receipt to"}
+        emailLabel={
+          <>
+            {monthly && !fitr ? "Email" : "Email for your receipt"}{" "}
+            {!(monthly && !fitr) && <span className="font-normal text-slate-500">(optional)</span>}
+          </>
+        }
+        emailHint={
+          monthly && !fitr
+            ? "For your receipts, reminders, and the link to manage your monthly zakah."
+            : !contact.email.trim()
+              ? "Without an email we can't send you a receipt."
+              : undefined
+        }
+      />
 
       {needsIdentity && (
         <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -194,7 +204,7 @@ export function PayZakahForm({
         </Alert>
       )}
 
-      <Button type="submit" className="w-full" disabled={!validAmount || !consented || submitting}>
+      <Button type="submit" className="w-full" disabled={!validAmount || !consented || submitting || !contactReady(contact, monthly && !fitr)}>
         {submitting
           ? "Taking you to payment…"
           : total !== null

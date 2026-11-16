@@ -13,6 +13,7 @@ import { formatMoney, humanize } from "../../../../lib/format";
 import type { Waqf } from "../../../../lib/types";
 import { Alert, Button, IconCheckCircle, Skeleton } from "@birr/ui";
 import { MoneyInput } from "../../_components/form";
+import { useFounderSession } from "../../../../lib/founder-session";
 
 interface TopUp {
   status: "pending_setup" | "active" | "paused" | "cancelled" | "ended";
@@ -48,6 +49,11 @@ function formatDay(iso: string): string {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong.";
+}
+
+/** Top-up notices also go to the founder's verified WhatsApp number (2026-11-16). */
+function useWhatsAppVerified(): boolean {
+  return Boolean(useFounderSession().user?.whatsappVerifiedAt);
 }
 
 export function MonthlyTopUpSection({ waqf }: { waqf: Waqf }) {
@@ -90,6 +96,7 @@ export function MonthlyTopUpSection({ waqf }: { waqf: Waqf }) {
 }
 
 function SetUpTopUp({ waqf }: { waqf: Waqf }) {
+  const whatsappVerified = useWhatsAppVerified();
   const [minimum, setMinimum] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
@@ -129,8 +136,8 @@ function SetUpTopUp({ waqf }: { waqf: Waqf }) {
           <MoneyInput id="monthly-top-up-amount" aria-label="Monthly top-up amount" currency="NGN" required value={amount} onChange={(e) => setAmount(e.target.value)} />
           <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
             {minimum ? `At least ${formatMoney(minimum, "NGN", { decimals: 0 })} a month. ` : ""}
-            The first is charged now and saves your card; then on the <strong>{ordinal(todayInLagos())}</strong> of each month. We email you
-            before each charge.
+            The first is charged now and saves your card; then on the <strong>{ordinal(todayInLagos())}</strong> of each month. We remind you
+            {whatsappVerified ? " by email and WhatsApp" : " by email"} before each charge.
           </p>
         </div>
         <Button type="submit" disabled={busy} className="shrink-0">
@@ -142,6 +149,7 @@ function SetUpTopUp({ waqf }: { waqf: Waqf }) {
 }
 
 function RunningTopUp({ waqfId, topUp, onChange }: { waqfId: string; topUp: TopUp; onChange: (t: TopUp | null) => void }) {
+  const whatsappVerified = useWhatsAppVerified();
   const [amount, setAmount] = useState(String(Number(topUp.amount)));
   const [busy, setBusy] = useState<"amount" | "card" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -275,7 +283,10 @@ function RunningTopUp({ waqfId, topUp, onChange }: { waqfId: string; topUp: TopU
           </button>
         ))}
 
-      <p className="mt-4 text-xs text-slate-500">Reminders and receipts go to {topUp.email}.</p>
+      <p className="mt-4 text-xs text-slate-500">
+        Reminders and receipts go to {topUp.email}
+        {whatsappVerified ? " and to your WhatsApp" : ""}.
+      </p>
     </div>
   );
 }

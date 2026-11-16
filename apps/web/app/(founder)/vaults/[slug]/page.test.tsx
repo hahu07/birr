@@ -116,11 +116,11 @@ describe("VaultDonationPage — giving monthly", { timeout: 20_000 }, () => {
     const email = await screen.findByLabelText("Email (optional)");
     expect(email).not.toBeRequired();
     await user.click(screen.getByRole("radio", { name: "Monthly" }));
-    expect(screen.getByLabelText("Email")).toBeRequired();
+    expect(screen.getByRole("textbox", { name: "Email" })).toBeRequired();
     expect(screen.getByText(/of every month, starting today/)).toBeTruthy();
 
     await user.type(screen.getByLabelText(/^Amount/), "250000");
-    await user.type(screen.getByLabelText("Email"), "amina@example.com");
+    await user.type(screen.getByRole("textbox", { name: "Email" }), "amina@example.com");
     await user.click(screen.getByRole("button", { name: "Set up monthly gift" }));
 
     await waitFor(() => expect(window.location.href).toBe("https://checkout.test/x"));
