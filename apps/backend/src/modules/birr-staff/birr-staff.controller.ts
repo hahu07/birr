@@ -1,3 +1,4 @@
+import { RequiresAccess } from "../../common/guards/permission.guard";
 import { Body, Controller, Get, NotFoundException, Param, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
 import { IsString } from "class-validator";
 import { Throttle } from "@nestjs/throttler";
@@ -71,6 +72,7 @@ export class BirrStaffController {
       return { ok: true, mfaRequired: true };
     }
     setStaffSessionCookie(res, signSessionToken(userId));
+    await this.service.recordSignIn(userId);
     return { ok: true, mfaRequired: false };
   }
 
@@ -94,6 +96,7 @@ export class BirrStaffController {
     await this.service.verifyLoginMfaCode(payload.userId, body.code);
     clearMfaPendingCookie(res);
     setStaffSessionCookie(res, signSessionToken(payload.userId));
+    await this.service.recordSignIn(payload.userId);
     return { ok: true };
   }
 
@@ -160,6 +163,23 @@ export class BirrStaffController {
   @Get()
   list() {
     return this.service.list();
+  }
+
+  // Staff changes awaiting approval (2026-11-16) — any staff member, like
+  // the roster itself. Declared before ":id".
+  @Get("pending-changes")
+  pendingChanges() {
+    return this.service.pendingChanges();
+  }
+
+  // One person's change history, with reasons: staff managers only, like
+  // Roles & Access (2026-11-16).
+  @Get(":id/history")
+  @RequiresAccess("roles.view")
+  async history(@Param("id") id: string) {
+    const history = await this.service.history(id);
+    if (!history) throw new NotFoundException(`BirrStaff "${id}" not found.`);
+    return history;
   }
 
   @Get(":id")

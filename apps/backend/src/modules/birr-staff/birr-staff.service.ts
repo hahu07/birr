@@ -34,7 +34,12 @@ const SAFE_USER_SELECT = {
   // equivalent via its own onboarding-status endpoint.
   whatsappNumber: true,
   whatsappVerifiedAt: true,
+  // When they last signed in (2026-11-16), so dormant accounts show.
+  lastSignInAt: true,
 } as const;
+
+/** Governed staff actions, by key, as the Team page names them. */
+const STAFF_ACTION_KEYS = ["staff.invite", "staff.role_add", "staff.role_remove", "staff.mfa_reset", "staff.suspend", "staff.reinstate"];
 
 // API shape: `roles` as a plain list (["legal_adviser", ...]) rather than
 // the join rows Prisma loads.
@@ -85,6 +90,85 @@ export class BirrStaffService {
    * that recovery path exists at all given MFA has no self-service
    * disable.
    */
+  /** Records a finished sign-in to the Ops Console (2026-11-16). */
+  async recordSignIn(userId: string): Promise<void> {
+    await prisma.user.update({ where: { id: userId }, data: { lastSignInAt: new Date() } });
+  }
+
+  /**
+   * Every governed staff action about one person, newest first: the
+   * invitation that brought them in (matched by email) and each role
+   * change, suspension, reinstatement and two-factor reset, with its
+   * reason, who proposed it and who decided (2026-11-16). Null when the
+   * person doesn't exist.
+   */
+  async history(staffId: string) {
+    const staff = await prisma.birrStaff.findUnique({ where: { id: staffId }, include: { user: { select: { email: true } } } });
+    if (!staff) return null;
+    // An invitation's payload keeps the email as it was typed, so match it
+    // without regard to letter case.
+    const invites = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT ga.id FROM governed_actions ga JOIN permissions p ON p.id = ga."permissionId"
+      WHERE p.key = 'staff.invite' AND lower(ga.payload->>'email') = lower(${staff.user.email})`;
+    const actions = await prisma.governedAction.findMany({
+      where: {
+        permission: { key: { in: STAFF_ACTION_KEYS } },
+        OR: [{ payload: { path: ["staffId"], equals: staffId } }, { id: { in: invites.map((i) => i.id) } }],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: this.actionSelect,
+    });
+    return actions.map((a) => this.presentAction(a));
+  }
+
+  /** Staff changes awaiting approval, so the Team page can mark who's affected. */
+  async pendingChanges() {
+    const actions = await prisma.governedAction.findMany({
+      where: { status: "proposed", permission: { key: { in: STAFF_ACTION_KEYS } } },
+      orderBy: { createdAt: "desc" },
+      select: this.actionSelect,
+    });
+    return actions.map((a) => this.presentAction(a));
+  }
+
+  private readonly actionSelect = {
+    id: true,
+    status: true,
+    payload: true,
+    createdAt: true,
+    decidedAt: true,
+    permission: { select: { key: true } },
+    makerUser: { select: { fullName: true } },
+    checkerUser: { select: { fullName: true } },
+  } as const;
+
+  private presentAction(a: {
+    id: string;
+    status: string;
+    payload: unknown;
+    createdAt: Date;
+    decidedAt: Date | null;
+    permission: { key: string };
+    makerUser: { fullName: string } | null;
+    checkerUser: { fullName: string } | null;
+  }) {
+    const payload = (a.payload ?? {}) as { staffId?: string; email?: string; role?: string; staffRole?: string; reason?: string };
+    return {
+      id: a.id,
+      kind: a.permission.key.replace(/^staff\./, ""),
+      status: a.status,
+      staffId: payload.staffId ?? null,
+      email: payload.email?.trim().toLowerCase() ?? null,
+      role: payload.role ?? payload.staffRole ?? null,
+      reason: payload.reason?.trim() || null,
+      proposedBy: a.makerUser?.fullName ?? null,
+      decidedBy: a.checkerUser?.fullName ?? null,
+      proposedAt: a.createdAt,
+      decidedAt: a.decidedAt,
+    };
+  }
+
   async verifyLoginMfaCode(userId: string, code: string): Promise<void> {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
     if (!user.mfaEnabled || !user.mfaSecretEncrypted) {

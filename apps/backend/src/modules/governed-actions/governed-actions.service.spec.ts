@@ -2164,7 +2164,7 @@ describe("GovernedActionsService", () => {
 
     test("approve → MFA cleared, audit-logged by the engine, and the affected person is notified", async () => {
       const { user, staff } = await enrolledStaff("approve");
-      const action = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId });
+      const action = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id, reason: "Confirmed by phone with the person on 16 November." }, makerUserId: adminUserId });
       governedActionIds.push(action.id);
 
       // Nothing changes on propose — a second person has to approve first.
@@ -2194,7 +2194,7 @@ describe("GovernedActionsService", () => {
 
     test("reject → MFA is left exactly as it was, and nobody is told it was reset", async () => {
       const { user, staff } = await enrolledStaff("reject");
-      const action = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId });
+      const action = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id, reason: "Confirmed by phone with the person on 16 November." }, makerUserId: adminUserId });
       governedActionIds.push(action.id);
 
       await service.decide({ governedActionId: action.id, checkerUserId: boardUserId, approve: false });
@@ -2205,7 +2205,7 @@ describe("GovernedActionsService", () => {
 
     test("the proposer cannot approve their own reset request, and the database refuses it too", async () => {
       const { staff } = await enrolledStaff("self");
-      const action = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId });
+      const action = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id, reason: "Confirmed by phone with the person on 16 November." }, makerUserId: adminUserId });
       governedActionIds.push(action.id);
 
       await expect(
@@ -2218,21 +2218,21 @@ describe("GovernedActionsService", () => {
 
     test("propose() rejects an unknown staff member, or one with no MFA enrolled", async () => {
       await expect(
-        service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: randomUUID() }, makerUserId: adminUserId }),
+        service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: randomUUID(), reason: "Confirmed by phone with the person on 16 November." }, makerUserId: adminUserId }),
       ).rejects.toThrow();
       const { staff, user } = await enrolledStaff("not-enrolled");
       await prisma.user.update({ where: { id: user.id }, data: { mfaEnabled: false, mfaSecretEncrypted: null } });
       await expect(
-        service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId }),
+        service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id, reason: "Confirmed by phone with the person on 16 November." }, makerUserId: adminUserId }),
       ).rejects.toThrow(BadRequestException);
     });
 
     test("a second pending request for the same person is rejected as a duplicate", async () => {
       const { staff } = await enrolledStaff("dup");
-      const first = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId });
+      const first = await service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id, reason: "Confirmed by phone with the person on 16 November." }, makerUserId: adminUserId });
       governedActionIds.push(first.id);
       await expect(
-        service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId }),
+        service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id, reason: "Confirmed by phone with the person on 16 November." }, makerUserId: adminUserId }),
       ).rejects.toThrow(ConflictException);
     });
   });
@@ -2268,7 +2268,8 @@ describe("GovernedActionsService", () => {
       return email;
     };
     const propose = async (payload: Record<string, unknown>) => {
-      const action = await service.propose({ permissionKey: "staff.invite", payload, makerUserId: adminUserId });
+      // A reason is required for every new staff proposal (2026-11-16).
+      const action = await service.propose({ permissionKey: "staff.invite", payload: { reason: "Confirmed by phone with the person on 16 November.", ...payload }, makerUserId: adminUserId });
       governedActionIds.push(action.id);
       return action;
     };
@@ -2416,7 +2417,7 @@ describe("GovernedActionsService", () => {
       await expect(propose("suspend", staff.id, adminUserId, "gone")).rejects.toThrow(BadRequestException);
       await propose("suspend", staff.id);
       await expect(
-        service.propose({ permissionKey: "staff.role_remove", payload: { staffId: staff.id, role: "audit_committee" }, makerUserId: adminUserId }),
+        service.propose({ permissionKey: "staff.role_remove", payload: { staffId: staff.id, role: "audit_committee", reason: "Confirmed by phone with the person on 16 November." }, makerUserId: adminUserId }),
       ).rejects.toThrow(ConflictException);
       await expect(propose("reinstate", staff.id)).rejects.toThrow();
     });
@@ -2545,7 +2546,7 @@ describe("GovernedActionsService", () => {
     const rolesOf = async (staffId: string) =>
       (await prisma.birrStaffRoleGrant.findMany({ where: { birrStaffId: staffId }, orderBy: { role: "asc" } })).map((g) => g.role);
     const propose = async (kind: "add" | "remove", staffId: string, role: BirrStaffRole, makerUserId = adminUserId) => {
-      const action = await service.propose({ permissionKey: `staff.role_${kind}`, payload: { staffId, role }, makerUserId });
+      const action = await service.propose({ permissionKey: `staff.role_${kind}`, payload: { staffId, role, reason: "Confirmed by phone with the person on 16 November." }, makerUserId });
       governedActionIds.push(action.id);
       return action;
     };
@@ -2574,6 +2575,34 @@ describe("GovernedActionsService", () => {
         if (!notice) await new Promise((r) => setTimeout(r, 100));
       }
       expect(notice).not.toBeNull();
+    });
+
+    // 2026-11-16: every staff change carries the proposer's reason, shown
+    // to whoever approves it and kept in the audit trail.
+    test("a reason is required to propose a role change, an invitation or a two-factor reset, and it reaches the approver and the audit row", async () => {
+      const { staff } = await staffWith("reason", "legal_adviser");
+      await expect(service.propose({ permissionKey: "staff.role_add", payload: { staffId: staff.id, role: "audit_committee" }, makerUserId: adminUserId })).rejects.toThrow(/Give a reason/);
+      await expect(service.propose({ permissionKey: "staff.role_remove", payload: { staffId: staff.id, role: "legal_adviser", reason: "short" }, makerUserId: adminUserId })).rejects.toThrow(/Give a reason/);
+      await expect(service.propose({ permissionKey: "staff.invite", payload: { email: `reason-${randomUUID().slice(0, 8)}@example.com`, staffRole: "legal_adviser" }, makerUserId: adminUserId })).rejects.toThrow(/Give a reason/);
+      await expect(service.propose({ permissionKey: "staff.mfa_reset", payload: { staffId: staff.id }, makerUserId: adminUserId })).rejects.toThrow(/Give a reason/);
+
+      const action = await propose("add", staff.id, "audit_committee");
+      const listed = (await service.list({ status: "proposed" })).find((a) => a.id === action.id);
+      expect(listed?.summary).toContain('Reason: "Confirmed by phone with the person on 16 November."');
+      await service.decide({ governedActionId: action.id, checkerUserId: complianceUserId, approve: true });
+      const log = await prisma.auditLog.findFirst({ where: { entityId: staff.id, action: "birr_staff.role_added" } });
+      expect(log?.after).toMatchObject({ reason: "Confirmed by phone with the person on 16 November." });
+    }, 30000);
+
+    test("a role change proposed before reasons were required can still be approved", async () => {
+      const { staff } = await staffWith("legacy", "legal_adviser");
+      const permission = await prisma.permission.findUniqueOrThrow({ where: { key: "staff.role_add" } });
+      const legacy = await prisma.governedAction.create({
+        data: { permissionId: permission.id, makerType: "human", makerUserId: adminUserId, status: "proposed", payload: { staffId: staff.id, role: "audit_committee" } },
+      });
+      governedActionIds.push(legacy.id);
+      await service.decide({ governedActionId: legacy.id, checkerUserId: complianceUserId, approve: true });
+      expect(await rolesOf(staff.id)).toEqual(["audit_committee", "legal_adviser"]);
     });
 
     test("remove → the role is taken away", async () => {

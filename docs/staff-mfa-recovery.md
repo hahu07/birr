@@ -23,8 +23,10 @@ A reset needs two different people. Neither can do it alone.
 1. **Confirm who is asking, outside the app.** Call them or meet them. Do not
    rely on an email or chat message — that is exactly what an attacker would
    send.
-2. A **Platform Admin** opens *Admin → Team*, finds the person, and clicks
-   **Request MFA reset**. Nothing changes yet.
+2. A **Platform Admin** opens *Admin → Team*, opens the person, chooses
+   **Reset two-factor…**, and writes why, including how the request was
+   confirmed (at least 10 characters; the approver reads it, and it's kept in
+   the audit trail). Nothing changes yet.
 3. A **Board member or Compliance officer** (never another Platform Admin)
    sees it under *Governance → Approvals*. Before approving they must
    **independently re-confirm the request by a separate channel** — the queue

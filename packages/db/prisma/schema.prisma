@@ -304,6 +304,9 @@ model User {
   // not-yet-confirmed secret is inert either way, since nothing reads
   // it until mfaEnabled is true.
   mfaEnabled                  Boolean    @default(false)
+  /// When this person last finished signing in to the Ops Console (2026-11-16):
+  /// lets staff managers spot dormant staff accounts. Null until the next sign-in.
+  lastSignInAt                DateTime?
   mfaSecretEncrypted          String?
   // Real password auth for the Founder Portal — see
   // apps/backend/src/common/auth/session.ts. passwordHash is nullable to

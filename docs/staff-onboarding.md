@@ -18,8 +18,10 @@ Which situation are you in?
 ## A. Normal onboarding — in the app
 
 1. **Platform Admin:** Ops Console → **Team** → **Invite staff member**. Enter
-   the person's email and role, then press **Send for approval**. No invitation
-   exists yet.
+   the person's email and role, and why they're joining (at least 10
+   characters; the approver reads it first and it's kept in the audit trail),
+   then press **Send for approval**. No invitation exists yet; it shows under
+   *Invitations awaiting approval*.
 2. **Approver (Board or Compliance), a different person:** before approving,
    confirm through a separate channel, such as a phone call or in person, that
    this is a real, new staff member and the role is right. Then open
@@ -34,13 +36,14 @@ to the invitation on the **Team** page. The invitation link is deliberately
 never shown in the app. Whoever opens it chooses the account's password, so it
 must only ever reach the invited person's inbox.
 
-**Wrong role?** Revoke the pending invitation on the **Team** page and propose
-it again with the right role.
+**Wrong role?** Revoke the pending invitation on the **Team** page (it asks
+you to confirm) and propose it again with the right role.
 
 **Giving someone another role, or taking one away.** A staff member can hold
 several roles, such as Legal Adviser and Compliance Officer. On **Team**,
-the Platform Admin uses **+ Add role** or the **×** on a role in that person's
-row; a Board member or the Compliance Officer approves it on **Approvals**,
+the Platform Admin opens the person and chooses **Add a role…** or **Remove a
+role…**, picks the role and writes why; a Board member or the Compliance
+Officer approves it on **Approvals**,
 just like an invitation. The person is notified when it takes effect. Some
 rules always apply:
 
@@ -89,8 +92,8 @@ From then on, add everyone else with **A**.
 When someone leaves Birr, or their access must stop while something is
 looked into, suspend them. It's two-person, like adding staff.
 
-1. A **Platform Admin** opens **Team**, chooses **Suspend…** on that
-   person's row, and writes why (at least 10 characters). Nothing changes
+1. A **Platform Admin** opens **Team**, opens that person, chooses
+   **Suspend…**, and writes why (at least 10 characters). Nothing changes
    yet.
 2. A **Board member or Compliance officer** approves it on
    **Approvals**. Confirm the reason through a separate channel first.
@@ -107,4 +110,18 @@ the last active Platform Admin. Bring someone else into the role first.
 
 To let them back in, **Reinstate…** works the same way. Nobody can
 suspend or reinstate themselves.
+
+## Reviewing staff access
+
+The **Team** page shows, for every staff member, their roles, whether
+two-factor is set up, and when they last signed in. Use **Needs attention**
+to list anyone without two-factor or with no sign-in for 90 days. A dormant
+account is only flagged, never suspended automatically: confirm with the
+person and their manager, then suspend it if it's no longer needed. Open a
+person to see their history: every invitation, role change, suspension and
+two-factor reset about them, with its reason and who proposed and approved
+it. (History is visible to staff managers: Platform Admins, the Board,
+Compliance and the Audit Committee.) Anything awaiting approval is marked
+on their row, and no other change can be proposed for them until it's
+decided.
 
