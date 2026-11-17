@@ -15,7 +15,8 @@ import { NotificationsModule } from "../notifications/notifications.module";
 import { InvitationsModule } from "../invitations/invitations.module";
 import { ZakahModule } from "../zakah/zakah.module";
 import { FounderSuccessionModule } from "../founder-succession/founder-succession.module";
-import { ClinicWaqfsModule } from "../clinic-waqfs/clinic-waqfs.module";
+import { WaqfProgrammesModule } from "../waqf-programmes/waqf-programmes.module";
+import { ClinicsModule } from "../clinics/clinics.module";
 
 @Module({
   imports: [
@@ -33,7 +34,8 @@ import { ClinicWaqfsModule } from "../clinic-waqfs/clinic-waqfs.module";
     InvitationsModule,
     ZakahModule,
     FounderSuccessionModule,
-    ClinicWaqfsModule,
+    WaqfProgrammesModule,
+    ClinicsModule,
   ],
   controllers: [GovernedActionsController],
   providers: [GovernedActionsService],

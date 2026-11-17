@@ -117,12 +117,12 @@ export class ZakahStructuringReviewService {
         orderBy: { createdAt: "desc" },
       })),
       ...(
-        await prisma.clinicGift.findMany({
+        await prisma.programmeGift.findMany({
           where: { status: "confirmed", currency: CURRENCY, donorId: { not: null } },
-          include: { donor, clinicWaqf: { select: { name: true } } },
+          include: { donor, programme: { select: { name: true } } },
           orderBy: { createdAt: "desc" },
         })
-      ).map((g) => ({ ...g, vault: { name: `${g.clinicWaqf.name} (clinic waqf)` } })),
+      ).map((g) => ({ ...g, vault: { name: `${g.programme.name} (clinic waqf)` } })),
     ];
     const vaultRow = (g: (typeof vaultGifts)[number]) => ({
       id: g.id,

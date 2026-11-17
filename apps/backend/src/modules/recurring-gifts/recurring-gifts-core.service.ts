@@ -28,10 +28,10 @@ export interface RecurringGiftSetupInput {
   zakahMetalPriceId?: string;
   zakahNisabBasis?: string | null;
   /** Clinic waqf gifts (2026-11-17): the clinic, the pot, and for the endowment the deed accepted. */
-  clinicWaqfId?: string;
-  clinicPot?: "endowment" | "running";
-  clinicDeedId?: string;
-  clinicDeedTextHash?: string;
+  programmeId?: string;
+  programmePot?: "endowment" | "running";
+  programmeDeedId?: string;
+  programmeDeedTextHash?: string;
 }
 
 type Who = { type: "giver" } | { type: "system" } | { type: "staff"; userId: string };
@@ -91,10 +91,10 @@ export class RecurringGiftsCoreService {
         zakahRulesetVersion: input.zakahRulesetVersion,
         zakahNisabBasis: input.zakahNisabBasis ?? null,
         zakahMetalPriceId: input.zakahMetalPriceId,
-        clinicWaqfId: input.clinicWaqfId,
-        clinicPot: input.clinicPot,
-        clinicDeedId: input.clinicDeedId,
-        clinicDeedTextHash: input.clinicDeedTextHash,
+        programmeId: input.programmeId,
+        programmePot: input.programmePot,
+        programmeDeedId: input.programmeDeedId,
+        programmeDeedTextHash: input.programmeDeedTextHash,
       },
     });
     await this.audit(tx, gift, { type: "giver" }, "recurring_gift.set_up_started", null, gift);
@@ -217,9 +217,9 @@ export class RecurringGiftsCoreService {
       const waqf = await prisma.waqf.findUnique({ where: { id: gift.waqfId }, select: { name: true } });
       return { phrase: `to ${escapeHtml(waqf?.name ?? "your Waqf Fund")}` };
     }
-    if (gift.kind === "clinic" && gift.clinicWaqfId) {
-      const clinic = await prisma.clinicWaqf.findUnique({ where: { id: gift.clinicWaqfId }, select: { name: true } });
-      const pot = gift.clinicPot === "endowment" ? "endowment" : "running fund";
+    if (gift.kind === "programme" && gift.programmeId) {
+      const clinic = await prisma.waqfProgramme.findUnique({ where: { id: gift.programmeId }, select: { name: true } });
+      const pot = gift.programmePot === "endowment" ? "endowment" : "running fund";
       return { phrase: `to the ${pot} of ${escapeHtml(clinic?.name ?? "the clinic")}` };
     }
     return { phrase: "towards your zakah" };

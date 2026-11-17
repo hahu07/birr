@@ -357,72 +357,72 @@ model User {
   updatedAt                   DateTime   @updatedAt
   deletedAt                   DateTime?
 
-  founderMemberships             FounderMembership[]             @relation("MembershipUser")
-  invitedMemberships             FounderMembership[]             @relation("MembershipInvitedBy")
-  birrStaff                      BirrStaff?
-  makerActions                   GovernedAction[]                @relation("GovernedActionMaker")
-  checkerActions                 GovernedAction[]                @relation("GovernedActionChecker")
-  auditLogs                      AuditLog[]
-  sentInvitations                Invitation[]                    @relation("InvitationInvitedBy")
-  coiDeclarations                ConflictOfInterestDeclaration[] @relation("CoiDeclaredBy")
-  coiReviews                     ConflictOfInterestDeclaration[] @relation("CoiReviewedBy")
-  whatsappOtps                   WhatsAppOtp[]
-  signedWaqfDeeds                WaqfDeed[]
-  signedFoundationDeeds          FoundationDeed[]
-  coFounderDeedConsents          CoFounderDeedConsent[]
-  updatedProviderCredentials     ProviderCredential[]
-  proposedCauseSuggestions       CauseCategorySuggestion[]       @relation("CauseSuggestionProposedBy")
-  reviewedCauseSuggestions       CauseCategorySuggestion[]       @relation("CauseSuggestionReviewedBy")
-  proposedBeneficiaryNominations BeneficiaryNomination[]         @relation("BeneficiaryNominationProposedBy")
-  reviewedBeneficiaryNominations BeneficiaryNomination[]         @relation("BeneficiaryNominationReviewedBy")
-  causeImpactUpdates             CauseImpactUpdate[]
-  notifications                  Notification[]
-  notificationPreferences        NotificationPreference[]
-  recordedWaqfProceeds           WaqfProceeds[]
-  counterpartyShariahApprovals   Counterparty[]                  @relation("CounterpartyShariahApprover")
-  counterpartyLicensesRecorded   CounterpartyLicense[]           @relation("CounterpartyLicenseRecorder")
-  counterpartyLicensesVerified   CounterpartyLicense[]           @relation("CounterpartyLicenseVerifier")
-  counterpartyLicensesWithdrawn  CounterpartyLicense[]           @relation("CounterpartyLicenseWithdrawer")
-  clinicWaqfsCreated             ClinicWaqf[]                    @relation("ClinicWaqfCreator")
-  clinicWaqfDeedsCreated         ClinicWaqfDeed[]                @relation("ClinicWaqfDeedCreator")
-  clinicGiftsInitiated           ClinicGift[]                    @relation("ClinicGiftInitiator")
-  clinicAssetsRecorded           ClinicAsset[]                   @relation("ClinicAssetRecorder")
-  clinicWorksCreated             ClinicWorksProject[]            @relation("ClinicWorksCreator")
-  clinicSpendsCreated            ClinicSpend[]                   @relation("ClinicSpendCreator")
-  clinicPriceListsCreated        ClinicPriceList[]               @relation("ClinicPriceListCreator")
-  clinicClaimsCreated            ClinicClaim[]                   @relation("ClinicClaimCreator")
-  clinicReportsRecorded          ClinicMonthlyReport[]           @relation("ClinicReportRecorder")
-  clinicReportsPublished         ClinicMonthlyReport[]           @relation("ClinicReportPublisher")
-  clinicInvestmentsCreated       ClinicInvestment[]              @relation("ClinicInvestmentCreator")
-  clinicInvestmentsScreened      ClinicInvestment[]              @relation("ClinicInvestmentShariahReviewer")
-  clinicInvestmentIncomeRecorded ClinicInvestmentIncome[]        @relation("ClinicInvestmentIncomeRecorder")
-  createdInvestmentPlacements    InvestmentPlacement[]
-  sentMessages                   Message[]
-  mfaBackupCodes                 MfaBackupCode[]
-  createdVaults                  Vault[]
-  recordedVaultProceeds          VaultProceeds[]
-  recordedVaultExpenses          VaultExpense[]
-  recordedWaqfExpenses           WaqfExpense[]
-  shariahScreeningDecisions      ShariahScreening[]              @relation("ShariahScreeningReviewer")
-  vaultShariahScreeningDecisions VaultShariahScreening[]         @relation("VaultShariahScreeningReviewer")
-  investmentTargetsSet           InvestmentTarget[]
-  vaultInvestmentTargetsSet      VaultInvestmentTarget[]
-  blogArticlesCreated            BlogArticle[]                   @relation("BlogArticleCreator")
-  blogArticlesReviewed           BlogArticle[]                   @relation("BlogArticleReviewer")
-  fieldPhotosUploaded            VaultFieldPhoto[]               @relation("FieldPhotoUploader")
-  fieldPhotosHidden              VaultFieldPhoto[]               @relation("FieldPhotoHider")
-  zakahRulesetsCreated           ZakahRuleset[]                  @relation("ZakahRulesetCreator")
-  zakahRecipientsCreated         ZakahRecipient[]                @relation("ZakahRecipientCreator")
-  zakahDistributionsCreated      ZakahDistribution[]             @relation("ZakahDistributionCreator")
-  zakahRefundsCreated            ZakahRefund[]                   @relation("ZakahRefundCreator")
-  zakahFitrCampaignsCreated      ZakahFitrCampaign[]             @relation("ZakahFitrCampaignCreator")
-  zakahPaymentsHeld              ZakahPayment[]                  @relation("ZakahPaymentHolder")
-  zakahRecipientChangesRequested ZakahRecipient[]                @relation("ZakahRecipientChangeRequester")
-  reconciliationRunsStarted      PaymentReconciliationRun[]      @relation("ReconciliationRunStarter")
-  reconciliationIssuesResolved   PaymentReconciliationIssue[]    @relation("ReconciliationIssueResolver")
-  successionsRequested           PrimaryContactSuccession[]      @relation("SuccessionRequester")
-  successionsRecorded            PrimaryContactSuccession[]      @relation("SuccessionRecorder")
-  accessReviews                  AccessReview[]                  @relation("AccessReviewReviewer")
+  founderMemberships                FounderMembership[]             @relation("MembershipUser")
+  invitedMemberships                FounderMembership[]             @relation("MembershipInvitedBy")
+  birrStaff                         BirrStaff?
+  makerActions                      GovernedAction[]                @relation("GovernedActionMaker")
+  checkerActions                    GovernedAction[]                @relation("GovernedActionChecker")
+  auditLogs                         AuditLog[]
+  sentInvitations                   Invitation[]                    @relation("InvitationInvitedBy")
+  coiDeclarations                   ConflictOfInterestDeclaration[] @relation("CoiDeclaredBy")
+  coiReviews                        ConflictOfInterestDeclaration[] @relation("CoiReviewedBy")
+  whatsappOtps                      WhatsAppOtp[]
+  signedWaqfDeeds                   WaqfDeed[]
+  signedFoundationDeeds             FoundationDeed[]
+  coFounderDeedConsents             CoFounderDeedConsent[]
+  updatedProviderCredentials        ProviderCredential[]
+  proposedCauseSuggestions          CauseCategorySuggestion[]       @relation("CauseSuggestionProposedBy")
+  reviewedCauseSuggestions          CauseCategorySuggestion[]       @relation("CauseSuggestionReviewedBy")
+  proposedBeneficiaryNominations    BeneficiaryNomination[]         @relation("BeneficiaryNominationProposedBy")
+  reviewedBeneficiaryNominations    BeneficiaryNomination[]         @relation("BeneficiaryNominationReviewedBy")
+  causeImpactUpdates                CauseImpactUpdate[]
+  notifications                     Notification[]
+  notificationPreferences           NotificationPreference[]
+  recordedWaqfProceeds              WaqfProceeds[]
+  counterpartyShariahApprovals      Counterparty[]                  @relation("CounterpartyShariahApprover")
+  counterpartyLicensesRecorded      CounterpartyLicense[]           @relation("CounterpartyLicenseRecorder")
+  counterpartyLicensesVerified      CounterpartyLicense[]           @relation("CounterpartyLicenseVerifier")
+  counterpartyLicensesWithdrawn     CounterpartyLicense[]           @relation("CounterpartyLicenseWithdrawer")
+  waqfProgrammesCreated             WaqfProgramme[]                 @relation("WaqfProgrammeCreator")
+  waqfProgrammeDeedsCreated         WaqfProgrammeDeed[]             @relation("WaqfProgrammeDeedCreator")
+  programmeGiftsInitiated           ProgrammeGift[]                 @relation("ProgrammeGiftInitiator")
+  programmeAssetsRecorded           ProgrammeAsset[]                @relation("ProgrammeAssetRecorder")
+  programmeWorksCreated             ProgrammeWorksProject[]         @relation("ProgrammeWorksCreator")
+  programmeSpendsCreated            ProgrammeSpend[]                @relation("ProgrammeSpendCreator")
+  clinicPriceListsCreated           ClinicPriceList[]               @relation("ClinicPriceListCreator")
+  clinicClaimsCreated               ClinicClaim[]                   @relation("ClinicClaimCreator")
+  clinicReportsRecorded             ClinicMonthlyReport[]           @relation("ClinicReportRecorder")
+  clinicReportsPublished            ClinicMonthlyReport[]           @relation("ClinicReportPublisher")
+  programmeInvestmentsCreated       ProgrammeInvestment[]           @relation("ProgrammeInvestmentCreator")
+  programmeInvestmentsScreened      ProgrammeInvestment[]           @relation("ProgrammeInvestmentShariahReviewer")
+  programmeInvestmentIncomeRecorded ProgrammeInvestmentIncome[]     @relation("ProgrammeInvestmentIncomeRecorder")
+  createdInvestmentPlacements       InvestmentPlacement[]
+  sentMessages                      Message[]
+  mfaBackupCodes                    MfaBackupCode[]
+  createdVaults                     Vault[]
+  recordedVaultProceeds             VaultProceeds[]
+  recordedVaultExpenses             VaultExpense[]
+  recordedWaqfExpenses              WaqfExpense[]
+  shariahScreeningDecisions         ShariahScreening[]              @relation("ShariahScreeningReviewer")
+  vaultShariahScreeningDecisions    VaultShariahScreening[]         @relation("VaultShariahScreeningReviewer")
+  investmentTargetsSet              InvestmentTarget[]
+  vaultInvestmentTargetsSet         VaultInvestmentTarget[]
+  blogArticlesCreated               BlogArticle[]                   @relation("BlogArticleCreator")
+  blogArticlesReviewed              BlogArticle[]                   @relation("BlogArticleReviewer")
+  fieldPhotosUploaded               VaultFieldPhoto[]               @relation("FieldPhotoUploader")
+  fieldPhotosHidden                 VaultFieldPhoto[]               @relation("FieldPhotoHider")
+  zakahRulesetsCreated              ZakahRuleset[]                  @relation("ZakahRulesetCreator")
+  zakahRecipientsCreated            ZakahRecipient[]                @relation("ZakahRecipientCreator")
+  zakahDistributionsCreated         ZakahDistribution[]             @relation("ZakahDistributionCreator")
+  zakahRefundsCreated               ZakahRefund[]                   @relation("ZakahRefundCreator")
+  zakahFitrCampaignsCreated         ZakahFitrCampaign[]             @relation("ZakahFitrCampaignCreator")
+  zakahPaymentsHeld                 ZakahPayment[]                  @relation("ZakahPaymentHolder")
+  zakahRecipientChangesRequested    ZakahRecipient[]                @relation("ZakahRecipientChangeRequester")
+  reconciliationRunsStarted         PaymentReconciliationRun[]      @relation("ReconciliationRunStarter")
+  reconciliationIssuesResolved      PaymentReconciliationIssue[]    @relation("ReconciliationIssueResolver")
+  successionsRequested              PrimaryContactSuccession[]      @relation("SuccessionRequester")
+  successionsRecorded               PrimaryContactSuccession[]      @relation("SuccessionRecorder")
+  accessReviews                     AccessReview[]                  @relation("AccessReviewReviewer")
 
   @@map("users")
 }
@@ -449,20 +449,20 @@ model MfaBackupCode {
 }
 
 model Founder {
-  id               String           @id @default(uuid())
-  name             String
-  kind             FounderKind
-  institutionType  InstitutionType?
-  homeJurisdiction String?
-  status           FounderStatus    @default(active)
+  id                 String           @id @default(uuid())
+  name               String
+  kind               FounderKind
+  institutionType    InstitutionType?
+  homeJurisdiction   String?
+  status             FounderStatus    @default(active)
   // A Founder who joined from a clinic waqf's page to support it, without
   // setting up a Foundation (owner's decision, 2026-11-17: verify, then
   // give). Their onboarding is complete once verified; they can still set
   // up a Foundation later.
-  clinicSupporter  Boolean          @default(false)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  deletedAt        DateTime?
+  programmeSupporter Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
 
   memberships               FounderMembership[]
   foundationFounders        FoundationFounder[]
@@ -477,7 +477,7 @@ model Founder {
   founderRequests           FounderRequest[]
   funnelEvents              FunnelEvent[]
   primaryContactSuccessions PrimaryContactSuccession[]
-  clinicGifts               ClinicGift[]
+  programmeGifts            ProgrammeGift[]
 
   @@map("founders")
 }
@@ -843,8 +843,8 @@ model FoundationFounder {
 // here never rewrites or breaks history already on a waqf — it only
 // removes the option from what a Founder can newly pick.
 model CauseCategory {
-  id                 String          @id @default(uuid())
-  name               String          @unique
+  id                 String               @id @default(uuid())
+  name               String               @unique
   description        String?
   // A default project-plan TEMPLATE, copied into a new VaultCause at
   // selection time (same copy-at-selection pattern as `description`
@@ -873,7 +873,7 @@ model CauseCategory {
   // Product team's own curated display order (ascending, ties broken by
   // name) — not creation order or alphabetical, since neither reflects
   // which causes Birr wants shown first.
-  sortOrder          Int             @default(0)
+  sortOrder          Int                  @default(0)
   // Staff-curated, not derived from live selection stats — with so few
   // real waqfs established, usage-based "commonly picked for this type"
   // would be noise for a long while. A UX nudge only (the Founder's
@@ -892,10 +892,12 @@ model CauseCategory {
   // the Founder's picker; one with none behaves exactly as every
   // category did before this existed.
   parentId           String?
-  parent             CauseCategory?  @relation("CauseCategoryChildren", fields: [parentId], references: [id])
-  children           CauseCategory[] @relation("CauseCategoryChildren")
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  parent             CauseCategory?       @relation("CauseCategoryChildren", fields: [parentId], references: [id])
+  children           CauseCategory[]      @relation("CauseCategoryChildren")
+  // Waqf programmes tagged with this cause (2026-11-17).
+  programmes         WaqfProgrammeCause[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
   deletedAt          DateTime?
 
   waqfCauses               WaqfCause[]
@@ -1160,52 +1162,52 @@ model AiAgent {
 // There is deliberately no checkerAgentId field or relation anywhere in
 // this schema. An AI agent can never be the checker. Do not add one.
 model GovernedAction {
-  id                        String               @id @default(uuid())
+  id                        String                 @id @default(uuid())
   // Nullable: a waqf.create action has no waqf yet to reference — that's
   // the whole point of the action. Every other governed action (asset
   // disposal, distribution approval, etc.) is expected to set this.
   waqfId                    String?
-  waqf                      Waqf?                @relation(fields: [waqfId], references: [id])
+  waqf                      Waqf?                  @relation(fields: [waqfId], references: [id])
   // Vault-scoped counterpart to waqfId above — nullable for the same
   // reason (a governed action might belong to neither, e.g. a legacy
   // waqf.create-shaped row), set by whichever handler in
   // GovernedActionsService's map actually resolves one (resolveVaultId,
   // mirroring resolveWaqfId).
   vaultId                   String?
-  vault                     Vault?               @relation(fields: [vaultId], references: [id])
+  vault                     Vault?                 @relation(fields: [vaultId], references: [id])
   permissionId              String
-  permission                Permission           @relation(fields: [permissionId], references: [id])
+  permission                Permission             @relation(fields: [permissionId], references: [id])
   makerType                 MakerType
   makerUserId               String?
-  makerUser                 User?                @relation("GovernedActionMaker", fields: [makerUserId], references: [id])
+  makerUser                 User?                  @relation("GovernedActionMaker", fields: [makerUserId], references: [id])
   makerAgentId              String?
-  makerAgent                AiAgent?             @relation(fields: [makerAgentId], references: [id])
+  makerAgent                AiAgent?               @relation(fields: [makerAgentId], references: [id])
   checkerUserId             String?
-  checkerUser               User?                @relation("GovernedActionChecker", fields: [checkerUserId], references: [id])
-  status                    GovernedActionStatus @default(proposed)
+  checkerUser               User?                  @relation("GovernedActionChecker", fields: [checkerUserId], references: [id])
+  status                    GovernedActionStatus   @default(proposed)
   payload                   Json
-  createdAt                 DateTime             @default(now())
+  createdAt                 DateTime               @default(now())
   decidedAt                 DateTime?
   approvedZakahRuleset      ZakahRuleset?
   zakahMetalPrice           ZakahMetalPrice?
-  approvedZakahDistribution ZakahDistribution?   @relation("ZakahDistributionApproval")
-  paidZakahDistribution     ZakahDistribution?   @relation("ZakahDistributionPayment")
-  approvedZakahRefund       ZakahRefund?         @relation("ZakahRefundApproval")
-  paidZakahRefund           ZakahRefund?         @relation("ZakahRefundPayment")
-  approvedZakahFitrCampaign ZakahFitrCampaign?   @relation("ZakahFitrCampaignApproval")
-  approvedZakahRecipient    ZakahRecipient?      @relation("ZakahRecipientApproval")
-  establishedClinicWaqf     ClinicWaqf?          @relation("ClinicWaqfEstablishment")
-  approvedClinicWaqfDeed    ClinicWaqfDeed?      @relation("ClinicWaqfDeedApproval")
-  approvedClinicAsset       ClinicAsset?         @relation("ClinicAssetApproval")
-  disposedClinicAsset       ClinicAsset?         @relation("ClinicAssetDisposal")
-  approvedClinicWorks       ClinicWorksProject?  @relation("ClinicWorksApproval")
-  approvedClinicSpend       ClinicSpend?         @relation("ClinicSpendApproval")
-  paidClinicSpend           ClinicSpend?         @relation("ClinicSpendPayment")
-  approvedClinicPriceList   ClinicPriceList?     @relation("ClinicPriceListApproval")
-  assignedClinicOperator    ClinicWaqf?          @relation("ClinicOperatorAssignment")
-  setClinicReserveShare     ClinicWaqf?          @relation("ClinicReserveShare")
-  approvedClinicClaim       ClinicClaim?         @relation("ClinicClaimApproval")
-  paidClinicClaim           ClinicClaim?         @relation("ClinicClaimPayment")
+  approvedZakahDistribution ZakahDistribution?     @relation("ZakahDistributionApproval")
+  paidZakahDistribution     ZakahDistribution?     @relation("ZakahDistributionPayment")
+  approvedZakahRefund       ZakahRefund?           @relation("ZakahRefundApproval")
+  paidZakahRefund           ZakahRefund?           @relation("ZakahRefundPayment")
+  approvedZakahFitrCampaign ZakahFitrCampaign?     @relation("ZakahFitrCampaignApproval")
+  approvedZakahRecipient    ZakahRecipient?        @relation("ZakahRecipientApproval")
+  establishedWaqfProgramme  WaqfProgramme?         @relation("WaqfProgrammeEstablishment")
+  approvedWaqfProgrammeDeed WaqfProgrammeDeed?     @relation("WaqfProgrammeDeedApproval")
+  approvedProgrammeAsset    ProgrammeAsset?        @relation("ProgrammeAssetApproval")
+  disposedProgrammeAsset    ProgrammeAsset?        @relation("ProgrammeAssetDisposal")
+  approvedProgrammeWorks    ProgrammeWorksProject? @relation("ProgrammeWorksApproval")
+  approvedProgrammeSpend    ProgrammeSpend?        @relation("ProgrammeSpendApproval")
+  paidProgrammeSpend        ProgrammeSpend?        @relation("ProgrammeSpendPayment")
+  approvedClinicPriceList   ClinicPriceList?       @relation("ClinicPriceListApproval")
+  assignedClinicOperator    WaqfProgramme?         @relation("ClinicOperatorAssignment")
+  setProgrammeReserveShare  WaqfProgramme?         @relation("ProgrammeReserveShare")
+  approvedClinicClaim       ClinicClaim?           @relation("ClinicClaimApproval")
+  paidClinicClaim           ClinicClaim?           @relation("ClinicClaimPayment")
 
   @@index([waqfId])
   @@index([status])
@@ -1735,13 +1737,13 @@ model Counterparty {
   zakahDistributions ZakahDistribution[]
   licenses           CounterpartyLicense[]
 
-  clinicWorksProjects ClinicWorksProject[] @relation("ClinicWorksContractor")
-  clinicSpends        ClinicSpend[]        @relation("ClinicSpendPayee")
+  programmeWorksProjects ProgrammeWorksProject[] @relation("ProgrammeWorksContractor")
+  programmeSpends        ProgrammeSpend[]        @relation("ProgrammeSpendPayee")
 
-  clinicInvestments ClinicInvestment[] @relation("ClinicInvestmentCounterparty")
+  programmeInvestments ProgrammeInvestment[] @relation("ProgrammeInvestmentCounterparty")
 
-  clinicsOperated ClinicWaqf[]  @relation("ClinicWaqfOperator")
-  clinicClaims    ClinicClaim[] @relation("ClinicClaimOperator")
+  clinicsOperated WaqfProgramme[] @relation("ClinicWaqfOperator")
+  clinicClaims    ClinicClaim[]   @relation("ClinicClaimOperator")
 
   @@map("counterparties")
 }
@@ -2630,7 +2632,7 @@ model VaultDonor {
   contributions VaultContribution[]
   auditLogs     AuditLog[]
 
-  clinicGifts ClinicGift[]
+  programmeGifts ProgrammeGift[]
 
   @@index([whatsappNumber])
   @@map("vault_donors")
@@ -3693,7 +3695,7 @@ enum RecurringGiftKind {
   vault
   waqf
   zakah
-  clinic // a clinic waqf's endowment or running fund (2026-11-17, clinic slice 4b)
+  programme // a waqf programme's pot, e.g. a clinic waqf's endowment or running fund (2026-11-17, clinic slice 4b)
 }
 
 enum RecurringGiftStatus {
@@ -3754,12 +3756,12 @@ model RecurringGift {
   /// gift keeps the deed version its giver accepted; a charge pauses
   /// (terms_changed) once a newer version is approved, until they accept
   /// it. A public giver's gift has no founderId; a Founder's does.
-  clinicWaqfId       String?
-  clinicWaqf         ClinicWaqf?     @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
-  clinicPot          ClinicPot?
-  clinicDeedId       String?
-  clinicDeed         ClinicWaqfDeed? @relation(fields: [clinicDeedId], references: [id], onDelete: Restrict)
-  clinicDeedTextHash String?
+  programmeId           String?
+  programme             WaqfProgramme?     @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  programmePot          WaqfProgrammePot?
+  programmeDeedId       String?
+  programmeDeed         WaqfProgrammeDeed? @relation(fields: [programmeDeedId], references: [id], onDelete: Restrict)
+  programmeDeedTextHash String?
 
   /// Zakah and clinic gifts: add the processing fee on top (as at setup).
   coverFee              Boolean @default(false)
@@ -3799,7 +3801,7 @@ model RecurringGift {
   contributions      Contribution[]
   vaultContributions VaultContribution[]
   zakahPayments      ZakahPayment[]
-  clinicGifts        ClinicGift[]
+  programmeGifts     ProgrammeGift[]
 
   @@index([status, nextChargeAt])
   @@index([email])
@@ -4010,7 +4012,7 @@ model GiverWhatsAppConfirmation {
 // decision; see CLAUDE.md). Founders and the public both give into it (from
 // slice 3). Its own tables, never extending Waqf or Vault ones.
 
-enum ClinicWaqfStatus {
+enum WaqfProgrammeStatus {
   draft // being prepared; takes no gifts
   established // the Board approved establishing it (clinic_waqf.establish)
 }
@@ -4019,37 +4021,46 @@ enum ClinicWaqfStatus {
 // Created by a Mutawalli Officer as a draft; established only by the
 // governed clinic_waqf.establish (maker mutawalli_officer, checker
 // board_of_trustees only), and only once a deed version has been approved.
-model ClinicWaqf {
-  id                  String           @id @default(uuid())
+// What kind of waqf programme this is (2026-11-17). A waqf programme is a
+// waqf Birr establishes and curates; the clinic is the first product.
+enum WaqfProgrammeProduct {
+  clinic
+}
+
+model WaqfProgramme {
+  id                  String               @id @default(uuid())
+  // Fixed for good: what kind of programme it is. The operator, price
+  // lists, claims and monthly figures belong to clinics only (a CHECK).
+  product             WaqfProgrammeProduct
   name                String
   // The public page's address (/clinics/:slug, a later slice). Fixed once
   // set, so a shared link never breaks.
-  slug                String           @unique
+  slug                String               @unique
   city                String
   jurisdiction        String
   description         String?
-  status              ClinicWaqfStatus @default(draft)
+  status              WaqfProgrammeStatus  @default(draft)
   createdByUserId     String
-  createdByUser       User             @relation("ClinicWaqfCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByUser       User                 @relation("WaqfProgrammeCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
   establishedAt       DateTime?
-  establishedActionId String?          @unique
-  establishedAction   GovernedAction?  @relation("ClinicWaqfEstablishment", fields: [establishedActionId], references: [id], onDelete: Restrict)
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  establishedActionId String?              @unique
+  establishedAction   GovernedAction?      @relation("WaqfProgrammeEstablishment", fields: [establishedActionId], references: [id], onDelete: Restrict)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
-  deeds          ClinicWaqfDeed[]
-  journalEntries ClinicJournalEntry[]
+  deeds          WaqfProgrammeDeed[]
+  journalEntries ProgrammeJournalEntry[]
 
-  gifts ClinicGift[]
+  gifts ProgrammeGift[]
 
   recurringGifts RecurringGift[]
 
-  assets ClinicAsset[]
+  assets ProgrammeAsset[]
 
-  worksProjects ClinicWorksProject[]
-  spends        ClinicSpend[]
+  worksProjects ProgrammeWorksProject[]
+  spends        ProgrammeSpend[]
 
-  investments ClinicInvestment[]
+  investments ProgrammeInvestment[]
 
   priceLists ClinicPriceList[]
 
@@ -4070,17 +4081,20 @@ model ClinicWaqf {
 
   monthlyReports ClinicMonthlyReport[]
 
+  // The causes it serves, from the cause catalog (shared layer step 3).
+  causes WaqfProgrammeCause[]
+
   // The equipment replacement reserve (slice 9): this share of every
   // endowment income receipt is set aside automatically (1150 / 1100). Set
   // by the Board (clinic_waqf.reserve_share_set).
   reserveSharePercent  Int             @default(0)
   reserveShareActionId String?         @unique
-  reserveShareAction   GovernedAction? @relation("ClinicReserveShare", fields: [reserveShareActionId], references: [id], onDelete: Restrict)
+  reserveShareAction   GovernedAction? @relation("ProgrammeReserveShare", fields: [reserveShareActionId], references: [id], onDelete: Restrict)
 
-  @@map("clinic_waqfs")
+  @@map("waqf_programmes")
 }
 
-enum ClinicWaqfDeedStatus {
+enum WaqfProgrammeDeedStatus {
   draft
   approved // the version supporters accept from now on
   superseded // a later version was approved
@@ -4095,29 +4109,29 @@ enum ClinicWaqfDeedStatus {
 // checked against the text by the database. At most one approved version
 // per clinic; approving a new one supersedes it. Supporters accept the
 // approved version when they endow (slice 3).
-model ClinicWaqfDeed {
-  id               String               @id @default(uuid())
-  clinicWaqfId     String
-  clinicWaqf       ClinicWaqf           @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+model WaqfProgrammeDeed {
+  id               String                  @id @default(uuid())
+  programmeId      String
+  programme        WaqfProgramme           @relation(fields: [programmeId], references: [id], onDelete: Restrict)
   version          Int
-  text             String               @db.Text
+  text             String                  @db.Text
   // sha256 of the text, hex. A database CHECK recomputes it.
   textHash         String
-  status           ClinicWaqfDeedStatus @default(draft)
+  status           WaqfProgrammeDeedStatus @default(draft)
   createdByUserId  String
-  createdByUser    User                 @relation("ClinicWaqfDeedCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdByUser    User                    @relation("WaqfProgrammeDeedCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
   approvedAt       DateTime?
-  approvedActionId String?              @unique
-  approvedAction   GovernedAction?      @relation("ClinicWaqfDeedApproval", fields: [approvedActionId], references: [id], onDelete: Restrict)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  approvedActionId String?                 @unique
+  approvedAction   GovernedAction?         @relation("WaqfProgrammeDeedApproval", fields: [approvedActionId], references: [id], onDelete: Restrict)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
 
-  gifts ClinicGift[]
+  gifts ProgrammeGift[]
 
   recurringGifts RecurringGift[]
 
-  @@unique([clinicWaqfId, version])
-  @@map("clinic_waqf_deeds")
+  @@unique([programmeId, version])
+  @@map("waqf_programme_deeds")
 }
 
 // The two pots every clinic waqf keeps apart (owner's decision,
@@ -4127,27 +4141,27 @@ model ClinicWaqfDeed {
 // balance within each pot — so nothing ever moves from one to the other.
 // The endowment's investment income is earned straight into the running
 // fund, never through the endowment.
-enum ClinicPot {
+enum WaqfProgrammePot {
   endowment
   running
 }
 
 // One chart of accounts shared by every clinic waqf, like Vault's.
-model ClinicLedgerAccount {
+model ProgrammeLedgerAccount {
   id              String            @id @default(uuid())
   code            String            @unique
   name            String
   type            LedgerAccountType
-  pot             ClinicPot
+  pot             WaqfProgrammePot
   isSystemDefault Boolean           @default(false)
   createdAt       DateTime          @default(now())
 
-  lines ClinicJournalEntryLine[]
+  lines ProgrammeJournalEntryLine[]
 
-  @@map("clinic_ledger_accounts")
+  @@map("programme_ledger_accounts")
 }
 
-enum ClinicJournalEntrySource {
+enum ProgrammeJournalEntrySource {
   gift
   investment_income
   expense
@@ -4162,43 +4176,43 @@ enum ClinicJournalEntrySource {
 
 // Append-only, like every Birr ledger: a mistake is corrected with a new,
 // offsetting entry (a trigger refuses edits and deletes).
-model ClinicJournalEntry {
-  id           String                   @id @default(uuid())
-  clinicWaqfId String
-  clinicWaqf   ClinicWaqf               @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
-  entryDate    DateTime                 @default(now())
-  description  String
-  currency     String
-  source       ClinicJournalEntrySource
+model ProgrammeJournalEntry {
+  id          String                      @id @default(uuid())
+  programmeId String
+  programme   WaqfProgramme               @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  entryDate   DateTime                    @default(now())
+  description String
+  currency    String
+  source      ProgrammeJournalEntrySource
   // What triggered it. Unique per source, so a retried webhook can't post
   // the same money twice.
-  sourceId     String?
-  actorType    ActorType
-  actorUserId  String?
-  createdAt    DateTime                 @default(now())
+  sourceId    String?
+  actorType   ActorType
+  actorUserId String?
+  createdAt   DateTime                    @default(now())
 
-  lines ClinicJournalEntryLine[]
+  lines ProgrammeJournalEntryLine[]
 
   @@unique([source, sourceId])
-  @@index([clinicWaqfId])
-  @@map("clinic_journal_entries")
+  @@index([programmeId])
+  @@map("programme_journal_entries")
 }
 
-model ClinicJournalEntryLine {
-  id              String              @id @default(uuid())
+model ProgrammeJournalEntryLine {
+  id              String                 @id @default(uuid())
   journalEntryId  String
-  journalEntry    ClinicJournalEntry  @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  journalEntry    ProgrammeJournalEntry  @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
   ledgerAccountId String
-  ledgerAccount   ClinicLedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
-  debit           Decimal             @default(0)
-  credit          Decimal             @default(0)
+  ledgerAccount   ProgrammeLedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+  debit           Decimal                @default(0)
+  credit          Decimal                @default(0)
 
   @@index([journalEntryId])
   @@index([ledgerAccountId])
-  @@map("clinic_journal_entry_lines")
+  @@map("programme_journal_entry_lines")
 }
 
-enum ClinicGiftStatus {
+enum ProgrammeGiftStatus {
   pending
   confirmed
   failed
@@ -4215,11 +4229,11 @@ enum ClinicGiftStatus {
 // email or WhatsApp number count together toward the AML ID threshold.
 // What was given, and to which pot, never changes, and a gift is never
 // deleted (triggers).
-model ClinicGift {
+model ProgrammeGift {
   id                   String               @id @default(uuid())
-  clinicWaqfId         String
-  clinicWaqf           ClinicWaqf           @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
-  pot                  ClinicPot
+  programmeId          String
+  programme            WaqfProgramme        @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  pot                  WaqfProgrammePot
   donorId              String?
   donor                VaultDonor?          @relation(fields: [donorId], references: [id], onDelete: Restrict)
   // A Founder's gift (slice 4a): recorded as theirs, given by one of their
@@ -4228,7 +4242,7 @@ model ClinicGift {
   founderId            String?
   founder              Founder?             @relation(fields: [founderId], references: [id], onDelete: Restrict)
   initiatedByUserId    String?
-  initiatedByUser      User?                @relation("ClinicGiftInitiator", fields: [initiatedByUserId], references: [id], onDelete: Restrict)
+  initiatedByUser      User?                @relation("ProgrammeGiftInitiator", fields: [initiatedByUserId], references: [id], onDelete: Restrict)
   // A monthly gift's payment (slice 4b): the gift, and the month it collects
   // (null for a card-update checkout, as for Vault and zakah).
   recurringGiftId      String?
@@ -4244,24 +4258,24 @@ model ClinicGift {
   providerReference    String               @unique
   providerPaymentId    String?
   settlementSubaccount String
-  status               ClinicGiftStatus     @default(pending)
+  status               ProgrammeGiftStatus  @default(pending)
   confirmedAt          DateTime?
   deedId               String?
-  deed                 ClinicWaqfDeed?      @relation(fields: [deedId], references: [id], onDelete: Restrict)
+  deed                 WaqfProgrammeDeed?   @relation(fields: [deedId], references: [id], onDelete: Restrict)
   deedTextHash         String?
   ipAddress            String?
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
-  @@index([clinicWaqfId])
+  @@index([programmeId])
   @@index([donorId])
   @@index([founderId])
-  @@map("clinic_gifts")
+  @@map("programme_gifts")
 }
 
 // ---- Clinic waqf assets (2026-11-17, clinic slice 5a) ----
 
-enum ClinicAssetKind {
+enum ProgrammeAssetKind {
   land
   building
   equipment
@@ -4269,12 +4283,12 @@ enum ClinicAssetKind {
   other
 }
 
-enum ClinicAssetAcquisition {
+enum ProgrammeAssetAcquisition {
   donated
   purchased
 }
 
-enum ClinicAssetStatus {
+enum ProgrammeAssetStatus {
   proposed // recorded, waiting for the Board (clinic_waqf.asset_add)
   active // in the endowment's register
   rejected // the Board declined it
@@ -4291,11 +4305,11 @@ enum ClinicAssetStatus {
 // the same way. What it is and what it was valued at never change; its
 // care details (room, service dates, warranty) are kept up to date by
 // staff. Never deleted (triggers).
-model ClinicAsset {
-  id               String                 @id @default(uuid())
-  clinicWaqfId     String
-  clinicWaqf       ClinicWaqf             @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
-  kind             ClinicAssetKind
+model ProgrammeAsset {
+  id               String                    @id @default(uuid())
+  programmeId      String
+  programme        WaqfProgramme             @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  kind             ProgrammeAssetKind
   name             String
   description      String?
   // At acquisition, in naira: an independent valuation for a gift in kind.
@@ -4304,34 +4318,34 @@ model ClinicAsset {
   valuationNote    String
   // Who gave it, as they want it recorded.
   donorName        String?
-  acquiredOn       DateTime               @db.Date
+  acquiredOn       DateTime                  @db.Date
   serialNumber     String?
   location         String?
-  warrantyUntil    DateTime?              @db.Date
-  lastServicedOn   DateTime?              @db.Date
-  nextServiceDue   DateTime?              @db.Date
-  status           ClinicAssetStatus      @default(proposed)
+  warrantyUntil    DateTime?                 @db.Date
+  lastServicedOn   DateTime?                 @db.Date
+  nextServiceDue   DateTime?                 @db.Date
+  status           ProgrammeAssetStatus      @default(proposed)
   createdByUserId  String
-  createdByUser    User                   @relation("ClinicAssetRecorder", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  approvalActionId String?                @unique
-  approvalAction   GovernedAction?        @relation("ClinicAssetApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
-  disposalActionId String?                @unique
-  disposalAction   GovernedAction?        @relation("ClinicAssetDisposal", fields: [disposalActionId], references: [id], onDelete: Restrict)
-  disposedOn       DateTime?              @db.Date
+  createdByUser    User                      @relation("ProgrammeAssetRecorder", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvalActionId String?                   @unique
+  approvalAction   GovernedAction?           @relation("ProgrammeAssetApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  disposalActionId String?                   @unique
+  disposalAction   GovernedAction?           @relation("ProgrammeAssetDisposal", fields: [disposalActionId], references: [id], onDelete: Restrict)
+  disposedOn       DateTime?                 @db.Date
   disposalNote     String?
   // What a sale or exchange brought into the endowment, in naira (0 if scrapped).
   disposalProceeds Decimal?
-  // donated (slice 5a), or bought with endowment cash (slice 5b, ClinicSpend).
-  acquisition      ClinicAssetAcquisition @default(donated)
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
+  // donated (slice 5a), or bought with endowment cash (slice 5b, ProgrammeSpend).
+  acquisition      ProgrammeAssetAcquisition @default(donated)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
 
-  purchase   ClinicSpend?
+  purchase   ProgrammeSpend?
   // Reserve replacements of this asset (slice 9).
-  replacedBy ClinicSpend[] @relation("ClinicSpendReplaces")
+  replacedBy ProgrammeSpend[] @relation("ProgrammeSpendReplaces")
 
-  @@index([clinicWaqfId])
-  @@map("clinic_assets")
+  @@index([programmeId])
+  @@map("programme_assets")
 }
 
 // ---- Clinic waqf endowment spending (2026-11-17, clinic slice 5b) ----
@@ -4342,13 +4356,13 @@ model ClinicAsset {
 // once a second person confirms the bank reference, as zakah
 // distributions are.
 
-enum ClinicWorksRoute {
+enum ProgrammeWorksRoute {
   build_on_donated_land
   build_on_bought_land
   renovate
 }
 
-enum ClinicWorksStatus {
+enum ProgrammeWorksStatus {
   proposed
   approved // the Board approved the route and budget (clinic_waqf.works_approve)
   rejected
@@ -4356,41 +4370,41 @@ enum ClinicWorksStatus {
 
 // Building or renovation work on a clinic waqf's premises: the route the
 // Board chose for the site, the contractor (a vetted Counterparty) and the
-// budget the quantity surveyor priced. Stage payments (ClinicSpend) never
+// budget the quantity surveyor priced. Stage payments (ProgrammeSpend) never
 // add up to more than the budget.
-model ClinicWorksProject {
-  id               String            @id @default(uuid())
-  clinicWaqfId     String
-  clinicWaqf       ClinicWaqf        @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+model ProgrammeWorksProject {
+  id               String               @id @default(uuid())
+  programmeId      String
+  programme        WaqfProgramme        @relation(fields: [programmeId], references: [id], onDelete: Restrict)
   name             String
-  route            ClinicWorksRoute
+  route            ProgrammeWorksRoute
   contractorId     String
-  contractor       Counterparty      @relation("ClinicWorksContractor", fields: [contractorId], references: [id], onDelete: Restrict)
+  contractor       Counterparty         @relation("ProgrammeWorksContractor", fields: [contractorId], references: [id], onDelete: Restrict)
   budget           Decimal
   // The quantity surveyor's costing and the comparison behind the route.
   budgetNote       String
-  status           ClinicWorksStatus @default(proposed)
-  approvalActionId String?           @unique
-  approvalAction   GovernedAction?   @relation("ClinicWorksApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  status           ProgrammeWorksStatus @default(proposed)
+  approvalActionId String?              @unique
+  approvalAction   GovernedAction?      @relation("ProgrammeWorksApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
   createdByUserId  String
-  createdByUser    User              @relation("ClinicWorksCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  createdByUser    User                 @relation("ProgrammeWorksCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
-  spends ClinicSpend[]
+  spends ProgrammeSpend[]
 
-  @@index([clinicWaqfId])
-  @@map("clinic_works_projects")
+  @@index([programmeId])
+  @@map("programme_works_projects")
 }
 
-enum ClinicSpendKind {
-  equipment // buying a piece of equipment; becomes a ClinicAsset once paid
+enum ProgrammeSpendKind {
+  equipment // buying a piece of equipment; becomes a ProgrammeAsset once paid
   works_stage // one certified stage of a works project
-  investment // placing endowed cash in a Shariah-screened ClinicInvestment (slice 5c)
+  investment // placing endowed cash in a Shariah-screened ProgrammeInvestment (slice 5c)
   reserve_replacement // replacing registered equipment from the equipment replacement reserve (slice 9)
 }
 
-enum ClinicSpendStatus {
+enum ProgrammeSpendStatus {
   pending_approval
   approved
   rejected
@@ -4404,44 +4418,44 @@ enum ClinicSpendStatus {
 // reference (clinic_waqf.spend_mark_paid: checker Compliance or the Audit
 // Committee). Spending never exceeds the endowment's cash, and a works
 // stage never takes its project past budget (both checked under a lock).
-model ClinicSpend {
-  id                  String              @id @default(uuid())
-  clinicWaqfId        String
-  clinicWaqf          ClinicWaqf          @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
-  kind                ClinicSpendKind
+model ProgrammeSpend {
+  id                  String                 @id @default(uuid())
+  programmeId         String
+  programme           WaqfProgramme          @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  kind                ProgrammeSpendKind
   worksProjectId      String?
-  worksProject        ClinicWorksProject? @relation(fields: [worksProjectId], references: [id], onDelete: Restrict)
-  investmentId        String?             @unique
-  investment          ClinicInvestment?   @relation(fields: [investmentId], references: [id], onDelete: Restrict)
+  worksProject        ProgrammeWorksProject? @relation(fields: [worksProjectId], references: [id], onDelete: Restrict)
+  investmentId        String?                @unique
+  investment          ProgrammeInvestment?   @relation(fields: [investmentId], references: [id], onDelete: Restrict)
   payeeId             String
-  payee               Counterparty        @relation("ClinicSpendPayee", fields: [payeeId], references: [id], onDelete: Restrict)
+  payee               Counterparty           @relation("ProgrammeSpendPayee", fields: [payeeId], references: [id], onDelete: Restrict)
   description         String
   amount              Decimal
   // The supplier's invoice, or the engineer's certificate for a works stage.
   supportingReference String
-  status              ClinicSpendStatus   @default(pending_approval)
-  approvalActionId    String?             @unique
-  approvalAction      GovernedAction?     @relation("ClinicSpendApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  status              ProgrammeSpendStatus   @default(pending_approval)
+  approvalActionId    String?                @unique
+  approvalAction      GovernedAction?        @relation("ProgrammeSpendApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
   approvedAt          DateTime?
-  paymentActionId     String?             @unique
-  paymentAction       GovernedAction?     @relation("ClinicSpendPayment", fields: [paymentActionId], references: [id], onDelete: Restrict)
-  paidOn              DateTime?           @db.Date
+  paymentActionId     String?                @unique
+  paymentAction       GovernedAction?        @relation("ProgrammeSpendPayment", fields: [paymentActionId], references: [id], onDelete: Restrict)
+  paidOn              DateTime?              @db.Date
   bankReference       String?
   // Equipment: the asset it bought, created when it's paid.
-  assetId             String?             @unique
-  asset               ClinicAsset?        @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  assetId             String?                @unique
+  asset               ProgrammeAsset?        @relation(fields: [assetId], references: [id], onDelete: Restrict)
   // A reserve replacement (slice 9): the registered equipment it replaces,
   // retired when it's paid.
   replacesAssetId     String?
-  replacesAsset       ClinicAsset?        @relation("ClinicSpendReplaces", fields: [replacesAssetId], references: [id], onDelete: Restrict)
+  replacesAsset       ProgrammeAsset?        @relation("ProgrammeSpendReplaces", fields: [replacesAssetId], references: [id], onDelete: Restrict)
   createdByUserId     String
-  createdByUser       User                @relation("ClinicSpendCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  createdByUser       User                   @relation("ProgrammeSpendCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
-  @@index([clinicWaqfId])
+  @@index([programmeId])
   @@index([worksProjectId])
-  @@map("clinic_spends")
+  @@map("programme_spends")
 }
 
 // ---- Clinic waqf investments (2026-11-17, clinic slice 5c) ----
@@ -4449,11 +4463,11 @@ model ClinicSpend {
 // (1200 Endowment investments), and only the income is spent, earned
 // straight into the running fund (1100 / 4100). The Investment Committee
 // records an investment; a Shariah board member screens it; placing it is
-// an endowment payment (ClinicSpend, kind investment: approved, paid by
+// an endowment payment (ProgrammeSpend, kind investment: approved, paid by
 // bank transfer, confirmed), which books 1200 / 1000. When it matures the
 // principal comes back to endowment cash (1000 / 1200).
 
-enum ClinicInvestmentStatus {
+enum ProgrammeInvestmentStatus {
   pending_shariah_review
   shariah_rejected
   shariah_approved // ready to place
@@ -4461,53 +4475,53 @@ enum ClinicInvestmentStatus {
   returned // the principal came back to endowment cash
 }
 
-model ClinicInvestment {
-  id                     String                   @id @default(uuid())
-  clinicWaqfId           String
-  clinicWaqf             ClinicWaqf               @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+model ProgrammeInvestment {
+  id                     String                    @id @default(uuid())
+  programmeId            String
+  programme              WaqfProgramme             @relation(fields: [programmeId], references: [id], onDelete: Restrict)
   counterpartyId         String
-  counterparty           Counterparty             @relation("ClinicInvestmentCounterparty", fields: [counterpartyId], references: [id], onDelete: Restrict)
+  counterparty           Counterparty              @relation("ProgrammeInvestmentCounterparty", fields: [counterpartyId], references: [id], onDelete: Restrict)
   name                   String
   instrumentType         InvestmentInstrumentType
   amount                 Decimal
   // What the money does, for the Shariah reviewer.
   businessDescription    String
-  status                 ClinicInvestmentStatus   @default(pending_shariah_review)
+  status                 ProgrammeInvestmentStatus @default(pending_shariah_review)
   shariahDecidedByUserId String?
-  shariahDecidedByUser   User?                    @relation("ClinicInvestmentShariahReviewer", fields: [shariahDecidedByUserId], references: [id], onDelete: Restrict)
+  shariahDecidedByUser   User?                     @relation("ProgrammeInvestmentShariahReviewer", fields: [shariahDecidedByUserId], references: [id], onDelete: Restrict)
   shariahDecidedAt       DateTime?
   shariahNote            String?
-  returnedOn             DateTime?                @db.Date
+  returnedOn             DateTime?                 @db.Date
   returnBankReference    String?
   createdByUserId        String
-  createdByUser          User                     @relation("ClinicInvestmentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
+  createdByUser          User                      @relation("ProgrammeInvestmentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
 
-  placement ClinicSpend?
-  income    ClinicInvestmentIncome[]
+  placement ProgrammeSpend?
+  income    ProgrammeInvestmentIncome[]
 
-  @@index([clinicWaqfId])
-  @@map("clinic_investments")
+  @@index([programmeId])
+  @@map("programme_investments")
 }
 
 // Income an investment paid: into the running fund, never the endowment.
 // Append-only (a trigger); recorded by the Investment Committee or a
 // Mutawalli Officer, as proceeds are elsewhere in Birr.
-model ClinicInvestmentIncome {
-  id               String           @id @default(uuid())
+model ProgrammeInvestmentIncome {
+  id               String              @id @default(uuid())
   investmentId     String
-  investment       ClinicInvestment @relation(fields: [investmentId], references: [id], onDelete: Restrict)
+  investment       ProgrammeInvestment @relation(fields: [investmentId], references: [id], onDelete: Restrict)
   amount           Decimal
-  receivedOn       DateTime         @db.Date
+  receivedOn       DateTime            @db.Date
   bankReference    String
   description      String
   recordedByUserId String
-  recordedByUser   User             @relation("ClinicInvestmentIncomeRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict)
-  createdAt        DateTime         @default(now())
+  recordedByUser   User                @relation("ProgrammeInvestmentIncomeRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  createdAt        DateTime            @default(now())
 
   @@index([investmentId])
-  @@map("clinic_investment_income")
+  @@map("programme_investment_income")
 }
 
 // ---- Clinic waqf price list and subsidy bands (2026-11-17, clinic slice 6) ----
@@ -4529,8 +4543,8 @@ enum ClinicPriceListStatus {
 // draft per clinic. Monthly claims (slice 7) are checked against it.
 model ClinicPriceList {
   id               String                @id @default(uuid())
-  clinicWaqfId     String
-  clinicWaqf       ClinicWaqf            @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  programmeId      String
+  programme        WaqfProgramme         @relation(fields: [programmeId], references: [id], onDelete: Restrict)
   version          Int
   // Canonical JSON (clinic-price-list.ts): services, bands, monthly cap.
   content          String                @db.Text
@@ -4546,7 +4560,7 @@ model ClinicPriceList {
 
   claims ClinicClaim[]
 
-  @@unique([clinicWaqfId, version])
+  @@unique([programmeId, version])
   @@map("clinic_price_lists")
 }
 
@@ -4573,8 +4587,8 @@ enum ClinicClaimStatus {
 
 model ClinicClaim {
   id                  String             @id @default(uuid())
-  clinicWaqfId        String
-  clinicWaqf          ClinicWaqf         @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  programmeId         String
+  programme           WaqfProgramme      @relation(fields: [programmeId], references: [id], onDelete: Restrict)
   // The month the visits were in, "2027-03".
   period              String
   operatorId          String
@@ -4606,21 +4620,21 @@ model ClinicClaim {
 
   lines ClinicClaimLine[]
 
-  @@index([clinicWaqfId, period])
+  @@index([programmeId, period])
   @@map("clinic_claims")
 }
 
 // One visit's service. Insert-only; the claim's totals must equal its
 // lines' (a deferred database check).
 model ClinicClaimLine {
-  id             String      @id @default(uuid())
+  id             String        @id @default(uuid())
   claimId        String
-  claim          ClinicClaim @relation(fields: [claimId], references: [id], onDelete: Restrict)
-  clinicWaqfId   String
-  clinicWaqf     ClinicWaqf  @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  claim          ClinicClaim   @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  programmeId    String
+  programme      WaqfProgramme @relation(fields: [programmeId], references: [id], onDelete: Restrict)
   // The operator's own visit reference: never a name.
   visitReference String
-  visitDate      DateTime    @db.Date
+  visitDate      DateTime      @db.Date
   serviceCode    String
   bandCode       String
   price          Decimal
@@ -4628,10 +4642,10 @@ model ClinicClaimLine {
   subsidy        Decimal
   // The operator assessed the patient as poor or needy: zakah pays.
   zakahEligible  Boolean
-  createdAt      DateTime    @default(now())
+  createdAt      DateTime      @default(now())
 
   @@unique([claimId, visitReference, serviceCode])
-  @@index([clinicWaqfId, visitReference])
+  @@index([programmeId, visitReference])
   @@map("clinic_claim_lines")
 }
 
@@ -4652,8 +4666,8 @@ enum ClinicReportStatus {
 
 model ClinicMonthlyReport {
   id                String             @id @default(uuid())
-  clinicWaqfId      String
-  clinicWaqf        ClinicWaqf         @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  programmeId       String
+  programme         WaqfProgramme      @relation(fields: [programmeId], references: [id], onDelete: Restrict)
   // "2027-03"
   period            String
   visits            Int
@@ -4669,6 +4683,23 @@ model ClinicMonthlyReport {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
-  @@index([clinicWaqfId, period])
+  @@index([programmeId, period])
   @@map("clinic_monthly_reports")
+}
+
+// The causes a waqf programme serves, from the cause catalog (2026-11-17,
+// shared layer step 3). A new programme takes its product's default causes
+// (WAQF_PROGRAMME_PRODUCTS in @birr/shared); a Mutawalli Officer may change
+// them, audited. A tag, not money: changing it moves nothing.
+model WaqfProgrammeCause {
+  id              String        @id @default(uuid())
+  programmeId     String
+  programme       WaqfProgramme @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  causeCategoryId String
+  causeCategory   CauseCategory @relation(fields: [causeCategoryId], references: [id], onDelete: Restrict)
+  createdAt       DateTime      @default(now())
+
+  @@unique([programmeId, causeCategoryId])
+  @@index([causeCategoryId])
+  @@map("waqf_programme_causes")
 }

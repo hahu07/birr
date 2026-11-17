@@ -1,5 +1,5 @@
 import { FIELD_LIMITS } from "@birr/shared";
-import { ClinicGiftsService } from "../clinic-waqfs/clinic-gifts.service";
+import { ProgrammeGiftsService } from "../waqf-programmes/programme-gifts.service";
 import { EmailField, IdField, TextField } from "../../common/validation/fields";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { IsBoolean, IsEnum, IsNumberString, IsOptional } from "class-validator";
@@ -60,7 +60,7 @@ export class ContributionsController {
     private readonly vaultContributionsService: VaultContributionsService,
     private readonly vaultDistributionsService: VaultDistributionsService,
     private readonly zakahPaymentsService: ZakahPaymentsService,
-    private readonly clinicGiftsService: ClinicGiftsService,
+    private readonly clinicGiftsService: ProgrammeGiftsService,
   ) {}
 
   // Self-service — same posture as POST /waqfs and POST /foundations,

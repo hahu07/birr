@@ -13,7 +13,7 @@ import { Alert, Button, Card, IconCheckCircle, IconShieldCheck, Input, Select, S
 import { MoneyInput } from "../../../_components/form";
 
 interface ManagedGift {
-  kind: "vault" | "zakah" | "waqf" | "clinic";
+  kind: "vault" | "zakah" | "waqf" | "programme";
   status: "pending_setup" | "active" | "paused" | "cancelled" | "ended";
   pauseReason: "card_failed" | "card_expired" | "needs_identity" | "terms_changed" | "below_minimum" | null;
   email: string;
@@ -299,8 +299,8 @@ function PausedAction({ token, gift, onChange }: { token: string; gift: ManagedG
           </Button>
         </form>
       )}
-      {gift.pauseReason === "terms_changed" && gift.kind === "clinic" && <AcceptNewDeed token={token} gift={gift} onChange={onChange} />}
-      {gift.pauseReason === "terms_changed" && gift.kind !== "clinic" && <AcceptNewTerms token={token} onChange={onChange} />}
+      {gift.pauseReason === "terms_changed" && gift.kind === "programme" && <AcceptNewDeed token={token} gift={gift} onChange={onChange} />}
+      {gift.pauseReason === "terms_changed" && gift.kind !== "programme" && <AcceptNewTerms token={token} onChange={onChange} />}
       {gift.pauseReason === "below_minimum" && (
         <>
           <p className="text-sm font-semibold text-amber-950">The minimum gift has gone up</p>

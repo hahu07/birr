@@ -12,7 +12,7 @@ import { Alert, Badge, Button, EmptyState, Select, Table, TableBody, TableCell, 
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 
 type Status = "pending_setup" | "active" | "paused" | "cancelled" | "ended";
-type Kind = "vault" | "waqf" | "zakah" | "clinic";
+type Kind = "vault" | "waqf" | "zakah" | "programme";
 
 interface MonthlyGiftRow {
   id: string;
@@ -40,7 +40,7 @@ interface MonthlyGiftDetail extends MonthlyGiftRow {
   history: { action: string; actorType: string; createdAt: string }[];
 }
 
-const KIND_LABEL: Record<Kind, string> = { vault: "Vault gift", waqf: "Waqf top-up", zakah: "Zakah (in advance)", clinic: "Clinic waqf gift" };
+const KIND_LABEL: Record<Kind, string> = { vault: "Vault gift", waqf: "Waqf top-up", zakah: "Zakah (in advance)", programme: "Waqf programme gift" };
 const STATUS_TONE: Record<Status, "success" | "warning" | "neutral" | "danger"> = {
   active: "success",
   paused: "warning",
@@ -126,7 +126,7 @@ export default function MonthlyGivingPage() {
             <option value="vault">Vault gifts</option>
             <option value="waqf">Waqf top-ups</option>
             <option value="zakah">Zakah</option>
-            <option value="clinic">Clinic waqfs</option>
+            <option value="programme">Waqf programmes (clinics)</option>
           </Select>
         </div>
         {rows && active.length > 0 && (

@@ -1288,6 +1288,84 @@ must own and agree to, their conditions, istibdal) stays open.
 - **Public page:** what the reserve holds and has spent, under the running
   fund.
 
+**Update, 2026-11-17 — the clinic waqf becomes the first "waqf programme"
+(shared layer, step 1 of 4).** Owner's decisions: build a shared layer for
+waqfs Birr establishes and curates, so other products (the proposed
+need-based waqf first; design:
+https://claude.ai/artifact/HChJqo1PiWG592hc6UwTda) reuse the clinic's
+general parts; call it a **waqf programme**. Founders' own Waqf Funds,
+Vault and zakah stay separate.
+- **Step 1 (this):** names only, no behaviour change
+  (`20261118070000_waqf_programmes_rename`).
+  - `ClinicWaqf` is now `WaqfProgramme` (`waqf_programmes`), with a fixed
+    `product` (`WaqfProgrammeProduct`; only `clinic` so far). The
+    operator may be set only on a clinic (a CHECK).
+  - The deed, pots and ledger, gifts, assets, works, spends, investments
+    and their income are `WaqfProgrammeDeed`, `WaqfProgrammePot`,
+    `ProgrammeLedgerAccount`, `ProgrammeJournalEntry(Line)`,
+    `ProgrammeGift`, `ProgrammeAsset`, `ProgrammeWorksProject`,
+    `ProgrammeSpend`, `ProgrammeInvestment(Income)`.
+  - Every `clinicWaqfId` is `programmeId`, including on the clinic-only
+    tables, which keep their names: `ClinicPriceList`, `ClinicClaim(Line)`,
+    `ClinicMonthlyReport`.
+  - `RecurringGiftKind.clinic` is `programme`; `RecurringGift.programme*`;
+    `Founder.programmeSupporter`.
+  - Constraint, index and trigger names, and the rule functions (which
+    name tables as text), follow the new names.
+- **Step 2 (built):** the code is split, and the permission keys too
+  (`20261118080000_programme_permission_keys`).
+  - `modules/waqf-programmes`: the general parts (`WaqfProgrammesService`,
+    `ProgrammeLedgerService`, `ProgrammeGiftsService`, `ProgrammeAssets`,
+    `ProgrammeSpending`, `ProgrammeInvestments`, `ProgrammeReserve`).
+    `modules/clinics`: the clinic's own (price lists, claims, monthly
+    figures, the public report, the standard deed wording).
+  - API: Ops `/waqf-programmes/...` (clinic-only routes under the same
+    address, from `ClinicsOpsController`); public giving `/programme-gifts`,
+    Founders' monthly `/programme-gifts/founder/monthly`; the public clinic
+    list and report `GET /clinics`, `/clinics/:slug/report`. Web page
+    addresses (`/clinics/...`, `/clinic-gifts/...`, `/ops/clinic-waqfs`) and
+    the Paystack return path are unchanged.
+  - Permissions: `waqf_programme.*` (manage, deed, establish, assets,
+    works, spending, investments, reserve) and `clinic.*` (operator, price
+    list, claims, monthly figures). Renamed in place, so every grant and
+    governed action keeps its permission.
+  - Audit actions follow (`waqf_programme.*`, `waqf_programme_deed.*`,
+    `programme_gift.*`, `programme_asset.*`, `programme_works.*`,
+    `programme_spend.*`, `programme_investment.*`;
+    `clinic.operator_assigned`; clinic price list, claim and report actions
+    unchanged). Rows written before keep their old names. The
+    reconciliation label is `programme_gift`.
+- **Step 3 (built): the product list.** `WAQF_PROGRAMME_PRODUCTS` in
+  `@birr/shared` names each product's label and public address, its pots,
+  its kinds of endowment payment, its default causes, its monthly measures
+  and its own parts. The backend adds each product's standard deed wording
+  (`programme-products.ts`, typed by the database's `WaqfProgrammeProduct`,
+  so a new product won't compile without one); a test checks the list
+  names exactly the database's products, pots and payment kinds.
+  - A programme serves causes from the cause catalog
+    (`WaqfProgrammeCause`): a new one takes its product's defaults (the
+    clinic: Healthcare, and existing clinics were tagged by migration
+    `20261118090000_waqf_programme_causes`); `PUT /waqf-programmes/:id`
+    with `causeCategoryIds` replaces the set (current catalog entries
+    only), audited. A tag only: it moves no money.
+  - Creating a programme now names its product.
+  - **Waits for the second product:** a loan pot, and refusing a product's
+    own parts (or pots and payment kinds it doesn't list) for other
+    products. With only clinics there is nothing to refuse or test; add
+    them with the need-based waqf.
+- **Step 4 (built): Ops Console → Waqf Programmes** (`/ops/waqf-programmes`;
+  the old `/ops/clinic-waqfs` addresses redirect, `next.config.mjs`).
+  - The list filters by product, cause and status (`GET /waqf-programmes`
+    `?product=&causeCategoryId=&status=`) and shows each programme's
+    product and causes. Creating one names its product.
+  - The detail page names the product, changes the causes
+    (`CausesEditor`, `waqf_programme.manage`), and shows a product's own
+    cards only on that product (price list, claims and monthly figures on
+    clinics).
+- The shared layer is complete for the clinic. The need-based waqf adds
+  its own parts on it once it has the go-ahead (see the design doc's
+  build order).
+
 Next steps for the clinic (2026-11-17; all nine slices are built and
 merged, nothing is live, no operator or site exists yet; the plan doc's
 "Timeline and next steps" is the working list):
