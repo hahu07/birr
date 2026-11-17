@@ -18,6 +18,8 @@ import { ChoiceCard, Field, FormSection, inputClass } from "../../_components/fo
 import { FOUNDER_TYPE_GUIDE, FounderFoundationGuide, type FounderType, INSTITUTION_TYPE_GUIDE } from "./FounderFoundationGuide";
 import { countryName, FIELD_LIMITS } from "@birr/shared";
 import { CountrySelect } from "../../../../components/forms/CountrySelect";
+import { peekReturnTo } from "../../../../lib/return-to";
+import { ClinicSupporterStep } from "./ClinicSupporterStep";
 
 interface PurposeSuggestion {
   suggestedPurpose: string;
@@ -82,6 +84,15 @@ export default function OnboardingFounderFoundationPage() {
 
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+
+  // Came from a clinic waqf's giving page (2026-11-17): offer to support it
+  // as a Founder without setting up a Foundation. Read after mount, since
+  // localStorage isn't there during server rendering.
+  const [cameFromClinic, setCameFromClinic] = useState(false);
+  const [settingUpFoundation, setSettingUpFoundation] = useState(false);
+  useEffect(() => {
+    setCameFromClinic(peekReturnTo()?.startsWith("/clinics/") ?? false);
+  }, []);
 
   // A founder can reach this route after step 2 is already done —
   // clicking "Back" from step 3, a bookmark, or (per app-shell's own
@@ -310,6 +321,10 @@ export default function OnboardingFounderFoundationPage() {
         </div>
       </div>
     );
+  }
+
+  if (cameFromClinic && !settingUpFoundation && !alreadyEstablished) {
+    return <ClinicSupporterStep onSetUpFoundation={() => setSettingUpFoundation(true)} />;
   }
 
   return (

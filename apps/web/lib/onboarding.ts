@@ -18,6 +18,8 @@ export interface OnboardingStatus {
   };
   currentStep: 1 | 2 | 3 | 4 | "done";
   onboardingComplete: boolean;
+  /** A Founder who joined only to support clinic waqfs, with no Foundation (2026-11-17). */
+  clinicSupporterOnly?: boolean;
 }
 
 export const ROUTE_FOR_STEP: Record<1 | 2 | 3 | 4, string> = {

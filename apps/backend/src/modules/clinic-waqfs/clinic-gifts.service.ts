@@ -21,11 +21,14 @@ import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import { ClinicLedgerService } from "./clinic-ledger.service";
+import { assertFounderVerified } from "../../common/auth/current-founder";
 import { ResendClinicReceiptEmailAdapter } from "./clinic-receipt-email.adapter";
 
 const CURRENCY = "NGN";
-/** The smallest public gift (owner's decision, 2026-11-17); Founders give from ₦250,000 (slice 4). */
+/** The smallest public gift, and a Founder's later gifts (owner's decisions, 2026-11-17). */
 export const CLINIC_PUBLIC_MINIMUM_NGN = "5000";
+/** A Founder's first gift to a clinic waqf is at least this; later ones, CLINIC_PUBLIC_MINIMUM_NGN. */
+export const CLINIC_FOUNDER_FIRST_GIFT_MINIMUM_NGN = "250000";
 const VERIFY_MIN_INTERVAL_MS = 5_000;
 
 /** Where each pot's gift is booked: its cash account, and what it's credited to. */
@@ -96,6 +99,34 @@ export class InitiateClinicGiftInput {
   idNumber?: string;
 }
 
+/** A Founder's gift (slice 4a): the giver and receipt contacts come from their signed-in account. */
+export class InitiateFounderClinicGiftInput {
+  @TextField(100)
+  slug!: string;
+
+  @IsIn(["endowment", "running"])
+  pot!: ClinicPot;
+
+  @IsNumberString()
+  @MaxDecimal(MAX_PUBLIC_CONTRIBUTION_AMOUNT)
+  @IsPositiveDecimal()
+  amount!: string;
+
+  @IsBoolean()
+  coverFee!: boolean;
+
+  @IsOptional()
+  @IdField()
+  deedId?: string;
+
+  @IsOptional()
+  @TextField(FIELD_LIMITS.code)
+  deedTextHash?: string;
+}
+
+/** Who a gift's audit rows name: a public giver, or a Founder's user. */
+type GiftActor = { type: "public_donor"; donorId: string | null } | { type: "founder_user"; userId: string; founderId: string };
+
 function normalizeEmail(email: string | undefined): string | null {
   const trimmed = email?.trim().toLowerCase();
   return trimmed ? trimmed : null;
@@ -135,6 +166,15 @@ export class ClinicGiftsService {
     return code ? code : undefined;
   }
 
+  /** Established clinic waqfs, for a Founder choosing where to give. */
+  publicClinics() {
+    return prisma.clinicWaqf.findMany({
+      where: { status: "established" },
+      orderBy: { establishedAt: "asc" },
+      select: { name: true, slug: true, city: true, description: true },
+    });
+  }
+
   /** What the public giving page needs: the clinic, whether it's taking gifts, and the deed to accept. */
   async givingTerms(slug: string) {
     const clinic = await prisma.clinicWaqf.findUnique({
@@ -153,34 +193,10 @@ export class ClinicGiftsService {
   }
 
   async initiate(input: InitiateClinicGiftInput, ipAddress?: string) {
-    const clinic = await prisma.clinicWaqf.findUnique({ where: { slug: input.slug } });
-    if (!clinic) throw new NotFoundException("Clinic not found.");
-    if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't taking gifts yet.`);
-    const subaccount = await this.subaccount();
-    if (!subaccount) {
-      // Owner's decision: clinic waqf money never settles into Birr's main
-      // balance, so no gift is taken until its own account is set up.
-      throw new ServiceUnavailableException("Gifts to this clinic aren't open yet.");
-    }
-    const amount = new Prisma.Decimal(input.amount);
-    if (amount.lt(CLINIC_PUBLIC_MINIMUM_NGN) || amount.decimalPlaces() > 2) {
-      throw new BadRequestException(`Please give at least ₦${Number(CLINIC_PUBLIC_MINIMUM_NGN).toLocaleString("en-NG")}, in naira and kobo.`);
-    }
-
-    let deed: { id: string; textHash: string } | null = null;
-    if (input.pot === "endowment") {
-      const approved = await prisma.clinicWaqfDeed.findFirst({ where: { clinicWaqfId: clinic.id, status: "approved" } });
-      if (!approved || approved.id !== input.deedId || approved.textHash !== input.deedTextHash) {
-        throw new BadRequestException({
-          statusCode: 400,
-          code: "DEED_CHANGED",
-          message: "The waqf's deed has changed since you read it. Please reload the page and read it again.",
-        });
-      }
-      deed = approved;
-    }
-
-    const feeCover = new Prisma.Decimal(input.coverFee ? processingFeeCover(amount.toFixed(2)) : "0");
+    const { clinic, subaccount } = await this.openClinic(input.slug);
+    const amount = this.checkedAmount(input.amount, CLINIC_PUBLIC_MINIMUM_NGN);
+    const deed = await this.acceptedDeed(clinic, input);
+    const feeCover = this.feeCoverFor(amount, input.coverFee);
     const contact: GiverContact = {
       email: normalizeEmail(input.donorEmail),
       whatsapp: input.donorWhatsApp ? await this.requireGiverWhatsApp().assertProof(input.donorWhatsApp, input.whatsappProof) : null,
@@ -219,26 +235,158 @@ export class ClinicGiftsService {
           ipAddress,
         },
       });
-      await this.audit(tx, "clinic_gift.initiated", created.id, created.donorId, null, created);
+      await this.audit(tx, "clinic_gift.initiated", created.id, { type: "public_donor", donorId: created.donorId }, null, created);
       return created;
     });
+    return this.checkout(gift, clinic, subaccount, { type: "public_donor", donorId: gift.donorId });
+  }
 
+  /**
+   * What a signed-in Founder's giving form needs: the same terms, with
+   * their own minimum — ₦250,000 for their first gift to this clinic,
+   * ₦5,000 after (owner's decision, 2026-11-17).
+   */
+  async founderGivingTerms(founderId: string, slug: string) {
+    const terms = await this.givingTerms(slug);
+    const clinic = await prisma.clinicWaqf.findUniqueOrThrow({ where: { slug } });
+    return { ...terms, minimumAmount: await this.founderMinimum(founderId, clinic.id) };
+  }
+
+  /**
+   * A Founder's gift (2026-11-17, slice 4a): recorded as theirs, given by
+   * their primary contact (the controller checks), who must have verified
+   * their email and WhatsApp, like every Founder self-service payment.
+   * No AML ID threshold: a Founder is a verified account holder, as for
+   * Waqf Fund contributions. The receipt goes to the signed-in user.
+   */
+  async initiateAsFounder(founderId: string, userId: string, input: InitiateFounderClinicGiftInput, ipAddress?: string) {
+    await assertFounderVerified(prisma, founderId);
+    const { clinic, subaccount } = await this.openClinic(input.slug);
+    const amount = this.checkedAmount(input.amount, await this.founderMinimum(founderId, clinic.id));
+    const deed = await this.acceptedDeed(clinic, input);
+    const feeCover = this.feeCoverFor(amount, input.coverFee);
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const actor: GiftActor = { type: "founder_user", userId, founderId };
+    const id = randomUUID();
+
+    const gift = await prisma.$transaction(async (tx) => {
+      const created = await tx.clinicGift.create({
+        data: {
+          id,
+          clinicWaqfId: clinic.id,
+          pot: input.pot,
+          founderId,
+          initiatedByUserId: userId,
+          contactEmail: user.email,
+          contactWhatsApp: user.whatsappVerifiedAt ? user.whatsappNumber : null,
+          amount,
+          feeCover,
+          currency: CURRENCY,
+          provider: "paystack",
+          providerReference: id,
+          settlementSubaccount: subaccount,
+          deedId: deed?.id,
+          deedTextHash: deed?.textHash,
+          ipAddress,
+        },
+      });
+      await this.audit(tx, "clinic_gift.initiated", created.id, actor, null, created);
+      return created;
+    });
+    return this.checkout(gift, clinic, subaccount, actor);
+  }
+
+  /** A Founder's gifts to every clinic waqf, newest first, and what's confirmed in each pot. */
+  async listForFounder(founderId: string) {
+    const gifts = await prisma.clinicGift.findMany({
+      where: { founderId },
+      orderBy: { createdAt: "desc" },
+      include: { clinicWaqf: { select: { name: true, slug: true, city: true } }, deed: { select: { version: true } } },
+    });
+    const totals = new Map<string, { clinic: { name: string; slug: string; city: string }; endowment: Prisma.Decimal; running: Prisma.Decimal }>();
+    for (const g of gifts) {
+      if (g.status !== "confirmed") continue;
+      const t = totals.get(g.clinicWaqfId) ?? { clinic: g.clinicWaqf, endowment: new Prisma.Decimal(0), running: new Prisma.Decimal(0) };
+      t[g.pot] = t[g.pot].plus(g.amount);
+      totals.set(g.clinicWaqfId, t);
+    }
+    return {
+      clinics: [...totals.values()].map((t) => ({ clinic: t.clinic, endowment: t.endowment.toFixed(2), running: t.running.toFixed(2) })),
+      gifts: gifts.map((g) => ({
+        ...this.publicView(g, g.clinicWaqf),
+        deedVersion: g.deed?.version ?? null,
+      })),
+    };
+  }
+
+  private async founderMinimum(founderId: string, clinicWaqfId: string): Promise<string> {
+    const given = await prisma.clinicGift.count({ where: { founderId, clinicWaqfId, status: "confirmed" } });
+    return given > 0 ? CLINIC_PUBLIC_MINIMUM_NGN : CLINIC_FOUNDER_FIRST_GIFT_MINIMUM_NGN;
+  }
+
+  private async openClinic(slug: string) {
+    const clinic = await prisma.clinicWaqf.findUnique({ where: { slug } });
+    if (!clinic) throw new NotFoundException("Clinic not found.");
+    if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't taking gifts yet.`);
+    const subaccount = await this.subaccount();
+    if (!subaccount) {
+      // Owner's decision: clinic waqf money never settles into Birr's main
+      // balance, so no gift is taken until its own account is set up.
+      throw new ServiceUnavailableException("Gifts to this clinic aren't open yet.");
+    }
+    return { clinic, subaccount };
+  }
+
+  private checkedAmount(raw: string, minimum: string) {
+    const amount = new Prisma.Decimal(raw);
+    if (amount.lt(minimum) || amount.decimalPlaces() > 2) {
+      throw new BadRequestException(`Please give at least ₦${Number(minimum).toLocaleString("en-NG")}, in naira and kobo.`);
+    }
+    return amount;
+  }
+
+  private feeCoverFor(amount: Prisma.Decimal, coverFee: boolean) {
+    return new Prisma.Decimal(coverFee ? processingFeeCover(amount.toFixed(2)) : "0");
+  }
+
+  /** An endowment gift's deed: the approved version, exactly as the giver read it. */
+  private async acceptedDeed(clinic: { id: string }, input: { pot: ClinicPot; deedId?: string; deedTextHash?: string }) {
+    if (input.pot !== "endowment") return null;
+    const approved = await prisma.clinicWaqfDeed.findFirst({ where: { clinicWaqfId: clinic.id, status: "approved" } });
+    if (!approved || approved.id !== input.deedId || approved.textHash !== input.deedTextHash) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: "DEED_CHANGED",
+        message: "The waqf's deed has changed since you read it. Please reload the page and read it again.",
+      });
+    }
+    return approved;
+  }
+
+  /** Paystack checkout for a reserved gift, into the clinic waqf's subaccount. */
+  private async checkout(
+    gift: { id: string; amount: Prisma.Decimal; feeCover: Prisma.Decimal; contactEmail: string | null; pot: ClinicPot; currency: string; status: string; createdAt: Date; confirmedAt: Date | null },
+    clinic: { name: string; slug: string },
+    subaccount: string,
+    actor: GiftActor,
+  ) {
+    const id = gift.id;
     let result;
     try {
       result = await this.paystack.createPayment({
-        amount: amount.plus(feeCover).toFixed(2),
+        amount: gift.amount.plus(gift.feeCover).toFixed(2),
         currency: CURRENCY,
         reference: id,
-        payerEmail: contact.email ?? undefined,
+        payerEmail: gift.contactEmail ?? undefined,
         returnPath: "clinic-gifts",
         // Into the clinic waqf's subaccount; only the fee cover to Birr's main account.
-        split: { subaccount, mainAccountShareMinorUnits: Number(feeCover.times(100).toFixed(0)) },
+        split: { subaccount, mainAccountShareMinorUnits: Number(gift.feeCover.times(100).toFixed(0)) },
       });
     } catch (err) {
       // Don't leave a reservation counting toward the giver's threshold.
       await prisma.$transaction(async (tx) => {
         const failed = await tx.clinicGift.update({ where: { id }, data: { status: "failed" } });
-        await this.audit(tx, "clinic_gift.failed", id, gift.donorId, gift, failed);
+        await this.audit(tx, "clinic_gift.failed", id, actor, gift, failed);
       });
       throw err;
     }
@@ -246,7 +394,7 @@ export class ClinicGiftsService {
     if (result.providerReference === id) return { gift: this.publicView(gift, clinic), clientPayload: result.clientPayload };
     const withReference = await prisma.$transaction(async (tx) => {
       const updated = await tx.clinicGift.update({ where: { id }, data: { providerReference: result.providerReference } });
-      await this.audit(tx, "clinic_gift.payment_created", id, gift.donorId, gift, updated);
+      await this.audit(tx, "clinic_gift.payment_created", id, actor, gift, updated);
       return updated;
     });
     return { gift: this.publicView(withReference, clinic), clientPayload: result.clientPayload };
@@ -330,7 +478,12 @@ export class ClinicGiftsService {
         });
       }
       const { clinicWaqf: _clinic, deed: _deed, ...before } = gift;
-      await this.audit(tx, `clinic_gift.${status}`, gift.id, gift.donorId, before, after);
+      // The webhook or a return page settles it, not the giver, so a Founder's gift is logged against their user.
+      const actor: GiftActor =
+        gift.founderId && gift.initiatedByUserId
+          ? { type: "founder_user", userId: gift.initiatedByUserId, founderId: gift.founderId }
+          : { type: "public_donor", donorId: gift.donorId };
+      await this.audit(tx, `clinic_gift.${status}`, gift.id, actor, before, after);
       return after;
     });
 
@@ -373,11 +526,12 @@ export class ClinicGiftsService {
     return this.giverWhatsApp;
   }
 
-  private audit(tx: Prisma.TransactionClient, action: string, entityId: string, donorId: string | null, before: unknown, after: unknown) {
+  private audit(tx: Prisma.TransactionClient, action: string, entityId: string, actor: GiftActor, before: unknown, after: unknown) {
     return tx.auditLog.create({
       data: {
-        actorType: "public_donor",
-        actorDonorId: donorId ?? undefined,
+        ...(actor.type === "public_donor"
+          ? { actorType: "public_donor" as const, actorDonorId: actor.donorId ?? undefined }
+          : { actorType: "founder_user" as const, actorUserId: actor.userId, actorFounderId: actor.founderId }),
         action,
         entityType: "ClinicGift",
         entityId,

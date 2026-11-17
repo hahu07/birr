@@ -1,7 +1,8 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Req } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
-import { ClinicGiftsService, InitiateClinicGiftInput } from "./clinic-gifts.service";
+import { ClinicGiftsService, InitiateClinicGiftInput, InitiateFounderClinicGiftInput } from "./clinic-gifts.service";
+import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { Public } from "../../common/guards/public.decorator";
 
 // Public routes for a giver with no account (2026-11-17, clinic slice 3).
@@ -13,6 +14,12 @@ export class ClinicGiftsController {
   constructor(private readonly service: ClinicGiftsService) {}
 
   // Declared before ":id", or Nest would match it as an id.
+  @Public()
+  @Get("clinics")
+  clinics() {
+    return this.service.publicClinics();
+  }
+
   @Public()
   @Get("terms/:slug")
   terms(@Param("slug") slug: string) {
@@ -26,6 +33,29 @@ export class ClinicGiftsController {
   @Post()
   initiate(@Body() body: InitiateClinicGiftInput, @Req() request: Request) {
     return this.service.initiate(body, request.ip);
+  }
+
+  // A signed-in Founder's gifts (slice 4a). Not @Public: a Founder
+  // session is required, and only the primary contact may give.
+  @Get("founder/terms/:slug")
+  async founderTerms(@Param("slug") slug: string, @Req() request: Request) {
+    const founder = await resolveFounderFromSession(request);
+    return this.service.founderGivingTerms(founder.id, slug);
+  }
+
+  @Throttle({ default: { limit: 20, ttl: 600_000 } })
+  @Post("founder")
+  async initiateAsFounder(@Body() body: InitiateFounderClinicGiftInput, @Req() request: Request) {
+    const founder = await resolveFounderFromSession(request);
+    assertPrimaryContact(founder);
+    const user = await resolveUserFromSession(request);
+    return this.service.initiateAsFounder(founder.id, user.id, body, request.ip);
+  }
+
+  @Get("founder/mine")
+  async mine(@Req() request: Request) {
+    const founder = await resolveFounderFromSession(request);
+    return this.service.listForFounder(founder.id);
   }
 
   @Public()

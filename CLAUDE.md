@@ -1077,6 +1077,32 @@ How it works:
 - **Kept as given:** what was given, the pot and the deed never change; a
   gift settles once and is never deleted (triggers).
 
+Slice 4a, Founders giving to a clinic (built). Owner's decisions:
+- **Verify, then give.** Someone who signs up from a clinic page verifies
+  their email and WhatsApp like every Founder, then becomes a Founder
+  **without a Foundation**:
+  - `Founder.clinicSupporter`, created by `POST /founders/clinic-supporter`;
+  - the onboarding step 2 page offers this when they came from a clinic
+    (`lib/return-to.ts`);
+  - their onboarding is then complete (`clinicSupporterOnly`), and they
+    can set up a Foundation later.
+- **Minimum:** a Founder's first gift to a clinic is at least ₦250,000;
+  later gifts from ₦5,000.
+
+How it works:
+- **Giving:** a signed-in Founder's primary contact gives as the Founder
+  (`POST /clinic-gifts/founder`, `assertFounderVerified`). The gift
+  records `founderId` and `initiatedByUserId`, with no `VaultDonor`: a
+  CHECK refuses both, and there is no AML ID threshold, as for Waqf Fund
+  contributions. The receipt goes to their account.
+- **Seeing it:** Founder Portal → Clinic support shows totals per clinic
+  and pot, and every gift. It is also the home page of a clinic-only
+  Founder.
+- **AML review:** the Vault structuring review and zakah's cross-product
+  review now list public clinic gifts, named "(clinic waqf)". Founders'
+  gifts aren't listed.
+- **Next:** monthly clinic giving is slice 4b.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

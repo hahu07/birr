@@ -64,6 +64,24 @@ export class ResetPasswordInput {
   newPassword!: string;
 }
 
+// A Founder who joins from a clinic waqf's page only to support it
+// (2026-11-17): the Founder identity from step 2, without the Foundation.
+export class EstablishClinicSupporterInput {
+  @NameField()
+  founderName!: string;
+
+  // Individual or institution. Giving jointly is a kind of Foundation, so it isn't offered here.
+  @IsIn(["individual", "institution"])
+  kind!: "individual" | "institution";
+
+  @IsOptional()
+  @IsEnum(InstitutionType)
+  institutionType?: InstitutionType;
+
+  @CountryCode({ optional: true })
+  homeJurisdiction?: string;
+}
+
 export class EstablishFounderAndFoundationInput {
   @NameField()
   founderName!: string;
@@ -537,6 +555,49 @@ export class FoundersService {
    * Founder through the real self-service flow — create() above stays
    * unauthenticated bootstrap/seed-only CRUD.
    */
+  /**
+   * Owner's decision (2026-11-17): someone who signs up from a clinic waqf's
+   * page to support it verifies their email and WhatsApp, like every
+   * Founder, then becomes a Founder without a Foundation (clinicSupporter).
+   * That completes their onboarding; they can still set up a Foundation
+   * later. Same checks as step 2 otherwise.
+   */
+  async establishClinicSupporter(userId: string, input: EstablishClinicSupporterInput) {
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    assertUserEmailVerified(user);
+    assertUserWhatsAppVerified(user);
+    if (input.kind === "institution" && !input.institutionType) {
+      throw new BadRequestException("Choose what kind of institution you are.");
+    }
+    const existing = await prisma.founderMembership.findFirst({ where: { userId, status: "active" } });
+    if (existing) throw new ConflictException("You're already part of a Founder account.");
+
+    return prisma.$transaction(async (tx) => {
+      const founder = await tx.founder.create({
+        data: {
+          name: input.founderName,
+          kind: input.kind,
+          institutionType: input.kind === "institution" ? input.institutionType : undefined,
+          homeJurisdiction: input.homeJurisdiction,
+          clinicSupporter: true,
+        },
+      });
+      await tx.founderMembership.create({ data: { founderId: founder.id, userId, permissionLevel: "primary_contact" } });
+      await tx.auditLog.create({
+        data: {
+          actorType: "founder_user",
+          actorUserId: userId,
+          actorFounderId: founder.id,
+          action: "founder.created",
+          entityType: "Founder",
+          entityId: founder.id,
+          after: founder as any,
+        },
+      });
+      return founder;
+    });
+  }
+
   async establishFounderAndFoundation(
     userId: string,
     input: EstablishFounderAndFoundationInput,
@@ -822,8 +883,15 @@ export class FoundersService {
     // user's own emailVerified/whatsappVerified past that point would
     // wrongly send an invited colleague back into onboarding for
     // something the invitation already vouched for.
+    // A clinic supporter (2026-11-17) has no Foundation by design: once
+    // they're a Founder, they're done. If they set one up later, the
+    // usual steps apply to it.
+    const clinicSupporterOnly =
+      founderId !== null && !firstFoundation && (await prisma.founder.findUnique({ where: { id: founderId }, select: { clinicSupporter: true } }))?.clinicSupporter === true;
+
     let currentStep: 1 | 2 | 3 | 4 | "done";
     if (!founderId) currentStep = !emailVerified || !whatsappVerified ? 1 : 2;
+    else if (clinicSupporterOnly) currentStep = "done";
     else if (!firstWaqfFunded) currentStep = 3;
     else if (!deedSigned) currentStep = 4;
     else currentStep = "done";
@@ -851,6 +919,7 @@ export class FoundersService {
       },
       currentStep,
       onboardingComplete: currentStep === "done",
+      clinicSupporterOnly,
     };
   }
 }

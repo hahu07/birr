@@ -44,6 +44,7 @@ const NAV_GROUPS = [
       { href: "/", label: "Overview", icon: IconHome },
       { href: "/portfolio", label: "Portfolio", icon: IconBriefcase },
       { href: "/impact", label: "Impact", icon: IconHeart },
+      { href: "/clinic-support", label: "Clinic support", icon: IconHeart },
     ],
   },
   {
@@ -469,6 +470,7 @@ const MOBILE_TABS = [
   { href: "/messages", label: "Messages", icon: IconMessageCircle },
 ];
 const MORE_LINKS = [
+  { href: "/clinic-support", label: "Clinic support", icon: IconHeart },
   { href: "/team", label: "Team", icon: IconUsers },
   { href: "/activity", label: "Activity", icon: IconClock },
   { href: "/account", label: "Account & security", icon: IconSettings },

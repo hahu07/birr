@@ -23,6 +23,7 @@ import {
   LoginInput,
   RequestPasswordResetInput,
   ResetPasswordInput,
+  EstablishClinicSupporterInput,
   EstablishFounderAndFoundationInput,
   DraftPurposeSuggestionInput,
 } from "./founders.service";
@@ -224,6 +225,14 @@ export class FoundersController {
   // LogoStorageService's own cap — without it, multer buffers the whole
   // upload into memory before that service's size check ever runs (2026
   // -08-31 codebase audit finding).
+  // The clinic supporter's step 2 (2026-11-17): a Founder without a
+  // Foundation, for someone who signed up from a clinic waqf's page.
+  @Post("clinic-supporter")
+  async establishClinicSupporter(@Body() body: EstablishClinicSupporterInput, @Req() request: Request) {
+    const user = await resolveUserFromSession(request);
+    return this.service.establishClinicSupporter(user.id, body);
+  }
+
   @Post("establish")
   @UseInterceptors(FileInterceptor("logo", { limits: { fileSize: MAX_LOGO_SIZE_BYTES } }))
   async establish(
