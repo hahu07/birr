@@ -356,6 +356,17 @@ describe("ZakahPaymentsService", () => {
           data: { permissionId: permission.id, makerType: "human", makerUserId: officer.id, checkerUserId: shariah.id, status: "approved", decidedAt: new Date(), payload: {} },
         });
       };
+      // "Lower of" needs metal prices; a fresh database (CI) may not have
+      // any yet, depending on which suite runs first.
+      if (!(await prisma.zakahMetalPrice.findFirst())) {
+        const permission = await prisma.permission.findUniqueOrThrow({ where: { key: "zakah.metal_price_set" } });
+        const priced = await prisma.governedAction.create({
+          data: { permissionId: permission.id, makerType: "human", makerUserId: officer.id, checkerUserId: shariah.id, status: "approved", decidedAt: new Date(), payload: {} },
+        });
+        await prisma.zakahMetalPrice.create({
+          data: { goldPerGram: "150000", silverPerGram: "1800", asOf: new Date(), source: "Nisab test fixture", governedActionId: priced.id },
+        });
+      }
       const shared = { personalJewellery: "exempt", debts: "deduct", nisabGoldGrams: "85", nisabSilverGrams: "595" };
       choosingKey = `test-${run}-nisab-choose`;
       fixedKey = `test-${run}-nisab-fixed`;
