@@ -8,6 +8,8 @@ import { VaultLedgerService } from "./vault-ledger.service";
 import { VaultMilestonesService } from "./vault-milestones.service";
 import { EncryptionService } from "../../common/settings/encryption.service";
 import { FakePaystackPayoutAdapter } from "../distributions/test-support/fake-payout-adapters";
+import { CounterpartyLicensesService, lagosToday } from "../counterparties/counterparty-licenses.service";
+import { REQUIRED_COUNTERPARTY_LICENSES } from "@birr/shared";
 
 describe("VaultDistributionsService", () => {
   const encryption = new EncryptionService();
@@ -206,6 +208,41 @@ describe("VaultDistributionsService", () => {
     expect(disbursed.status).toBe("disbursing");
     expect(disbursed.payoutProvider).toBe("paystack");
     expect(fakePayoutAdapter.calls.some((c) => c.reference === distribution.id)).toBe(true);
+  });
+
+  // Clinic slice 1 (2026-11-17): a healthcare provider is paid only while
+  // every required licence is verified and in date. Its licences can't be
+  // deleted, so this counterparty stays behind as a fixture.
+  test("a healthcare provider is refused at create() without current licences, and again at approve() once one is withdrawn", async () => {
+    const licenses = new CounterpartyLicensesService();
+    const verifier = await prisma.user.create({ data: { email: `vault-distributions-verifier-${randomUUID()}@example.com`, fullName: "Licence Verifier" } });
+    await prisma.birrStaff.create({ data: { userId: verifier.id, roles: { create: { role: "compliance_officer" } } } });
+    const provider = await prisma.counterparty.create({
+      data: {
+        name: `Vault Distributions Fixture Clinic Operator ${randomUUID()}`,
+        institutionType: "healthcare_provider",
+        jurisdiction: "NG",
+        status: "active",
+        payoutProvider: "paystack",
+        payoutBankDetailsEncrypted: paystackReadyBankDetails(),
+      },
+    });
+    const input = { vaultId, vaultCauseId: causeId, counterpartyId: provider.id, amount: "10", currency: "USD" };
+    await expect(service.create(input, actorUserId)).rejects.toThrow(/licences are in order/);
+
+    const nextYear = `${Number(lagosToday().slice(0, 4)) + 1}${lagosToday().slice(4)}`;
+    const recorded = [];
+    for (const kind of REQUIRED_COUNTERPARTY_LICENSES.healthcare_provider!) {
+      const license = await licenses.record(provider.id, { kind, licenseNumber: `L-${kind.length}1`, issuingAuthority: "Fixture Authority", expiresOn: nextYear }, actorUserId);
+      recorded.push(await licenses.verify(license.id, { note: "Saw the certificate." }, verifier.id));
+    }
+    const distribution = await service.create(input, actorUserId);
+    vaultDistributionIds.push(distribution.id);
+
+    await licenses.withdraw(recorded[0].id, { reason: "Suspended by the regulator." }, verifier.id);
+    await prisma.$transaction(async (tx) => {
+      await expect(service.approve(distribution.id, tx)).rejects.toThrow(/licences are in order/);
+    });
   });
 
   test("handlePayoutWebhook() confirms a disbursing distribution as paid", async () => {

@@ -985,6 +985,49 @@ so their documented passwords keep working. Verified by seeding a
 scratch database as production, changing each value as staff would, and
 seeding again.
 
+**Update, 2026-11-17 — the Mother & Child Clinic, a fourth product, and
+its first slice.** Owner's decisions (plan:
+https://claude.ai/artifact/54WMUrmrsk7kL17AjAa5GC):
+- **What it is:** a laboratory and mini clinic in Ibadan for women and
+  young children only, sold as one bundle and held in **one clinic waqf
+  that Birr establishes and curates** (not Founders' own funds owning
+  parts). Its own module when built, never extending Waqf or Vault tables.
+- **Two pots:** an endowment (kept: premises, equipment, invested cash)
+  and a running fund (spent). Founders (with an account, from ₦250,000)
+  and the public (no account, from ₦5,000) choose to endow or give. Zakah
+  only pays poor or needy patients' bills, never the endowment.
+- **A licensed operator runs it** under contract; Birr never practises
+  medicine. Patient records stay with the operator: Birr sees counts and
+  anonymous claim lines only.
+- **Premises by whatever suits the site:** land donated or bought and
+  built on, or a building donated or bought and renovated. Donation is
+  possible, never required. No deliveries at first.
+
+Slice 1, healthcare operator vetting (built):
+- **New type and table:** `CounterpartyType.healthcare_provider` and
+  `CounterpartyLicense`.
+- **Two people per licence:** one records it
+  (`counterparty.license_record`: Mutawalli, Compliance); a different
+  person verifies it against the certificate or register
+  (`counterparty.license_verify`: Compliance; a CHECK refuses the
+  recorder). Compliance withdraws one at once
+  (`counterparty.license_withdraw`).
+- **History is kept:** what the certificate says never changes, and no
+  licence is ever deleted (triggers). A renewal is a new row.
+- **Payment gate:** a healthcare provider can't be onboarded or paid
+  unless all four `REQUIRED_COUNTERPARTY_LICENSES` (`@birr/shared`:
+  facility, MLSCN, malpractice insurance, NDPC) are verified and in date
+  (Lagos dates). The check runs in `onboard()` and in Vault and zakah
+  distributions, at creation and again at approval. It share-locks the
+  counterparty, which verify and withdraw lock for update. Other
+  counterparty types are unaffected.
+- **Expiry warnings:** whoever can verify is warned 60, 30 and 7 days
+  before expiry and once lapsed, each sent once (job
+  `counterparty_license_expiry`).
+- **Still investment_committee only:** `counterparty.register`, so
+  registering a clinic operator needs that role or a Roles & Access
+  change.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

@@ -1,4 +1,5 @@
 import { IdField, TextField } from "../../common/validation/fields";
+import { assertLicensesCurrent } from "../counterparties/counterparty-licenses.service";
 import { FIELD_LIMITS } from "@birr/shared";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsNotEmpty, IsNumberString, IsOptional } from "class-validator";
@@ -85,6 +86,7 @@ export class VaultDistributionsService {
     if (counterparty.status !== "active") {
       throw new BadRequestException(`"${counterparty.name}" is ${counterparty.status} — not approved to receive payouts.`);
     }
+    await assertLicensesCurrent(prisma, counterparty.id);
     // The milestone gate (2026-09-13) — this distribution can't even be
     // created as this milestone's tranche until vault.milestone_complete
     // has actually been approved (governed-actions.service.ts), not just
@@ -134,6 +136,7 @@ export class VaultDistributionsService {
       throw new BadRequestException(`VaultDistribution "${id}" is ${distribution.status}, not pending — nothing to approve.`);
     }
     await this.assertPayoutReady(distribution.counterpartyId, tx);
+    await assertLicensesCurrent(tx, distribution.counterpartyId);
     await this.assertWithinAllocation(distribution.vaultCauseId, distribution.amount, distribution.currency, tx, id);
     // Defense-in-depth re-check, same reasoning as the headroom re-check
     // above: create() already confirmed the milestone was completed,

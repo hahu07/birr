@@ -167,6 +167,13 @@ export const accessPermissions = [
   { key: "cause_category.manage", category: "catalog", description: "Maintain the cause category catalog, including Founder suggestions.", roles: ["platform_admin"] },
   { key: "cause_impact.log", category: "waqf", description: "Log an impact update on a waqf fund's cause.", roles: ["mutawalli_officer"] },
   { key: "coi.review", category: "staff", description: "Review another staff member's conflict-of-interest declaration.", roles: ["compliance_officer"] },
+  // Licences (2026-11-17, clinic slice 1): two people. Whoever records one
+  // never verifies it (a database CHECK), and only a verified licence lets
+  // a healthcare provider be paid. Withdrawing is Compliance alone, at once,
+  // like suspending a counterparty.
+  { key: "counterparty.license_record", category: "counterparty", description: "Record a licence a counterparty holds (it counts only once someone else verifies it).", roles: ["mutawalli_officer", "compliance_officer"] },
+  { key: "counterparty.license_verify", category: "counterparty", description: "Verify a counterparty's licence against the certificate or the regulator's register.", roles: ["compliance_officer"] },
+  { key: "counterparty.license_withdraw", category: "counterparty", description: "Withdraw a counterparty's licence recorded in error, or suspended or revoked by its regulator.", roles: ["compliance_officer"] },
   { key: "counterparty.payout_details", category: "counterparty", description: "Set a counterparty's payout bank details.", roles: ["mutawalli_officer"] },
   { key: "counterparty.register", category: "counterparty", description: "Register, edit and deregister a counterparty (investment or relief partner).", roles: ["investment_committee"] },
   { key: "counterparty.restrict", category: "counterparty", description: "Suspend or blacklist a counterparty, and set its concentration limit.", roles: ["compliance_officer"] },

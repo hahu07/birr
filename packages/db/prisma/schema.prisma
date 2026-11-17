@@ -380,6 +380,9 @@ model User {
   notificationPreferences        NotificationPreference[]
   recordedWaqfProceeds           WaqfProceeds[]
   counterpartyShariahApprovals   Counterparty[]                  @relation("CounterpartyShariahApprover")
+  counterpartyLicensesRecorded   CounterpartyLicense[]           @relation("CounterpartyLicenseRecorder")
+  counterpartyLicensesVerified   CounterpartyLicense[]           @relation("CounterpartyLicenseVerifier")
+  counterpartyLicensesWithdrawn  CounterpartyLicense[]           @relation("CounterpartyLicenseWithdrawer")
   createdInvestmentPlacements    InvestmentPlacement[]
   sentMessages                   Message[]
   mfaBackupCodes                 MfaBackupCode[]
@@ -406,9 +409,9 @@ model User {
   reconciliationIssuesResolved   PaymentReconciliationIssue[]    @relation("ReconciliationIssueResolver")
   successionsRequested           PrimaryContactSuccession[]      @relation("SuccessionRequester")
   successionsRecorded            PrimaryContactSuccession[]      @relation("SuccessionRecorder")
+  accessReviews                  AccessReview[]                  @relation("AccessReviewReviewer")
 
   @@map("users")
-  accessReviews AccessReview[] @relation("AccessReviewReviewer")
 }
 
 // Generated 10-at-a-time by BirrStaffService.confirmMfaEnrollment(),
@@ -1594,6 +1597,21 @@ enum CounterpartyType {
   // from every type above, which describe institutions a waqf *invests*
   // with; this one only ever *receives* a VaultDistribution payout.
   relief_partner
+  // A licensed operator that runs a Birr-owned clinic or laboratory
+  // (2026-11-17, the Mother & Child Clinic). Paid only while every licence
+  // in REQUIRED_COUNTERPARTY_LICENSES (@birr/shared) is verified and in
+  // date — see CounterpartyLicense.
+  healthcare_provider
+  other
+}
+
+// The licences a healthcare provider must hold before Birr pays it. `other`
+// is for anything else worth tracking; it's never required.
+enum CounterpartyLicenseKind {
+  health_facility_registration // the state Ministry of Health's yearly licence
+  medical_laboratory_registration // MLSCN
+  professional_indemnity_insurance // malpractice cover
+  data_protection_registration // NDPC
   other
 }
 
@@ -1684,8 +1702,51 @@ model Counterparty {
   vaultDistributions   VaultDistribution[]
 
   zakahDistributions ZakahDistribution[]
+  licenses           CounterpartyLicense[]
 
   @@map("counterparties")
+}
+
+// One licence a counterparty holds, as seen on its certificate (2026-11-17,
+// clinic slice 1). Two people: one records it, a different one verifies it
+// against the certificate or the regulator's register (a CHECK), and only a
+// verified, unwithdrawn licence counts. A renewal is a new row; the old one
+// stays as history. Once recorded, what the certificate says never changes,
+// and no row is ever deleted (a trigger) — a mistake is withdrawn with a
+// reason and recorded again. Payments to a healthcare provider are refused
+// unless each required kind has a verified licence in date
+// (counterparty-licenses.ts). Dates are Lagos calendar dates: a licence
+// valid until 2027-01-31 is in date all of that day.
+model CounterpartyLicense {
+  id                   String                  @id @default(uuid())
+  counterpartyId       String
+  counterparty         Counterparty            @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+  kind                 CounterpartyLicenseKind
+  licenseNumber        String
+  issuingAuthority     String
+  issuedOn             DateTime?               @db.Date
+  expiresOn            DateTime                @db.Date
+  recordedByUserId     String
+  recordedByUser       User                    @relation("CounterpartyLicenseRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  recordedAt           DateTime                @default(now())
+  verifiedByUserId     String?
+  verifiedByUser       User?                   @relation("CounterpartyLicenseVerifier", fields: [verifiedByUserId], references: [id], onDelete: Restrict)
+  verifiedAt           DateTime?
+  // How the verifier checked it, e.g. "Saw the original; confirmed on the
+  // MLSCN register". Required with the verification.
+  verificationNote     String?
+  withdrawnByUserId    String?
+  withdrawnByUser      User?                   @relation("CounterpartyLicenseWithdrawer", fields: [withdrawnByUserId], references: [id], onDelete: Restrict)
+  withdrawnAt          DateTime?
+  withdrawalReason     String?
+  // The expiry warning last sent for this licence, in days before expiry
+  // (60, 30, 7, 0) — so each warning goes out once. Null: none sent yet.
+  lastExpiryNoticeDays Int?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  @@index([counterpartyId, kind])
+  @@map("counterparty_licenses")
 }
 
 // A recorded return/proceeds event for an Investment-type waqf — Birr

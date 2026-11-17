@@ -1,4 +1,5 @@
 import { IdField, PhoneField, Trimmed, HasLetters } from "../../common/validation/fields";
+import { assertLicensesCurrent } from "../counterparties/counterparty-licenses.service";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEnum, IsInt, IsNumberString, IsOptional, IsString, Matches, MaxLength, Min, MinLength } from "class-validator";
 import { prisma, Prisma, ZakahCategory, ZakahDistribution, ZakahPool } from "@birr/db";
@@ -488,6 +489,7 @@ export class ZakahDistributionsService {
       if (partner.status !== "active") {
         throw new BadRequestException(`${partner.name} isn't an active, vetted partner (status: ${partner.status}).`);
       }
+      await assertLicensesCurrent(prisma, partner.id);
     }
 
     return prisma.$transaction(async (tx) => {
@@ -659,6 +661,7 @@ export class ZakahDistributionsService {
     if (before.counterparty && before.counterparty.status !== "active") {
       throw new BadRequestException(`${before.counterparty.name} is no longer an active partner.`);
     }
+    if (before.counterpartyId) await assertLicensesCurrent(tx, before.counterpartyId);
     // This row is already counted as committed; re-check nothing has
     // pushed commitments past what was received since it was proposed.
     const { received, committed } = await this.totals(tx, before.pool);

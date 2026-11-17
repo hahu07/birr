@@ -23,6 +23,7 @@ const INSTITUTION_TYPES: Counterparty["institutionType"][] = [
   "broker_dealer",
   "fund_administrator",
   "business",
+  "healthcare_provider",
   "other",
 ];
 

@@ -6,6 +6,7 @@ import { CountryCode } from "../../common/validation/country-code";
 import { IsEnum, IsNotEmpty, IsOptional, MinLength, IsNumberString } from "class-validator";
 import { prisma, Prisma, CounterpartyType, CounterpartyStatus, PayoutProvider } from "@birr/db";
 import { EncryptionService } from "../../common/settings/encryption.service";
+import { assertLicensesCurrent } from "./counterparty-licenses.service";
 
 export class RegisterCounterpartyInput {
   @NameField()
@@ -451,6 +452,10 @@ export class CounterpartiesService {
         "This counterparty has no recorded Shariah approval yet — that must happen before onboarding can be approved.",
       );
     }
+    // A third gate for a type with required licences (a healthcare
+    // provider): every one verified and in date. Other types have none,
+    // so this passes straight through for them.
+    await assertLicensesCurrent(tx, id);
     return tx.counterparty.update({ where: { id }, data: { status: "active" } });
   }
 

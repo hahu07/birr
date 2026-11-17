@@ -19,6 +19,7 @@ import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { NotificationsService } from "./modules/notifications/notifications.service";
 import { startTrusteeLicenseExpiryScheduler } from "./modules/trustee-licenses/trustee-license-expiry-scheduler";
+import { startCounterpartyLicenseExpiryScheduler } from "./modules/counterparties/counterparty-license-expiry-scheduler";
 import { startAccessReviewScheduler } from "./modules/roles/access-review-scheduler";
 import { configureJobMonitor, pruneJobRuns } from "./common/jobs/job-monitor";
 import { startPortfolioDriftScheduler } from "./modules/investments/portfolio-drift-scheduler";
@@ -349,6 +350,8 @@ async function bootstrap() {
   pruneTick();
   setInterval(pruneTick, 24 * 60 * 60 * 1000);
   startTrusteeLicenseExpiryScheduler(app.get(NotificationsService));
+  // Warns Compliance before a counterparty's licence lapses (see the scheduler's own comment).
+  startCounterpartyLicenseExpiryScheduler(app.get(NotificationsService));
   // Reminds the Board when the 90-day access review is due (see the scheduler's own comment).
   startAccessReviewScheduler(app.get(NotificationsService));
   startPortfolioDriftScheduler(
