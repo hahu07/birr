@@ -1,10 +1,11 @@
 "use client";
 
-// Clinic waqfs (2026-11-17): the Mother & Child Clinic product. A waqf Birr
-// itself establishes, which Founders and the public give into (from a later
-// slice). A Mutawalli Officer creates one as a draft and drafts its deed; a
-// Shariah board member approves the deed and the Board of Trustees
-// approves establishing it, both on the Approvals page.
+// Waqf programmes (2026-11-17, shared layer step 4): waqfs Birr itself
+// establishes and curates, of any product in WAQF_PROGRAMME_PRODUCTS (the
+// clinic waqf first), filtered by product, cause and status. A Mutawalli
+// Officer creates one as a draft and drafts its deed; a Shariah board
+// member approves the deed and the Board of Trustees approves establishing
+// it, both on the Approvals page.
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetchJson } from "../../../lib/api";
@@ -19,6 +20,7 @@ import {
   EmptyState,
   IconHeart,
   Input,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -28,20 +30,35 @@ import {
 } from "@birr/ui";
 import { RowsSkeleton, SectionHeader } from "../_components/SectionChrome";
 import { CountrySelect } from "../../../components/forms/CountrySelect";
-import { countryName, FIELD_LIMITS } from "@birr/shared";
+import { countryName, FIELD_LIMITS, WAQF_PROGRAMME_PRODUCTS, type WaqfProgrammeProductKey } from "@birr/shared";
 
-export default function ClinicWaqfsPage() {
+const PRODUCT_KEYS = Object.keys(WAQF_PROGRAMME_PRODUCTS) as WaqfProgrammeProductKey[];
+
+export default function WaqfProgrammesPage() {
   const [clinics, setClinics] = useState<WaqfProgramme[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [product, setProduct] = useState("");
+  const [cause, setCause] = useState("");
+  const [status, setStatus] = useState("");
+  // Causes any programme serves, for the cause filter (kept across filtering).
+  const [causeOptions, setCauseOptions] = useState<{ id: string; name: string }[]>([]);
   const { can } = useStaffSession();
   const canCreate = can("waqf_programme.manage");
 
   const load = useCallback(() => {
-    apiFetchJson<WaqfProgramme[]>("/waqf-programmes")
-      .then(setClinics)
+    const query = new URLSearchParams({ ...(product && { product }), ...(cause && { causeCategoryId: cause }), ...(status && { status }) }).toString();
+    apiFetchJson<WaqfProgramme[]>(`/waqf-programmes${query ? `?${query}` : ""}`)
+      .then((list) => {
+        setClinics(list);
+        setCauseOptions((known) => {
+          const all = new Map(known.map((c) => [c.id, c]));
+          for (const p of list) for (const c of p.causes ?? []) all.set(c.causeCategory.id, c.causeCategory);
+          return [...all.values()].sort((a, b) => a.name.localeCompare(b.name));
+        });
+      })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, []);
+  }, [product, cause, status]);
 
   useEffect(() => {
     load();
@@ -54,19 +71,19 @@ export default function ClinicWaqfsPage() {
           <IconHeart className="h-5 w-5" />
         </span>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Clinic Waqfs</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Waqf Programmes</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Laboratories and clinics for women and young children, each held in a waqf Birr establishes. Founders and
-            the public give into it; a licensed operator runs it.
+            Waqfs Birr establishes and curates, such as clinics for women and young children. Founders and the public give
+            into them; Birr is trustee.
           </p>
         </div>
       </header>
 
       <section>
         <SectionHeader
-          title="Clinic waqfs"
-          description="Starts as a draft. Draft its deed for Shariah approval, then propose establishing it to the Board."
-          actionLabel={canCreate ? (showForm ? "Cancel" : "Create clinic waqf") : undefined}
+          title="Programmes"
+          description="Each starts as a draft. Draft its deed for Shariah approval, then propose establishing it to the Board."
+          actionLabel={canCreate ? (showForm ? "Cancel" : "Create waqf programme") : undefined}
           onAction={canCreate ? () => setShowForm((v) => !v) : undefined}
         />
 
@@ -79,16 +96,43 @@ export default function ClinicWaqfsPage() {
           />
         )}
 
+        <div className="mb-4 flex flex-wrap gap-3" role="group" aria-label="Filter programmes">
+          <Select aria-label="Product" value={product} onChange={(e) => setProduct(e.target.value)} className="w-44">
+            <option value="">All products</option>
+            {PRODUCT_KEYS.map((k) => (
+              <option key={k} value={k}>
+                {WAQF_PROGRAMME_PRODUCTS[k].plural}
+              </option>
+            ))}
+          </Select>
+          <Select aria-label="Cause" value={cause} onChange={(e) => setCause(e.target.value)} className="w-52">
+            <option value="">All causes</option>
+            {causeOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+          <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className="w-40">
+            <option value="">Any status</option>
+            <option value="draft">Draft</option>
+            <option value="established">Established</option>
+          </Select>
+        </div>
+
         {error && (
-          <Alert tone="danger" title="Couldn't load clinic waqfs" className="mb-4">
+          <Alert tone="danger" title="Couldn't load the programmes" className="mb-4">
             {error}
           </Alert>
         )}
 
-        {!error && clinics === null && <RowsSkeleton columns={5} />}
+        {!error && clinics === null && <RowsSkeleton columns={7} />}
 
         {!error && clinics !== null && clinics.length === 0 && !showForm && (
-          <EmptyState title="No clinic waqfs yet" description="Create one to start drafting its deed." />
+          <EmptyState
+            title={product || cause || status ? "No programmes match" : "No waqf programmes yet"}
+            description={product || cause || status ? "Try other filters." : "Create one to start drafting its deed."}
+          />
         )}
 
         {!error && clinics !== null && clinics.length > 0 && (
@@ -96,6 +140,8 @@ export default function ClinicWaqfsPage() {
             <TableHead>
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
+                <TableHeaderCell>Product</TableHeaderCell>
+                <TableHeaderCell>Serves</TableHeaderCell>
                 <TableHeaderCell>City</TableHeaderCell>
                 <TableHeaderCell>Jurisdiction</TableHeaderCell>
                 <TableHeaderCell>Deed</TableHeaderCell>
@@ -106,10 +152,12 @@ export default function ClinicWaqfsPage() {
               {clinics.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-medium text-slate-900">
-                    <Link href={`/ops/clinic-waqfs/${c.id}`} className="hover:text-primary-700">
+                    <Link href={`/ops/waqf-programmes/${c.id}`} className="hover:text-primary-700">
                       {c.name}
                     </Link>
                   </TableCell>
+                  <TableCell>{WAQF_PROGRAMME_PRODUCTS[c.product].label}</TableCell>
+                  <TableCell className="text-slate-500">{(c.causes ?? []).map((x) => x.causeCategory.name).join(", ") || "—"}</TableCell>
                   <TableCell>{c.city}</TableCell>
                   <TableCell className="text-slate-500">{countryName(c.jurisdiction)}</TableCell>
                   <TableCell className="text-slate-500">{c.deeds[0] ? `Version ${c.deeds[0].version} approved` : "Not approved yet"}</TableCell>
@@ -127,6 +175,7 @@ export default function ClinicWaqfsPage() {
 }
 
 function CreateForm({ onCreated }: { onCreated: () => void }) {
+  const [product, setProduct] = useState<WaqfProgrammeProductKey>("clinic");
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [city, setCity] = useState("Ibadan");
@@ -142,7 +191,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
     try {
       await apiFetchJson("/waqf-programmes", {
         method: "POST",
-        body: JSON.stringify({ product: "clinic", name, slug, city, jurisdiction, description: description || undefined }),
+        body: JSON.stringify({ product, name, slug, city, jurisdiction, description: description || undefined }),
       });
       onCreated();
     } catch (err) {
@@ -156,11 +205,22 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
     <Card className="mb-6">
       <form onSubmit={handleSubmit} className="space-y-3">
         {error && (
-          <Alert tone="danger" title="Couldn't create the clinic waqf">
+          <Alert tone="danger" title="Couldn't create the programme">
             {error}
           </Alert>
         )}
         <div className="flex flex-wrap items-start gap-3">
+          <div className="w-44 space-y-1.5">
+            <label className="block text-sm font-medium text-slate-700">Product</label>
+            <Select value={product} onChange={(e) => setProduct(e.target.value as WaqfProgrammeProductKey)} className="w-full">
+              {PRODUCT_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {WAQF_PROGRAMME_PRODUCTS[k].label}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-slate-500">Fixed once created.</p>
+          </div>
           <div className="min-w-[14rem] flex-1 space-y-1.5">
             <label className="block text-sm font-medium text-slate-700">Name</label>
             <Input required check="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Mother & Child Clinic, Ibadan" />

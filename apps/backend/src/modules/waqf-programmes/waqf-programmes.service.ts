@@ -65,6 +65,21 @@ export class UpdateWaqfProgrammeInput {
   causeCategoryIds?: string[];
 }
 
+// GET /waqf-programmes filters (step 4): all optional, combined.
+export class ListWaqfProgrammesQuery {
+  @IsOptional()
+  @IsIn(Object.keys(PRODUCTS))
+  product?: WaqfProgrammeProduct;
+
+  @IsOptional()
+  @IdField()
+  causeCategoryId?: string;
+
+  @IsOptional()
+  @IsIn(["draft", "established"])
+  status?: "draft" | "established";
+}
+
 export class DraftProgrammeDeedInput {
   // Omitted: the product's standard wording (programme-products.ts), filled in for this programme.
   @IsOptional()
@@ -159,8 +174,13 @@ export class WaqfProgrammesService {
     });
   }
 
-  list() {
+  list(filter: ListWaqfProgrammesQuery = {}) {
     return prisma.waqfProgramme.findMany({
+      where: {
+        ...(filter.product && { product: filter.product }),
+        ...(filter.status && { status: filter.status }),
+        ...(filter.causeCategoryId && { causes: { some: { causeCategoryId: filter.causeCategoryId } } }),
+      },
       orderBy: { createdAt: "desc" },
       include: {
         deeds: { where: { status: "approved" }, select: { version: true } },
