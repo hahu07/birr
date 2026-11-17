@@ -1,5 +1,6 @@
 import { prisma } from "@birr/db";
-import { AuditLogsService } from "./audit-logs.service";
+import { PassThrough } from "stream";
+import { AuditLogsService, ChainExportPlan } from "./audit-logs.service";
 
 describe("AuditLogsService", () => {
   const service = new AuditLogsService();
@@ -219,37 +220,64 @@ describe("AuditLogsService", () => {
       expect(after).toMatchObject({ action: "test.immutable_fixture", actorDonorId: donor.id });
     });
 
-    test("exportChain() returns records in ascending sequence order with a matching chain head", async () => {
-      const log = await service.write({
-        actorType: "birr_staff",
-        actorUserId,
-        action: "test.export_fixture",
-        entityType: "TestEntity",
-        entityId: "export-fixture-1",
-      });
-      auditLogIds.push(log.id);
-
-      const result = await service.exportChain();
-      expect(result.records.length).toBe(result.totalRecords);
-      expect(result.chainHeadSequence).toBe(result.records[result.records.length - 1]!.sequence);
-      expect(result.chainHeadHash).toBe(result.records[result.records.length - 1]!.recordHash);
-
-      for (let i = 1; i < result.records.length; i++) {
-        expect(result.records[i]!.sequence).toBeGreaterThan(result.records[i - 1]!.sequence);
+    // The export is streamed a page at a time (2026-11-17), never loaded
+    // whole: these read it back the way an auditor's tool would, by
+    // parsing the file the stream wrote.
+    const exportFile = async (plan: ChainExportPlan, filters?: { waqfId?: string }, pageSize?: number) => {
+      const out = new PassThrough();
+      const chunks: Buffer[] = [];
+      out.on("data", (c: Buffer) => chunks.push(c));
+      await service.streamChainExport(out, plan, filters, pageSize);
+      out.end();
+      return JSON.parse(Buffer.concat(chunks).toString("utf8")) as ChainExportPlan & { records: { id: string; sequence: number; recordHash: string | null }[] };
+    };
+    const fundRows = async (waqfId: string, count: number) => {
+      const rows = [];
+      for (let i = 0; i < count; i++) {
+        const log = await service.write({ actorType: "birr_staff", actorUserId, action: "test.export_fixture", entityType: "TestEntity", entityId: `export-${i}`, waqfId });
+        auditLogIds.push(log.id);
+        rows.push(log);
       }
+      return rows;
+    };
 
-      const exported = result.records.find((r) => r.id === log.id);
-      expect(exported?.recordHash).toBe(log.recordHash);
-      // The whole chain: a long-used dev database holds tens of thousands
-      // of rows, more than the default 5s allows.
-    }, 60_000);
+    test("a fund's export comes out in chain order, across several pages, with a matching chain head", async () => {
+      const waqfId = `export-pages-${Date.now()}`;
+      const rows = await fundRows(waqfId, 5);
+      const plan = await service.planChainExport({ waqfId });
+      expect(plan).toMatchObject({ totalRecords: 5, chainHeadSequence: rows[4]!.sequence, chainHeadHash: rows[4]!.recordHash });
 
-    test("exportChain() filters by waqfId when provided", async () => {
-      const result = await service.exportChain({ waqfId: "does-not-exist" });
-      expect(result.records).toHaveLength(0);
-      expect(result.totalRecords).toBe(0);
-      expect(result.chainHeadSequence).toBeNull();
-      expect(result.chainHeadHash).toBeNull();
+      const file = await exportFile(plan, { waqfId }, 2); // pages of 2, 2 and 1
+      expect(file).toMatchObject({ exportedAt: plan.exportedAt, totalRecords: 5, chainHeadSequence: plan.chainHeadSequence, chainHeadHash: plan.chainHeadHash });
+      expect(file.records.map((r) => r.id)).toEqual(rows.map((r) => r.id));
+      expect(file.records.map((r) => r.recordHash)).toEqual(rows.map((r) => r.recordHash));
     });
+
+    test("rows written while an export runs are left out, so the file is one snapshot", async () => {
+      const waqfId = `export-snapshot-${Date.now()}`;
+      await fundRows(waqfId, 2);
+      const plan = await service.planChainExport({ waqfId });
+      await fundRows(waqfId, 1); // e.g. the "exported" row itself, written after the plan
+      const file = await exportFile(plan, { waqfId });
+      expect(file.records).toHaveLength(2);
+      expect(file.totalRecords).toBe(2);
+    });
+
+    test("an export with nothing in it is still a valid, empty file", async () => {
+      const plan = await service.planChainExport({ waqfId: "does-not-exist" });
+      expect(plan).toMatchObject({ totalRecords: 0, chainHeadSequence: null, chainHeadHash: null });
+      expect((await exportFile(plan, { waqfId: "does-not-exist" })).records).toEqual([]);
+    });
+
+    test("the whole chain streams out in order and matches its count", async () => {
+      const plan = await service.planChainExport();
+      const file = await exportFile(plan);
+      expect(file.records).toHaveLength(plan.totalRecords);
+      expect(file.records[file.records.length - 1]!.sequence).toBe(plan.chainHeadSequence);
+      for (let i = 1; i < file.records.length; i++) {
+        expect(file.records[i]!.sequence).toBeGreaterThan(file.records[i - 1]!.sequence);
+      }
+      // Tens of thousands of rows in a long-used dev database.
+    }, 60_000);
   });
 });

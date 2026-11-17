@@ -9,7 +9,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, apiFetchJson } from "../../../lib/api";
 import { formatDate } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
-import type { AuditLog, AuditLogExport, AuditLogPage, AuditLogVerifyResult } from "../../../lib/ops-types";
+import type { AuditLog, AuditLogPage, AuditLogVerifyResult } from "../../../lib/ops-types";
 import {
   Alert,
   Badge,
@@ -85,8 +85,9 @@ export default function AuditLogsPage() {
         const body = await res.json().catch(() => null);
         throw new Error(body?.message ?? `Export failed with status ${res.status}.`);
       }
-      const data: AuditLogExport = await res.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      // Saved as the server streams it (2026-11-17): never parsed and
+      // re-encoded here, which held the whole trail in memory twice.
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

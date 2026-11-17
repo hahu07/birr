@@ -1,5 +1,7 @@
+import { once } from "events";
+import type { Writable } from "stream";
 import { Injectable } from "@nestjs/common";
-import { prisma, ActorType } from "@birr/db";
+import { prisma, ActorType, Prisma } from "@birr/db";
 
 interface WriteAuditLogInput {
   waqfId?: string;
@@ -80,22 +82,79 @@ export class AuditLogsService {
    * every record in chain order, with the hash fields attached so the
    * export itself can be independently re-verified later even outside
    * this system.
+   *
+   * Since 2026-11-17 it never loads the whole trail at once (70,500 rows
+   * in a long-used dev database, and production only grows): the plan
+   * fixes the chain head and the count up front, then the rows are read
+   * in pages of EXPORT_PAGE_SIZE by sequence and streamed out
+   * (streamChainExport). Rows written while an export runs come after the
+   * head, so they're left out and the file stays one consistent snapshot.
    */
-  async exportChain(filters?: { waqfId?: string }) {
-    const records = await prisma.auditLog.findMany({
-      where: filters?.waqfId ? { waqfId: filters.waqfId } : undefined,
-      orderBy: { sequence: "asc" },
-      include: CHAIN_RECORD_INCLUDE,
-    });
-
-    const chainHead = records.length > 0 ? records[records.length - 1]! : null;
-
+  async planChainExport(filters?: { waqfId?: string }): Promise<ChainExportPlan> {
+    const where = chainExportWhere(filters);
+    const head = await prisma.auditLog.findFirst({ where, orderBy: { sequence: "desc" }, select: { sequence: true, recordHash: true } });
+    const totalRecords = head ? await prisma.auditLog.count({ where: { ...where, sequence: { lte: head.sequence } } }) : 0;
     return {
       exportedAt: new Date().toISOString(),
-      totalRecords: records.length,
-      chainHeadSequence: chainHead ? chainHead.sequence : null,
-      chainHeadHash: chainHead ? chainHead.recordHash : null,
-      records,
+      totalRecords,
+      chainHeadSequence: head ? head.sequence : null,
+      chainHeadHash: head ? head.recordHash : null,
     };
   }
+
+  /** The plan's records in chain order, a page at a time. */
+  async *chainExportPages(plan: ChainExportPlan, filters?: { waqfId?: string }, pageSize = EXPORT_PAGE_SIZE) {
+    if (plan.chainHeadSequence === null) return;
+    let after: number | null = null;
+    for (;;) {
+      const page: ChainExportRecord[] = await prisma.auditLog.findMany({
+        where: { ...chainExportWhere(filters), sequence: { lte: plan.chainHeadSequence, ...(after !== null ? { gt: after } : {}) } },
+        orderBy: { sequence: "asc" },
+        take: pageSize,
+        include: CHAIN_RECORD_INCLUDE,
+      });
+      if (page.length > 0) yield page;
+      if (page.length < pageSize) return;
+      after = page[page.length - 1]!.sequence;
+    }
+  }
+
+  /**
+   * Writes the export as JSON to `out` (an HTTP response): the plan's
+   * fields, then "records", one record per line. Same shape as the export
+   * always had, so a file can still be verified the same way. Waits for
+   * `out` to drain when it's full, so memory stays at one page.
+   */
+  async streamChainExport(out: Writable, plan: ChainExportPlan, filters?: { waqfId?: string }, pageSize = EXPORT_PAGE_SIZE): Promise<void> {
+    const write = async (chunk: string) => {
+      if (!out.write(chunk)) await once(out, "drain");
+    };
+    const header = JSON.stringify(plan);
+    await write(`${header.slice(0, -1)},"records":[`);
+    let separator = "\n";
+    for await (const page of this.chainExportPages(plan, filters, pageSize)) {
+      let chunk = "";
+      for (const record of page) {
+        chunk += `${separator}${JSON.stringify(record)}`;
+        separator = ",\n";
+      }
+      await write(chunk);
+    }
+    await write("\n]}\n");
+  }
+}
+
+export const EXPORT_PAGE_SIZE = 1000;
+
+export type ChainExportRecord = Prisma.AuditLogGetPayload<{ include: typeof CHAIN_RECORD_INCLUDE }>;
+
+export interface ChainExportPlan {
+  exportedAt: string;
+  totalRecords: number;
+  chainHeadSequence: number | null;
+  chainHeadHash: string | null;
+}
+
+function chainExportWhere(filters?: { waqfId?: string }) {
+  return filters?.waqfId ? { waqfId: filters.waqfId } : {};
 }
