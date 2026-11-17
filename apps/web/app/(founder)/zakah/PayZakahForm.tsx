@@ -176,7 +176,7 @@ export function PayZakahForm({
           <p className="text-sm text-slate-700">For payments of this size we&apos;re required to confirm who you are.</p>
           <div>
             <label htmlFor="pay-name" className="mb-1.5 block text-sm font-medium text-slate-700">Full name</label>
-            <Input id="pay-name" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            <Input check="name" id="pay-name" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -191,7 +191,7 @@ export function PayZakahForm({
             </div>
             <div>
               <label htmlFor="pay-id-number" className="mb-1.5 block text-sm font-medium text-slate-700">ID number</label>
-              <Input id="pay-id-number" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
+              <Input check="reference" id="pay-id-number" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
             </div>
           </div>
         </div>

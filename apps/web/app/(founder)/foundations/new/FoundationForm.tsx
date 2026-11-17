@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import type { Foundation } from "../../../../lib/types";
-import { Alert, Button } from "@birr/ui";
+import { Alert, Button, Input } from "@birr/ui";
 import { Field, FormSection, inputClass } from "../../_components/form";
 import { CountrySelect } from "../../../../components/forms/CountrySelect";
 import { FIELD_LIMITS } from "@birr/shared";
@@ -64,7 +64,7 @@ export function FoundationForm({
         <FormSection title="Foundation details" description="The umbrella your Waqf Funds sit under — you can add funds to it right away.">
           <div className="space-y-5">
             <Field label="Name" htmlFor="name">
-              <input id="name" value={name} onChange={(e) => setName(e.target.value)} required placeholder='e.g. "Bello Family Foundation"' className={inputClass} />
+              <Input check="name" id="name" value={name} onChange={(e) => setName(e.target.value)} required placeholder='e.g. "Bello Family Foundation"' />
             </Field>
             <Field label="Purpose" htmlFor="purpose" hint="This becomes part of the dedication itself.">
               <textarea

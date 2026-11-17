@@ -270,7 +270,7 @@ function PausedAction({ token, gift, onChange }: { token: string; gift: ManagedG
               <label htmlFor="identity-name" className="mb-1.5 block text-sm font-medium text-slate-700">
                 Full name
               </label>
-              <Input id="identity-name" required value={fullName} onChange={(e) => setFullName(e.target.value)} />
+              <Input check="name" id="identity-name" required value={fullName} onChange={(e) => setFullName(e.target.value)} />
             </div>
             <div>
               <label htmlFor="identity-type" className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -288,7 +288,7 @@ function PausedAction({ token, gift, onChange }: { token: string; gift: ManagedG
               <label htmlFor="identity-number" className="mb-1.5 block text-sm font-medium text-slate-700">
                 ID number
               </label>
-              <Input id="identity-number" required value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
+              <Input check="reference" id="identity-number" required value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
             </div>
           </div>
           <Button type="submit" className="mt-4" disabled={busy}>

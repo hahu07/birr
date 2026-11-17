@@ -13,7 +13,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import { humanize } from "../../../../lib/format";
 import { ROUTE_FOR_STEP } from "../../../../lib/onboarding";
 import type { Invitation } from "../../../../lib/types";
-import { Alert, Button, IconArrowRight, IconImage, IconShieldCheck, IconSparkle, Select } from "@birr/ui";
+import { Alert, Button, IconArrowRight, IconImage, IconShieldCheck, IconSparkle, Select, Input } from "@birr/ui";
 import { ChoiceCard, Field, FormSection, inputClass } from "../../_components/form";
 import { FOUNDER_TYPE_GUIDE, FounderFoundationGuide, type FounderType, INSTITUTION_TYPE_GUIDE } from "./FounderFoundationGuide";
 import { countryName, FIELD_LIMITS } from "@birr/shared";
@@ -375,13 +375,12 @@ export default function OnboardingFounderFoundationPage() {
                   </div>
                 </fieldset>
                 <Field label={kind === "institution" ? "Institution name" : "Your full name"} htmlFor="founderName">
-                  <input
+                  <Input check="name"
                     id="founderName"
                     value={founderName}
                     onChange={(e) => setFounderName(e.target.value)}
                     required
                     placeholder={kind === "institution" ? 'e.g. "Kano Islamic Relief Initiative"' : 'e.g. "Amina Bello"'}
-                    className={inputClass}
                   />
                 </Field>
                 {kind === "institution" && (
@@ -421,13 +420,12 @@ export default function OnboardingFounderFoundationPage() {
             >
               <div className="space-y-5">
                 <Field label="Name" htmlFor="foundationName">
-                  <input
+                  <Input check="name"
                     id="foundationName"
                     value={foundationName}
                     onChange={(e) => setFoundationName(e.target.value)}
                     required
                     placeholder='e.g. "Hope for Kids Foundation"'
-                    className={inputClass}
                   />
                 </Field>
                 <div>
@@ -545,7 +543,7 @@ export default function OnboardingFounderFoundationPage() {
                 <div className={`space-y-2.5 ${founderType === "joint" ? "" : "mt-4"}`}>
                   {coFounderEmails.map((email, index) => (
                     <div key={index} className="flex items-center gap-2">
-                      <input
+                      <Input
                         type="email"
                         value={email}
                         onChange={(e) => updateCoFounderEmail(index, e.target.value)}

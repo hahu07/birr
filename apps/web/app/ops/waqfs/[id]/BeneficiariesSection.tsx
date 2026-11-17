@@ -217,7 +217,7 @@ function BeneficiaryForm({
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Name</label>
-          <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+          <Input check="name" required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Kind</label>
@@ -293,7 +293,7 @@ function BeneficiaryForm({
             </div>
             <div className="min-w-[10rem] space-y-1.5">
               <label className="text-sm font-medium text-slate-700">Bank name</label>
-              <Input value={bankName} onChange={(e) => setBankName(e.target.value)} />
+              <Input check="name" value={bankName} onChange={(e) => setBankName(e.target.value)} />
             </div>
             <div className="min-w-[10rem] space-y-1.5">
               <label className="text-sm font-medium text-slate-700">Account number</label>
@@ -301,7 +301,7 @@ function BeneficiaryForm({
             </div>
             <div className="min-w-[10rem] space-y-1.5">
               <label className="text-sm font-medium text-slate-700">Account name</label>
-              <Input value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+              <Input check="name" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
             </div>
             {payoutProvider === "paystack" && (
               <div className="min-w-[8rem] space-y-1.5">
@@ -487,7 +487,7 @@ function PayoutDetailsAction({ beneficiary, onSaved }: { beneficiary: Beneficiar
   return (
     <form onSubmit={handleSave} className="w-56 space-y-1.5 rounded-md border border-slate-200 bg-slate-50 p-2">
       <p className="text-xs text-slate-500">Paid out via Paystack</p>
-      <Input className="text-xs" placeholder="Bank name" required value={bankName} onChange={(e) => setBankName(e.target.value)} />
+      <Input check="name" className="text-xs" placeholder="Bank name" required value={bankName} onChange={(e) => setBankName(e.target.value)} />
       <Input
         className="text-xs"
         placeholder="Account number"
@@ -495,7 +495,7 @@ function PayoutDetailsAction({ beneficiary, onSaved }: { beneficiary: Beneficiar
         value={accountNumber}
         onChange={(e) => setAccountNumber(e.target.value)}
       />
-      <Input
+      <Input check="name"
         className="text-xs"
         placeholder="Account name"
         required

@@ -67,6 +67,22 @@ export function EmailField() {
 }
 
 /**
+ * For a field that keeps its own length and minimum rules but is a name
+ * (2026-11-17): it must have a letter in it, as NameField requires.
+ */
+export function HasLetters() {
+  return Matches(/\p{L}/u, { message: "$property must contain letters." });
+}
+
+/**
+ * For a field that keeps its own rules but is an ID or reference number
+ * (2026-11-17): it must have a digit in it, as ReferenceField requires.
+ */
+export function HasDigits() {
+  return Matches(/\d/, { message: "$property should include digits, like RC 1909785." });
+}
+
+/**
  * A registration or licence number: up to 100 characters, and it has a
  * digit in it (a licence number of "adewale" is a mistake, 2026-11-16).
  */

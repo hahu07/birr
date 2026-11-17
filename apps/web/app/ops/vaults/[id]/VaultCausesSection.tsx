@@ -443,7 +443,7 @@ function CustomCauseForm({ vaultId, onCreated }: { vaultId: string; onCreated: (
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Name</label>
-          <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+          <Input check="name" required autoFocus value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="min-w-[16rem] flex-[2] space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Description (optional)</label>

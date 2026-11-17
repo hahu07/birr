@@ -900,6 +900,13 @@ an email, "call me" as a phone):
   `fieldProblem` in `@birr/shared`; the API has the matching
   `ReferenceField` (registration and licence numbers) and `NameField`
   (licensing and regulating authorities).
+- **Every form, 2026-11-17:** every name box (people, organisations,
+  funds, causes, banks, account names) has `check="name"`, and every ID
+  or bank reference has `check="reference"`, Founder Portal, Ops and
+  giving alike. The founder setup forms' plain `<input>`s became `Input`
+  so they're checked too. Fields keeping their own limits on the API get
+  `HasLetters()` / `HasDigits()` beside them (giver identities, zakah
+  recipients and refunds, nominations, cause categories, blog authors).
 
 **Update, 2026-11-17 — security review before launch**
 (`docs/security-review-2026-11-17.md`). Fixed first:

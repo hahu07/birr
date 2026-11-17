@@ -178,7 +178,7 @@ function AccountForm({ onSaved }: { onSaved: () => void }) {
         </div>
         <div className="min-w-[14rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Name</label>
-          <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Materials" />
+          <Input check="name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Materials" />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Type</label>

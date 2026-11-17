@@ -535,7 +535,7 @@ function SuggestCauseFormPanel({
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Cause name</label>
-          <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+          <Input check="name" required autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
         </div>
         <div className="min-w-[16rem] flex-[2] space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Why this cause (optional)</label>

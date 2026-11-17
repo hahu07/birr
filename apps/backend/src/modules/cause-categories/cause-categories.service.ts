@@ -1,4 +1,4 @@
-import { IdField, Trimmed } from "../../common/validation/fields";
+import { IdField, Trimmed, HasLetters } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, WaqfType } from "@birr/db";
@@ -13,6 +13,7 @@ export class CreateCauseCategoryInput {
   @IsString()
   @IsNotEmpty({ message: "Name is required." })
   @MaxLength(NAME_MAX_LENGTH)
+  @HasLetters()
   name!: string;
 
   @Trimmed()
@@ -61,6 +62,7 @@ export class UpdateCauseCategoryInput {
   @IsString()
   @IsNotEmpty({ message: "Name cannot be blank." })
   @MaxLength(NAME_MAX_LENGTH)
+  @HasLetters()
   name?: string;
 
   @Trimmed()

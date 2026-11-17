@@ -253,7 +253,7 @@ function InvestmentForm({
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Name</label>
-          <Input
+          <Input check="name"
             required
             autoFocus
             placeholder='e.g. "2026 Murabaha Tranche 1"'
