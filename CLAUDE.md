@@ -994,7 +994,8 @@ only, offered as one bundle and held in one clinic waqf. Birr establishes
 the waqf, Founders and the public endow or give to it, and a licensed
 operator runs the clinic. Birr stays trustee: it holds the assets, pays
 agreed subsidies and checks the results, but does not practise medicine.
-All nine slices are built (`modules/clinic-waqfs`): a waqf Birr
+All nine slices are built (the clinic is the first waqf programme:
+`modules/waqf-programmes` and `modules/clinics`): a waqf Birr
 establishes, which Founders and the public alike can fund, by endowing it
 or giving to its running costs, once or monthly. It isn't open for giving
 yet; see "Next steps for the clinic" below.
