@@ -15,6 +15,11 @@ export interface ClinicGiftReceipt {
   deedVersion?: number | null;
 }
 
+// The clinic's name is set by staff; escape it like any text put into HTML.
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
 function naira(amount: string): string {
   return `₦${Number(amount).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -37,11 +42,11 @@ export class ResendClinicReceiptEmailAdapter {
 
     const what =
       input.pot === "endowment"
-        ? `<p>We've received your gift of <strong>${naira(input.amount)}</strong> to the endowment of ${input.clinicName}.</p>` +
+        ? `<p>We've received your gift of <strong>${naira(input.amount)}</strong> to the endowment of ${escapeHtml(input.clinicName)}.</p>` +
           `<p>It's endowed for ever: it is never spent, and its income pays for the clinic's care of women and children.` +
           (input.deedVersion ? ` You gave it under version ${input.deedVersion} of the waqf's deed.` : "") +
           `</p>`
-        : `<p>We've received your gift of <strong>${naira(input.amount)}</strong> to the running fund of ${input.clinicName}.</p>` +
+        : `<p>We've received your gift of <strong>${naira(input.amount)}</strong> to the running fund of ${escapeHtml(input.clinicName)}.</p>` +
           `<p>It pays for subsidised visits and the clinic's running costs.</p>`;
     const feeLine =
       Number(input.feeCover) > 0
