@@ -843,8 +843,8 @@ model FoundationFounder {
 // here never rewrites or breaks history already on a waqf — it only
 // removes the option from what a Founder can newly pick.
 model CauseCategory {
-  id                 String          @id @default(uuid())
-  name               String          @unique
+  id                 String               @id @default(uuid())
+  name               String               @unique
   description        String?
   // A default project-plan TEMPLATE, copied into a new VaultCause at
   // selection time (same copy-at-selection pattern as `description`
@@ -873,7 +873,7 @@ model CauseCategory {
   // Product team's own curated display order (ascending, ties broken by
   // name) — not creation order or alphabetical, since neither reflects
   // which causes Birr wants shown first.
-  sortOrder          Int             @default(0)
+  sortOrder          Int                  @default(0)
   // Staff-curated, not derived from live selection stats — with so few
   // real waqfs established, usage-based "commonly picked for this type"
   // would be noise for a long while. A UX nudge only (the Founder's
@@ -892,10 +892,12 @@ model CauseCategory {
   // the Founder's picker; one with none behaves exactly as every
   // category did before this existed.
   parentId           String?
-  parent             CauseCategory?  @relation("CauseCategoryChildren", fields: [parentId], references: [id])
-  children           CauseCategory[] @relation("CauseCategoryChildren")
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  parent             CauseCategory?       @relation("CauseCategoryChildren", fields: [parentId], references: [id])
+  children           CauseCategory[]      @relation("CauseCategoryChildren")
+  // Waqf programmes tagged with this cause (2026-11-17).
+  programmes         WaqfProgrammeCause[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
   deletedAt          DateTime?
 
   waqfCauses               WaqfCause[]
@@ -4079,6 +4081,9 @@ model WaqfProgramme {
 
   monthlyReports ClinicMonthlyReport[]
 
+  // The causes it serves, from the cause catalog (shared layer step 3).
+  causes WaqfProgrammeCause[]
+
   // The equipment replacement reserve (slice 9): this share of every
   // endowment income receipt is set aside automatically (1150 / 1100). Set
   // by the Board (clinic_waqf.reserve_share_set).
@@ -4680,4 +4685,21 @@ model ClinicMonthlyReport {
 
   @@index([programmeId, period])
   @@map("clinic_monthly_reports")
+}
+
+// The causes a waqf programme serves, from the cause catalog (2026-11-17,
+// shared layer step 3). A new programme takes its product's default causes
+// (WAQF_PROGRAMME_PRODUCTS in @birr/shared); a Mutawalli Officer may change
+// them, audited. A tag, not money: changing it moves nothing.
+model WaqfProgrammeCause {
+  id              String        @id @default(uuid())
+  programmeId     String
+  programme       WaqfProgramme @relation(fields: [programmeId], references: [id], onDelete: Restrict)
+  causeCategoryId String
+  causeCategory   CauseCategory @relation(fields: [causeCategoryId], references: [id], onDelete: Restrict)
+  createdAt       DateTime      @default(now())
+
+  @@unique([programmeId, causeCategoryId])
+  @@index([causeCategoryId])
+  @@map("waqf_programme_causes")
 }

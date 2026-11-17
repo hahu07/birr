@@ -7,7 +7,7 @@ import { createHash } from "crypto";
  * waqf_programme.deed_approve. Staff may edit the text before drafting a
  * version; once drafted, a version's text never changes.
  */
-export function draftProgrammeDeedText(clinic: { name: string; city: string }): string {
+export function draftClinicDeedText(clinic: { name: string; city: string }): string {
   return `Deed of the ${clinic.name} waqf
 
 1. Establishment. Birr establishes this waqf and is its Mutawalli (trustee). Everyone who endows into it does so as a co-founder (waqif) of what they give, by accepting this deed when they give.

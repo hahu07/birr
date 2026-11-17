@@ -1322,9 +1322,26 @@ Vault and zakah stay separate.
     `clinic.operator_assigned`; clinic price list, claim and report actions
     unchanged). Rows written before keep their old names. The
     reconciliation label is `programme_gift`.
-- **Steps 3 and 4:** a product list in code (pots per product, adding a
-  loan pot; payout kinds; causes, with the clinic tagged Healthcare), then
-  one "Waqf programmes" area in the Ops Console.
+- **Step 3 (built): the product list.** `WAQF_PROGRAMME_PRODUCTS` in
+  `@birr/shared` names each product's label and public address, its pots,
+  its kinds of endowment payment, its default causes, its monthly measures
+  and its own parts. The backend adds each product's standard deed wording
+  (`programme-products.ts`, typed by the database's `WaqfProgrammeProduct`,
+  so a new product won't compile without one); a test checks the list
+  names exactly the database's products, pots and payment kinds.
+  - A programme serves causes from the cause catalog
+    (`WaqfProgrammeCause`): a new one takes its product's defaults (the
+    clinic: Healthcare, and existing clinics were tagged by migration
+    `20261118090000_waqf_programme_causes`); `PUT /waqf-programmes/:id`
+    with `causeCategoryIds` replaces the set (current catalog entries
+    only), audited. A tag only: it moves no money.
+  - Creating a programme now names its product.
+  - **Waits for the second product:** a loan pot, and refusing a product's
+    own parts (or pots and payment kinds it doesn't list) for other
+    products. With only clinics there is nothing to refuse or test; add
+    them with the need-based waqf.
+- **Step 4:** one "Waqf programmes" area in the Ops Console, filtered by
+  product and cause.
 
 Next steps for the clinic (2026-11-17; all nine slices are built and
 merged, nothing is live, no operator or site exists yet; the plan doc's

@@ -142,7 +142,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
     try {
       await apiFetchJson("/waqf-programmes", {
         method: "POST",
-        body: JSON.stringify({ name, slug, city, jurisdiction, description: description || undefined }),
+        body: JSON.stringify({ product: "clinic", name, slug, city, jurisdiction, description: description || undefined }),
       });
       onCreated();
     } catch (err) {

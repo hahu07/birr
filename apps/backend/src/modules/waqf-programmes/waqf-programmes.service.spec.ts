@@ -14,7 +14,7 @@ describe("WaqfProgrammesService", () => {
   let actorUserId: string;
 
   const slug = () => `test-clinic-${randomUUID().slice(0, 8)}`;
-  const newClinic = () => service.create({ name: "Test Mother & Child Clinic", slug: slug(), city: "Ibadan", jurisdiction: "NG" }, actorUserId);
+  const newClinic = () => service.create({ product: "clinic", name: "Test Mother & Child Clinic", slug: slug(), city: "Ibadan", jurisdiction: "NG" }, actorUserId);
 
   beforeAll(async () => {
     const user = await prisma.user.create({ data: { email: `clinic-waqfs-${randomUUID()}@example.com`, fullName: "Clinic Officer" } });
@@ -32,7 +32,7 @@ describe("WaqfProgrammesService", () => {
       expect(clinic.status).toBe("draft");
       expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "waqf_programme.created" } })).toBe(1);
       await expect(
-        service.create({ name: "Another", slug: clinic.slug, city: "Ibadan", jurisdiction: "NG" }, actorUserId),
+        service.create({ product: "clinic", name: "Another", slug: clinic.slug, city: "Ibadan", jurisdiction: "NG" }, actorUserId),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -46,6 +46,40 @@ describe("WaqfProgrammesService", () => {
         prisma.waqfProgramme.update({ where: { id: clinic.id }, data: { status: "established", establishedAt: new Date() } }),
       ).rejects.toThrow(/waqf_programmes_establishment_consistent/);
       await expect(prisma.waqfProgramme.delete({ where: { id: clinic.id } })).rejects.toThrow(/never deleted/);
+    });
+  });
+
+  // Shared layer step 3: a programme serves causes from the catalog. A new
+  // one takes its product's defaults; a Mutawalli Officer may change them.
+  describe("causes", () => {
+    const category = async (name: string) =>
+      (await prisma.causeCategory.findFirst({ where: { name, deletedAt: null } })) ?? prisma.causeCategory.create({ data: { name } });
+
+    test("a new clinic serves Healthcare, its product's default cause", async () => {
+      const healthcare = await category("Healthcare");
+      const clinic = await newClinic();
+      const found = await service.findById(clinic.id);
+      expect(found.causes.map((c) => c.causeCategory.id)).toEqual([healthcare.id]);
+      const created = await prisma.auditLog.findFirstOrThrow({ where: { entityId: clinic.id, action: "waqf_programme.created" } });
+      expect((created.after as { causeCategoryIds: string[] }).causeCategoryIds).toEqual([healthcare.id]);
+    });
+
+    test("changing the causes replaces the set, audited; only current catalog entries", async () => {
+      const healthcare = await category("Healthcare");
+      const orphans = await category("Orphan Care");
+      const clinic = await newClinic();
+      const after = await service.update(clinic.id, { causeCategoryIds: [healthcare.id, orphans.id, orphans.id] }, actorUserId);
+      expect([...after.causeCategoryIds].sort()).toEqual([healthcare.id, orphans.id].sort());
+      await service.update(clinic.id, { causeCategoryIds: [orphans.id] }, actorUserId);
+      expect((await service.findById(clinic.id)).causes.map((c) => c.causeCategory.id)).toEqual([orphans.id]);
+      const updates = await prisma.auditLog.findMany({ where: { entityId: clinic.id, action: "waqf_programme.updated" }, orderBy: { createdAt: "asc" } });
+      expect(updates).toHaveLength(2);
+      expect((updates[1].before as { causeCategoryIds: string[] }).causeCategoryIds.sort()).toEqual([healthcare.id, orphans.id].sort());
+      expect((updates[1].after as { causeCategoryIds: string[] }).causeCategoryIds).toEqual([orphans.id]);
+
+      await expect(service.update(clinic.id, { causeCategoryIds: [randomUUID()] }, actorUserId)).rejects.toThrow(/current entry in the cause catalog/);
+      const retired = await prisma.causeCategory.create({ data: { name: `Retired cause ${randomUUID().slice(0, 8)}`, deletedAt: new Date() } });
+      await expect(service.update(clinic.id, { causeCategoryIds: [retired.id] }, actorUserId)).rejects.toThrow(/current entry/);
     });
   });
 

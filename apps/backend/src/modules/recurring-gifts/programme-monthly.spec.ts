@@ -113,7 +113,7 @@ describe("Monthly clinic waqf gifts", () => {
   beforeAll(async () => {
     makerUserId = await staff("mutawalli_officer");
     checkerUserId = await staff("board_of_trustees");
-    const created = await clinics.create({ name: "Monthly Test Clinic", slug: `monthly-clinic-${run}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+    const created = await clinics.create({ product: "clinic", name: "Monthly Test Clinic", slug: `monthly-clinic-${run}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     deed = await approveDeed(created.id);
     const establish = await decidedAction("waqf_programme.establish", { programmeId: created.id });
     await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establish.id, tx));
@@ -161,7 +161,7 @@ describe("Monthly clinic waqf gifts", () => {
   });
 
   test("a new deed version pauses a monthly endowment gift until the giver accepts it", async () => {
-    const separate = await clinics.create({ name: "Deed Change Clinic", slug: `deed-change-${run}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+    const separate = await clinics.create({ product: "clinic", name: "Deed Change Clinic", slug: `deed-change-${run}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     const v1 = await approveDeed(separate.id, "Version one.");
     const establish = await decidedAction("waqf_programme.establish", { programmeId: separate.id });
     await prisma.$transaction((tx) => clinics.establish({ programmeId: separate.id }, establish.id, tx));

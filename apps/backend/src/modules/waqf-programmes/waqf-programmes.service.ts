@@ -1,15 +1,20 @@
-import { LongTextField, NameField, TextField } from "../../common/validation/fields";
+import { IdField, LongTextField, NameField, TextField } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsNumberString, IsOptional, Matches } from "class-validator";
-import { prisma, Prisma } from "@birr/db";
+import { ArrayMaxSize, IsArray, IsIn, IsNumberString, IsOptional, Matches } from "class-validator";
+import { prisma, Prisma, type WaqfProgrammeProduct } from "@birr/db";
 import { CountryCode } from "../../common/validation/country-code";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
-import { deedTextHash, draftProgrammeDeedText } from "../clinics/clinic-waqf-deed";
+import { deedTextHash } from "../clinics/clinic-waqf-deed";
+import { PRODUCTS, productOf, standardDeedText } from "./programme-products";
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const DEED_TEXT_LIMIT = 20_000;
 
 export class CreateWaqfProgrammeInput {
+  // Which product (WAQF_PROGRAMME_PRODUCTS); fixed once created.
+  @IsIn(Object.keys(PRODUCTS))
+  product!: WaqfProgrammeProduct;
+
   @NameField()
   name!: string;
 
@@ -51,10 +56,17 @@ export class UpdateWaqfProgrammeInput {
   @IsNumberString()
   @IsPositiveDecimal()
   runningMonthlyTarget?: string;
+
+  // The causes it serves, from the cause catalog; replaces the current set.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IdField({ each: true })
+  causeCategoryIds?: string[];
 }
 
 export class DraftProgrammeDeedInput {
-  // Omitted: the standard wording (clinic-waqf-deed.ts), filled in for this clinic.
+  // Omitted: the product's standard wording (programme-products.ts), filled in for this programme.
   @IsOptional()
   @LongTextField(DEED_TEXT_LIMIT)
   text?: string;
@@ -87,7 +99,12 @@ export class WaqfProgrammesService {
       throw new ConflictException(`The address "${input.slug}" is already used by another clinic waqf.`);
     }
     return prisma.$transaction(async (tx) => {
-      const clinic = await tx.waqfProgramme.create({ data: { ...input, product: "clinic", createdByUserId: actorUserId } });
+      const clinic = await tx.waqfProgramme.create({ data: { ...input, createdByUserId: actorUserId } });
+      // Tagged with the product's default causes, where the catalog has them.
+      const defaults = await tx.causeCategory.findMany({ where: { name: { in: [...productOf(clinic).defaultCauses] }, deletedAt: null }, select: { id: true } });
+      if (defaults.length > 0) {
+        await tx.waqfProgrammeCause.createMany({ data: defaults.map((c) => ({ programmeId: clinic.id, causeCategoryId: c.id })) });
+      }
       await tx.auditLog.create({
         data: {
           actorType: "birr_staff",
@@ -95,7 +112,7 @@ export class WaqfProgrammesService {
           action: "waqf_programme.created",
           entityType: "WaqfProgramme",
           entityId: clinic.id,
-          after: clinic as any,
+          after: { ...clinic, causeCategoryIds: defaults.map((c) => c.id) } as any,
         },
       });
       return clinic;
@@ -107,10 +124,26 @@ export class WaqfProgrammesService {
     for (const target of [input.endowmentTarget, input.runningMonthlyTarget]) {
       if (target && new Prisma.Decimal(target).decimalPlaces() > 2) throw new BadRequestException("Enter targets in naira and kobo.");
     }
+    const { causeCategoryIds, ...fields } = input;
+    if (causeCategoryIds) {
+      const unique = [...new Set(causeCategoryIds)];
+      const found = await prisma.causeCategory.count({ where: { id: { in: unique }, deletedAt: null } });
+      if (found !== unique.length) throw new BadRequestException("Every cause must be a current entry in the cause catalog.");
+    }
     return prisma.$transaction(async (tx) => {
-      const before = await tx.waqfProgramme.findUnique({ where: { id } });
-      if (!before) throw new NotFoundException(`Clinic waqf "${id}" not found.`);
-      const after = await tx.waqfProgramme.update({ where: { id }, data: input });
+      const found = await tx.waqfProgramme.findUnique({ where: { id }, include: { causes: { select: { causeCategoryId: true } } } });
+      if (!found) throw new NotFoundException(`Waqf programme "${id}" not found.`);
+      const { causes: beforeCauses, ...beforeRow } = found;
+      const updated = await tx.waqfProgramme.update({ where: { id }, data: fields });
+      let causeIds = beforeCauses.map((c) => c.causeCategoryId);
+      if (causeCategoryIds) {
+        const wanted = [...new Set(causeCategoryIds)];
+        await tx.waqfProgrammeCause.deleteMany({ where: { programmeId: id, causeCategoryId: { notIn: wanted } } });
+        await tx.waqfProgrammeCause.createMany({ data: wanted.map((causeCategoryId) => ({ programmeId: id, causeCategoryId })), skipDuplicates: true });
+        causeIds = wanted;
+      }
+      const before = { ...beforeRow, causeCategoryIds: beforeCauses.map((c) => c.causeCategoryId) };
+      const after = { ...updated, causeCategoryIds: causeIds };
       await tx.auditLog.create({
         data: {
           actorType: "birr_staff",
@@ -129,7 +162,10 @@ export class WaqfProgrammesService {
   list() {
     return prisma.waqfProgramme.findMany({
       orderBy: { createdAt: "desc" },
-      include: { deeds: { where: { status: "approved" }, select: { version: true } } },
+      include: {
+        deeds: { where: { status: "approved" }, select: { version: true } },
+        causes: { select: { causeCategory: { select: { id: true, name: true } } } },
+      },
     });
   }
 
@@ -138,6 +174,7 @@ export class WaqfProgrammesService {
       where: { id },
       include: {
         createdByUser: userName,
+        causes: { select: { causeCategory: { select: { id: true, name: true } } } },
         deeds: { orderBy: { version: "desc" }, include: { createdByUser: userName } },
         operator: { select: { id: true, name: true, status: true } },
       },
@@ -150,7 +187,7 @@ export class WaqfProgrammesService {
   async deedTemplate(id: string) {
     const clinic = await prisma.waqfProgramme.findUnique({ where: { id } });
     if (!clinic) throw new NotFoundException(`Clinic waqf "${id}" not found.`);
-    return { text: draftProgrammeDeedText(clinic) };
+    return { text: standardDeedText(clinic) };
   }
 
   /** A new version, as a draft. One open draft at a time; its text never changes once drafted. */
@@ -164,7 +201,7 @@ export class WaqfProgrammesService {
         throw new ConflictException(`Version ${openDraft.version} is still a draft. Discard it, or have it approved, before drafting another.`);
       }
       const latest = await tx.waqfProgrammeDeed.aggregate({ where: { programmeId }, _max: { version: true } });
-      const text = (input.text ?? draftProgrammeDeedText(clinic)).replace(/\r\n/g, "\n");
+      const text = (input.text ?? standardDeedText(clinic)).replace(/\r\n/g, "\n");
       const deed = await tx.waqfProgrammeDeed.create({
         data: {
           programmeId,

@@ -119,7 +119,12 @@ export default function ClinicWaqfPage() {
       </Link>
 
       <header className="mb-6 mt-4 flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{clinic.name}</h1>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{clinic.name}</h1>
+          {clinic.causes && clinic.causes.length > 0 && (
+            <p className="mt-1 text-xs text-slate-500">Serves: {clinic.causes.map((c) => c.causeCategory.name).join(", ")}</p>
+          )}
+        </div>
         <Badge tone={clinic.status === "established" ? "success" : "neutral"}>{humanize(clinic.status)}</Badge>
       </header>
 

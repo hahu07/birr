@@ -3023,7 +3023,7 @@ describe("GovernedActionsService", () => {
     const clinics = new WaqfProgrammesService();
     const newClinic = () =>
       clinics.create(
-        { name: "Governed Test Clinic", slug: `ga-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
+        { product: "clinic", name: "Governed Test Clinic", slug: `ga-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
         makerUserId,
       );
     const proposeDeed = (deed: { id: string; textHash: string }) =>
@@ -3102,7 +3102,7 @@ describe("GovernedActionsService", () => {
 
     async function establishedClinic() {
       const clinic = await clinics.create(
-        { name: "Asset Test Clinic", slug: `asset-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
+        { product: "clinic", name: "Asset Test Clinic", slug: `asset-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
         makerUserId,
       );
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
@@ -3161,7 +3161,7 @@ describe("GovernedActionsService", () => {
     });
 
     test("not before the clinic is established", async () => {
-      const draft = await clinics.create({ name: "Draft Asset Clinic", slug: `asset-draft-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      const draft = await clinics.create({ product: "clinic", name: "Draft Asset Clinic", slug: `asset-draft-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       const asset = await land(draft.id);
       await expect(service.propose({ permissionKey: "waqf_programme.asset_add", payload: { assetId: asset.id }, makerUserId })).rejects.toThrow(/isn't established/);
     });
@@ -3221,7 +3221,7 @@ describe("GovernedActionsService", () => {
 
     async function clinicWithCash(cash: string) {
       const clinic = await clinics.create(
-        { name: "Spending Test Clinic", slug: `spend-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
+        { product: "clinic", name: "Spending Test Clinic", slug: `spend-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
         makerUserId,
       );
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
@@ -3346,7 +3346,7 @@ describe("GovernedActionsService", () => {
     const investments = new ProgrammeInvestmentsService(ledger, spending, new ProgrammeReserveService(ledger));
 
     async function clinicWithCash(cash: string) {
-      const clinic = await clinics.create({ name: "Investment Test Clinic", slug: `invest-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      const clinic = await clinics.create({ product: "clinic", name: "Investment Test Clinic", slug: `invest-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
       const d = await service.propose({ permissionKey: "waqf_programme.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
       await service.decide({ governedActionId: d.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
@@ -3439,7 +3439,7 @@ describe("GovernedActionsService", () => {
     const today = lagosToday();
 
     async function clinicWithCash(cash: string) {
-      const clinic = await clinics.create({ name: "Reserve Test Clinic", slug: `reserve-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      const clinic = await clinics.create({ product: "clinic", name: "Reserve Test Clinic", slug: `reserve-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
       const d = await service.propose({ permissionKey: "waqf_programme.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
       await service.decide({ governedActionId: d.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
@@ -3601,7 +3601,7 @@ describe("GovernedActionsService", () => {
     const clinics = new WaqfProgrammesService();
     const lists = new ClinicPriceListsService();
     const newClinic = () =>
-      clinics.create({ name: "Price List Test Clinic", slug: `ga-prices-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      clinics.create({ product: "clinic", name: "Price List Test Clinic", slug: `ga-prices-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     const input = (antenatal = "3500") => ({
       services: [
         { code: "anc-visit", name: "Antenatal visit", price: antenatal },
@@ -3717,7 +3717,7 @@ describe("GovernedActionsService", () => {
 
     /** An established clinic with running cash, an approved price list and (optionally) an operator. */
     async function readyClinic(runningCash = "100000", withOperator = true) {
-      const clinic = await clinics.create({ name: "Claims Test Clinic", slug: `claims-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      const clinic = await clinics.create({ product: "clinic", name: "Claims Test Clinic", slug: `claims-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
       const d = await service.propose({ permissionKey: "waqf_programme.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
       await service.decide({ governedActionId: d.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
