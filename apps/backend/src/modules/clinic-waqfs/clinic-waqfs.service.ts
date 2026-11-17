@@ -124,6 +124,7 @@ export class ClinicWaqfsService {
       include: {
         createdByUser: userName,
         deeds: { orderBy: { version: "desc" }, include: { createdByUser: userName } },
+        operator: { select: { id: true, name: true, status: true } },
       },
     });
     if (!clinic) throw new NotFoundException(`Clinic waqf "${id}" not found.`);

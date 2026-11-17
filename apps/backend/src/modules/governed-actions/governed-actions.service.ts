@@ -35,6 +35,7 @@ import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
 import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
 import { ClinicSpendingService } from "../clinic-waqfs/clinic-spending.service";
 import { ClinicPriceListsService } from "../clinic-waqfs/clinic-price-lists.service";
+import { ClinicClaimsService } from "../clinic-waqfs/clinic-claims.service";
 import {
   assertPermissionChangesAllowed,
   checkPermissionChanges,
@@ -390,6 +391,7 @@ export class GovernedActionsService {
     private readonly clinicAssetsService: ClinicAssetsService,
     private readonly clinicSpendingService: ClinicSpendingService,
     private readonly clinicPriceListsService: ClinicPriceListsService,
+    private readonly clinicClaimsService: ClinicClaimsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       // ---- The clinic waqf (2026-11-17). A Shariah board member alone
@@ -520,6 +522,57 @@ export class GovernedActionsService {
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicPriceListsService.approve(payload, ctx.governedActionId, tx);
             return { auditAction: "clinic_price_list.approved", entityType: "ClinicPriceList", entityId: after.id, before, after };
+          },
+        },
+      ],
+      // Clinic waqf operator and monthly claims (slice 7). The Board assigns
+      // the operator; the Board or Compliance approves a claim's running
+      // fund part; Compliance or the Audit Committee confirms it was paid.
+      [
+        "clinic_waqf.operator_assign",
+        {
+          validatePropose: (payload) => this.clinicClaimsService.validateOperatorProposal(payload),
+          checkDuplicate: (payload) => this.clinicClaimsService.checkDuplicateOperator(payload),
+          describePayload: (payload) => this.clinicClaimsService.describeOperator(payload),
+          describeCurrentState: (payload) => this.clinicClaimsService.currentOperatorState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicClaimsService.assignOperator(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_waqf.operator_assigned", entityType: "ClinicWaqf", entityId: after.id, before, after };
+          },
+        },
+      ],
+      [
+        "clinic_waqf.claim_approve",
+        {
+          validatePropose: (payload) => this.clinicClaimsService.validateClaimProposal(payload),
+          checkDuplicate: (payload) => this.clinicClaimsService.checkDuplicateClaim(payload),
+          describePayload: (payload) => this.clinicClaimsService.describeClaim(payload),
+          describeCurrentState: (payload) => this.clinicClaimsService.currentClaimState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicClaimsService.approveClaim(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_claim.approved", entityType: "ClinicClaim", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.clinicClaimsService.rejectClaim(payload, tx);
+            return {
+              auditAction: "clinic_claim.rejected",
+              entityType: "ClinicClaim",
+              entityId: (payload as { claimId: string }).claimId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "clinic_waqf.claim_mark_paid",
+        {
+          validatePropose: (payload) => this.clinicClaimsService.validatePaidProposal(payload),
+          checkDuplicate: (payload) => this.clinicClaimsService.checkDuplicatePaid(payload),
+          describePayload: (payload) => this.clinicClaimsService.describePaid(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicClaimsService.markPaid(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_claim.paid", entityType: "ClinicClaim", entityId: after.id, before, after };
           },
         },
       ],

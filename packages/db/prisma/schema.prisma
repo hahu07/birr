@@ -390,6 +390,7 @@ model User {
   clinicWorksCreated             ClinicWorksProject[]            @relation("ClinicWorksCreator")
   clinicSpendsCreated            ClinicSpend[]                   @relation("ClinicSpendCreator")
   clinicPriceListsCreated        ClinicPriceList[]               @relation("ClinicPriceListCreator")
+  clinicClaimsCreated            ClinicClaim[]                   @relation("ClinicClaimCreator")
   clinicInvestmentsCreated       ClinicInvestment[]              @relation("ClinicInvestmentCreator")
   clinicInvestmentsScreened      ClinicInvestment[]              @relation("ClinicInvestmentShariahReviewer")
   clinicInvestmentIncomeRecorded ClinicInvestmentIncome[]        @relation("ClinicInvestmentIncomeRecorder")
@@ -1199,6 +1200,9 @@ model GovernedAction {
   approvedClinicSpend       ClinicSpend?         @relation("ClinicSpendApproval")
   paidClinicSpend           ClinicSpend?         @relation("ClinicSpendPayment")
   approvedClinicPriceList   ClinicPriceList?     @relation("ClinicPriceListApproval")
+  assignedClinicOperator    ClinicWaqf?          @relation("ClinicOperatorAssignment")
+  approvedClinicClaim       ClinicClaim?         @relation("ClinicClaimApproval")
+  paidClinicClaim           ClinicClaim?         @relation("ClinicClaimPayment")
 
   @@index([waqfId])
   @@index([status])
@@ -1732,6 +1736,9 @@ model Counterparty {
   clinicSpends        ClinicSpend[]        @relation("ClinicSpendPayee")
 
   clinicInvestments ClinicInvestment[] @relation("ClinicInvestmentCounterparty")
+
+  clinicsOperated ClinicWaqf[]  @relation("ClinicWaqfOperator")
+  clinicClaims    ClinicClaim[] @relation("ClinicClaimOperator")
 
   @@map("counterparties")
 }
@@ -3556,6 +3563,10 @@ model ZakahDistribution {
 
   pool ZakahPool @default(mal)
 
+  // A clinic claim's zakah part (2026-11-17, clinic slice 7), when this
+  // distribution pays it. The link lives on the claim.
+  clinicClaim ClinicClaim?
+
   @@index([status])
   @@index([recipientId])
   @@index([counterpartyId])
@@ -4039,6 +4050,17 @@ model ClinicWaqf {
 
   priceLists ClinicPriceList[]
 
+  // The licensed operator running the clinic (slice 7), a healthcare
+  // provider Counterparty, assigned by the Board (clinic_waqf.operator_assign).
+  operatorId         String?
+  operator           Counterparty?   @relation("ClinicWaqfOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  operatorAssignedAt DateTime?
+  operatorActionId   String?         @unique
+  operatorAction     GovernedAction? @relation("ClinicOperatorAssignment", fields: [operatorActionId], references: [id], onDelete: Restrict)
+
+  claims     ClinicClaim[]
+  claimLines ClinicClaimLine[]
+
   @@map("clinic_waqfs")
 }
 
@@ -4118,6 +4140,7 @@ enum ClinicJournalEntrySource {
   asset_disposed
   spend_paid
   investment_returned
+  claim_paid
 }
 
 // Append-only, like every Birr ledger: a mistake is corrected with a new,
@@ -4497,6 +4520,93 @@ model ClinicPriceList {
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
+  claims ClinicClaim[]
+
   @@unique([clinicWaqfId, version])
   @@map("clinic_price_lists")
+}
+
+// ---- Clinic waqf monthly claims (2026-11-17, clinic slice 7) ----
+// Each month the operator sends anonymous claim lines: a visit reference,
+// the service and band, what the patient paid, and whether the operator
+// assessed her as poor or needy. Birr checks each against the approved
+// price list (price, the band's patient share) and the running fund's
+// monthly cap, then splits the subsidies: lines for poor or needy patients
+// are the zakah part, paid through a ZakahDistribution to the operator;
+// the rest is the running fund part, approved by the Board or Compliance
+// (clinic_waqf.claim_approve), paid by bank transfer from the clinic
+// waqf's account, and booked once a second person confirms the bank
+// reference (clinic_waqf.claim_mark_paid: 5000 / 1100). No names, no
+// diagnoses: patient records stay with the operator.
+
+enum ClinicClaimStatus {
+  submitted // uploaded; may be proposed for approval or discarded
+  approved // the running fund part may be paid
+  rejected
+  discarded // withdrawn before approval, e.g. to correct a line
+  paid // the running fund part was paid and booked
+}
+
+model ClinicClaim {
+  id                  String             @id @default(uuid())
+  clinicWaqfId        String
+  clinicWaqf          ClinicWaqf         @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  // The month the visits were in, "2027-03".
+  period              String
+  operatorId          String
+  operator            Counterparty       @relation("ClinicClaimOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  // The approved price list the lines were checked against.
+  priceListId         String
+  priceList           ClinicPriceList    @relation(fields: [priceListId], references: [id], onDelete: Restrict)
+  lineCount           Int
+  totalPrice          Decimal
+  patientPaid         Decimal
+  subsidyTotal        Decimal
+  runningFundAmount   Decimal
+  zakahAmount         Decimal
+  status              ClinicClaimStatus  @default(submitted)
+  approvalActionId    String?            @unique
+  approvalAction      GovernedAction?    @relation("ClinicClaimApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  approvedAt          DateTime?
+  paymentActionId     String?            @unique
+  paymentAction       GovernedAction?    @relation("ClinicClaimPayment", fields: [paymentActionId], references: [id], onDelete: Restrict)
+  paidOn              DateTime?          @db.Date
+  bankReference       String?
+  // The zakah distribution to the operator that pays the zakah part.
+  zakahDistributionId String?            @unique
+  zakahDistribution   ZakahDistribution? @relation(fields: [zakahDistributionId], references: [id], onDelete: Restrict)
+  createdByUserId     String
+  createdByUser       User               @relation("ClinicClaimCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  lines ClinicClaimLine[]
+
+  @@index([clinicWaqfId, period])
+  @@map("clinic_claims")
+}
+
+// One visit's service. Insert-only; the claim's totals must equal its
+// lines' (a deferred database check).
+model ClinicClaimLine {
+  id             String      @id @default(uuid())
+  claimId        String
+  claim          ClinicClaim @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  clinicWaqfId   String
+  clinicWaqf     ClinicWaqf  @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  // The operator's own visit reference: never a name.
+  visitReference String
+  visitDate      DateTime    @db.Date
+  serviceCode    String
+  bandCode       String
+  price          Decimal
+  patientPaid    Decimal
+  subsidy        Decimal
+  // The operator assessed the patient as poor or needy: zakah pays.
+  zakahEligible  Boolean
+  createdAt      DateTime    @default(now())
+
+  @@unique([claimId, visitReference, serviceCode])
+  @@index([clinicWaqfId, visitReference])
+  @@map("clinic_claim_lines")
 }
