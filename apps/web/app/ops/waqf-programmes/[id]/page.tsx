@@ -14,7 +14,7 @@ import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
 import type { ClinicGiftRow, ClinicLedger, ClinicLedgerRow, WaqfProgramme, WaqfProgrammeDeed, GovernedAction } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, DetailGrid, EmptyState, Skeleton } from "@birr/ui";
-import { countryLabel } from "@birr/shared";
+import { countryLabel, WAQF_PROGRAMME_PRODUCTS } from "@birr/shared";
 import { AssetsCard } from "./AssetsCard";
 import { SpendingCard } from "./SpendingCard";
 import { InvestmentsCard } from "./InvestmentsCard";
@@ -22,6 +22,7 @@ import { ReserveCard } from "./ReserveCard";
 import { PriceListCard } from "./PriceListCard";
 import { ClaimsCard } from "./ClaimsCard";
 import { PublicReportCard } from "./PublicReportCard";
+import { CausesEditor } from "./CausesEditor";
 
 const DEED_TONE: Record<WaqfProgrammeDeed["status"], "success" | "warning" | "neutral" | "danger"> = {
   draft: "warning",
@@ -114,16 +115,15 @@ export default function ClinicWaqfPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/ops/clinic-waqfs" className="text-sm font-medium text-primary-700 hover:text-primary-800">
-        ← Clinic Waqfs
+      <Link href="/ops/waqf-programmes" className="text-sm font-medium text-primary-700 hover:text-primary-800">
+        ← Waqf Programmes
       </Link>
 
       <header className="mb-6 mt-4 flex items-center justify-between gap-3">
         <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent-600">{WAQF_PROGRAMME_PRODUCTS[clinic.product].label}</p>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{clinic.name}</h1>
-          {clinic.causes && clinic.causes.length > 0 && (
-            <p className="mt-1 text-xs text-slate-500">Serves: {clinic.causes.map((c) => c.causeCategory.name).join(", ")}</p>
-          )}
+          <CausesEditor programme={clinic} onChange={load} />
         </div>
         <Badge tone={clinic.status === "established" ? "success" : "neutral"}>{humanize(clinic.status)}</Badge>
       </header>
@@ -318,11 +318,16 @@ export default function ClinicWaqfPage() {
 
       <ReserveCard clinic={clinic} ledger={ledger} pending={pending} onChange={load} />
 
-      <PriceListCard programmeId={clinic.id} />
+      {/* The clinic product's own parts (modules/clinics). */}
+      {clinic.product === "clinic" && (
+        <>
+          <PriceListCard programmeId={clinic.id} />
 
-      <ClaimsCard clinic={clinic} onChange={load} />
+          <ClaimsCard clinic={clinic} onChange={load} />
 
-      <PublicReportCard clinic={clinic} onChange={load} />
+          <PublicReportCard clinic={clinic} onChange={load} />
+        </>
+      )}
 
       <Card className="mt-5">
         <p className="text-sm font-medium text-slate-700">Gifts</p>

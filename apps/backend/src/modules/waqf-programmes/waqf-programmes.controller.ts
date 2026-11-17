@@ -3,6 +3,7 @@ import {
   WaqfProgrammesService,
   CreateWaqfProgrammeInput,
   DraftProgrammeDeedInput,
+  ListWaqfProgrammesQuery,
   UpdateWaqfProgrammeInput,
 } from "./waqf-programmes.service";
 import { ProgrammeLedgerService } from "./programme-ledger.service";
@@ -59,9 +60,10 @@ export class WaqfProgrammesController {
     return this.service.discardDeed(id, deedId, staff.userId);
   }
 
+  // Filtered by product, cause and status (Ops Console → Waqf Programmes).
   @Get()
-  list() {
-    return this.service.list();
+  list(@Query() query: ListWaqfProgrammesQuery) {
+    return this.service.list(query);
   }
 
   @Get(":id/deed-template")

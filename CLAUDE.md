@@ -1340,8 +1340,18 @@ Vault and zakah stay separate.
     own parts (or pots and payment kinds it doesn't list) for other
     products. With only clinics there is nothing to refuse or test; add
     them with the need-based waqf.
-- **Step 4:** one "Waqf programmes" area in the Ops Console, filtered by
-  product and cause.
+- **Step 4 (built): Ops Console → Waqf Programmes** (`/ops/waqf-programmes`;
+  the old `/ops/clinic-waqfs` addresses redirect, `next.config.mjs`).
+  - The list filters by product, cause and status (`GET /waqf-programmes`
+    `?product=&causeCategoryId=&status=`) and shows each programme's
+    product and causes. Creating one names its product.
+  - The detail page names the product, changes the causes
+    (`CausesEditor`, `waqf_programme.manage`), and shows a product's own
+    cards only on that product (price list, claims and monthly figures on
+    clinics).
+- The shared layer is complete for the clinic. The need-based waqf adds
+  its own parts on it once it has the go-ahead (see the design doc's
+  build order).
 
 Next steps for the clinic (2026-11-17; all nine slices are built and
 merged, nothing is live, no operator or site exists yet; the plan doc's

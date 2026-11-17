@@ -83,6 +83,22 @@ describe("WaqfProgrammesService", () => {
     });
   });
 
+  // Step 4: the Ops list filters by product, cause and status.
+  test("the list filters by product, cause and status", async () => {
+    const healthcare = (await prisma.causeCategory.findFirst({ where: { name: "Healthcare", deletedAt: null } })) ?? (await prisma.causeCategory.create({ data: { name: "Healthcare" } }));
+    const rare = await prisma.causeCategory.create({ data: { name: `Filter test cause ${randomUUID().slice(0, 8)}` } });
+    const tagged = await newClinic();
+    await service.update(tagged.id, { causeCategoryIds: [rare.id] }, actorUserId);
+    const other = await newClinic();
+
+    const byCause = await service.list({ causeCategoryId: rare.id });
+    expect(byCause.map((p) => p.id)).toEqual([tagged.id]);
+    const ids = (await service.list({ product: "clinic", status: "draft", causeCategoryId: healthcare.id })).map((p) => p.id);
+    expect(ids).toContain(other.id);
+    expect(ids).not.toContain(tagged.id);
+    expect((await service.list({ status: "established" })).every((p) => p.status === "established")).toBe(true);
+  });
+
   describe("the deed", () => {
     test("a first draft uses the standard wording for this clinic, hashed, and is audited", async () => {
       const clinic = await newClinic();

@@ -1624,7 +1624,7 @@ export interface ZakahStructuringReview {
 }
 
 // The clinic waqf (2026-11-17): a waqf Birr establishes for the Mother &
-// Child Clinic. GET /clinic-waqfs, /clinic-waqfs/:id, /clinic-waqfs/:id/ledger.
+// Child Clinic. GET /waqf-programmes, /waqf-programmes/:id, /waqf-programmes/:id/ledger.
 export interface WaqfProgrammeDeed {
   id: string;
   programmeId: string;
@@ -1678,7 +1678,7 @@ export interface ClinicLedger {
   running: ClinicLedgerRow[];
 }
 
-// GET /clinic-waqfs/:id/gifts (2026-11-17, clinic slice 3).
+// GET /waqf-programmes/:id/gifts (2026-11-17, clinic slice 3).
 export interface ClinicGiftRow {
   id: string;
   pot: "endowment" | "running";
@@ -1694,7 +1694,7 @@ export interface ClinicGiftRow {
   donor: { id: string; fullName: string | null } | null;
 }
 
-// GET /clinic-waqfs/:id/assets (2026-11-17, clinic slice 5a).
+// GET /waqf-programmes/:id/assets (2026-11-17, clinic slice 5a).
 export interface ProgrammeAsset {
   id: string;
   kind: "land" | "building" | "equipment" | "vehicle" | "other";
@@ -1716,7 +1716,7 @@ export interface ProgrammeAsset {
   createdByUser: { id: string; fullName: string };
 }
 
-// GET /clinic-waqfs/:id/works and /spends (2026-11-17, clinic slice 5b).
+// GET /waqf-programmes/:id/works and /spends (2026-11-17, clinic slice 5b).
 export interface ProgrammeWorksProject {
   id: string;
   name: string;
@@ -1744,7 +1744,7 @@ export interface ProgrammeSpend {
   createdAt: string;
 }
 
-// GET /clinic-waqfs/:id/investments (2026-11-17, clinic slice 5c).
+// GET /waqf-programmes/:id/investments (2026-11-17, clinic slice 5c).
 export interface ProgrammeInvestment {
   id: string;
   name: string;
