@@ -1275,6 +1275,31 @@ must own and agree to, their conditions, istibdal) stays open.
 - **Public page:** what the reserve holds and has spent, under the running
   fund.
 
+Next steps for the clinic (2026-11-17; all nine slices are built and
+merged, nothing is live, no operator or site exists yet; the plan doc's
+"Timeline and next steps" is the working list):
+- **Board of Trustees:** agree the direction, approve establishing the
+  clinic waqf, and approve the search for an operator.
+- **Shariah Supervisory Board:** rule on plan questions 2 to 4 first
+  (categories, Birr's two roles, supporters as co-waqifs), and confirm the
+  owner's decisions on questions 1 and 9.
+- **Legal:** answer its questions 1 to 3 first (legal form, operator
+  agreement, property), and approve the draft deed wording
+  (`clinic-waqf-deed.ts`) with the Shariah Supervisory Board.
+- **Mutawalli Officer:** open the call for operators in Ibadan and ask each
+  shortlisted one for a costed plan.
+- **Finance:** open the clinic waqf's bank account and Paystack subaccount,
+  then set `CLINIC_WAQF_SUBACCOUNT_CODE` in Platform Settings; no gift is
+  taken until it's set.
+- **Engineering:** choose always-on production hosting and deploy
+  (`docs/deploy-checklist-2026-11.md`); monthly charges and the daily
+  reconciliation need it.
+- **Investment Committee:** register the shortlisted operator as a
+  counterparty (`counterparty.register` is theirs alone unless Roles &
+  Access changes it).
+- **Compliance:** record and verify the operator's four licences before it
+  is onboarded and assigned (`clinic_waqf.operator_assign`).
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
