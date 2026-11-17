@@ -196,12 +196,14 @@ export class InvitationsController {
       const founder = await resolveFounderFromSession(request);
       return this.service.listForFounder(founder.id);
     }
-    return this.service.list();
+    const staff = await resolveBirrStaffFromSession(request);
+    return this.service.list(staff.userId);
   }
 
   @Get(":id")
-  async findById(@Param("id") id: string) {
-    const invitation = await this.service.findById(id);
+  async findById(@Param("id") id: string, @Req() request: Request) {
+    const staff = await resolveBirrStaffFromSession(request);
+    const invitation = await this.service.findById(id, staff.userId);
     if (!invitation) throw new NotFoundException(`Invitation "${id}" not found.`);
     return invitation;
   }

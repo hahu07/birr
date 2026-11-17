@@ -76,6 +76,15 @@ export async function assertStaffInvitable(email: string, db: Prisma.Transaction
 // Platform Admin taking a seat the staff.invite approval granted someone
 // else. Founder-side tokens are unchanged: those pages keep their
 // copy-link fallback.
+/** A staff member sees an invitation's link only if it's a founder-side one they sent. */
+export function redactInvitationTokenFor<T extends { inviteeKind: InviteeKind; token: string; invitedBy: string }>(
+  invitation: T,
+  viewerUserId: string,
+): Omit<T, "token"> & { token: string | null } {
+  const theirs = invitation.inviteeKind !== "birr_staff" && invitation.invitedBy === viewerUserId;
+  return { ...invitation, token: theirs ? invitation.token : null };
+}
+
 export function redactStaffInvitationToken<T extends { inviteeKind: InviteeKind; token: string }>(
   invitation: T,
 ): Omit<T, "token"> & { token: string | null } {
@@ -750,14 +759,22 @@ export class InvitationsService {
     });
   }
 
-  async findById(id: string) {
+  /**
+   * Staff's view of invitations. A link is a seat: whoever opens it sets
+   * the account's password (accept() creates it under the invited email).
+   * So staff see a founder or co-founder invitation's link only if they
+   * sent it themselves (security review, 2026-11-17: every staff role,
+   * External Auditor included, could list pending founder links and join
+   * a Foundation as someone else). Staff invitations stay email-only.
+   */
+  async findById(id: string, viewerUserId: string) {
     const invitation = await prisma.invitation.findUnique({ where: { id } });
-    return invitation && redactStaffInvitationToken(invitation);
+    return invitation && redactInvitationTokenFor(invitation, viewerUserId);
   }
 
-  async list() {
+  async list(viewerUserId: string) {
     const invitations = await prisma.invitation.findMany({ orderBy: { createdAt: "desc" } });
-    return invitations.map(redactStaffInvitationToken);
+    return invitations.map((invitation) => redactInvitationTokenFor(invitation, viewerUserId));
   }
 
   // Founder-Portal — a primary contact's own view of who they've

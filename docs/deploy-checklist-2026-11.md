@@ -110,6 +110,11 @@ is no longer code-only.
 - [ ] **CORS.** `CORS_ALLOWED_ORIGINS` is set on `birr-backend` to the
   web app's real origin. It's unchanged by this batch, but is checked
   again after the Express 5 move.
+- [ ] **Proxy hops.** `TRUST_PROXY_HOPS` is set on `birr-backend` to the
+  number of proxies in front of it (1 for Render, or for nginx on the
+  VPS). Check it: two requests from different networks to
+  `POST /giving/whatsapp/code` must not share a rate limit, and the
+  backend log must not show the "TRUST_PROXY_HOPS is not set" warning.
 
 ### 3. Sentry
 - [ ] `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` are still unset, so Sentry
