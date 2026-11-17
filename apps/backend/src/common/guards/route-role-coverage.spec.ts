@@ -99,6 +99,8 @@ const UNGATED_WRITE_ROUTES: Record<string, string> = {
   "POST /giving/manage/:token/terms": "monthly giving — the giver's private link token is the credential",
   "POST /zakah-payments": PUBLIC_GIVING,
   "POST /zakah-payments/:id/verify": PUBLIC_GIVING,
+  "POST /clinic-gifts": PUBLIC_GIVING,
+  "POST /clinic-gifts/:id/verify": PUBLIC_GIVING,
   "POST /webhooks/stripe": PROVIDER_WEBHOOK,
   "POST /webhooks/paystack": PROVIDER_WEBHOOK,
   "POST /webhooks/stablecoin": PROVIDER_WEBHOOK,

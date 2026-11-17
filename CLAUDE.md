@@ -1050,6 +1050,33 @@ Slice 2, the clinic waqf itself (built, `modules/clinic-waqfs`):
 - **Ops Console:** Clinic Waqfs (list, create, deed versions, both
   proposals, the ledger by pot). Gifts come in slice 3.
 
+Slice 3, one-off public gifts (built, `ClinicGift`,
+`ClinicGiftsService`). Owner's decisions:
+- **Own subaccount:** a gift settles into the clinic waqf's own Paystack
+  subaccount (Platform Settings → `CLINIC_WAQF_SUBACCOUNT_CODE`), never
+  Birr's main balance. No gift is taken until it's set.
+- **Fee:** the giver may add the processing fee on top (kept by the main
+  account); otherwise Birr pays it. The full gift reaches its pot.
+
+How it works:
+- **Choosing a pot:** a giver (no account, from ₦5,000) picks the
+  endowment or the running fund on `/clinics/:slug`. An endowment gift
+  accepts the approved deed; its id and hash are stored, and the database
+  refuses one that doesn't match. Paystack returns them to
+  `/clinic-gifts/:id`.
+- **Confirming:** once, from the webhook (in the shared chain, before
+  zakah) or the giver's return. The gift is then posted to its pot:
+  1000/3000 for the endowment, 1100/4000 for the running fund. Receipts
+  go to the contacts given with the gift.
+- **AML:** the giver is a `VaultDonor`, so Vault and clinic gifts by the
+  same email or confirmed number count together toward the ID threshold
+  (`VaultContributionsService.findOrCreateDonor`, now shared). The
+  structuring review lists don't include clinic gifts yet.
+- **Reconciliation:** daily Paystack reconciliation includes clinic gifts
+  (`clinic_gift`).
+- **Kept as given:** what was given, the pot and the deed never change; a
+  gift settles once and is never deleted (triggers).
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

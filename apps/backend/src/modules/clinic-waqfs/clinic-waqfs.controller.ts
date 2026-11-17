@@ -6,6 +6,7 @@ import {
   UpdateClinicWaqfInput,
 } from "./clinic-waqfs.service";
 import { ClinicLedgerService } from "./clinic-ledger.service";
+import { ClinicGiftsService } from "./clinic-gifts.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 
@@ -18,6 +19,7 @@ export class ClinicWaqfsController {
   constructor(
     private readonly service: ClinicWaqfsService,
     private readonly ledger: ClinicLedgerService,
+    private readonly gifts: ClinicGiftsService,
   ) {}
 
   @Post()
@@ -57,6 +59,11 @@ export class ClinicWaqfsController {
   @Get(":id/ledger")
   balances(@Param("id") id: string, @Query("currency") currency?: string) {
     return this.ledger.balances(id, currency || "NGN");
+  }
+
+  @Get(":id/gifts")
+  listGifts(@Param("id") id: string) {
+    return this.gifts.listForClinic(id);
   }
 
   @Get(":id")

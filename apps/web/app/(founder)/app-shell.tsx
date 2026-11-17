@@ -85,7 +85,9 @@ const NAV_GROUPS = [
 // /blog/ (2026-10-01) are the public educational articles — same
 // posture again, no Founder session involved. /zakah (2026-11-11) is the
 // public zakah calculator, and /zakah-payments/ where Paystack returns a
-// zakah payer after checkout — same again.
+// zakah payer after checkout — same again. /clinics/ (2026-11-17) is a
+// clinic waqf's public giving page, and /clinic-gifts/ where Paystack
+// returns its giver — same again.
 const PUBLIC_ROUTES = [
   "/sign-in",
   "/sign-up",
@@ -100,7 +102,7 @@ const PUBLIC_ROUTES = [
   // Monthly giving (2026-11-15): a giver's own private link, and asking for one.
   "/giving/manage",
 ];
-const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/", "/blog/", "/zakah-payments/", "/giving/manage/"];
+const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/", "/blog/", "/zakah-payments/", "/giving/manage/", "/clinics/", "/clinic-gifts/"];
 function isPublicRoutePath(pathname: string) {
   return PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }

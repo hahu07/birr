@@ -18,11 +18,11 @@ export interface Window {
 
 /** A payment into Birr, from any product. */
 export interface BirrPayment {
-  product: "waqf_contribution" | "vault_contribution" | "zakah_payment";
+  product: "waqf_contribution" | "vault_contribution" | "zakah_payment" | "clinic_gift";
   id: string;
   reference: string;
   status: "pending" | "confirmed" | "failed";
-  /** What Paystack should have taken: for zakah, the zakah plus the fee cover. */
+  /** What Paystack should have taken: for zakah and clinic gifts, the amount plus the fee cover. */
   amountKobo: number;
   currency: string;
   createdAt: Date;
@@ -72,6 +72,7 @@ const PRODUCT_LABEL: Record<string, string> = {
   waqf_contribution: "Waqf contribution",
   vault_contribution: "Vault gift",
   zakah_payment: "Zakah payment",
+  clinic_gift: "Clinic waqf gift",
   waqf_distribution: "Waqf distribution",
   vault_distribution: "Vault distribution",
   vault_refund: "Vault refund",

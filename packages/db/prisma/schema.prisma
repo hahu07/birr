@@ -2595,6 +2595,8 @@ model VaultDonor {
   contributions VaultContribution[]
   auditLogs     AuditLog[]
 
+  clinicGifts ClinicGift[]
+
   @@index([whatsappNumber])
   @@map("vault_donors")
 }
@@ -3831,7 +3833,7 @@ model PaymentReconciliationIssue {
   /// The reference both sides use (our row id for payments and transfers;
   /// the original payment's reference for a refund).
   providerReference String
-  /// waqf_contribution | vault_contribution | zakah_payment | waqf_distribution | vault_distribution | vault_refund, when Birr has the record.
+  /// waqf_contribution | vault_contribution | zakah_payment | clinic_gift | waqf_distribution | vault_distribution | vault_refund, when Birr has the record.
   product           String?
   recordId          String?
   paystackStatus    String?
@@ -3986,6 +3988,8 @@ model ClinicWaqf {
   deeds          ClinicWaqfDeed[]
   journalEntries ClinicJournalEntry[]
 
+  gifts ClinicGift[]
+
   @@map("clinic_waqfs")
 }
 
@@ -4020,6 +4024,8 @@ model ClinicWaqfDeed {
   approvedAction   GovernedAction?      @relation("ClinicWaqfDeedApproval", fields: [approvedActionId], references: [id], onDelete: Restrict)
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
+
+  gifts ClinicGift[]
 
   @@unique([clinicWaqfId, version])
   @@map("clinic_waqf_deeds")
@@ -4095,4 +4101,52 @@ model ClinicJournalEntryLine {
   @@index([journalEntryId])
   @@index([ledgerAccountId])
   @@map("clinic_journal_entry_lines")
+}
+
+enum ClinicGiftStatus {
+  pending
+  confirmed
+  failed
+}
+
+// One gift into a clinic waqf, to one of its two pots (2026-11-17, clinic
+// slice 3). Owner's decisions: it settles into the clinic waqf's own
+// Paystack subaccount, never Birr's main balance (no gift is taken until
+// CLINIC_WAQF_SUBACCOUNT_CODE is set); the giver may add the processing
+// fee on top (feeCover, kept by Birr's main account), otherwise Birr pays
+// it, so the full amount reaches the pot. An endowment gift records the
+// deed version the giver accepted, by its hash; a running-fund gift has
+// none. The giver is a VaultDonor, so clinic and Vault giving by the same
+// email or WhatsApp number count together toward the AML ID threshold.
+// What was given, and to which pot, never changes, and a gift is never
+// deleted (triggers).
+model ClinicGift {
+  id                   String               @id @default(uuid())
+  clinicWaqfId         String
+  clinicWaqf           ClinicWaqf           @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  pot                  ClinicPot
+  donorId              String?
+  donor                VaultDonor?          @relation(fields: [donorId], references: [id], onDelete: Restrict)
+  // Where this gift's receipt goes: only what was given with it.
+  contactEmail         String?
+  contactWhatsApp      String?
+  amount               Decimal
+  feeCover             Decimal              @default(0)
+  currency             String
+  provider             ContributionProvider
+  providerReference    String               @unique
+  providerPaymentId    String?
+  settlementSubaccount String
+  status               ClinicGiftStatus     @default(pending)
+  confirmedAt          DateTime?
+  deedId               String?
+  deed                 ClinicWaqfDeed?      @relation(fields: [deedId], references: [id], onDelete: Restrict)
+  deedTextHash         String?
+  ipAddress            String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([clinicWaqfId])
+  @@index([donorId])
+  @@map("clinic_gifts")
 }

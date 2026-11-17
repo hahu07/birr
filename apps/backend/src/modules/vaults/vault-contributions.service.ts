@@ -477,10 +477,13 @@ export class VaultContributionsService {
   // 2026-11-16: a donor is an email, a confirmed WhatsApp number, or both.
   // Gifts under any donor record sharing either one count together toward
   // the threshold, which narrows the "different email each time" gap.
-  private async findOrCreateDonor(
+  // Also used by ClinicGiftsService (2026-11-17): a clinic gift's giver is a
+  // VaultDonor too, so the same email or number counts toward one threshold
+  // across Vault and clinic giving. Callers hold lockGiverContact(tx, "", …).
+  async findOrCreateDonor(
     tx: Prisma.TransactionClient,
     contact: GiverContact,
-    input: InitiateVaultContributionInput,
+    input: Pick<InitiateVaultContributionInput, "currency" | "donorFullName" | "idType" | "idNumber">,
     amount: Prisma.Decimal,
     options: { scheduledCharge?: boolean } = {},
   ) {
@@ -505,14 +508,16 @@ export class VaultContributionsService {
       null;
 
     const recentSince = new Date(Date.now() - PENDING_COUNTS_TOWARD_THRESHOLD_MS);
+    // Vault gifts and clinic waqf gifts (2026-11-17) together.
+    const counted = {
+      donorId: { in: matches.map((d) => d.id) },
+      OR: [{ status: "confirmed" as const }, { status: "pending" as const, createdAt: { gte: recentSince } }],
+    };
     const prior = matches.length
-      ? await tx.vaultContribution.findMany({
-          where: {
-            donorId: { in: matches.map((d) => d.id) },
-            OR: [{ status: "confirmed" }, { status: "pending", createdAt: { gte: recentSince } }],
-          },
-          select: { amount: true, currency: true },
-        })
+      ? [
+          ...(await tx.vaultContribution.findMany({ where: counted, select: { amount: true, currency: true } })),
+          ...(await tx.clinicGift.findMany({ where: counted, select: { amount: true, currency: true } })),
+        ]
       : [];
     const currencies = [...new Set([input.currency, ...prior.map((c) => c.currency)])];
     const thresholds = await tx.vaultDonorThreshold.findMany({ where: { currency: { in: currencies } } });

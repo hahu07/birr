@@ -1666,3 +1666,19 @@ export interface ClinicLedger {
   endowment: ClinicLedgerRow[];
   running: ClinicLedgerRow[];
 }
+
+// GET /clinic-waqfs/:id/gifts (2026-11-17, clinic slice 3).
+export interface ClinicGiftRow {
+  id: string;
+  pot: "endowment" | "running";
+  amount: string;
+  feeCover: string;
+  currency: string;
+  status: "pending" | "confirmed" | "failed";
+  createdAt: string;
+  confirmedAt: string | null;
+  contactEmail: string | null;
+  contactWhatsApp: string | null;
+  deed: { version: number } | null;
+  donor: { id: string; fullName: string | null } | null;
+}
