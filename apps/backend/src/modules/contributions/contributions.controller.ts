@@ -1,4 +1,5 @@
 import { FIELD_LIMITS } from "@birr/shared";
+import { ClinicGiftsService } from "../clinic-waqfs/clinic-gifts.service";
 import { EmailField, IdField, TextField } from "../../common/validation/fields";
 import { BadRequestException, Body, Controller, ForbiddenException, Get, NotFoundException, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { IsBoolean, IsEnum, IsNumberString, IsOptional } from "class-validator";
@@ -59,6 +60,7 @@ export class ContributionsController {
     private readonly vaultContributionsService: VaultContributionsService,
     private readonly vaultDistributionsService: VaultDistributionsService,
     private readonly zakahPaymentsService: ZakahPaymentsService,
+    private readonly clinicGiftsService: ClinicGiftsService,
   ) {}
 
   // Self-service — same posture as POST /waqfs and POST /foundations,
@@ -220,6 +222,10 @@ export class ContributionsController {
     // VaultContributionsService.handleWebhook's own comment.
     const vaultResult = await this.vaultContributionsService.handleWebhook(provider, rawBody, headers);
     if (vaultResult !== null) return vaultResult;
+
+    // Clinic waqf gifts (2026-11-17), same contract.
+    const clinicResult = await this.clinicGiftsService.handleWebhook(provider, rawBody, headers);
+    if (clinicResult !== null) return clinicResult;
 
     // Zakah payments (2026-11-11), same contract. Last in the chain:
     // nothing left to try after this.

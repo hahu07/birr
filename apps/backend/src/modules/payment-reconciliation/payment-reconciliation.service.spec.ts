@@ -32,6 +32,7 @@ describe("PaymentReconciliationService", () => {
     { reconcile: jest.fn() } as any,
     { reconcile: vaultReconcile } as any,
     { reconcile: jest.fn() } as any,
+    { reconcile: jest.fn() } as any,
   );
 
   let userId: string;
@@ -142,6 +143,7 @@ describe("PaymentReconciliationService", () => {
     const broken = new PaymentReconciliationService(
       { transactions: async () => Promise.reject(new Error("Paystack is down")), transfers: async () => [], refunds: async () => [] } as unknown as PaystackReportsClient,
       notifications,
+      {} as any,
       {} as any,
       {} as any,
       {} as any,

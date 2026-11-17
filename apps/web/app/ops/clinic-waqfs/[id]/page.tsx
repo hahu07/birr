@@ -12,7 +12,7 @@ import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
-import type { ClinicLedger, ClinicLedgerRow, ClinicWaqf, ClinicWaqfDeed, GovernedAction } from "../../../../lib/ops-types";
+import type { ClinicGiftRow, ClinicLedger, ClinicLedgerRow, ClinicWaqf, ClinicWaqfDeed, GovernedAction } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, DetailGrid, EmptyState, Skeleton } from "@birr/ui";
 import { countryLabel } from "@birr/shared";
 
@@ -31,6 +31,7 @@ export default function ClinicWaqfPage() {
   const [clinic, setClinic] = useState<ClinicWaqf | null>(null);
   const [ledger, setLedger] = useState<ClinicLedger | null>(null);
   const [pending, setPending] = useState<GovernedAction[] | null>(null);
+  const [gifts, setGifts] = useState<ClinicGiftRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,10 +42,12 @@ export default function ClinicWaqfPage() {
       apiFetchJson<ClinicWaqf>(`/clinic-waqfs/${id}`),
       apiFetchJson<ClinicLedger>(`/clinic-waqfs/${id}/ledger`),
       apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"),
+      apiFetchJson<ClinicGiftRow[]>(`/clinic-waqfs/${id}/gifts`),
     ])
-      .then(([c, l, actions]) => {
+      .then(([c, l, actions, g]) => {
         setClinic(c);
         setLedger(l);
+        setGifts(g);
         setPending(actions.filter((a) => a.permission.key.startsWith("clinic_waqf.")));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
@@ -125,7 +128,17 @@ export default function ClinicWaqfPage() {
           items={[
             { label: "City", value: clinic.city },
             { label: "Jurisdiction", value: countryLabel(clinic.jurisdiction) },
-            { label: "Web address", value: `/clinics/${clinic.slug}` },
+            {
+              label: "Giving page",
+              value:
+                clinic.status === "established" ? (
+                  <Link href={`/clinics/${clinic.slug}`} className="font-medium text-primary-700 hover:text-primary-800">
+                    /clinics/{clinic.slug}
+                  </Link>
+                ) : (
+                  `/clinics/${clinic.slug} (opens once established)`
+                ),
+            },
             { label: "Created", value: `${formatDate(clinic.createdAt)}${clinic.createdByUser ? ` by ${clinic.createdByUser.fullName}` : ""}` },
             { label: "Established", value: clinic.establishedAt ? formatDate(clinic.establishedAt) : "Not yet" },
             { label: "Deed", value: approved ? `Version ${approved.version} approved` : "No version approved yet" },
@@ -283,6 +296,32 @@ export default function ClinicWaqfPage() {
             </li>
           ))}
         </ul>
+      </Card>
+
+      <Card className="mt-5">
+        <p className="text-sm font-medium text-slate-700">Gifts</p>
+        <p className="mb-3 text-xs text-slate-500">
+          The latest 200. They settle into the clinic waqf&apos;s own Paystack subaccount; a confirmed gift is booked to its pot.
+        </p>
+        {gifts && gifts.length === 0 && <EmptyState title="No gifts yet" description="Gifts made on the giving page appear here." />}
+        {gifts && gifts.length > 0 && (
+          <ul className="divide-y divide-slate-100">
+            {gifts.map((g) => (
+              <li key={g.id} className="flex items-start justify-between gap-3 py-2.5 text-sm">
+                <div>
+                  <p className="text-slate-800">
+                    {formatAmount(g.amount)} {g.currency} to the {g.pot === "endowment" ? `endowment (deed v${g.deed?.version ?? "?"})` : "running fund"}
+                    {Number(g.feeCover) > 0 && <span className="text-slate-500"> + {formatAmount(g.feeCover)} fee cover</span>}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {formatDate(g.createdAt)} · {g.donor?.fullName || g.contactEmail || g.contactWhatsApp || "No contact given"}
+                  </p>
+                </div>
+                <Badge tone={g.status === "confirmed" ? "success" : g.status === "failed" ? "danger" : "warning"}>{humanize(g.status)}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Card className="mt-5">

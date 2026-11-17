@@ -26,7 +26,7 @@ export interface CreatePaymentInput {
    * walkthrough finding: every Vault Paystack donor was being redirected
    * to the Founder-only page, which itself redirects an unauthenticated
    * visitor straight to /sign-in). */
-  returnPath?: "contributions" | "vault-contributions" | "zakah-payments";
+  returnPath?: "contributions" | "vault-contributions" | "zakah-payments" | "clinic-gifts";
   /** Paystack only: settle part of the charge into a subaccount (a
    * separate bank account) instead of Birr's main one — zakah uses this
    * so it never lands in the main account. `mainAccountShareMinorUnits`
