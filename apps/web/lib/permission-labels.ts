@@ -10,6 +10,7 @@ const AREA_LABELS: Record<string, string> = {
   beneficiary: "Beneficiaries",
   blog: "Articles",
   catalog: "Cause catalog",
+  clinic: "Clinics",
   compliance: "Compliance",
   content: "Content",
   counterparty: "Counterparties",
@@ -21,6 +22,7 @@ const AREA_LABELS: Record<string, string> = {
   staff: "Staff & access",
   vault: "Vaults",
   waqf: "Waqf funds",
+  waqf_programme: "Waqf programmes",
   zakah: "Zakah",
 };
 

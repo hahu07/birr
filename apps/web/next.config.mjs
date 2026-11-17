@@ -32,6 +32,14 @@ const nextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  // The Ops Console's clinic waqf pages became Waqf Programmes (2026-11-17,
+  // shared layer step 4); old bookmarks still land on the right page.
+  async redirects() {
+    return [
+      { source: "/ops/clinic-waqfs", destination: "/ops/waqf-programmes", permanent: true },
+      { source: "/ops/clinic-waqfs/:id", destination: "/ops/waqf-programmes/:id", permanent: true },
+    ];
+  },
   // Founder-facing and Ops Console surfaces are merged into this one
   // deployment (see the founder-portal/ops-console merge plan) but stay
   // logically separate inside it: app/(founder) and app/ops are distinct

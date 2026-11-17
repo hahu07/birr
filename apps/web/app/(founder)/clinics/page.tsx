@@ -4,7 +4,7 @@
 // site's menu to each clinic's own giving and report page. Every
 // established clinic is listed, marked "Taking gifts" or "Opening soon"
 // (an approved deed and the clinic waqf's Paystack subaccount, the same
-// test the clinic's page uses). Data from @Public() GET /clinic-gifts/clinics.
+// test the clinic's page uses). Data from @Public() GET /clinics.
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
@@ -25,7 +25,7 @@ export default function ClinicsIndexPage() {
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(() => {
-    apiFetchJson<PublicClinic[]>("/clinic-gifts/clinics")
+    apiFetchJson<PublicClinic[]>("/clinics")
       .then((data) => {
         setClinics(data);
         setLoadError(false);

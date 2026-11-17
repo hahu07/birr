@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Public } from "../../common/guards/public.decorator";
 import {
-  AcceptClinicDeedInput,
+  AcceptProgrammeDeedInput,
   AcceptZakahTermsInput,
   ChangeRecurringGiftAmountInput,
   GiverIdentityInput,
@@ -72,7 +72,7 @@ export class GivingManageController {
   @Throttle({ default: { limit: 10, ttl: 600_000 } })
   @Public()
   @Post("manage/:token/deed")
-  acceptDeed(@Param("token") token: string, @Body() body: AcceptClinicDeedInput) {
-    return this.service.acceptClinicDeed(token, body);
+  acceptDeed(@Param("token") token: string, @Body() body: AcceptProgrammeDeedInput) {
+    return this.service.acceptProgrammeDeed(token, body);
   }
 }

@@ -11,7 +11,7 @@ import { GiftNeedsGiver, type MonthlyGiftCharge, type MonthlyGiftProduct } from 
 import { VaultMonthlyProduct } from "./vault-monthly.product";
 import { WaqfMonthlyProduct } from "./waqf-monthly.product";
 import { ZakahMonthlyProduct } from "./zakah-monthly.product";
-import { ClinicMonthlyProduct } from "./clinic-monthly.product";
+import { ProgrammeMonthlyProduct } from "./programme-monthly.product";
 import { ZAKAH_WAKALAH_TERMS } from "../zakah/zakah-terms";
 import { withFounderScope } from "../../common/db/founder-scope";
 import { addMonths, cardExpiredBy, chargeDateFor } from "./recurring-gift-dates";
@@ -85,7 +85,7 @@ export class AcceptZakahTermsInput {
 }
 
 /** A monthly clinic endowment giver accepting the newly approved deed (slice 4b): its id and hash, as shown. */
-export class AcceptClinicDeedInput {
+export class AcceptProgrammeDeedInput {
   @IdField()
   deedId!: string;
 
@@ -116,13 +116,13 @@ export class RecurringGiftsService {
     zakahProduct: ZakahMonthlyProduct,
     // Last, so tests that never use WhatsApp or clinic gifts needn't pass them.
     private readonly giverWhatsApp?: GiverWhatsAppService,
-    clinicProduct?: ClinicMonthlyProduct,
+    clinicProduct?: ProgrammeMonthlyProduct,
   ) {
     this.products = new Map<RecurringGiftKind, MonthlyGiftProduct>([
       ["vault", vaultProduct],
       ["waqf", waqfProduct],
       ["zakah", zakahProduct],
-      ...(clinicProduct ? [["clinic", clinicProduct] as [RecurringGiftKind, MonthlyGiftProduct]] : []),
+      ...(clinicProduct ? [["programme", clinicProduct] as [RecurringGiftKind, MonthlyGiftProduct]] : []),
     ]);
   }
 
@@ -387,7 +387,7 @@ export class RecurringGiftsService {
       cancelledAt: gift.cancelledAt,
       endedReason: gift.endedReason,
       // A monthly clinic endowment gift paused for a new deed: the deed to read and accept.
-      newDeed: await this.pendingClinicDeed(gift),
+      newDeed: await this.pendingProgrammeDeed(gift),
     };
   }
 
@@ -499,15 +499,15 @@ export class RecurringGiftsService {
    * pauses until they do). Only the current approved version, exactly as
    * shown, is accepted and recorded on the gift; the gift then carries on.
    */
-  async acceptClinicDeed(token: string, input: AcceptClinicDeedInput) {
-    return this.present(await this.applyClinicDeed(await this.byToken(token), input, { type: "giver" }));
+  async acceptProgrammeDeed(token: string, input: AcceptProgrammeDeedInput) {
+    return this.present(await this.applyProgrammeDeed(await this.byToken(token), input, { type: "giver" }));
   }
 
-  async applyClinicDeed(gift: RecurringGift, input: AcceptClinicDeedInput, who: Who): Promise<RecurringGift> {
-    if (gift.kind !== "clinic" || gift.clinicPot !== "endowment" || gift.status !== "paused" || gift.pauseReason !== "terms_changed") {
+  async applyProgrammeDeed(gift: RecurringGift, input: AcceptProgrammeDeedInput, who: Who): Promise<RecurringGift> {
+    if (gift.kind !== "programme" || gift.programmePot !== "endowment" || gift.status !== "paused" || gift.pauseReason !== "terms_changed") {
       throw new BadRequestException("This monthly gift isn't waiting for you to accept a new deed.");
     }
-    const approved = await prisma.clinicWaqfDeed.findFirst({ where: { clinicWaqfId: gift.clinicWaqfId!, status: "approved" } });
+    const approved = await prisma.waqfProgrammeDeed.findFirst({ where: { programmeId: gift.programmeId!, status: "approved" } });
     if (!approved || approved.id !== input.deedId || approved.textHash !== input.textHash) {
       throw new BadRequestException({
         statusCode: 400,
@@ -519,17 +519,17 @@ export class RecurringGiftsService {
       gift,
       who,
       "recurring_gift.terms_accepted",
-      { clinicDeedId: approved.id, clinicDeedTextHash: approved.textHash, ...this.resumeData(gift) },
+      { programmeDeedId: approved.id, programmeDeedTextHash: approved.textHash, ...this.resumeData(gift) },
       { status: "paused", pauseReason: "terms_changed" },
     );
     return updated ?? gift;
   }
 
   /** The approved deed a paused monthly endowment gift is waiting on, for its manage page. */
-  async pendingClinicDeed(gift: RecurringGift) {
-    if (gift.kind !== "clinic" || gift.pauseReason !== "terms_changed") return null;
-    return prisma.clinicWaqfDeed.findFirst({
-      where: { clinicWaqfId: gift.clinicWaqfId!, status: "approved" },
+  async pendingProgrammeDeed(gift: RecurringGift) {
+    if (gift.kind !== "programme" || gift.pauseReason !== "terms_changed") return null;
+    return prisma.waqfProgrammeDeed.findFirst({
+      where: { programmeId: gift.programmeId!, status: "approved" },
       select: { id: true, version: true, text: true, textHash: true },
     });
   }
@@ -614,34 +614,34 @@ export class RecurringGiftsService {
   // with monthly: true). Any member sees them; only the primary contact
   // changes them, as with giving.
 
-  async founderClinicGifts(founderId: string) {
+  async founderProgrammeGifts(founderId: string) {
     const gifts = await prisma.recurringGift.findMany({
-      where: { kind: "clinic", founderId, status: { in: ["pending_setup", "active", "paused"] } },
+      where: { kind: "programme", founderId, status: { in: ["pending_setup", "active", "paused"] } },
       orderBy: { createdAt: "desc" },
     });
     return Promise.all(gifts.map(async (g) => ({ id: g.id, ...(await this.present(g)) })));
   }
 
-  private async founderClinicGift(giftId: string, founderId: string): Promise<RecurringGift> {
-    const gift = await prisma.recurringGift.findFirst({ where: { id: giftId, kind: "clinic", founderId } });
+  private async founderProgrammeGift(giftId: string, founderId: string): Promise<RecurringGift> {
+    const gift = await prisma.recurringGift.findFirst({ where: { id: giftId, kind: "programme", founderId } });
     if (!gift) throw new NotFoundException("Monthly gift not found.");
     return gift;
   }
 
   async founderClinicChangeAmount(giftId: string, founderId: string, input: ChangeRecurringGiftAmountInput) {
-    return this.present(await this.applyAmount(await this.founderClinicGift(giftId, founderId), input.amount, { type: "giver" }));
+    return this.present(await this.applyAmount(await this.founderProgrammeGift(giftId, founderId), input.amount, { type: "giver" }));
   }
 
   async founderClinicCancel(giftId: string, founderId: string) {
-    return this.present(await this.applyCancel(await this.founderClinicGift(giftId, founderId), { type: "giver" }));
+    return this.present(await this.applyCancel(await this.founderProgrammeGift(giftId, founderId), { type: "giver" }));
   }
 
   async founderClinicCardUpdate(giftId: string, founderId: string) {
-    return this.applyCardUpdate(await this.founderClinicGift(giftId, founderId));
+    return this.applyCardUpdate(await this.founderProgrammeGift(giftId, founderId));
   }
 
-  async founderClinicAcceptDeed(giftId: string, founderId: string, input: AcceptClinicDeedInput) {
-    return this.present(await this.applyClinicDeed(await this.founderClinicGift(giftId, founderId), input, { type: "giver" }));
+  async founderClinicAcceptDeed(giftId: string, founderId: string, input: AcceptProgrammeDeedInput) {
+    return this.present(await this.applyProgrammeDeed(await this.founderProgrammeGift(giftId, founderId), input, { type: "giver" }));
   }
 
   // ─── Ops Console ─────────────────────────────────────────────────────
@@ -649,7 +649,7 @@ export class RecurringGiftsService {
   /** Monthly gifts, newest first, filtered by status and kind. Never the saved card itself. */
   async staffList(filter: { status?: string; kind?: string }) {
     const statuses = ["pending_setup", "active", "paused", "cancelled", "ended"] as const;
-    const kinds = ["vault", "waqf", "zakah", "clinic"] as const;
+    const kinds = ["vault", "waqf", "zakah", "programme"] as const;
     const gifts = await prisma.recurringGift.findMany({
       where: {
         ...(statuses.includes(filter.status as (typeof statuses)[number]) && { status: filter.status as (typeof statuses)[number] }),

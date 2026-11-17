@@ -62,7 +62,7 @@ export default function ClinicGivingPage() {
 
   useEffect(() => {
     if (sessionLoading) return;
-    const path = founderMode ? `/clinic-gifts/founder/terms/${encodeURIComponent(slug)}` : `/clinic-gifts/terms/${encodeURIComponent(slug)}`;
+    const path = founderMode ? `/programme-gifts/founder/terms/${encodeURIComponent(slug)}` : `/programme-gifts/terms/${encodeURIComponent(slug)}`;
     apiFetchJson<GivingTerms>(path)
       .then(setTerms)
       .catch((err: unknown) => setLoadError(err instanceof ApiError && err.status === 404 ? "We couldn't find this clinic." : "Something went wrong."));
@@ -181,7 +181,7 @@ function GiveForm({
     setError(null);
     setSubmitting(true);
     try {
-      const { clientPayload } = await apiFetchJson<{ clientPayload: { checkoutUrl: string } }>(founderMode ? "/clinic-gifts/founder" : "/clinic-gifts", {
+      const { clientPayload } = await apiFetchJson<{ clientPayload: { checkoutUrl: string } }>(founderMode ? "/programme-gifts/founder" : "/programme-gifts", {
         method: "POST",
         body: JSON.stringify({
           slug: terms.clinic.slug,
