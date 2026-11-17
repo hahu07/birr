@@ -15,7 +15,7 @@ how it was shown, and where it was fixed.
 | 5 | Medium | Sessions survive a password or two-factor reset | Fixed (second PR) |
 | 6 | Medium | Reset and verification tokens are stored as typed | Fixed (second PR) |
 | 7 | Low | A two-factor code can be used twice within ~90 seconds | Fixed (second PR) |
-| 8 | Info | Next.js 16.4.3 has a moderate advisory | Not reachable here; take 16.4.5 at the next update |
+| 8 | Info | Next.js 16.4.3 has a moderate advisory | Not reachable here; updated to 16.4.6 |
 
 ### 1. Two-factor could be skipped (critical)
 
@@ -119,7 +119,9 @@ The dependency audit shows no high or critical advisories (18 moderate,
 5 low, mostly in libraries underneath). One is in Next.js 16.4.3: "Information
 disclosure across root params when a 'use cache' function is called
 through unstable_cache()". Birr uses neither feature, so it can't be
-reached here, but 16.4.5 fixes it and should be taken at the next update.
+reached here, but 16.4.5 fixes it. **Done, 2026-11-17:** updated to 16.4.6
+(the latest patch, which includes the fix), with `@next/eslint-plugin-next`
+to match; the audit no longer lists any Next.js advisory.
 
 ## Follow-on, not security
 
