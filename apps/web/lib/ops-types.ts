@@ -1622,3 +1622,47 @@ export interface ZakahStructuringReview {
     sharedNetworks: { ipAddress: string; distinctGiverCount: number; zakah: ZakahReviewPayment[]; vault: ZakahReviewVaultGift[] }[];
   };
 }
+
+// The clinic waqf (2026-11-17): a waqf Birr establishes for the Mother &
+// Child Clinic. GET /clinic-waqfs, /clinic-waqfs/:id, /clinic-waqfs/:id/ledger.
+export interface ClinicWaqfDeed {
+  id: string;
+  clinicWaqfId: string;
+  version: number;
+  text: string;
+  textHash: string;
+  status: "draft" | "approved" | "superseded" | "discarded";
+  createdByUser?: { id: string; fullName: string };
+  approvedAt: string | null;
+  approvedActionId: string | null;
+  createdAt: string;
+}
+
+export interface ClinicWaqf {
+  id: string;
+  name: string;
+  slug: string;
+  city: string;
+  jurisdiction: string;
+  description: string | null;
+  status: "draft" | "established";
+  establishedAt: string | null;
+  createdAt: string;
+  createdByUser?: { id: string; fullName: string };
+  // From the list endpoint: the approved version, if any. From GET /:id: every version, newest first.
+  deeds: (Pick<ClinicWaqfDeed, "version"> & Partial<ClinicWaqfDeed>)[];
+}
+
+export interface ClinicLedgerRow {
+  code: string;
+  name: string;
+  type: string;
+  pot: "endowment" | "running";
+  balance: string;
+}
+
+export interface ClinicLedger {
+  currency: string;
+  endowment: ClinicLedgerRow[];
+  running: ClinicLedgerRow[];
+}

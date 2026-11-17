@@ -383,6 +383,8 @@ model User {
   counterpartyLicensesRecorded   CounterpartyLicense[]           @relation("CounterpartyLicenseRecorder")
   counterpartyLicensesVerified   CounterpartyLicense[]           @relation("CounterpartyLicenseVerifier")
   counterpartyLicensesWithdrawn  CounterpartyLicense[]           @relation("CounterpartyLicenseWithdrawer")
+  clinicWaqfsCreated             ClinicWaqf[]                    @relation("ClinicWaqfCreator")
+  clinicWaqfDeedsCreated         ClinicWaqfDeed[]                @relation("ClinicWaqfDeedCreator")
   createdInvestmentPlacements    InvestmentPlacement[]
   sentMessages                   Message[]
   mfaBackupCodes                 MfaBackupCode[]
@@ -1175,6 +1177,8 @@ model GovernedAction {
   paidZakahRefund           ZakahRefund?         @relation("ZakahRefundPayment")
   approvedZakahFitrCampaign ZakahFitrCampaign?   @relation("ZakahFitrCampaignApproval")
   approvedZakahRecipient    ZakahRecipient?      @relation("ZakahRecipientApproval")
+  establishedClinicWaqf     ClinicWaqf?          @relation("ClinicWaqfEstablishment")
+  approvedClinicWaqfDeed    ClinicWaqfDeed?      @relation("ClinicWaqfDeedApproval")
 
   @@index([waqfId])
   @@index([status])
@@ -3944,4 +3948,151 @@ model GiverWhatsAppConfirmation {
   @@index([phoneNumber, createdAt])
   @@index([requestIp, createdAt])
   @@map("giver_whatsapp_confirmations")
+}
+
+// ---- The clinic waqf (2026-11-17): the Mother & Child Clinic product. ----
+// A laboratory and mini clinic, sold as one bundle and held in one waqf that
+// Birr itself establishes and curates — not a Founder's own fund (owner's
+// decision; see CLAUDE.md). Founders and the public both give into it (from
+// slice 3). Its own tables, never extending Waqf or Vault ones.
+
+enum ClinicWaqfStatus {
+  draft // being prepared; takes no gifts
+  established // the Board approved establishing it (clinic_waqf.establish)
+}
+
+// One clinic waqf: Ibadan first, the same shape for other cities later.
+// Created by a Mutawalli Officer as a draft; established only by the
+// governed clinic_waqf.establish (maker mutawalli_officer, checker
+// board_of_trustees only), and only once a deed version has been approved.
+model ClinicWaqf {
+  id                  String           @id @default(uuid())
+  name                String
+  // The public page's address (/clinics/:slug, a later slice). Fixed once
+  // set, so a shared link never breaks.
+  slug                String           @unique
+  city                String
+  jurisdiction        String
+  description         String?
+  status              ClinicWaqfStatus @default(draft)
+  createdByUserId     String
+  createdByUser       User             @relation("ClinicWaqfCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  establishedAt       DateTime?
+  establishedActionId String?          @unique
+  establishedAction   GovernedAction?  @relation("ClinicWaqfEstablishment", fields: [establishedActionId], references: [id], onDelete: Restrict)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  deeds          ClinicWaqfDeed[]
+  journalEntries ClinicJournalEntry[]
+
+  @@map("clinic_waqfs")
+}
+
+enum ClinicWaqfDeedStatus {
+  draft
+  approved // the version supporters accept from now on
+  superseded // a later version was approved
+  discarded // a draft dropped before approval
+}
+
+// The clinic waqf's deed, versioned. A Mutawalli Officer drafts a version;
+// a Shariah Supervisory Board member approves it (the governed
+// clinic_waqf.deed_approve, checker shariah_board_member only), and the
+// approval names the text's hash, so what's approved is exactly what was
+// reviewed. A version's text never changes (a trigger), and textHash is
+// checked against the text by the database. At most one approved version
+// per clinic; approving a new one supersedes it. Supporters accept the
+// approved version when they endow (slice 3).
+model ClinicWaqfDeed {
+  id               String               @id @default(uuid())
+  clinicWaqfId     String
+  clinicWaqf       ClinicWaqf           @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  version          Int
+  text             String               @db.Text
+  // sha256 of the text, hex. A database CHECK recomputes it.
+  textHash         String
+  status           ClinicWaqfDeedStatus @default(draft)
+  createdByUserId  String
+  createdByUser    User                 @relation("ClinicWaqfDeedCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedAt       DateTime?
+  approvedActionId String?              @unique
+  approvedAction   GovernedAction?      @relation("ClinicWaqfDeedApproval", fields: [approvedActionId], references: [id], onDelete: Restrict)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@unique([clinicWaqfId, version])
+  @@map("clinic_waqf_deeds")
+}
+
+// The two pots every clinic waqf keeps apart (owner's decision,
+// 2026-11-17): the endowment is kept for ever (premises, equipment,
+// invested cash); the running fund is spent. Each ledger account belongs to
+// exactly one pot, and the database refuses any journal entry that doesn't
+// balance within each pot — so nothing ever moves from one to the other.
+// The endowment's investment income is earned straight into the running
+// fund, never through the endowment.
+enum ClinicPot {
+  endowment
+  running
+}
+
+// One chart of accounts shared by every clinic waqf, like Vault's.
+model ClinicLedgerAccount {
+  id              String            @id @default(uuid())
+  code            String            @unique
+  name            String
+  type            LedgerAccountType
+  pot             ClinicPot
+  isSystemDefault Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+
+  lines ClinicJournalEntryLine[]
+
+  @@map("clinic_ledger_accounts")
+}
+
+enum ClinicJournalEntrySource {
+  gift
+  investment_income
+  expense
+  manual_adjustment
+}
+
+// Append-only, like every Birr ledger: a mistake is corrected with a new,
+// offsetting entry (a trigger refuses edits and deletes).
+model ClinicJournalEntry {
+  id           String                   @id @default(uuid())
+  clinicWaqfId String
+  clinicWaqf   ClinicWaqf               @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  entryDate    DateTime                 @default(now())
+  description  String
+  currency     String
+  source       ClinicJournalEntrySource
+  // What triggered it. Unique per source, so a retried webhook can't post
+  // the same money twice.
+  sourceId     String?
+  actorType    ActorType
+  actorUserId  String?
+  createdAt    DateTime                 @default(now())
+
+  lines ClinicJournalEntryLine[]
+
+  @@unique([source, sourceId])
+  @@index([clinicWaqfId])
+  @@map("clinic_journal_entries")
+}
+
+model ClinicJournalEntryLine {
+  id              String              @id @default(uuid())
+  journalEntryId  String
+  journalEntry    ClinicJournalEntry  @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  ledgerAccountId String
+  ledgerAccount   ClinicLedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+  debit           Decimal             @default(0)
+  credit          Decimal             @default(0)
+
+  @@index([journalEntryId])
+  @@index([ledgerAccountId])
+  @@map("clinic_journal_entry_lines")
 }

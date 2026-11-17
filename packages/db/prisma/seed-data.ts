@@ -113,6 +113,11 @@ const governedPermissions = [
   // since these are Shariah rulings. Metal prices set the Naira nisab, so
   // decide who owes zakah at all: proposed by investment_committee,
   // approved by compliance_officer only.
+  // The clinic waqf (2026-11-17): a Birr-established waqf for the Mother &
+  // Child Clinic. The Board alone approves establishing one; a Shariah
+  // board member alone approves each version of its deed.
+  { key: "clinic_waqf.establish", category: "clinic", requiresMakerChecker: true, description: "Establish a clinic waqf, after its deed is approved. Once established it's a waqf for ever." },
+  { key: "clinic_waqf.deed_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a version of a clinic waqf's deed, the wording supporters accept when they endow." },
   { key: "zakah.ruleset_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a draft zakah ruleset, making it the version the zakah calculator applies." },
   { key: "zakah.metal_price_set", category: "zakah", requiresMakerChecker: true, description: "Set the gold and silver prices that fix the zakah nisab in Naira." },
   // Distribution (2026-11-11). Owner's decisions: a Mutawalli Officer
@@ -166,6 +171,7 @@ export const accessPermissions = [
   { key: "caseload.view_all", category: "staff", description: "See every waqf fund's beneficiaries and Founder requests, not just assigned ones.", roles: ["platform_admin"] },
   { key: "cause_category.manage", category: "catalog", description: "Maintain the cause category catalog, including Founder suggestions.", roles: ["platform_admin"] },
   { key: "cause_impact.log", category: "waqf", description: "Log an impact update on a waqf fund's cause.", roles: ["mutawalli_officer"] },
+  { key: "clinic_waqf.manage", category: "clinic", description: "Create a clinic waqf and draft or discard versions of its deed (establishing and approving are separate).", roles: ["mutawalli_officer"] },
   { key: "coi.review", category: "staff", description: "Review another staff member's conflict-of-interest declaration.", roles: ["compliance_officer"] },
   // Licences (2026-11-17, clinic slice 1): two people. Whoever records one
   // never verifies it (a database CHECK), and only a verified licence lets
@@ -281,6 +287,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "vault.milestone_complete": { canMaker: true },
     "blog.publish": { canMaker: true },
     "zakah.ruleset_approve": { canMaker: true },
+    "clinic_waqf.establish": { canMaker: true },
+    "clinic_waqf.deed_approve": { canMaker: true },
     "zakah.distribution_approve": { canMaker: true },
     "zakah.distribution_mark_paid": { canMaker: true },
     "zakah.refund_mark_paid": { canMaker: true },
@@ -296,6 +304,7 @@ const governedRolePermissions: Record<string, Grants> = {
   // Compliance and the Audit Committee (see their definitions above) —
   // except zakah.refund_approve, which the Board approves.
   board_of_trustees: {
+    "clinic_waqf.establish": { canChecker: true },
     "asset.dispose": { canChecker: true },
     "distribution.approve": { canChecker: true },
     "waqf.milestone_complete": { canChecker: true },
@@ -344,6 +353,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "vault.distribution_approve": { canChecker: true },
     "vault.milestone_complete": { canChecker: true },
     "zakah.ruleset_approve": { canChecker: true },
+    "clinic_waqf.deed_approve": { canChecker: true },
     "zakah.distribution_approve": { canChecker: true },
     "zakah.fitr_campaign_approve": { canChecker: true },
     "zakah.recipient_approve": { canChecker: true },

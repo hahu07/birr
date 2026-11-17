@@ -31,6 +31,7 @@ import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notification
 import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
 import { FounderSuccessionService } from "../founder-succession/founder-succession.service";
+import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
 import {
   assertPermissionChangesAllowed,
   checkPermissionChanges,
@@ -382,8 +383,39 @@ export class GovernedActionsService {
     private readonly zakahRefundsService: ZakahRefundsService,
     private readonly zakahFitrService: ZakahFitrService,
     private readonly founderSuccessionService: FounderSuccessionService,
+    private readonly clinicWaqfsService: ClinicWaqfsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
+      // ---- The clinic waqf (2026-11-17). A Shariah board member alone
+      // approves each version of its deed; the Board of Trustees alone
+      // approves establishing it, once a deed version is approved. The
+      // rules live in ClinicWaqfsService. ----
+      [
+        "clinic_waqf.deed_approve",
+        {
+          validatePropose: (payload) => this.clinicWaqfsService.validateDeedProposal(payload),
+          checkDuplicate: (payload) => this.clinicWaqfsService.checkDuplicateDeedProposal(payload),
+          describePayload: (payload) => this.clinicWaqfsService.describeDeedProposal(payload),
+          describeCurrentState: (payload) => this.clinicWaqfsService.currentDeedState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicWaqfsService.approveDeed(payload, ctx.governedActionId, ctx.checkerUserId, tx);
+            return { auditAction: "clinic_waqf_deed.approved", entityType: "ClinicWaqfDeed", entityId: after.id, before, after };
+          },
+        },
+      ],
+      [
+        "clinic_waqf.establish",
+        {
+          validatePropose: (payload) => this.clinicWaqfsService.validateEstablishProposal(payload),
+          checkDuplicate: (payload) => this.clinicWaqfsService.checkDuplicateEstablishProposal(payload),
+          describePayload: (payload) => this.clinicWaqfsService.describeEstablishProposal(payload),
+          describeCurrentState: (payload) => this.clinicWaqfsService.currentEstablishState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicWaqfsService.establish(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_waqf.established", entityType: "ClinicWaqf", entityId: after.id, before, after };
+          },
+        },
+      ],
       [
         "asset.dispose",
         {

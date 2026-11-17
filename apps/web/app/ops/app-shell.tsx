@@ -83,6 +83,7 @@ const NAV_GROUPS: {
       { href: "/ops/founder-succession", label: "Primary Contact Changes", icon: IconUsers, requiresPermission: "founder.succession_view" },
       { href: "/ops/waqfs", label: "Waqf Funds", icon: IconBriefcase },
       { href: "/ops/vaults", label: "Vaults", icon: IconArchive },
+      { href: "/ops/clinic-waqfs", label: "Clinic Waqfs", icon: IconHeart },
       { href: "/ops/zakah", label: "Zakah", icon: IconShieldCheck },
       { href: "/ops/zakah-distributions", label: "Zakah Distributions", icon: IconHeart },
       { href: "/ops/counterparties", label: "Counterparties", icon: IconLandmark },
