@@ -1,4 +1,7 @@
 import { SettingsService } from "../../common/settings/settings.service";
+import { CounterpartyLicensesService, lagosToday } from "../counterparties/counterparty-licenses.service";
+import { REQUIRED_COUNTERPARTY_LICENSES } from "@birr/shared";
+import { ClinicClaimsService } from "../clinic-waqfs/clinic-claims.service";
 import { ClinicPriceListsService, canonicalPriceList, priceListHash } from "../clinic-waqfs/clinic-price-lists.service";
 import { ClinicSpendingService } from "../clinic-waqfs/clinic-spending.service";
 import { ClinicInvestmentsService } from "../clinic-waqfs/clinic-investments.service";
@@ -180,6 +183,7 @@ describe("GovernedActionsService", () => {
     new ClinicAssetsService(new ClinicLedgerService()),
     new ClinicSpendingService(new ClinicLedgerService()),
     new ClinicPriceListsService(),
+    new ClinicClaimsService(new ClinicLedgerService(), new ClinicPriceListsService()),
   );
 
   const governedActionIds: string[] = [];
@@ -3510,6 +3514,231 @@ describe("GovernedActionsService", () => {
       await expect(prisma.clinicPriceList.update({ where: { id: v1.id }, data: { status: "approved" } })).rejects.toThrow();
       const action = await propose(v1);
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+    });
+  });
+
+  // clinic_waqf.operator_assign / claim_approve / claim_mark_paid (slice 7).
+  // Maker mutawalli_officer (makerUserId). The operator's checker is the
+  // Board (boardCheckerUserId); a claim's, the Board or Compliance
+  // (distributionCheckerUserId); its payment's, Compliance or the Audit
+  // Committee. Claims, lines and the ledger are never deleted, so these
+  // fixtures stay behind; the one zakah distribution is rejected afterwards
+  // so it commits nothing.
+  describe("clinic waqf claims", () => {
+    const clinics = new ClinicWaqfsService();
+    const ledger = new ClinicLedgerService();
+    const lists = new ClinicPriceListsService();
+    const claims = new ClinicClaimsService(ledger, lists);
+    const licenses = new CounterpartyLicensesService();
+    const month = lagosToday().slice(0, 7);
+    const day = (d: string) => `${month}-${d}`;
+
+    async function provider() {
+      const operator = await prisma.counterparty.create({
+        data: { name: `Claims Test Operator ${randomUUID()}`, institutionType: "healthcare_provider", jurisdiction: "NG", status: "active" },
+      });
+      const nextYear = `${Number(lagosToday().slice(0, 4)) + 1}${lagosToday().slice(4)}`;
+      for (const kind of REQUIRED_COUNTERPARTY_LICENSES.healthcare_provider!) {
+        const license = await licenses.record(operator.id, { kind, licenseNumber: `CL-${kind.length}7`, issuingAuthority: "Fixture Authority", expiresOn: nextYear }, makerUserId);
+        await licenses.verify(license.id, { note: "Saw the certificate." }, distributionCheckerUserId);
+      }
+      return operator;
+    }
+
+    /** An established clinic with running cash, an approved price list and (optionally) an operator. */
+    async function readyClinic(runningCash = "100000", withOperator = true) {
+      const clinic = await clinics.create({ name: "Claims Test Clinic", slug: `claims-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
+      const d = await service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+      await service.decide({ governedActionId: d.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+      const e = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { clinicWaqfId: clinic.id }, makerUserId });
+      await service.decide({ governedActionId: e.id, checkerUserId: boardCheckerUserId, approve: true });
+      await prisma.$transaction((tx) =>
+        ledger.post(tx, {
+          clinicWaqfId: clinic.id,
+          description: "Test running gifts",
+          currency: "NGN",
+          source: "manual_adjustment",
+          actorType: "system",
+          lines: [
+            { accountCode: "1100", debit: runningCash },
+            { accountCode: "4000", credit: runningCash },
+          ],
+        }),
+      );
+      const list = await lists.draft(
+        clinic.id,
+        {
+          services: [
+            { code: "ANC", name: "Antenatal tests", price: "18500" },
+            { code: "FBC", name: "Full blood count", price: "2500" },
+          ],
+          bands: [
+            { code: "A", name: "Poorest", whoQualifies: "Household income under ₦50,000 a month", patientSharePercent: 0 },
+            { code: "B", name: "Low income", whoQualifies: "Household income under ₦100,000 a month", patientSharePercent: 20 },
+          ],
+          monthlySubsidyCap: "50000",
+        },
+        makerUserId,
+      );
+      const l = await service.propose({ permissionKey: "clinic_waqf.price_list_approve", payload: { priceListId: list.id, contentHash: list.contentHash }, makerUserId });
+      await service.decide({ governedActionId: l.id, checkerUserId: boardCheckerUserId, approve: true });
+      const operator = await provider();
+      if (withOperator) {
+        const a = await service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { clinicWaqfId: clinic.id, counterpartyId: operator.id }, makerUserId });
+        await service.decide({ governedActionId: a.id, checkerUserId: boardCheckerUserId, approve: true });
+      }
+      return { clinic, operator };
+    }
+
+    const line = (visitReference: string, serviceCode: string, bandCode: string, patientPaid: string, zakahEligible = false, visitDate = day("01")) => ({
+      visitReference,
+      visitDate,
+      serviceCode,
+      bandCode,
+      patientPaid,
+      zakahEligible,
+    });
+
+    test("the Board assigns the operator; the Board or Compliance approves a claim; Compliance or Audit confirms it paid", async () => {
+      const checkers = async (key: string) =>
+        (await prisma.rolePermission.findMany({ where: { permission: { key }, canChecker: true }, select: { role: { select: { key: true } } } })).map((g) => g.role.key).sort();
+      expect(await checkers("clinic_waqf.operator_assign")).toEqual(["board_of_trustees"]);
+      expect(await checkers("clinic_waqf.claim_approve")).toEqual(["board_of_trustees", "compliance_officer"]);
+      expect(await checkers("clinic_waqf.claim_mark_paid")).toEqual(["audit_committee", "compliance_officer"]);
+    });
+
+    test("only a licensed, active healthcare provider can be assigned; the assignment is audited", async () => {
+      const { clinic, operator } = await readyClinic("1", false);
+      const business = await prisma.counterparty.create({
+        data: { name: `Not A Clinic ${randomUUID()}`, institutionType: "business", jurisdiction: "NG", status: "active", businessActivities: "Sells things." },
+      });
+      await expect(
+        service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { clinicWaqfId: clinic.id, counterpartyId: business.id }, makerUserId }),
+      ).rejects.toThrow(/isn't a healthcare provider/);
+      const unlicensed = await prisma.counterparty.create({
+        data: { name: `Unlicensed Clinic ${randomUUID()}`, institutionType: "healthcare_provider", jurisdiction: "NG", status: "active" },
+      });
+      await expect(
+        service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { clinicWaqfId: clinic.id, counterpartyId: unlicensed.id }, makerUserId }),
+      ).rejects.toThrow(/licences are in order/);
+      await expect(claims.createClaim(clinic.id, { period: month, lines: [line("V1", "FBC", "A", "0")] }, makerUserId)).rejects.toThrow(/No operator/);
+
+      const action = await service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { clinicWaqfId: clinic.id, counterpartyId: operator.id }, makerUserId });
+      await expect(
+        service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { clinicWaqfId: clinic.id, counterpartyId: operator.id }, makerUserId }),
+      ).rejects.toThrow(ConflictException);
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+      await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true });
+      expect(await prisma.clinicWaqf.findUniqueOrThrow({ where: { id: clinic.id } })).toMatchObject({ operatorId: operator.id, operatorActionId: action.id });
+      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "clinic_waqf.operator_assigned" } })).toBe(1);
+      await expect(prisma.clinicWaqf.update({ where: { id: clinic.id }, data: { operatorActionId: null } })).rejects.toThrow(/operator_consistent/);
+    });
+
+    test("every line is checked against the approved price list, its band's share, the month and earlier claims", async () => {
+      const { clinic } = await readyClinic();
+      const refused = (lines: ReturnType<typeof line>[]) => claims.createClaim(clinic.id, { period: month, lines }, makerUserId);
+      await expect(refused([line("V1", "XRAY", "A", "0")])).rejects.toThrow(/XRAY isn't on price list version 1/);
+      await expect(refused([line("V1", "FBC", "Z", "0")])).rejects.toThrow(/band Z isn't on/);
+      // Band B pays 20% of ₦2,500: exactly ₦500, never more or less.
+      await expect(refused([line("V1", "FBC", "B", "400")])).rejects.toThrow(/which is ₦500.00, not ₦400.00/);
+      await expect(refused([line("V1", "FBC", "B", "600")])).rejects.toThrow(/not ₦600.00/);
+      await expect(refused([line("V1", "FBC", "A", "0"), line("V1", "FBC", "A", "0")])).rejects.toThrow(/claims FBC twice/);
+      await expect(refused([line("V1", "FBC", "A", "0", false, "2020-01-05")])).rejects.toThrow(/isn't in/);
+      await expect(claims.createClaim(clinic.id, { period: "2999-01", lines: [line("V1", "FBC", "A", "0")] }, makerUserId)).rejects.toThrow(/hasn't started/);
+      // ₦18,500 × 3 from the running fund is over the ₦50,000 cap; zakah lines don't count toward it.
+      await expect(refused([line("V1", "ANC", "A", "0"), line("V2", "ANC", "A", "0"), line("V3", "ANC", "A", "0")])).rejects.toThrow(/over the monthly subsidy cap/);
+
+      const claim = await claims.createClaim(
+        clinic.id,
+        { period: month, lines: [line("V1", "ANC", "B", "3700"), line("V1", "FBC", "A", "0", true), line("V2", "ANC", "A", "0", true), line("V3", "ANC", "A", "0", true)] },
+        makerUserId,
+      );
+      expect(claim).toMatchObject({ lineCount: 4, status: "submitted" });
+      expect(claim.totalPrice.toFixed(2)).toBe("58000.00");
+      expect(claim.patientPaid.toFixed(2)).toBe("3700.00");
+      expect(claim.runningFundAmount.toFixed(2)).toBe("14800.00");
+      expect(claim.zakahAmount.toFixed(2)).toBe("39500.00");
+      expect(await prisma.auditLog.count({ where: { entityId: claim.id, action: "clinic_claim.submitted" } })).toBe(1);
+
+      // One live claim a month; a discarded one frees the month, but a visit's service is never claimed twice.
+      await expect(refused([line("V9", "FBC", "A", "0")])).rejects.toThrow(/already a submitted claim/);
+      await claims.discardClaim(clinic.id, claim.id, makerUserId);
+      const again = await refused([line("V1", "FBC", "A", "0", true)]);
+      await expect(
+        claims.createClaim(clinic.id, { period: `${Number(month.slice(0, 4)) - 1}${month.slice(4)}`, lines: [line("V1", "FBC", "A", "0", true, `${Number(month.slice(0, 4)) - 1}${month.slice(4)}-01`)] }, makerUserId),
+      ).rejects.toThrow(/already claimed for/);
+      expect(again.status).toBe("submitted");
+    });
+
+    test("approve within the running fund's cash, confirm the payment, link the zakah part", async () => {
+      const { clinic, operator } = await readyClinic("10000");
+      const claim = await claims.createClaim(clinic.id, { period: month, lines: [line("P1", "ANC", "B", "3700"), line("P2", "FBC", "A", "0", true)] }, makerUserId);
+      const approve = await service.propose({ permissionKey: "clinic_waqf.claim_approve", payload: { claimId: claim.id }, makerUserId });
+      await expect(service.propose({ permissionKey: "clinic_waqf.claim_approve", payload: { claimId: claim.id }, makerUserId })).rejects.toThrow(ConflictException);
+      await expect(claims.discardClaim(clinic.id, claim.id, makerUserId)).rejects.toThrow(/waiting for approval/);
+      // ₦14,800 from the running fund, which holds ₦10,000.
+      await expect(service.decide({ governedActionId: approve.id, checkerUserId: distributionCheckerUserId, approve: true })).rejects.toThrow(/₦10,000.00 free/);
+
+      const { clinic: funded, operator: fundedOperator } = await readyClinic("20000");
+      const ok = await claims.createClaim(funded.id, { period: month, lines: [line("P1", "ANC", "B", "3700"), line("P2", "FBC", "A", "0", true)] }, makerUserId);
+      const a = await service.propose({ permissionKey: "clinic_waqf.claim_approve", payload: { claimId: ok.id }, makerUserId });
+      await service.decide({ governedActionId: a.id, checkerUserId: boardCheckerUserId, approve: true });
+      expect(await prisma.clinicClaim.findUniqueOrThrow({ where: { id: ok.id } })).toMatchObject({ status: "approved", approvalActionId: a.id });
+      expect(await prisma.auditLog.count({ where: { entityId: ok.id, action: "clinic_claim.approved" } })).toBe(1);
+
+      const paid = { claimId: ok.id, bankReference: "ZENITH/TRF/0042", paidOn: lagosToday() };
+      await expect(service.propose({ permissionKey: "clinic_waqf.claim_mark_paid", payload: { ...paid, paidOn: "2999-01-01" }, makerUserId })).rejects.toThrow(/future/);
+      const markPaid = await service.propose({ permissionKey: "clinic_waqf.claim_mark_paid", payload: paid, makerUserId });
+      await service.decide({ governedActionId: markPaid.id, checkerUserId: distributionCheckerUserId, approve: true });
+      expect(await prisma.clinicClaim.findUniqueOrThrow({ where: { id: ok.id } })).toMatchObject({ status: "paid", bankReference: "ZENITH/TRF/0042" });
+      const balances = await ledger.balances(funded.id);
+      const running = (code: string) => balances.running.find((b: { code: string }) => b.code === code) as { balance: string } | undefined;
+      expect(Number(running("1100")?.balance)).toBe(5200);
+      expect(Number(running("5000")?.balance)).toBe(14800);
+
+      // The zakah part: a distribution to this claim's operator, poor or needy, for exactly ₦2,500.
+      const wrong = await prisma.zakahDistribution.create({
+        data: { counterpartyId: operator.id, category: "fuqara", amount: 2500, currency: "NGN", reason: "Clinic claim fixture.", createdByUserId: makerUserId },
+      });
+      const right = await prisma.zakahDistribution.create({
+        data: { counterpartyId: fundedOperator.id, category: "masakin", amount: 2500, currency: "NGN", reason: "Clinic claim fixture.", createdByUserId: makerUserId },
+      });
+      try {
+        await expect(claims.linkZakah(funded.id, ok.id, { zakahDistributionId: wrong.id }, makerUserId)).rejects.toThrow(/this claim's operator/);
+        await claims.linkZakah(funded.id, ok.id, { zakahDistributionId: right.id }, makerUserId);
+        await expect(claims.linkZakah(funded.id, ok.id, { zakahDistributionId: right.id }, makerUserId)).rejects.toThrow(/already linked/);
+        expect(await prisma.auditLog.count({ where: { entityId: ok.id, action: "clinic_claim.zakah_linked" } })).toBe(1);
+        await expect(prisma.clinicClaim.update({ where: { id: ok.id }, data: { zakahDistributionId: null } })).rejects.toThrow(/never changes once linked/);
+      } finally {
+        await prisma.zakahDistribution.updateMany({ where: { id: { in: [wrong.id, right.id] } }, data: { status: "rejected" } });
+      }
+    });
+
+    test("the database keeps a claim's totals to its lines, and refuses edits, deletion and the maker as checker", async () => {
+      const { clinic, operator } = await readyClinic();
+      const claim = await claims.createClaim(clinic.id, { period: month, lines: [line("D1", "FBC", "B", "500")] }, makerUserId);
+      const list = await lists.current(prisma, clinic.id);
+      await expect(
+        prisma.clinicClaimLine.create({
+          data: { claimId: claim.id, clinicWaqfId: clinic.id, visitReference: "D2", visitDate: new Date(`${day("02")}T00:00:00Z`), serviceCode: "FBC", bandCode: "A", price: 2500, patientPaid: 0, subsidy: 2500, zakahEligible: false },
+        }),
+      ).rejects.toThrow(/totals don't match/);
+      await expect(
+        prisma.clinicClaim.create({
+          data: { clinicWaqfId: clinic.id, period: "2020-01", operatorId: operator.id, priceListId: list!.id, lineCount: 1, totalPrice: 100, patientPaid: 0, subsidyTotal: 100, runningFundAmount: 100, zakahAmount: 0, createdByUserId: makerUserId },
+        }),
+      ).rejects.toThrow(/totals don't match/);
+      const [l] = await claims.claimLines(clinic.id, claim.id);
+      await expect(prisma.clinicClaimLine.update({ where: { id: l.id }, data: { patientPaid: 0, subsidy: 2500 } })).rejects.toThrow(/never changed/);
+      await expect(prisma.clinicClaimLine.delete({ where: { id: l.id } })).rejects.toThrow(/never changed/);
+      await expect(prisma.clinicClaim.update({ where: { id: claim.id }, data: { runningFundAmount: 1 } })).rejects.toThrow();
+      await expect(prisma.clinicClaim.update({ where: { id: claim.id }, data: { status: "paid" } })).rejects.toThrow();
+      await expect(prisma.clinicClaim.delete({ where: { id: claim.id } })).rejects.toThrow(/never deleted/);
+      const action = await service.propose({ permissionKey: "clinic_waqf.claim_approve", payload: { claimId: claim.id }, makerUserId });
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+      await service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: false });
+      expect((await prisma.clinicClaim.findUniqueOrThrow({ where: { id: claim.id } })).status).toBe("rejected");
     });
   });
 

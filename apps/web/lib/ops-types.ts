@@ -1651,6 +1651,8 @@ export interface ClinicWaqf {
   createdByUser?: { id: string; fullName: string };
   // From the list endpoint: the approved version, if any. From GET /:id: every version, newest first.
   deeds: (Pick<ClinicWaqfDeed, "version"> & Partial<ClinicWaqfDeed>)[];
+  // From GET /:id: the licensed operator running the clinic (slice 7).
+  operator?: { id: string; name: string; status: string } | null;
 }
 
 export interface ClinicLedgerRow {
@@ -1761,4 +1763,35 @@ export interface ClinicPriceList {
   createdAt: string;
   approvedAt: string | null;
   createdByUser: { id: string; fullName: string } | null;
+}
+
+export interface ClinicClaim {
+  id: string;
+  period: string;
+  status: "submitted" | "approved" | "rejected" | "discarded" | "paid";
+  lineCount: number;
+  totalPrice: string;
+  patientPaid: string;
+  subsidyTotal: string;
+  runningFundAmount: string;
+  zakahAmount: string;
+  approvedAt: string | null;
+  paidOn: string | null;
+  bankReference: string | null;
+  createdAt: string;
+  operator: { id: string; name: string };
+  priceList: { version: number };
+  zakahDistribution: { id: string; status: string; category: string } | null;
+}
+
+export interface ClinicClaimLine {
+  id: string;
+  visitReference: string;
+  visitDate: string;
+  serviceCode: string;
+  bandCode: string;
+  price: string;
+  patientPaid: string;
+  subsidy: string;
+  zakahEligible: boolean;
 }

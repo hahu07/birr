@@ -18,6 +18,7 @@ import {
   ScreenClinicInvestmentInput,
 } from "./clinic-investments.service";
 import { ClinicPriceListsService, DraftClinicPriceListInput } from "./clinic-price-lists.service";
+import { ClinicClaimsService, CreateClinicClaimInput, LinkClaimZakahInput } from "./clinic-claims.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 
@@ -35,6 +36,7 @@ export class ClinicWaqfsController {
     private readonly spending: ClinicSpendingService,
     private readonly investments: ClinicInvestmentsService,
     private readonly priceLists: ClinicPriceListsService,
+    private readonly claims: ClinicClaimsService,
   ) {}
 
   @Post()
@@ -199,6 +201,38 @@ export class ClinicWaqfsController {
   @Get(":id/price-lists")
   listPriceLists(@Param("id") id: string) {
     return this.priceLists.list(id);
+  }
+
+  // Monthly claims (slice 7). The operator is assigned through POST
+  // /governed-actions (clinic_waqf.operator_assign); a claim's running fund
+  // part is approved and confirmed paid there too (clinic_waqf.claim_approve,
+  // clinic_waqf.claim_mark_paid).
+  @Post(":id/claims")
+  @RequiresAccess("clinic_waqf.manage")
+  createClaim(@Param("id") id: string, @Body() body: CreateClinicClaimInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.claims.createClaim(id, body, staff.userId);
+  }
+
+  @Post(":id/claims/:claimId/discard")
+  @RequiresAccess("clinic_waqf.manage")
+  discardClaim(@Param("id") id: string, @Param("claimId") claimId: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.claims.discardClaim(id, claimId, staff.userId);
+  }
+
+  @Post(":id/claims/:claimId/zakah-distribution")
+  @RequiresAccess("clinic_waqf.manage")
+  linkClaimZakah(@Param("id") id: string, @Param("claimId") claimId: string, @Body() body: LinkClaimZakahInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.claims.linkZakah(id, claimId, body, staff.userId);
+  }
+
+  @Get(":id/claims")
+  listClaims(@Param("id") id: string) {
+    return this.claims.listClaims(id);
+  }
+
+  @Get(":id/claims/:claimId/lines")
+  claimLines(@Param("id") id: string, @Param("claimId") claimId: string) {
+    return this.claims.claimLines(id, claimId);
   }
 
   @Get(":id/gifts")

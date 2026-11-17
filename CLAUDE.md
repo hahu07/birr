@@ -1196,6 +1196,36 @@ sha256 checked by the database.
   draft per clinic.
 - Monthly claims (slice 7) are checked against the approved version.
 
+Slice 7, operator and monthly claims (built, `ClinicClaim`,
+`ClinicClaimLine`, `ClinicClaimsService`). Patient records stay with the
+operator: a line is a visit reference, the service and band, what the
+patient paid, and whether the operator assessed her as poor or needy.
+- **Operator:** a licensed, active `healthcare_provider`, assigned by the
+  Board (`clinic_waqf.operator_assign`).
+- **Checks on upload** (a Mutawalli Officer, `clinic_waqf.manage`):
+  - the service is on the approved price list, at its price;
+  - the patient paid **exactly** the band's share, rounded to the kobo:
+    never more from her, never more from the fund;
+  - the visit is in the claim's month;
+  - a visit's service is claimed only once, ever;
+  - one live claim per clinic per month (a database index);
+  - the running fund part is within the list's monthly cap.
+  - Every failing line is reported at once.
+- **The split:** subsidies for poor or needy patients are the zakah part;
+  the rest is the running fund part.
+- **Running fund part:** the Board or Compliance approves
+  (`clinic_waqf.claim_approve`). It must fit in the running fund's cash
+  (1100) less approved, unpaid claims. It's paid by bank transfer, and
+  Compliance or the Audit Committee confirms the reference
+  (`clinic_waqf.claim_mark_paid`, 5000 / 1100).
+- **Zakah part:** paid as an ordinary zakah distribution to the operator
+  (zakah on wealth, poor or needy, the exact amount), with zakah's own
+  approvals, then linked to the claim once. The Shariah Supervisory
+  Board's ruling on tamlik (zakah paying a patient's bill) is still open.
+- **Database:** a claim's totals must equal its lines' (a deferred check),
+  lines are insert-only, a claim never changes, its status moves only
+  forward, the zakah link is set once, and nothing is deleted.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

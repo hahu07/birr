@@ -130,6 +130,9 @@ const governedPermissions = [
   { key: "clinic_waqf.spend_mark_paid", category: "clinic", requiresMakerChecker: true, description: "Confirm an approved clinic waqf payment was made, from the bank's reference, which books it." },
   // Clinic waqf price list and subsidy bands (2026-11-17, slice 6).
   { key: "clinic_waqf.price_list_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a version of a clinic waqf's price list and subsidy bands, which monthly claims are checked against." },
+  { key: "clinic_waqf.operator_assign", category: "clinic", requiresMakerChecker: true, description: "Assign the licensed healthcare provider that runs a clinic waqf's clinic, whose monthly claims it pays." },
+  { key: "clinic_waqf.claim_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a clinic's monthly claim, checked against the price list, bands and monthly cap, so its running fund part may be paid." },
+  { key: "clinic_waqf.claim_mark_paid", category: "clinic", requiresMakerChecker: true, description: "Confirm a clinic claim's running fund part was paid, from the bank's reference, which books it." },
   { key: "clinic_waqf.deed_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a version of a clinic waqf's deed, the wording supporters accept when they endow." },
   { key: "zakah.ruleset_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a draft zakah ruleset, making it the version the zakah calculator applies." },
   { key: "zakah.metal_price_set", category: "zakah", requiresMakerChecker: true, description: "Set the gold and silver prices that fix the zakah nisab in Naira." },
@@ -292,6 +295,9 @@ type Grants = Record<string, { canMaker?: boolean; canChecker?: boolean }>;
 
 const governedRolePermissions: Record<string, Grants> = {
   mutawalli_officer: {
+    "clinic_waqf.operator_assign": { canMaker: true },
+    "clinic_waqf.claim_approve": { canMaker: true },
+    "clinic_waqf.claim_mark_paid": { canMaker: true },
     "founder.primary_contact_change": { canMaker: true },
     "asset.dispose": { canMaker: true },
     "distribution.approve": { canMaker: true },
@@ -330,6 +336,8 @@ const governedRolePermissions: Record<string, Grants> = {
   // Compliance and the Audit Committee (see their definitions above) —
   // except zakah.refund_approve, which the Board approves.
   board_of_trustees: {
+    "clinic_waqf.operator_assign": { canChecker: true },
+    "clinic_waqf.claim_approve": { canChecker: true },
     "clinic_waqf.establish": { canChecker: true },
     "clinic_waqf.asset_add": { canChecker: true },
     "clinic_waqf.asset_dispose": { canChecker: true },
@@ -393,6 +401,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.recipient_change": { canChecker: true },
   },
   audit_committee: {
+    "clinic_waqf.claim_mark_paid": { canChecker: true },
     "clinic_waqf.spend_mark_paid": { canChecker: true },
     "asset.dispose": { canChecker: true },
     "investment.change": { canChecker: true },
@@ -404,6 +413,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.refund_mark_paid": { canChecker: true },
   },
   compliance_officer: {
+    "clinic_waqf.claim_approve": { canChecker: true },
+    "clinic_waqf.claim_mark_paid": { canChecker: true },
     "clinic_waqf.price_list_approve": { canChecker: true },
     "clinic_waqf.spend_approve": { canChecker: true },
     "clinic_waqf.spend_mark_paid": { canChecker: true },
