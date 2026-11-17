@@ -102,8 +102,8 @@ describe("ClinicGiftsService", () => {
     const deedPayload = { deedId: draft.id, textHash: draft.textHash };
     const deedAction = await decidedAction("clinic_waqf.deed_approve", deedPayload);
     await prisma.$transaction((tx) => clinics.approveDeed(deedPayload, deedAction.id, checkerUserId, tx));
-    const establishAction = await decidedAction("clinic_waqf.establish", { clinicWaqfId: created.id });
-    await prisma.$transaction((tx) => clinics.establish({ clinicWaqfId: created.id }, establishAction.id, tx));
+    const establishAction = await decidedAction("clinic_waqf.establish", { programmeId: created.id });
+    await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establishAction.id, tx));
     return { clinic: created, deed: draft };
   }
 
@@ -170,7 +170,7 @@ describe("ClinicGiftsService", () => {
         returnPath: "clinic-gifts",
         split: { subaccount: "ACCT_test_clinic", mainAccountShareMinorUnits: Math.round(Number(fee) * 100) },
       });
-      const row = await prisma.clinicGift.findUniqueOrThrow({ where: { id: gift.id } });
+      const row = await prisma.programmeGift.findUniqueOrThrow({ where: { id: gift.id } });
       expect(row).toMatchObject({ settlementSubaccount: "ACCT_test_clinic", deedId: deed.id, deedTextHash: deed.textHash, contactEmail: email("endow") });
       expect(row.donorId).not.toBeNull();
       expect(await prisma.auditLog.count({ where: { entityId: gift.id, action: "clinic_gift.initiated" } })).toBe(1);
@@ -183,8 +183,8 @@ describe("ClinicGiftsService", () => {
       await confirmViaWebhook(gift.id);
       await confirmViaWebhook(gift.id); // a retried webhook
 
-      expect((await prisma.clinicGift.findUniqueOrThrow({ where: { id: gift.id } })).status).toBe("confirmed");
-      const entries = await prisma.clinicJournalEntry.findMany({ where: { source: "gift", sourceId: gift.id }, include: { lines: { include: { ledgerAccount: true } } } });
+      expect((await prisma.programmeGift.findUniqueOrThrow({ where: { id: gift.id } })).status).toBe("confirmed");
+      const entries = await prisma.programmeJournalEntry.findMany({ where: { source: "gift", sourceId: gift.id }, include: { lines: { include: { ledgerAccount: true } } } });
       expect(entries).toHaveLength(1);
       expect(entries[0].lines.map((l) => [l.ledgerAccount.code, l.debit.toFixed(2), l.credit.toFixed(2)]).sort()).toEqual([
         ["1000", "10000.00", "0.00"],
@@ -199,7 +199,7 @@ describe("ClinicGiftsService", () => {
     test("a running-fund gift is booked to the running fund", async () => {
       const { gift } = await service.initiate({ ...running() });
       await confirmViaWebhook(gift.id);
-      const [entry] = await prisma.clinicJournalEntry.findMany({ where: { source: "gift", sourceId: gift.id }, include: { lines: { include: { ledgerAccount: true } } } });
+      const [entry] = await prisma.programmeJournalEntry.findMany({ where: { source: "gift", sourceId: gift.id }, include: { lines: { include: { ledgerAccount: true } } } });
       expect(entry.lines.map((l) => l.ledgerAccount.code).sort()).toEqual(["1100", "4000"]);
       expect(receipts.sent.some((r) => r.giftId === gift.id)).toBe(false); // no contact given, no receipt
     });
@@ -259,7 +259,7 @@ describe("ClinicGiftsService", () => {
     test("a verified user becomes a clinic supporter: a Founder with no Foundation, onboarding done, audited", async () => {
       const user = await verifiedUser("supporter");
       const founder = await founders.establishClinicSupporter(user.id, { founderName: "Amina Bello", kind: "individual" });
-      expect(founder).toMatchObject({ clinicSupporter: true, kind: "individual" });
+      expect(founder).toMatchObject({ programmeSupporter: true, kind: "individual" });
       expect(await prisma.auditLog.count({ where: { entityId: founder.id, action: "founder.created" } })).toBe(1);
       const status = await founders.getOnboardingStatus(user.id);
       expect(status).toMatchObject({ founderId: founder.id, currentStep: "done", onboardingComplete: true, clinicSupporterOnly: true });
@@ -280,7 +280,7 @@ describe("ClinicGiftsService", () => {
       await expect(service.initiateAsFounder(founder.id, user.id, { ...running(), amount: "249999" })).rejects.toThrow(/at least ₦250,000/);
 
       const { gift } = await service.initiateAsFounder(founder.id, user.id, { ...endowment(), amount: "250000" });
-      const row = await prisma.clinicGift.findUniqueOrThrow({ where: { id: gift.id } });
+      const row = await prisma.programmeGift.findUniqueOrThrow({ where: { id: gift.id } });
       expect(row).toMatchObject({ founderId: founder.id, initiatedByUserId: user.id, donorId: null, contactEmail: user.email, contactWhatsApp: "+2348030000000" });
       const [log] = await prisma.auditLog.findMany({ where: { entityId: gift.id, action: "clinic_gift.initiated" } });
       expect(log).toMatchObject({ actorType: "founder_user", actorUserId: user.id, actorFounderId: founder.id });
@@ -306,10 +306,10 @@ describe("ClinicGiftsService", () => {
       const founder = await founders.establishClinicSupporter(user.id, { founderName: "Both Founder", kind: "individual" });
       const donor = await prisma.vaultDonor.create({ data: { email: email("both-donor") } });
       await expect(
-        prisma.clinicGift.create({
-          data: { clinicWaqfId: clinic.id, pot: "running", amount: 5000, currency: "NGN", provider: "paystack", providerReference: randomUUID(), settlementSubaccount: "ACCT_x", founderId: founder.id, initiatedByUserId: user.id, donorId: donor.id },
+        prisma.programmeGift.create({
+          data: { programmeId: clinic.id, pot: "running", amount: 5000, currency: "NGN", provider: "paystack", providerReference: randomUUID(), settlementSubaccount: "ACCT_x", founderId: founder.id, initiatedByUserId: user.id, donorId: donor.id },
         }),
-      ).rejects.toThrow(/clinic_gifts_one_giver/);
+      ).rejects.toThrow(/programme_gifts_one_giver/);
     });
   });
 
@@ -334,9 +334,9 @@ describe("ClinicGiftsService", () => {
   describe("the database", () => {
     test("refuses an endowment gift under a deed that isn't the approved one, as worded", async () => {
       await expect(
-        prisma.clinicGift.create({
+        prisma.programmeGift.create({
           data: {
-            clinicWaqfId: clinic.id,
+            programmeId: clinic.id,
             pot: "endowment",
             amount: 10000,
             currency: "NGN",
@@ -349,19 +349,19 @@ describe("ClinicGiftsService", () => {
         }),
       ).rejects.toThrow(/approved deed/);
       await expect(
-        prisma.clinicGift.create({
-          data: { clinicWaqfId: clinic.id, pot: "running", amount: 10000, currency: "NGN", provider: "paystack", providerReference: randomUUID(), settlementSubaccount: "ACCT_x", deedId: deed.id, deedTextHash: deed.textHash },
+        prisma.programmeGift.create({
+          data: { programmeId: clinic.id, pot: "running", amount: 10000, currency: "NGN", provider: "paystack", providerReference: randomUUID(), settlementSubaccount: "ACCT_x", deedId: deed.id, deedTextHash: deed.textHash },
         }),
-      ).rejects.toThrow(/clinic_gifts_deed_matches_pot/);
+      ).rejects.toThrow(/programme_gifts_deed_matches_pot/);
     });
 
     test("refuses changing what was given, settling a gift twice, or deleting one", async () => {
       const { gift } = await service.initiate({ ...running() });
-      await expect(prisma.clinicGift.update({ where: { id: gift.id }, data: { amount: 1 } })).rejects.toThrow(/never change/);
-      await expect(prisma.clinicGift.update({ where: { id: gift.id }, data: { pot: "endowment" } })).rejects.toThrow();
+      await expect(prisma.programmeGift.update({ where: { id: gift.id }, data: { amount: 1 } })).rejects.toThrow(/never change/);
+      await expect(prisma.programmeGift.update({ where: { id: gift.id }, data: { pot: "endowment" } })).rejects.toThrow();
       await confirmViaWebhook(gift.id);
-      await expect(prisma.clinicGift.update({ where: { id: gift.id }, data: { status: "failed", confirmedAt: null } })).rejects.toThrow(/can't change/);
-      await expect(prisma.clinicGift.delete({ where: { id: gift.id } })).rejects.toThrow(/never deleted/);
+      await expect(prisma.programmeGift.update({ where: { id: gift.id }, data: { status: "failed", confirmedAt: null } })).rejects.toThrow(/can't change/);
+      await expect(prisma.programmeGift.delete({ where: { id: gift.id } })).rejects.toThrow(/never deleted/);
     });
   });
 });

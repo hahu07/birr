@@ -409,7 +409,7 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicWaqfsService.currentDeedState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicWaqfsService.approveDeed(payload, ctx.governedActionId, ctx.checkerUserId, tx);
-            return { auditAction: "clinic_waqf_deed.approved", entityType: "ClinicWaqfDeed", entityId: after.id, before, after };
+            return { auditAction: "clinic_waqf_deed.approved", entityType: "WaqfProgrammeDeed", entityId: after.id, before, after };
           },
         },
       ],
@@ -424,13 +424,13 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicAssetsService.currentAddState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicAssetsService.approveAdd(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_asset.added", entityType: "ClinicAsset", entityId: after.id, before, after };
+            return { auditAction: "clinic_asset.added", entityType: "ProgrammeAsset", entityId: after.id, before, after };
           },
           onReject: async (payload, tx) => {
             const result = await this.clinicAssetsService.rejectAdd(payload, tx);
             return {
               auditAction: "clinic_asset.rejected",
-              entityType: "ClinicAsset",
+              entityType: "ProgrammeAsset",
               entityId: (payload as { assetId: string }).assetId,
               before: result?.before ?? null,
               after: result?.after ?? null,
@@ -447,7 +447,7 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicAssetsService.currentDisposeState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicAssetsService.approveDispose(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_asset.disposed", entityType: "ClinicAsset", entityId: after.id, before, after };
+            return { auditAction: "clinic_asset.disposed", entityType: "ProgrammeAsset", entityId: after.id, before, after };
           },
         },
       ],
@@ -463,13 +463,13 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicSpendingService.currentWorksState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicSpendingService.approveWorks(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_works.approved", entityType: "ClinicWorksProject", entityId: after.id, before, after };
+            return { auditAction: "clinic_works.approved", entityType: "ProgrammeWorksProject", entityId: after.id, before, after };
           },
           onReject: async (payload, tx) => {
             const result = await this.clinicSpendingService.rejectWorks(payload, tx);
             return {
               auditAction: "clinic_works.rejected",
-              entityType: "ClinicWorksProject",
+              entityType: "ProgrammeWorksProject",
               entityId: (payload as { worksProjectId: string }).worksProjectId,
               before: result?.before ?? null,
               after: result?.after ?? null,
@@ -486,13 +486,13 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicSpendingService.currentSpendState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicSpendingService.approveSpend(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_spend.approved", entityType: "ClinicSpend", entityId: after.id, before, after };
+            return { auditAction: "clinic_spend.approved", entityType: "ProgrammeSpend", entityId: after.id, before, after };
           },
           onReject: async (payload, tx) => {
             const result = await this.clinicSpendingService.rejectSpend(payload, tx);
             return {
               auditAction: "clinic_spend.rejected",
-              entityType: "ClinicSpend",
+              entityType: "ProgrammeSpend",
               entityId: (payload as { spendId: string }).spendId,
               before: result?.before ?? null,
               after: result?.after ?? null,
@@ -508,7 +508,7 @@ export class GovernedActionsService {
           describePayload: (payload) => this.clinicSpendingService.describePaid(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicSpendingService.markPaid(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_spend.paid", entityType: "ClinicSpend", entityId: after.id, before, after };
+            return { auditAction: "clinic_spend.paid", entityType: "ProgrammeSpend", entityId: after.id, before, after };
           },
         },
       ],
@@ -539,7 +539,7 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicClaimsService.currentOperatorState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicClaimsService.assignOperator(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_waqf.operator_assigned", entityType: "ClinicWaqf", entityId: after.id, before, after };
+            return { auditAction: "clinic_waqf.operator_assigned", entityType: "WaqfProgramme", entityId: after.id, before, after };
           },
         },
       ],
@@ -589,7 +589,7 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicReserveService.currentShareState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicReserveService.approveShare(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_waqf.reserve_share_set", entityType: "ClinicWaqf", entityId: after.id, before, after };
+            return { auditAction: "clinic_waqf.reserve_share_set", entityType: "WaqfProgramme", entityId: after.id, before, after };
           },
         },
       ],
@@ -602,7 +602,7 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicWaqfsService.currentEstablishState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicWaqfsService.establish(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_waqf.established", entityType: "ClinicWaqf", entityId: after.id, before, after };
+            return { auditAction: "clinic_waqf.established", entityType: "WaqfProgramme", entityId: after.id, before, after };
           },
         },
       ],

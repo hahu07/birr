@@ -66,7 +66,7 @@ interface DeedApprovalPayload {
 }
 
 interface EstablishPayload {
-  clinicWaqfId: string;
+  programmeId: string;
 }
 
 const userName = { select: { id: true, fullName: true } };
@@ -83,17 +83,17 @@ const userName = { select: { id: true, fullName: true } };
 @Injectable()
 export class ClinicWaqfsService {
   async create(input: CreateClinicWaqfInput, actorUserId: string) {
-    if (await prisma.clinicWaqf.findUnique({ where: { slug: input.slug } })) {
+    if (await prisma.waqfProgramme.findUnique({ where: { slug: input.slug } })) {
       throw new ConflictException(`The address "${input.slug}" is already used by another clinic waqf.`);
     }
     return prisma.$transaction(async (tx) => {
-      const clinic = await tx.clinicWaqf.create({ data: { ...input, createdByUserId: actorUserId } });
+      const clinic = await tx.waqfProgramme.create({ data: { ...input, product: "clinic", createdByUserId: actorUserId } });
       await tx.auditLog.create({
         data: {
           actorType: "birr_staff",
           actorUserId,
           action: "clinic_waqf.created",
-          entityType: "ClinicWaqf",
+          entityType: "WaqfProgramme",
           entityId: clinic.id,
           after: clinic as any,
         },
@@ -108,15 +108,15 @@ export class ClinicWaqfsService {
       if (target && new Prisma.Decimal(target).decimalPlaces() > 2) throw new BadRequestException("Enter targets in naira and kobo.");
     }
     return prisma.$transaction(async (tx) => {
-      const before = await tx.clinicWaqf.findUnique({ where: { id } });
+      const before = await tx.waqfProgramme.findUnique({ where: { id } });
       if (!before) throw new NotFoundException(`Clinic waqf "${id}" not found.`);
-      const after = await tx.clinicWaqf.update({ where: { id }, data: input });
+      const after = await tx.waqfProgramme.update({ where: { id }, data: input });
       await tx.auditLog.create({
         data: {
           actorType: "birr_staff",
           actorUserId,
           action: "clinic_waqf.updated",
-          entityType: "ClinicWaqf",
+          entityType: "WaqfProgramme",
           entityId: id,
           before: before as any,
           after: after as any,
@@ -127,14 +127,14 @@ export class ClinicWaqfsService {
   }
 
   list() {
-    return prisma.clinicWaqf.findMany({
+    return prisma.waqfProgramme.findMany({
       orderBy: { createdAt: "desc" },
       include: { deeds: { where: { status: "approved" }, select: { version: true } } },
     });
   }
 
   async findById(id: string) {
-    const clinic = await prisma.clinicWaqf.findUnique({
+    const clinic = await prisma.waqfProgramme.findUnique({
       where: { id },
       include: {
         createdByUser: userName,
@@ -148,26 +148,26 @@ export class ClinicWaqfsService {
 
   /** The standard wording, filled in for this clinic, to start a draft from. */
   async deedTemplate(id: string) {
-    const clinic = await prisma.clinicWaqf.findUnique({ where: { id } });
+    const clinic = await prisma.waqfProgramme.findUnique({ where: { id } });
     if (!clinic) throw new NotFoundException(`Clinic waqf "${id}" not found.`);
     return { text: draftClinicDeedText(clinic) };
   }
 
   /** A new version, as a draft. One open draft at a time; its text never changes once drafted. */
-  async draftDeed(clinicWaqfId: string, input: DraftClinicDeedInput, actorUserId: string) {
+  async draftDeed(programmeId: string, input: DraftClinicDeedInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${clinicWaqfId} FOR UPDATE`;
-      const clinic = await tx.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-      if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
-      const openDraft = await tx.clinicWaqfDeed.findFirst({ where: { clinicWaqfId, status: "draft" } });
+      await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
+      const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
+      if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
+      const openDraft = await tx.waqfProgrammeDeed.findFirst({ where: { programmeId, status: "draft" } });
       if (openDraft) {
         throw new ConflictException(`Version ${openDraft.version} is still a draft. Discard it, or have it approved, before drafting another.`);
       }
-      const latest = await tx.clinicWaqfDeed.aggregate({ where: { clinicWaqfId }, _max: { version: true } });
+      const latest = await tx.waqfProgrammeDeed.aggregate({ where: { programmeId }, _max: { version: true } });
       const text = (input.text ?? draftClinicDeedText(clinic)).replace(/\r\n/g, "\n");
-      const deed = await tx.clinicWaqfDeed.create({
+      const deed = await tx.waqfProgrammeDeed.create({
         data: {
-          clinicWaqfId,
+          programmeId,
           version: (latest._max.version ?? 0) + 1,
           text,
           textHash: deedTextHash(text),
@@ -179,7 +179,7 @@ export class ClinicWaqfsService {
           actorType: "birr_staff",
           actorUserId,
           action: "clinic_waqf_deed.drafted",
-          entityType: "ClinicWaqfDeed",
+          entityType: "WaqfProgrammeDeed",
           entityId: deed.id,
           after: deed as any,
         },
@@ -189,21 +189,21 @@ export class ClinicWaqfsService {
   }
 
   /** Drops a draft that won't be approved. Refused while its approval is waiting. */
-  async discardDeed(clinicWaqfId: string, deedId: string, actorUserId: string) {
+  async discardDeed(programmeId: string, deedId: string, actorUserId: string) {
     if (await this.pendingAction("clinic_waqf.deed_approve", "deedId", deedId)) {
       throw new ConflictException("This draft is waiting for Shariah approval. Have the proposal rejected first.");
     }
     return prisma.$transaction(async (tx) => {
-      const before = await tx.clinicWaqfDeed.findUnique({ where: { id: deedId } });
-      if (!before || before.clinicWaqfId !== clinicWaqfId) throw new NotFoundException(`Deed version "${deedId}" not found.`);
+      const before = await tx.waqfProgrammeDeed.findUnique({ where: { id: deedId } });
+      if (!before || before.programmeId !== programmeId) throw new NotFoundException(`Deed version "${deedId}" not found.`);
       if (before.status !== "draft") throw new BadRequestException(`Version ${before.version} is ${before.status}, not a draft.`);
-      const after = await tx.clinicWaqfDeed.update({ where: { id: deedId }, data: { status: "discarded" } });
+      const after = await tx.waqfProgrammeDeed.update({ where: { id: deedId }, data: { status: "discarded" } });
       await tx.auditLog.create({
         data: {
           actorType: "birr_staff",
           actorUserId,
           action: "clinic_waqf_deed.discarded",
-          entityType: "ClinicWaqfDeed",
+          entityType: "WaqfProgrammeDeed",
           entityId: deedId,
           before: before as any,
           after: after as any,
@@ -224,7 +224,7 @@ export class ClinicWaqfsService {
 
   async validateDeedProposal(payload: unknown) {
     const { deedId, textHash } = this.parseDeedPayload(payload);
-    const deed = await prisma.clinicWaqfDeed.findUnique({ where: { id: deedId } });
+    const deed = await prisma.waqfProgrammeDeed.findUnique({ where: { id: deedId } });
     if (!deed) throw new NotFoundException(`Deed version "${deedId}" not found.`);
     if (deed.status !== "draft") throw new BadRequestException(`Version ${deed.version} is ${deed.status}, not a draft.`);
     if (deed.textHash !== textHash) throw new BadRequestException("The wording has changed since it was shown. Reload it and propose again.");
@@ -237,17 +237,17 @@ export class ClinicWaqfsService {
   }
 
   async describeDeedProposal(payload: unknown): Promise<string> {
-    const deed = await prisma.clinicWaqfDeed.findUnique({
+    const deed = await prisma.waqfProgrammeDeed.findUnique({
       where: { id: this.parseDeedPayload(payload).deedId },
-      include: { clinicWaqf: { select: { name: true } } },
+      include: { programme: { select: { name: true } } },
     });
-    return deed ? `Version ${deed.version} of the deed of ${deed.clinicWaqf.name}` : "Deed version not found.";
+    return deed ? `Version ${deed.version} of the deed of ${deed.programme.name}` : "Deed version not found.";
   }
 
   /** What the Shariah approver reads: the full wording, and the version it would replace. */
   async currentDeedState(payload: unknown): Promise<Record<string, unknown>> {
-    const deed = await prisma.clinicWaqfDeed.findUniqueOrThrow({ where: { id: this.parseDeedPayload(payload).deedId } });
-    const approved = await prisma.clinicWaqfDeed.findFirst({ where: { clinicWaqfId: deed.clinicWaqfId, status: "approved" } });
+    const deed = await prisma.waqfProgrammeDeed.findUniqueOrThrow({ where: { id: this.parseDeedPayload(payload).deedId } });
+    const approved = await prisma.waqfProgrammeDeed.findFirst({ where: { programmeId: deed.programmeId, status: "approved" } });
     return {
       status: deed.status,
       version: deed.version,
@@ -258,18 +258,18 @@ export class ClinicWaqfsService {
 
   async approveDeed(payload: unknown, governedActionId: string, checkerUserId: string, tx: Prisma.TransactionClient) {
     const { deedId, textHash } = this.parseDeedPayload(payload);
-    const found = await tx.clinicWaqfDeed.findUnique({ where: { id: deedId } });
+    const found = await tx.waqfProgrammeDeed.findUnique({ where: { id: deedId } });
     if (!found) throw new NotFoundException(`Deed version "${deedId}" not found.`);
     // The clinic's row orders approvals of its deed; every lock comes before any audit row.
-    await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${found.clinicWaqfId} FOR UPDATE`;
-    const draft = await tx.clinicWaqfDeed.findUniqueOrThrow({ where: { id: deedId } });
+    await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${found.programmeId} FOR UPDATE`;
+    const draft = await tx.waqfProgrammeDeed.findUniqueOrThrow({ where: { id: deedId } });
     if (draft.status !== "draft") throw new BadRequestException(`Version ${draft.version} is already ${draft.status}.`);
     if (draft.textHash !== textHash) throw new BadRequestException("The wording isn't the wording that was proposed.");
 
-    const live = await tx.clinicWaqfDeed.findFirst({ where: { clinicWaqfId: draft.clinicWaqfId, status: "approved" } });
+    const live = await tx.waqfProgrammeDeed.findFirst({ where: { programmeId: draft.programmeId, status: "approved" } });
     // Superseded first: the database allows one approved version per clinic.
-    const superseded = live ? await tx.clinicWaqfDeed.update({ where: { id: live.id }, data: { status: "superseded" } }) : null;
-    const after = await tx.clinicWaqfDeed.update({
+    const superseded = live ? await tx.waqfProgrammeDeed.update({ where: { id: live.id }, data: { status: "superseded" } }) : null;
+    const after = await tx.waqfProgrammeDeed.update({
       where: { id: deedId },
       data: { status: "approved", approvedAt: new Date(), approvedActionId: governedActionId },
     });
@@ -279,7 +279,7 @@ export class ClinicWaqfsService {
           actorType: "birr_staff",
           actorUserId: checkerUserId,
           action: "clinic_waqf_deed.superseded",
-          entityType: "ClinicWaqfDeed",
+          entityType: "WaqfProgrammeDeed",
           entityId: live.id,
           before: live as any,
           after: superseded as any,
@@ -293,47 +293,47 @@ export class ClinicWaqfsService {
 
   private parseEstablishPayload(payload: unknown): EstablishPayload {
     const p = (payload ?? {}) as Partial<Record<keyof EstablishPayload, unknown>>;
-    if (typeof p.clinicWaqfId !== "string") throw new BadRequestException("payload.clinicWaqfId is required.");
-    return { clinicWaqfId: p.clinicWaqfId };
+    if (typeof p.programmeId !== "string") throw new BadRequestException("payload.programmeId is required.");
+    return { programmeId: p.programmeId };
   }
 
-  private async assertEstablishable(db: Prisma.TransactionClient | typeof prisma, clinicWaqfId: string) {
-    const clinic = await db.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-    if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
+  private async assertEstablishable(db: Prisma.TransactionClient | typeof prisma, programmeId: string) {
+    const clinic = await db.waqfProgramme.findUnique({ where: { id: programmeId } });
+    if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
     if (clinic.status !== "draft") throw new BadRequestException(`${clinic.name} is already established.`);
-    const approved = await db.clinicWaqfDeed.findFirst({ where: { clinicWaqfId, status: "approved" } });
+    const approved = await db.waqfProgrammeDeed.findFirst({ where: { programmeId, status: "approved" } });
     if (!approved) throw new BadRequestException(`${clinic.name} has no approved deed yet. A Shariah board member must approve one first.`);
     return { clinic, approved };
   }
 
   async validateEstablishProposal(payload: unknown) {
-    await this.assertEstablishable(prisma, this.parseEstablishPayload(payload).clinicWaqfId);
+    await this.assertEstablishable(prisma, this.parseEstablishPayload(payload).programmeId);
   }
 
   async checkDuplicateEstablishProposal(payload: unknown) {
-    if (await this.pendingAction("clinic_waqf.establish", "clinicWaqfId", this.parseEstablishPayload(payload).clinicWaqfId)) {
+    if (await this.pendingAction("clinic_waqf.establish", "programmeId", this.parseEstablishPayload(payload).programmeId)) {
       throw new ConflictException("Establishing this clinic waqf is already waiting for the Board — check the Approvals queue.");
     }
   }
 
   async describeEstablishProposal(payload: unknown): Promise<string> {
-    const clinic = await prisma.clinicWaqf.findUnique({ where: { id: this.parseEstablishPayload(payload).clinicWaqfId } });
+    const clinic = await prisma.waqfProgramme.findUnique({ where: { id: this.parseEstablishPayload(payload).programmeId } });
     return clinic ? `Establish ${clinic.name} (${clinic.city})` : "Clinic waqf not found.";
   }
 
   async currentEstablishState(payload: unknown): Promise<Record<string, unknown>> {
-    const { clinicWaqfId } = this.parseEstablishPayload(payload);
-    const clinic = await prisma.clinicWaqf.findUniqueOrThrow({ where: { id: clinicWaqfId } });
-    const approved = await prisma.clinicWaqfDeed.findFirst({ where: { clinicWaqfId, status: "approved" } });
+    const { programmeId } = this.parseEstablishPayload(payload);
+    const clinic = await prisma.waqfProgramme.findUniqueOrThrow({ where: { id: programmeId } });
+    const approved = await prisma.waqfProgrammeDeed.findFirst({ where: { programmeId, status: "approved" } });
     return { status: clinic.status, city: clinic.city, jurisdiction: clinic.jurisdiction, approvedDeedVersion: approved?.version ?? null };
   }
 
   async establish(payload: unknown, governedActionId: string, tx: Prisma.TransactionClient) {
-    const { clinicWaqfId } = this.parseEstablishPayload(payload);
-    await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${clinicWaqfId} FOR UPDATE`;
-    const { clinic: before } = await this.assertEstablishable(tx, clinicWaqfId);
-    const after = await tx.clinicWaqf.update({
-      where: { id: clinicWaqfId },
+    const { programmeId } = this.parseEstablishPayload(payload);
+    await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
+    const { clinic: before } = await this.assertEstablishable(tx, programmeId);
+    const after = await tx.waqfProgramme.update({
+      where: { id: programmeId },
       data: { status: "established", establishedAt: new Date(), establishedActionId: governedActionId },
     });
     return { before, after };

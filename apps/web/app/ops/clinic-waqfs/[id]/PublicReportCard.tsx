@@ -11,7 +11,7 @@ import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
-import type { ClinicMonthlyReport, ClinicWaqf } from "../../../../lib/ops-types";
+import type { ClinicMonthlyReport, WaqfProgramme } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, Input } from "@birr/ui";
 
 const thisMonth = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date()).slice(0, 7);
@@ -26,7 +26,7 @@ const MEASURES = [
   ["referrals", "Referrals"],
 ] as const;
 
-export function PublicReportCard({ clinic, onChange }: { clinic: ClinicWaqf; onChange: () => void }) {
+export function PublicReportCard({ clinic, onChange }: { clinic: WaqfProgramme; onChange: () => void }) {
   const { can, staff } = useStaffSession();
   const [reports, setReports] = useState<ClinicMonthlyReport[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -163,7 +163,7 @@ function Targets({
   onCancel,
   onSave,
 }: {
-  clinic: ClinicWaqf;
+  clinic: WaqfProgramme;
   disabled: boolean;
   onCancel: () => void;
   onSave: (body: { endowmentTarget?: string; runningMonthlyTarget?: string }) => void;

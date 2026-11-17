@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { ActorType, ClinicJournalEntrySource, ClinicPot, prisma, Prisma } from "@birr/db";
+import { ActorType, ProgrammeJournalEntrySource, WaqfProgrammePot, prisma, Prisma } from "@birr/db";
 
 export interface ClinicJournalLineInput {
   /** The account's code, e.g. "1000" (Endowment cash). */
@@ -9,10 +9,10 @@ export interface ClinicJournalLineInput {
 }
 
 export interface PostClinicJournalEntryInput {
-  clinicWaqfId: string;
+  programmeId: string;
   description: string;
   currency: string;
-  source: ClinicJournalEntrySource;
+  source: ProgrammeJournalEntrySource;
   sourceId?: string;
   actorType: ActorType;
   actorUserId?: string;
@@ -36,9 +36,9 @@ export class ClinicLedgerService {
       throw new BadRequestException("A journal entry needs at least two lines — a debit and a credit.");
     }
     const codes = [...new Set(input.lines.map((l) => l.accountCode))];
-    const accounts = await tx.clinicLedgerAccount.findMany({ where: { code: { in: codes } } });
+    const accounts = await tx.programmeLedgerAccount.findMany({ where: { code: { in: codes } } });
     const byCode = new Map(accounts.map((a) => [a.code, a]));
-    const totals = new Map<ClinicPot, { debit: Prisma.Decimal; credit: Prisma.Decimal }>();
+    const totals = new Map<WaqfProgrammePot, { debit: Prisma.Decimal; credit: Prisma.Decimal }>();
     for (const line of input.lines) {
       const account = byCode.get(line.accountCode);
       if (!account) throw new NotFoundException(`Clinic ledger account "${line.accountCode}" doesn't exist.`);
@@ -57,9 +57,9 @@ export class ClinicLedgerService {
         );
       }
     }
-    return tx.clinicJournalEntry.create({
+    return tx.programmeJournalEntry.create({
       data: {
-        clinicWaqfId: input.clinicWaqfId,
+        programmeId: input.programmeId,
         description: input.description,
         currency: input.currency,
         source: input.source,
@@ -79,11 +79,11 @@ export class ClinicLedgerService {
   }
 
   /** Each account's balance for one clinic waqf in one currency, grouped by pot. */
-  async balances(clinicWaqfId: string, currency = "NGN") {
-    const accounts = await prisma.clinicLedgerAccount.findMany({ orderBy: { code: "asc" } });
-    const sums = await prisma.clinicJournalEntryLine.groupBy({
+  async balances(programmeId: string, currency = "NGN") {
+    const accounts = await prisma.programmeLedgerAccount.findMany({ orderBy: { code: "asc" } });
+    const sums = await prisma.programmeJournalEntryLine.groupBy({
       by: ["ledgerAccountId"],
-      where: { journalEntry: { clinicWaqfId, currency } },
+      where: { journalEntry: { programmeId, currency } },
       _sum: { debit: true, credit: true },
     });
     const byAccount = new Map(sums.map((s) => [s.ledgerAccountId, s._sum]));

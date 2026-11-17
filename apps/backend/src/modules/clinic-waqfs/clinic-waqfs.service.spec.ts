@@ -38,14 +38,14 @@ describe("ClinicWaqfsService", () => {
 
     test("the database refuses a malformed address, changing it, establishing without an approval, or deleting", async () => {
       await expect(
-        prisma.clinicWaqf.create({ data: { name: "Bad", slug: "Bad Slug", city: "Ibadan", jurisdiction: "NG", createdByUserId: actorUserId } }),
-      ).rejects.toThrow(/clinic_waqfs_slug_format/);
+        prisma.waqfProgramme.create({ data: { product: "clinic", name: "Bad", slug: "Bad Slug", city: "Ibadan", jurisdiction: "NG", createdByUserId: actorUserId } }),
+      ).rejects.toThrow(/waqf_programmes_slug_format/);
       const clinic = await newClinic();
-      await expect(prisma.clinicWaqf.update({ where: { id: clinic.id }, data: { slug: slug() } })).rejects.toThrow(/never changes/);
+      await expect(prisma.waqfProgramme.update({ where: { id: clinic.id }, data: { slug: slug() } })).rejects.toThrow(/never changes/);
       await expect(
-        prisma.clinicWaqf.update({ where: { id: clinic.id }, data: { status: "established", establishedAt: new Date() } }),
-      ).rejects.toThrow(/clinic_waqfs_establishment_consistent/);
-      await expect(prisma.clinicWaqf.delete({ where: { id: clinic.id } })).rejects.toThrow(/never deleted/);
+        prisma.waqfProgramme.update({ where: { id: clinic.id }, data: { status: "established", establishedAt: new Date() } }),
+      ).rejects.toThrow(/waqf_programmes_establishment_consistent/);
+      await expect(prisma.waqfProgramme.delete({ where: { id: clinic.id } })).rejects.toThrow(/never deleted/);
     });
   });
 
@@ -72,22 +72,22 @@ describe("ClinicWaqfsService", () => {
     test("the database checks the hash against the text, and refuses rewording a version or deleting it", async () => {
       const clinic = await newClinic();
       await expect(
-        prisma.clinicWaqfDeed.create({
-          data: { clinicWaqfId: clinic.id, version: 1, text: "Real wording.", textHash: deedTextHash("Other wording."), createdByUserId: actorUserId },
+        prisma.waqfProgrammeDeed.create({
+          data: { programmeId: clinic.id, version: 1, text: "Real wording.", textHash: deedTextHash("Other wording."), createdByUserId: actorUserId },
         }),
-      ).rejects.toThrow(/clinic_waqf_deeds_hash_matches/);
+      ).rejects.toThrow(/waqf_programme_deeds_hash_matches/);
       const deed = await service.draftDeed(clinic.id, { text: "Real wording." }, actorUserId);
       await expect(
-        prisma.clinicWaqfDeed.update({ where: { id: deed.id }, data: { text: "Changed.", textHash: deedTextHash("Changed.") } }),
+        prisma.waqfProgrammeDeed.update({ where: { id: deed.id }, data: { text: "Changed.", textHash: deedTextHash("Changed.") } }),
       ).rejects.toThrow(/wording never changes/);
-      await expect(prisma.clinicWaqfDeed.update({ where: { id: deed.id }, data: { status: "superseded" } })).rejects.toThrow(/can't go from draft/);
-      await expect(prisma.clinicWaqfDeed.delete({ where: { id: deed.id } })).rejects.toThrow(/never deleted/);
+      await expect(prisma.waqfProgrammeDeed.update({ where: { id: deed.id }, data: { status: "superseded" } })).rejects.toThrow(/can't go from draft/);
+      await expect(prisma.waqfProgrammeDeed.delete({ where: { id: deed.id } })).rejects.toThrow(/never deleted/);
     });
 
     test("establishing needs an approved deed", async () => {
       const clinic = await newClinic();
       await service.draftDeed(clinic.id, {}, actorUserId);
-      await expect(service.validateEstablishProposal({ clinicWaqfId: clinic.id })).rejects.toThrow(/no approved deed/);
+      await expect(service.validateEstablishProposal({ programmeId: clinic.id })).rejects.toThrow(/no approved deed/);
     });
 
     test("a deed proposal must name the wording's hash", async () => {
@@ -103,7 +103,7 @@ describe("ClinicWaqfsService", () => {
       const clinic = await newClinic();
       await prisma.$transaction(async (tx) => {
         await ledger.post(tx, {
-          clinicWaqfId: clinic.id,
+          programmeId: clinic.id,
           description: "Test gifts: one endowed, one to spend",
           currency: "NGN",
           source: "manual_adjustment",
@@ -125,7 +125,7 @@ describe("ClinicWaqfsService", () => {
     test("moving money from the endowment to the running fund is refused, by the service and by the database", async () => {
       const clinic = await newClinic();
       const crossing = {
-        clinicWaqfId: clinic.id,
+        programmeId: clinic.id,
         description: "Spend endowment cash",
         currency: "NGN",
         source: "manual_adjustment" as const,
@@ -140,13 +140,13 @@ describe("ClinicWaqfsService", () => {
 
       // Straight to the database, past the service's own check.
       const [endowmentCash, runningCash] = await Promise.all([
-        prisma.clinicLedgerAccount.findUniqueOrThrow({ where: { code: "1000" } }),
-        prisma.clinicLedgerAccount.findUniqueOrThrow({ where: { code: "1100" } }),
+        prisma.programmeLedgerAccount.findUniqueOrThrow({ where: { code: "1000" } }),
+        prisma.programmeLedgerAccount.findUniqueOrThrow({ where: { code: "1100" } }),
       ]);
       await expect(
-        prisma.clinicJournalEntry.create({
+        prisma.programmeJournalEntry.create({
           data: {
-            clinicWaqfId: clinic.id,
+            programmeId: clinic.id,
             description: "Spend endowment cash, directly",
             currency: "NGN",
             source: "manual_adjustment",
@@ -166,7 +166,7 @@ describe("ClinicWaqfsService", () => {
       const clinic = await newClinic();
       const entry = await prisma.$transaction((tx) =>
         ledger.post(tx, {
-          clinicWaqfId: clinic.id,
+          programmeId: clinic.id,
           description: "Endowed gift",
           currency: "NGN",
           source: "manual_adjustment",
@@ -178,9 +178,9 @@ describe("ClinicWaqfsService", () => {
           ],
         }),
       );
-      await expect(prisma.clinicJournalEntry.update({ where: { id: entry.id }, data: { description: "Edited" } })).rejects.toThrow(/append-only/);
-      await expect(prisma.clinicJournalEntryLine.delete({ where: { id: entry.lines[0].id } })).rejects.toThrow(/append-only/);
-      await expect(prisma.clinicLedgerAccount.update({ where: { code: "1000" }, data: { pot: "running" } })).rejects.toThrow(/never change/);
+      await expect(prisma.programmeJournalEntry.update({ where: { id: entry.id }, data: { description: "Edited" } })).rejects.toThrow(/append-only/);
+      await expect(prisma.programmeJournalEntryLine.delete({ where: { id: entry.lines[0].id } })).rejects.toThrow(/append-only/);
+      await expect(prisma.programmeLedgerAccount.update({ where: { code: "1000" }, data: { pot: "running" } })).rejects.toThrow(/never change/);
     });
   });
 });

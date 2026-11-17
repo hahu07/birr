@@ -117,17 +117,17 @@ const userName = { select: { id: true, fullName: true } };
  */
 @Injectable()
 export class ClinicPriceListsService {
-  async draft(clinicWaqfId: string, input: DraftClinicPriceListInput, actorUserId: string) {
+  async draft(programmeId: string, input: DraftClinicPriceListInput, actorUserId: string) {
     const { text } = canonicalPriceList(input);
     return prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${clinicWaqfId} FOR UPDATE`;
-      const clinic = await tx.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-      if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
-      const open = await tx.clinicPriceList.findFirst({ where: { clinicWaqfId, status: "draft" } });
+      await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
+      const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
+      if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
+      const open = await tx.clinicPriceList.findFirst({ where: { programmeId, status: "draft" } });
       if (open) throw new ConflictException(`Version ${open.version} is still a draft. Discard it, or have it approved, before drafting another.`);
-      const latest = await tx.clinicPriceList.aggregate({ where: { clinicWaqfId }, _max: { version: true } });
+      const latest = await tx.clinicPriceList.aggregate({ where: { programmeId }, _max: { version: true } });
       const list = await tx.clinicPriceList.create({
-        data: { clinicWaqfId, version: (latest._max.version ?? 0) + 1, content: text, contentHash: priceListHash(text), createdByUserId: actorUserId },
+        data: { programmeId, version: (latest._max.version ?? 0) + 1, content: text, contentHash: priceListHash(text), createdByUserId: actorUserId },
       });
       await tx.auditLog.create({
         data: { actorType: "birr_staff", actorUserId, action: "clinic_price_list.drafted", entityType: "ClinicPriceList", entityId: list.id, after: list as any },
@@ -136,11 +136,11 @@ export class ClinicPriceListsService {
     });
   }
 
-  async discard(clinicWaqfId: string, priceListId: string, actorUserId: string) {
+  async discard(programmeId: string, priceListId: string, actorUserId: string) {
     if (await this.pending(priceListId)) throw new ConflictException("This draft is waiting for approval. Have the proposal rejected first.");
     return prisma.$transaction(async (tx) => {
       const before = await tx.clinicPriceList.findUnique({ where: { id: priceListId } });
-      if (!before || before.clinicWaqfId !== clinicWaqfId) throw new NotFoundException(`Price list "${priceListId}" not found.`);
+      if (!before || before.programmeId !== programmeId) throw new NotFoundException(`Price list "${priceListId}" not found.`);
       if (before.status !== "draft") throw new BadRequestException(`Version ${before.version} is ${before.status}, not a draft.`);
       const after = await tx.clinicPriceList.update({ where: { id: priceListId }, data: { status: "discarded" } });
       await tx.auditLog.create({
@@ -150,9 +150,9 @@ export class ClinicPriceListsService {
     });
   }
 
-  async list(clinicWaqfId: string) {
+  async list(programmeId: string) {
     const lists = await prisma.clinicPriceList.findMany({
-      where: { clinicWaqfId },
+      where: { programmeId },
       orderBy: { version: "desc" },
       include: { createdByUser: userName },
     });
@@ -160,8 +160,8 @@ export class ClinicPriceListsService {
   }
 
   /** The approved version, parsed: what claims are checked against. Null before one is approved. */
-  async current(db: Prisma.TransactionClient | typeof prisma, clinicWaqfId: string) {
-    const list = await db.clinicPriceList.findFirst({ where: { clinicWaqfId, status: "approved" } });
+  async current(db: Prisma.TransactionClient | typeof prisma, programmeId: string) {
+    const list = await db.clinicPriceList.findFirst({ where: { programmeId, status: "approved" } });
     return list ? { id: list.id, version: list.version, content: JSON.parse(list.content) as PriceListContent } : null;
   }
 
@@ -189,16 +189,16 @@ export class ClinicPriceListsService {
   }
 
   async describe(payload: unknown): Promise<string> {
-    const list = await prisma.clinicPriceList.findUnique({ where: { id: this.parse(payload).priceListId }, include: { clinicWaqf: { select: { name: true } } } });
+    const list = await prisma.clinicPriceList.findUnique({ where: { id: this.parse(payload).priceListId }, include: { programme: { select: { name: true } } } });
     if (!list) return "Price list not found.";
     const content = JSON.parse(list.content) as PriceListContent;
-    return `Version ${list.version} of ${list.clinicWaqf.name}'s price list: ${content.services.length} services, ${content.bands.length} subsidy bands, monthly subsidy cap ₦${Number(content.monthlySubsidyCap).toLocaleString("en-NG")}`;
+    return `Version ${list.version} of ${list.programme.name}'s price list: ${content.services.length} services, ${content.bands.length} subsidy bands, monthly subsidy cap ₦${Number(content.monthlySubsidyCap).toLocaleString("en-NG")}`;
   }
 
   /** What the approver reads: the whole list, and the version it replaces. */
   async currentState(payload: unknown): Promise<Record<string, unknown>> {
     const list = await prisma.clinicPriceList.findUniqueOrThrow({ where: { id: this.parse(payload).priceListId } });
-    const approved = await prisma.clinicPriceList.findFirst({ where: { clinicWaqfId: list.clinicWaqfId, status: "approved" } });
+    const approved = await prisma.clinicPriceList.findFirst({ where: { programmeId: list.programmeId, status: "approved" } });
     return { status: list.status, version: list.version, content: JSON.parse(list.content), replacesApprovedVersion: approved?.version ?? null };
   }
 
@@ -206,11 +206,11 @@ export class ClinicPriceListsService {
     const { priceListId, contentHash } = this.parse(payload);
     const found = await tx.clinicPriceList.findUnique({ where: { id: priceListId } });
     if (!found) throw new NotFoundException(`Price list "${priceListId}" not found.`);
-    await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${found.clinicWaqfId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${found.programmeId} FOR UPDATE`;
     const draft = await tx.clinicPriceList.findUniqueOrThrow({ where: { id: priceListId } });
     if (draft.status !== "draft") throw new BadRequestException(`Version ${draft.version} is already ${draft.status}.`);
     if (draft.contentHash !== contentHash) throw new BadRequestException("The list isn't the list that was proposed.");
-    const live = await tx.clinicPriceList.findFirst({ where: { clinicWaqfId: draft.clinicWaqfId, status: "approved" } });
+    const live = await tx.clinicPriceList.findFirst({ where: { programmeId: draft.programmeId, status: "approved" } });
     if (live) await tx.clinicPriceList.update({ where: { id: live.id }, data: { status: "superseded" } });
     const after = await tx.clinicPriceList.update({ where: { id: priceListId }, data: { status: "approved", approvedAt: new Date(), approvedActionId: governedActionId } });
     return { before: draft, after };

@@ -1,7 +1,7 @@
 import { IdField, LongTextField, NameField, ReferenceField } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsEnum, IsNumberString, IsOptional } from "class-validator";
-import { ClinicAsset, ClinicSpendKind, ClinicWorksRoute, prisma, Prisma } from "@birr/db";
+import { ProgrammeAsset, ProgrammeSpendKind, ProgrammeWorksRoute, prisma, Prisma } from "@birr/db";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { ClinicLedgerService } from "./clinic-ledger.service";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
@@ -12,8 +12,8 @@ export class ProposeClinicWorksInput {
   @NameField()
   name!: string;
 
-  @IsEnum(ClinicWorksRoute)
-  route!: ClinicWorksRoute;
+  @IsEnum(ProgrammeWorksRoute)
+  route!: ProgrammeWorksRoute;
 
   @IdField()
   contractorId!: string;
@@ -28,8 +28,8 @@ export class ProposeClinicWorksInput {
 }
 
 export class CreateClinicSpendInput {
-  @IsEnum(ClinicSpendKind)
-  kind!: ClinicSpendKind;
+  @IsEnum(ProgrammeSpendKind)
+  kind!: ProgrammeSpendKind;
 
   @IsOptional()
   @IdField()
@@ -66,7 +66,7 @@ const COMMITTED = ["pending_approval", "approved"] as const;
 // Which money a payment draws on: the equipment replacement reserve (1150,
 // running fund) for a reserve replacement, endowment cash (1000) otherwise.
 type Pool = "endowment" | "reserve";
-const poolOf = (kind: ClinicSpendKind): Pool => (kind === "reserve_replacement" ? "reserve" : "endowment");
+const poolOf = (kind: ProgrammeSpendKind): Pool => (kind === "reserve_replacement" ? "reserve" : "endowment");
 
 /**
  * A clinic waqf's endowment spending (2026-11-17, clinic slice 5b): endowment
@@ -96,26 +96,26 @@ export class ClinicSpendingService {
 
   // ---- Works projects ----
 
-  async proposeWorks(clinicWaqfId: string, input: ProposeClinicWorksInput, actorUserId: string) {
+  async proposeWorks(programmeId: string, input: ProposeClinicWorksInput, actorUserId: string) {
     const budget = new Prisma.Decimal(input.budget);
     if (budget.decimalPlaces() > 2) throw new BadRequestException("Enter the budget in naira and kobo.");
-    const clinic = await prisma.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-    if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
+    const clinic = await prisma.waqfProgramme.findUnique({ where: { id: programmeId } });
+    if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
     await this.activeCounterparty(input.contractorId, "contractor");
     return prisma.$transaction(async (tx) => {
-      const project = await tx.clinicWorksProject.create({
-        data: { clinicWaqfId, name: input.name, route: input.route, contractorId: input.contractorId, budget, budgetNote: input.budgetNote, createdByUserId: actorUserId },
+      const project = await tx.programmeWorksProject.create({
+        data: { programmeId, name: input.name, route: input.route, contractorId: input.contractorId, budget, budgetNote: input.budgetNote, createdByUserId: actorUserId },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_works.proposed", entityType: "ClinicWorksProject", entityId: project.id, after: project as any },
+        data: { actorType: "birr_staff", actorUserId, action: "clinic_works.proposed", entityType: "ProgrammeWorksProject", entityId: project.id, after: project as any },
       });
       return project;
     });
   }
 
-  listWorks(clinicWaqfId: string) {
-    return prisma.clinicWorksProject.findMany({
-      where: { clinicWaqfId },
+  listWorks(programmeId: string) {
+    return prisma.programmeWorksProject.findMany({
+      where: { programmeId },
       orderBy: { createdAt: "desc" },
       include: { contractor: { select: { id: true, name: true } }, spends: { where: { status: { not: "rejected" } }, select: { amount: true, status: true } } },
     });
@@ -123,7 +123,7 @@ export class ClinicSpendingService {
 
   private async findWorks(id: unknown, db: Db = prisma) {
     if (typeof id !== "string") throw new BadRequestException("payload.worksProjectId is required.");
-    const project = await db.clinicWorksProject.findUnique({ where: { id }, include: { contractor: true, clinicWaqf: { select: { name: true } } } });
+    const project = await db.programmeWorksProject.findUnique({ where: { id }, include: { contractor: true, programme: { select: { name: true } } } });
     if (!project) throw new NotFoundException(`Works project "${id}" not found.`);
     return project;
   }
@@ -141,7 +141,7 @@ export class ClinicSpendingService {
 
   async describeWorks(payload: unknown): Promise<string> {
     const p = await this.findWorks((payload as { worksProjectId: string }).worksProjectId);
-    return `${p.name} at ${p.clinicWaqf.name}: ${p.route.replace(/_/g, " ")}, by ${p.contractor.name}, budget ${naira(p.budget)}. Costing: ${p.budgetNote}`;
+    return `${p.name} at ${p.programme.name}: ${p.route.replace(/_/g, " ")}, by ${p.contractor.name}, budget ${naira(p.budget)}. Costing: ${p.budgetNote}`;
   }
 
   async currentWorksState(payload: unknown): Promise<Record<string, unknown>> {
@@ -153,28 +153,28 @@ export class ClinicSpendingService {
     const before = await this.findWorks((payload as { worksProjectId: string }).worksProjectId, tx);
     if (before.status !== "proposed") throw new BadRequestException(`This works project is already ${before.status}.`);
     if (before.contractor.status !== "active" || before.contractor.deletedAt) throw new BadRequestException(`${before.contractor.name} is no longer an active, vetted partner.`);
-    const after = await tx.clinicWorksProject.update({ where: { id: before.id }, data: { status: "approved", approvalActionId: governedActionId } });
-    const { contractor: _c, clinicWaqf: _w, ...beforeRow } = before;
+    const after = await tx.programmeWorksProject.update({ where: { id: before.id }, data: { status: "approved", approvalActionId: governedActionId } });
+    const { contractor: _c, programme: _w, ...beforeRow } = before;
     return { before: beforeRow, after };
   }
 
   async rejectWorks(payload: unknown, tx: Prisma.TransactionClient) {
-    const before = await tx.clinicWorksProject.findUnique({ where: { id: (payload as { worksProjectId: string }).worksProjectId } });
+    const before = await tx.programmeWorksProject.findUnique({ where: { id: (payload as { worksProjectId: string }).worksProjectId } });
     if (!before || before.status !== "proposed") return null;
-    return { before, after: await tx.clinicWorksProject.update({ where: { id: before.id }, data: { status: "rejected" } }) };
+    return { before, after: await tx.programmeWorksProject.update({ where: { id: before.id }, data: { status: "rejected" } }) };
   }
 
   // ---- Payments ----
 
   /** What a payment may still commit: its pool's cash, less what's already committed from it and not yet paid. */
-  private async headroom(db: Db, clinicWaqfId: string, pool: Pool = "endowment") {
-    const cash = await db.clinicJournalEntryLine.aggregate({
-      where: { journalEntry: { clinicWaqfId, currency: "NGN" }, ledgerAccount: { code: pool === "reserve" ? "1150" : "1000" } },
+  private async headroom(db: Db, programmeId: string, pool: Pool = "endowment") {
+    const cash = await db.programmeJournalEntryLine.aggregate({
+      where: { journalEntry: { programmeId, currency: "NGN" }, ledgerAccount: { code: pool === "reserve" ? "1150" : "1000" } },
       _sum: { debit: true, credit: true },
     });
     const balance = (cash._sum.debit ?? new Prisma.Decimal(0)).minus(cash._sum.credit ?? 0);
-    const committed = await db.clinicSpend.aggregate({
-      where: { clinicWaqfId, status: { in: [...COMMITTED] }, kind: pool === "reserve" ? "reserve_replacement" : { not: "reserve_replacement" } },
+    const committed = await db.programmeSpend.aggregate({
+      where: { programmeId, status: { in: [...COMMITTED] }, kind: pool === "reserve" ? "reserve_replacement" : { not: "reserve_replacement" } },
       _sum: { amount: true },
     });
     return { balance, committed: committed._sum.amount ?? new Prisma.Decimal(0) };
@@ -182,7 +182,7 @@ export class ClinicSpendingService {
 
   /** A project's stages so far (not rejected), against its budget. */
   private async projectSpent(db: Db, worksProjectId: string) {
-    const spent = await db.clinicSpend.aggregate({ where: { worksProjectId, status: { not: "rejected" } }, _sum: { amount: true } });
+    const spent = await db.programmeSpend.aggregate({ where: { worksProjectId, status: { not: "rejected" } }, _sum: { amount: true } });
     return spent._sum.amount ?? new Prisma.Decimal(0);
   }
 
@@ -193,7 +193,7 @@ export class ClinicSpendingService {
     return counterparty;
   }
 
-  async createSpend(clinicWaqfId: string, input: CreateClinicSpendInput, actorUserId: string) {
+  async createSpend(programmeId: string, input: CreateClinicSpendInput, actorUserId: string) {
     const amount = new Prisma.Decimal(input.amount);
     if (amount.decimalPlaces() > 2) throw new BadRequestException("Enter the amount in naira and kobo.");
     if (input.kind === "works_stage" && !input.worksProjectId) throw new BadRequestException("Choose the works project this stage belongs to.");
@@ -205,13 +205,13 @@ export class ClinicSpendingService {
     const payee = await this.activeCounterparty(input.payeeId, "payee");
 
     return prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${clinicWaqfId} FOR UPDATE`;
-      const clinic = await tx.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-      if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
+      await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
+      const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
+      if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
       if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't established yet.`);
       if (input.worksProjectId) {
-        const project = await tx.clinicWorksProject.findUnique({ where: { id: input.worksProjectId } });
-        if (!project || project.clinicWaqfId !== clinicWaqfId) throw new NotFoundException("Works project not found.");
+        const project = await tx.programmeWorksProject.findUnique({ where: { id: input.worksProjectId } });
+        if (!project || project.programmeId !== programmeId) throw new NotFoundException("Works project not found.");
         if (project.status !== "approved") throw new BadRequestException("The Board hasn't approved this works project yet.");
         if (project.contractorId !== payee.id) throw new BadRequestException("A works stage is paid to the project's own contractor.");
         const spent = await this.projectSpent(tx, project.id);
@@ -220,8 +220,8 @@ export class ClinicSpendingService {
         }
       }
       if (input.investmentId) {
-        const investment = await tx.clinicInvestment.findUnique({ where: { id: input.investmentId }, include: { placement: true } });
-        if (!investment || investment.clinicWaqfId !== clinicWaqfId) throw new NotFoundException("Investment not found.");
+        const investment = await tx.programmeInvestment.findUnique({ where: { id: input.investmentId }, include: { placement: true } });
+        if (!investment || investment.programmeId !== programmeId) throw new NotFoundException("Investment not found.");
         if (investment.status !== "shariah_approved") throw new BadRequestException(`This investment is ${investment.status.replace(/_/g, " ")}, not ready to place.`);
         if (investment.placement && investment.placement.status !== "rejected") throw new ConflictException("This investment's placement is already proposed.");
         if (investment.counterpartyId !== payee.id || !investment.amount.equals(amount)) {
@@ -229,21 +229,21 @@ export class ClinicSpendingService {
         }
       }
       if (input.replacesAssetId) {
-        const old = await tx.clinicAsset.findUnique({ where: { id: input.replacesAssetId }, include: { replacedBy: { where: { status: { not: "rejected" } } } } });
-        if (!old || old.clinicWaqfId !== clinicWaqfId) throw new NotFoundException("The equipment to replace wasn't found.");
+        const old = await tx.programmeAsset.findUnique({ where: { id: input.replacesAssetId }, include: { replacedBy: { where: { status: { not: "rejected" } } } } });
+        if (!old || old.programmeId !== programmeId) throw new NotFoundException("The equipment to replace wasn't found.");
         if (old.kind !== "equipment" || old.status !== "active") throw new BadRequestException("The reserve only replaces equipment that's on the register now.");
         if (old.replacedBy.length > 0) throw new ConflictException(`${old.name} already has a replacement proposed or paid.`);
       }
       const pool = poolOf(input.kind);
-      const { balance, committed } = await this.headroom(tx, clinicWaqfId, pool);
+      const { balance, committed } = await this.headroom(tx, programmeId, pool);
       if (committed.plus(amount).gt(balance)) {
         throw new BadRequestException(
           `Only ${naira(balance.minus(committed))} of the ${pool === "reserve" ? "equipment replacement reserve" : "endowment's cash"} is free to commit.`,
         );
       }
-      const spend = await tx.clinicSpend.create({
+      const spend = await tx.programmeSpend.create({
         data: {
-          clinicWaqfId,
+          programmeId,
           kind: input.kind,
           worksProjectId: input.worksProjectId,
           investmentId: input.investmentId,
@@ -256,15 +256,15 @@ export class ClinicSpendingService {
         },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_spend.created", entityType: "ClinicSpend", entityId: spend.id, after: spend as any },
+        data: { actorType: "birr_staff", actorUserId, action: "clinic_spend.created", entityType: "ProgrammeSpend", entityId: spend.id, after: spend as any },
       });
       return spend;
     });
   }
 
-  listSpends(clinicWaqfId: string) {
-    return prisma.clinicSpend.findMany({
-      where: { clinicWaqfId },
+  listSpends(programmeId: string) {
+    return prisma.programmeSpend.findMany({
+      where: { programmeId },
       orderBy: { createdAt: "desc" },
       include: {
         payee: { select: { id: true, name: true } },
@@ -276,9 +276,9 @@ export class ClinicSpendingService {
 
   private async findSpend(id: unknown, db: Db = prisma) {
     if (typeof id !== "string") throw new BadRequestException("payload.spendId is required.");
-    const spend = await db.clinicSpend.findUnique({
+    const spend = await db.programmeSpend.findUnique({
       where: { id },
-      include: { payee: true, clinicWaqf: { select: { name: true } }, worksProject: true, replacesAsset: true },
+      include: { payee: true, programme: { select: { name: true } }, worksProject: true, replacesAsset: true },
     });
     if (!spend) throw new NotFoundException(`Payment "${id}" not found.`);
     return spend;
@@ -308,13 +308,13 @@ export class ClinicSpendingService {
             ? `replacing ${s.replacesAsset!.name} (booked at ${naira(s.replacesAsset!.value)}, retired when this is paid; invoice ${s.supportingReference})`
             : `equipment (invoice ${s.supportingReference})`;
     const from = s.kind === "reserve_replacement" ? "equipment replacement reserve" : "endowment cash";
-    return `${naira(s.amount)} from ${s.clinicWaqf.name}'s ${from} to ${s.payee.name}, for ${what}: ${s.description}`;
+    return `${naira(s.amount)} from ${s.programme.name}'s ${from} to ${s.payee.name}, for ${what}: ${s.description}`;
   }
 
   /** What the approver weighs: the endowment's cash and, for a works stage, the budget. */
   async currentSpendState(payload: unknown): Promise<Record<string, unknown>> {
     const s = await this.findSpend((payload as { spendId: string }).spendId);
-    const { balance, committed } = await this.headroom(prisma, s.clinicWaqfId, poolOf(s.kind));
+    const { balance, committed } = await this.headroom(prisma, s.programmeId, poolOf(s.kind));
     return {
       status: s.status,
       payeeStatus: s.payee.status,
@@ -328,26 +328,26 @@ export class ClinicSpendingService {
   async approveSpend(payload: unknown, governedActionId: string, tx: Prisma.TransactionClient) {
     const { spendId } = payload as { spendId: string };
     const found = await this.findSpend(spendId, tx);
-    await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${found.clinicWaqfId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${found.programmeId} FOR UPDATE`;
     const before = await this.findSpend(spendId, tx);
     if (before.status !== "pending_approval") throw new BadRequestException(`This payment is already ${before.status}.`);
     if (before.payee.status !== "active" || before.payee.deletedAt) throw new BadRequestException(`${before.payee.name} is no longer an active, vetted partner.`);
     if (before.replacesAsset && before.replacesAsset.status !== "active") throw new BadRequestException(`${before.replacesAsset.name} is no longer on the register.`);
     // It's already counted as committed: re-check nothing has pushed commitments past the cash since.
     const pool = poolOf(before.kind);
-    const { balance, committed } = await this.headroom(tx, before.clinicWaqfId, pool);
+    const { balance, committed } = await this.headroom(tx, before.programmeId, pool);
     if (committed.gt(balance)) {
       throw new BadRequestException(`Approving this would commit more than the ${pool === "reserve" ? "reserve" : "endowment's cash"} (${naira(balance)}).`);
     }
-    const after = await tx.clinicSpend.update({ where: { id: spendId }, data: { status: "approved", approvalActionId: governedActionId, approvedAt: new Date() } });
-    const { payee: _p, clinicWaqf: _c, worksProject: _w, replacesAsset: _r, ...beforeRow } = before;
+    const after = await tx.programmeSpend.update({ where: { id: spendId }, data: { status: "approved", approvalActionId: governedActionId, approvedAt: new Date() } });
+    const { payee: _p, programme: _c, worksProject: _w, replacesAsset: _r, ...beforeRow } = before;
     return { before: beforeRow, after };
   }
 
   async rejectSpend(payload: unknown, tx: Prisma.TransactionClient) {
-    const before = await tx.clinicSpend.findUnique({ where: { id: (payload as { spendId: string }).spendId } });
+    const before = await tx.programmeSpend.findUnique({ where: { id: (payload as { spendId: string }).spendId } });
     if (!before || before.status !== "pending_approval") return null;
-    return { before, after: await tx.clinicSpend.update({ where: { id: before.id }, data: { status: "rejected" } }) };
+    return { before, after: await tx.programmeSpend.update({ where: { id: before.id }, data: { status: "rejected" } }) };
   }
 
   // ---- clinic_waqf.spend_mark_paid (checkers: Compliance, Audit Committee) ----
@@ -378,7 +378,7 @@ export class ClinicSpendingService {
   async describePaid(payload: unknown): Promise<string> {
     const p = this.validatePaidProposal(payload);
     const s = await this.findSpend(p.spendId);
-    return `Paid ${naira(s.amount)} to ${s.payee.name} from ${s.clinicWaqf.name}'s account on ${p.paidOn}, bank reference ${p.bankReference}. Check it against the bank statement before confirming.`;
+    return `Paid ${naira(s.amount)} to ${s.payee.name} from ${s.programme.name}'s account on ${p.paidOn}, bank reference ${p.bankReference}. Check it against the bank statement before confirming.`;
   }
 
   /**
@@ -390,15 +390,15 @@ export class ClinicSpendingService {
   async markPaid(payload: unknown, governedActionId: string, tx: Prisma.TransactionClient) {
     const p = this.validatePaidProposal(payload);
     const found = await this.findSpend(p.spendId, tx);
-    await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${found.clinicWaqfId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${found.programmeId} FOR UPDATE`;
     const before = await this.findSpend(p.spendId, tx);
     if (before.status !== "approved") throw new BadRequestException(`Only an approved payment can be marked paid (this one is ${before.status}).`);
     const paidOn = new Date(`${p.paidOn}T00:00:00Z`);
     const buysAsset = before.kind === "equipment" || before.kind === "reserve_replacement";
     const asset = buysAsset
-        ? await tx.clinicAsset.create({
+        ? await tx.programmeAsset.create({
             data: {
-              clinicWaqfId: before.clinicWaqfId,
+              programmeId: before.programmeId,
               kind: "equipment",
               name: before.description.slice(0, 200),
               value: before.amount,
@@ -414,13 +414,13 @@ export class ClinicSpendingService {
             },
           })
         : null;
-    const after = await tx.clinicSpend.update({
+    const after = await tx.programmeSpend.update({
       where: { id: p.spendId },
       data: { status: "paid", paymentActionId: governedActionId, paidOn, bankReference: p.bankReference, assetId: asset?.id },
     });
     // An investment's placement: the investment is now placed.
     if (before.kind === "investment") {
-      const placed = await tx.clinicInvestment.updateMany({ where: { id: before.investmentId!, status: "shariah_approved" }, data: { status: "placed" } });
+      const placed = await tx.programmeInvestment.updateMany({ where: { id: before.investmentId!, status: "shariah_approved" }, data: { status: "placed" } });
       if (placed.count !== 1) throw new BadRequestException("This investment is no longer waiting to be placed.");
     }
     if (before.kind === "reserve_replacement") {
@@ -428,7 +428,7 @@ export class ClinicSpendingService {
       // The running fund pays from the reserve; the new equipment joins the
       // endowment. Each pot balances on its own.
       await this.ledger.post(tx, {
-        clinicWaqfId: before.clinicWaqfId,
+        programmeId: before.programmeId,
         description: `Equipment replaced from the reserve: ${before.description.slice(0, 120)}`,
         currency: "NGN",
         source: "spend_paid",
@@ -443,7 +443,7 @@ export class ClinicSpendingService {
       });
     } else {
       await this.ledger.post(tx, {
-        clinicWaqfId: before.clinicWaqfId,
+        programmeId: before.programmeId,
         description:
           before.kind === "works_stage"
             ? `${before.worksProject!.name}: certified stage paid`
@@ -460,19 +460,19 @@ export class ClinicSpendingService {
         ],
       });
     }
-    const { payee: _p, clinicWaqf: _c, worksProject: _w, replacesAsset: _r, ...beforeRow } = before;
+    const { payee: _p, programme: _c, worksProject: _w, replacesAsset: _r, ...beforeRow } = before;
     return { before: beforeRow, after };
   }
 
   /** The replaced item leaves the register at its booked value, off endowment capital (3000 / 1500). */
-  private async retireReplaced(tx: Prisma.TransactionClient, old: ClinicAsset, replacement: string, governedActionId: string, on: Date) {
-    const retired = await tx.clinicAsset.updateMany({
+  private async retireReplaced(tx: Prisma.TransactionClient, old: ProgrammeAsset, replacement: string, governedActionId: string, on: Date) {
+    const retired = await tx.programmeAsset.updateMany({
       where: { id: old.id, status: "active" },
       data: { status: "disposed", disposalActionId: governedActionId, disposedOn: on, disposalProceeds: 0, disposalNote: `Replaced from the equipment replacement reserve by ${replacement}.` },
     });
     if (retired.count !== 1) throw new BadRequestException(`${old.name} is no longer on the register.`);
     await this.ledger.post(tx, {
-      clinicWaqfId: old.clinicWaqfId,
+      programmeId: old.programmeId,
       description: `${old.name} retired, replaced from the reserve`,
       currency: "NGN",
       source: "asset_disposed",

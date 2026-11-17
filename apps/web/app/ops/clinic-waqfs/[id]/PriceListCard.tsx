@@ -31,7 +31,7 @@ const BLANK: ClinicPriceListContent = {
   monthlySubsidyCap: "",
 };
 
-export function PriceListCard({ clinicWaqfId }: { clinicWaqfId: string }) {
+export function PriceListCard({ programmeId }: { programmeId: string }) {
   const { can } = useStaffSession();
   const [lists, setLists] = useState<ClinicPriceList[] | null>(null);
   const [pending, setPending] = useState<GovernedAction[]>([]);
@@ -41,7 +41,7 @@ export function PriceListCard({ clinicWaqfId }: { clinicWaqfId: string }) {
 
   const load = useCallback(() => {
     Promise.all([
-      apiFetchJson<ClinicPriceList[]>(`/clinic-waqfs/${clinicWaqfId}/price-lists`),
+      apiFetchJson<ClinicPriceList[]>(`/clinic-waqfs/${programmeId}/price-lists`),
       apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"),
     ])
       .then(([l, a]) => {
@@ -49,7 +49,7 @@ export function PriceListCard({ clinicWaqfId }: { clinicWaqfId: string }) {
         setPending(a.filter((x) => x.permission.key === "clinic_waqf.price_list_approve"));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [clinicWaqfId]);
+  }, [programmeId]);
 
   useEffect(() => {
     load();
@@ -80,7 +80,7 @@ export function PriceListCard({ clinicWaqfId }: { clinicWaqfId: string }) {
       bands: content.bands.map((b) => ({ ...b, patientSharePercent: Number(b.patientSharePercent) })),
       monthlySubsidyCap: clean(content.monthlySubsidyCap),
     };
-    return run(() => apiFetchJson(`/clinic-waqfs/${clinicWaqfId}/price-lists`, { method: "POST", body: JSON.stringify(body) })).then(
+    return run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/price-lists`, { method: "POST", body: JSON.stringify(body) })).then(
       (ok) => ok && setEditing(null),
     );
   }
@@ -163,7 +163,7 @@ export function PriceListCard({ clinicWaqfId }: { clinicWaqfId: string }) {
                               variant="secondary"
                               className="px-3 py-1.5 text-xs"
                               disabled={busy}
-                              onClick={() => run(() => apiFetchJson(`/clinic-waqfs/${clinicWaqfId}/price-lists/${list.id}/discard`, { method: "POST" }))}
+                              onClick={() => run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/price-lists/${list.id}/discard`, { method: "POST" }))}
                             >
                               Discard draft
                             </Button>

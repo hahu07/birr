@@ -90,15 +90,15 @@ export class ClinicClaimsService {
 
   private parseOperator(payload: unknown) {
     const p = (payload ?? {}) as Record<string, unknown>;
-    if (typeof p.clinicWaqfId !== "string") throw new BadRequestException("payload.clinicWaqfId is required.");
+    if (typeof p.programmeId !== "string") throw new BadRequestException("payload.programmeId is required.");
     if (typeof p.counterpartyId !== "string") throw new BadRequestException("payload.counterpartyId is required: the healthcare provider to assign.");
-    return { clinicWaqfId: p.clinicWaqfId, counterpartyId: p.counterpartyId };
+    return { programmeId: p.programmeId, counterpartyId: p.counterpartyId };
   }
 
   private async checkOperator(db: Db, payload: unknown) {
-    const { clinicWaqfId, counterpartyId } = this.parseOperator(payload);
-    const clinic = await db.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-    if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
+    const { programmeId, counterpartyId } = this.parseOperator(payload);
+    const clinic = await db.waqfProgramme.findUnique({ where: { id: programmeId } });
+    if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
     if (clinic.operatorId === counterpartyId) throw new BadRequestException("That provider already runs this clinic.");
     const provider = await db.counterparty.findUnique({ where: { id: counterpartyId } });
     if (!provider || provider.deletedAt) throw new NotFoundException("Counterparty not found.");
@@ -113,7 +113,7 @@ export class ClinicClaimsService {
   }
 
   async checkDuplicateOperator(payload: unknown) {
-    if (await this.pending("clinic_waqf.operator_assign", "clinicWaqfId", this.parseOperator(payload).clinicWaqfId)) {
+    if (await this.pending("clinic_waqf.operator_assign", "programmeId", this.parseOperator(payload).programmeId)) {
       throw new ConflictException("An operator for this clinic is already waiting for the Board — check the Approvals queue.");
     }
   }
@@ -125,18 +125,18 @@ export class ClinicClaimsService {
   }
 
   async currentOperatorState(payload: unknown): Promise<Record<string, unknown>> {
-    const { clinicWaqfId, counterpartyId } = this.parseOperator(payload);
-    const clinic = await prisma.clinicWaqf.findUniqueOrThrow({ where: { id: clinicWaqfId }, include: { operator: { select: { name: true } } } });
+    const { programmeId, counterpartyId } = this.parseOperator(payload);
+    const clinic = await prisma.waqfProgramme.findUniqueOrThrow({ where: { id: programmeId }, include: { operator: { select: { name: true } } } });
     const provider = await prisma.counterparty.findUniqueOrThrow({ where: { id: counterpartyId } });
     return { currentOperator: clinic.operator?.name ?? null, providerStatus: provider.status, providerType: provider.institutionType };
   }
 
   async assignOperator(payload: unknown, governedActionId: string, tx: Prisma.TransactionClient) {
-    const { clinicWaqfId } = this.parseOperator(payload);
-    await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${clinicWaqfId} FOR UPDATE`;
+    const { programmeId } = this.parseOperator(payload);
+    await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
     const { clinic: before, provider } = await this.checkOperator(tx, payload);
-    const after = await tx.clinicWaqf.update({
-      where: { id: clinicWaqfId },
+    const after = await tx.waqfProgramme.update({
+      where: { id: programmeId },
       data: { operatorId: provider.id, operatorActionId: governedActionId, operatorAssignedAt: new Date() },
     });
     return { before, after };
@@ -144,20 +144,20 @@ export class ClinicClaimsService {
 
   // ---- Claims ----
 
-  async createClaim(clinicWaqfId: string, input: CreateClinicClaimInput, actorUserId: string) {
+  async createClaim(programmeId: string, input: CreateClinicClaimInput, actorUserId: string) {
     if (!PERIOD.test(input.period)) throw new BadRequestException("period must be a month like 2027-03.");
     const today = lagosToday();
     if (input.period > today.slice(0, 7)) throw new BadRequestException("A claim can't be for a month that hasn't started.");
 
     return prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${clinicWaqfId} FOR UPDATE`;
-      const clinic = await tx.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-      if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
+      await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
+      const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
+      if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
       if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't established yet.`);
       if (!clinic.operatorId) throw new BadRequestException("No operator has been assigned to this clinic yet.");
-      const list = await this.priceLists.current(tx, clinicWaqfId);
+      const list = await this.priceLists.current(tx, programmeId);
       if (!list) throw new BadRequestException("This clinic has no approved price list to check claims against.");
-      const live = await tx.clinicClaim.findFirst({ where: { clinicWaqfId, period: input.period, status: { in: [...LIVE] } } });
+      const live = await tx.clinicClaim.findFirst({ where: { programmeId, period: input.period, status: { in: [...LIVE] } } });
       if (live) throw new ConflictException(`There's already a ${live.status} claim for ${monthName(input.period)}. Discard it first to upload a corrected one.`);
 
       const services = new Map(list.content.services.map((s) => [s.code, s]));
@@ -206,7 +206,7 @@ export class ClinicClaimsService {
       // A visit's service is claimed once, ever: not again in a later month's claim.
       const already = await tx.clinicClaimLine.findMany({
         where: {
-          clinicWaqfId,
+          programmeId,
           visitReference: { in: [...new Set(input.lines.map((l) => l.visitReference.trim()))] },
           claim: { status: { in: [...LIVE] } },
         },
@@ -238,7 +238,7 @@ export class ClinicClaimsService {
 
       const claim = await tx.clinicClaim.create({
         data: {
-          clinicWaqfId,
+          programmeId,
           period: input.period,
           operatorId: clinic.operatorId,
           priceListId: list.id,
@@ -251,7 +251,7 @@ export class ClinicClaimsService {
           createdByUserId: actorUserId,
         },
       });
-      await tx.clinicClaimLine.createMany({ data: ok.map((l) => ({ ...l, claimId: claim.id, clinicWaqfId })) });
+      await tx.clinicClaimLine.createMany({ data: ok.map((l) => ({ ...l, claimId: claim.id, programmeId })) });
       await tx.auditLog.create({
         data: { actorType: "birr_staff", actorUserId, action: "clinic_claim.submitted", entityType: "ClinicClaim", entityId: claim.id, after: claim as any },
       });
@@ -259,13 +259,13 @@ export class ClinicClaimsService {
     });
   }
 
-  async discardClaim(clinicWaqfId: string, claimId: string, actorUserId: string) {
+  async discardClaim(programmeId: string, claimId: string, actorUserId: string) {
     if (await this.pending("clinic_waqf.claim_approve", "claimId", claimId)) {
       throw new ConflictException("This claim is waiting for approval. Have the proposal rejected first.");
     }
     return prisma.$transaction(async (tx) => {
       const before = await tx.clinicClaim.findUnique({ where: { id: claimId } });
-      if (!before || before.clinicWaqfId !== clinicWaqfId) throw new NotFoundException(`Claim "${claimId}" not found.`);
+      if (!before || before.programmeId !== programmeId) throw new NotFoundException(`Claim "${claimId}" not found.`);
       if (before.status !== "submitted") throw new BadRequestException(`This claim is ${before.status}; only a submitted one can be discarded.`);
       const after = await tx.clinicClaim.update({ where: { id: claimId }, data: { status: "discarded" } });
       await tx.auditLog.create({
@@ -275,9 +275,9 @@ export class ClinicClaimsService {
     });
   }
 
-  listClaims(clinicWaqfId: string) {
+  listClaims(programmeId: string) {
     return prisma.clinicClaim.findMany({
-      where: { clinicWaqfId },
+      where: { programmeId },
       orderBy: [{ period: "desc" }, { createdAt: "desc" }],
       include: {
         operator: { select: { id: true, name: true } },
@@ -287,21 +287,21 @@ export class ClinicClaimsService {
     });
   }
 
-  async claimLines(clinicWaqfId: string, claimId: string) {
+  async claimLines(programmeId: string, claimId: string) {
     const claim = await prisma.clinicClaim.findUnique({ where: { id: claimId } });
-    if (!claim || claim.clinicWaqfId !== clinicWaqfId) throw new NotFoundException(`Claim "${claimId}" not found.`);
+    if (!claim || claim.programmeId !== programmeId) throw new NotFoundException(`Claim "${claimId}" not found.`);
     return prisma.clinicClaimLine.findMany({ where: { claimId }, orderBy: [{ visitDate: "asc" }, { visitReference: "asc" }, { serviceCode: "asc" }] });
   }
 
   /** What the running fund may still commit: its cash, less approved claims not yet paid. */
-  private async runningHeadroom(db: Db, clinicWaqfId: string, excludeClaimId?: string) {
-    const cash = await db.clinicJournalEntryLine.aggregate({
-      where: { journalEntry: { clinicWaqfId, currency: "NGN" }, ledgerAccount: { code: "1100" } },
+  private async runningHeadroom(db: Db, programmeId: string, excludeClaimId?: string) {
+    const cash = await db.programmeJournalEntryLine.aggregate({
+      where: { journalEntry: { programmeId, currency: "NGN" }, ledgerAccount: { code: "1100" } },
       _sum: { debit: true, credit: true },
     });
     const balance = (cash._sum.debit ?? zero()).minus(cash._sum.credit ?? 0);
     const committed = await db.clinicClaim.aggregate({
-      where: { clinicWaqfId, status: "approved", ...(excludeClaimId && { id: { not: excludeClaimId } }) },
+      where: { programmeId, status: "approved", ...(excludeClaimId && { id: { not: excludeClaimId } }) },
       _sum: { runningFundAmount: true },
     });
     return { balance, committed: committed._sum.runningFundAmount ?? zero() };
@@ -311,14 +311,14 @@ export class ClinicClaimsService {
     if (typeof id !== "string") throw new BadRequestException("payload.claimId is required.");
     const claim = await db.clinicClaim.findUnique({
       where: { id },
-      include: { operator: true, clinicWaqf: { select: { name: true } }, priceList: { select: { version: true } } },
+      include: { operator: true, programme: { select: { name: true } }, priceList: { select: { version: true } } },
     });
     if (!claim) throw new NotFoundException(`Claim "${id}" not found.`);
     return claim;
   }
 
   private strip(claim: Awaited<ReturnType<ClinicClaimsService["findClaim"]>>) {
-    const { operator: _o, clinicWaqf: _c, priceList: _p, ...row } = claim;
+    const { operator: _o, programme: _c, priceList: _p, ...row } = claim;
     return row;
   }
 
@@ -338,7 +338,7 @@ export class ClinicClaimsService {
   async describeClaim(payload: unknown): Promise<string> {
     const c = await this.findClaim((payload as { claimId: string }).claimId);
     return (
-      `${c.operator.name}'s claim for ${monthName(c.period)} at ${c.clinicWaqf.name}: ${c.lineCount} services at ${naira(c.totalPrice)} on price list ` +
+      `${c.operator.name}'s claim for ${monthName(c.period)} at ${c.programme.name}: ${c.lineCount} services at ${naira(c.totalPrice)} on price list ` +
       `version ${c.priceList.version}, patients paid ${naira(c.patientPaid)}, subsidies ${naira(c.subsidyTotal)}. ` +
       `Running fund: ${naira(c.runningFundAmount)}. Zakah, for patients assessed as poor or needy: ${naira(c.zakahAmount)}, paid separately through a zakah distribution.`
     );
@@ -346,19 +346,19 @@ export class ClinicClaimsService {
 
   async currentClaimState(payload: unknown): Promise<Record<string, unknown>> {
     const c = await this.findClaim((payload as { claimId: string }).claimId);
-    const { balance, committed } = await this.runningHeadroom(prisma, c.clinicWaqfId, c.id);
+    const { balance, committed } = await this.runningHeadroom(prisma, c.programmeId, c.id);
     return { status: c.status, operatorStatus: c.operator.status, runningFundCash: balance.toFixed(2), runningFundCommittedToOtherClaims: committed.toFixed(2) };
   }
 
   async approveClaim(payload: unknown, governedActionId: string, tx: Prisma.TransactionClient) {
     const { claimId } = payload as { claimId: string };
     const found = await this.findClaim(claimId, tx);
-    await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${found.clinicWaqfId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${found.programmeId} FOR UPDATE`;
     const before = await this.findClaim(claimId, tx);
     if (before.status !== "submitted") throw new BadRequestException(`This claim is already ${before.status}.`);
     if (before.operator.status !== "active" || before.operator.deletedAt) throw new BadRequestException(`${before.operator.name} is no longer an active, vetted partner.`);
     await assertLicensesCurrent(tx, before.operatorId);
-    const { balance, committed } = await this.runningHeadroom(tx, before.clinicWaqfId, before.id);
+    const { balance, committed } = await this.runningHeadroom(tx, before.programmeId, before.id);
     if (committed.plus(before.runningFundAmount).gt(balance)) {
       throw new BadRequestException(
         `The running fund has ${naira(balance.minus(committed))} free, less than this claim's ${naira(before.runningFundAmount)}. Wait for gifts or income to come in.`,
@@ -403,14 +403,14 @@ export class ClinicClaimsService {
   async describePaid(payload: unknown): Promise<string> {
     const p = this.parsePaid(payload);
     const c = await this.findClaim(p.claimId);
-    return `Paid ${naira(c.runningFundAmount)} to ${c.operator.name} from ${c.clinicWaqf.name}'s account on ${p.paidOn} for ${monthName(c.period)}'s claim, bank reference ${p.bankReference}. Check it against the bank statement before confirming.`;
+    return `Paid ${naira(c.runningFundAmount)} to ${c.operator.name} from ${c.programme.name}'s account on ${p.paidOn} for ${monthName(c.period)}'s claim, bank reference ${p.bankReference}. Check it against the bank statement before confirming.`;
   }
 
   /** Books the running fund part (5000 Subsidised visits / 1100). Locks the clinic row first; the engine audits after. */
   async markPaid(payload: unknown, governedActionId: string, tx: Prisma.TransactionClient) {
     const p = this.parsePaid(payload);
     const found = await this.findClaim(p.claimId, tx);
-    await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${found.clinicWaqfId} FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${found.programmeId} FOR UPDATE`;
     const before = await this.findClaim(p.claimId, tx);
     if (before.status !== "approved") throw new BadRequestException(`Only an approved claim can be marked paid (this one is ${before.status}).`);
     const after = await tx.clinicClaim.update({
@@ -418,7 +418,7 @@ export class ClinicClaimsService {
       data: { status: "paid", paymentActionId: governedActionId, paidOn: new Date(`${p.paidOn}T00:00:00Z`), bankReference: p.bankReference },
     });
     await this.ledger.post(tx, {
-      clinicWaqfId: before.clinicWaqfId,
+      programmeId: before.programmeId,
       description: `${monthName(before.period)} claim from ${before.operator.name}: subsidised visits`,
       currency: "NGN",
       source: "claim_paid",
@@ -440,11 +440,11 @@ export class ClinicClaimsService {
    * exactly the zakah part. Zakah's own two-person approval and payment
    * confirmation apply to it as to any distribution.
    */
-  async linkZakah(clinicWaqfId: string, claimId: string, input: LinkClaimZakahInput, actorUserId: string) {
+  async linkZakah(programmeId: string, claimId: string, input: LinkClaimZakahInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "clinic_claims" WHERE "id" = ${claimId} FOR UPDATE`;
       const before = await tx.clinicClaim.findUnique({ where: { id: claimId } });
-      if (!before || before.clinicWaqfId !== clinicWaqfId) throw new NotFoundException(`Claim "${claimId}" not found.`);
+      if (!before || before.programmeId !== programmeId) throw new NotFoundException(`Claim "${claimId}" not found.`);
       if (before.status !== "approved" && before.status !== "paid") throw new BadRequestException("Only an approved claim's zakah part is paid.");
       if (before.zakahAmount.isZero()) throw new BadRequestException("This claim has no zakah part.");
       if (before.zakahDistributionId) throw new ConflictException("This claim's zakah part is already linked to a distribution.");

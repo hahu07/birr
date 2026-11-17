@@ -11,12 +11,12 @@ import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
-import type { ClinicAsset, GovernedAction } from "../../../../lib/ops-types";
+import type { ProgrammeAsset, GovernedAction } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, EmptyState, Input, Select } from "@birr/ui";
 import { FIELD_LIMITS } from "@birr/shared";
 
-const KINDS: ClinicAsset["kind"][] = ["land", "building", "equipment", "vehicle", "other"];
-const STATUS_TONE: Record<ClinicAsset["status"], "success" | "warning" | "neutral" | "danger"> = {
+const KINDS: ProgrammeAsset["kind"][] = ["land", "building", "equipment", "vehicle", "other"];
+const STATUS_TONE: Record<ProgrammeAsset["status"], "success" | "warning" | "neutral" | "danger"> = {
   proposed: "warning",
   active: "success",
   rejected: "neutral",
@@ -24,22 +24,22 @@ const STATUS_TONE: Record<ClinicAsset["status"], "success" | "warning" | "neutra
 };
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
 
-export function AssetsCard({ clinicWaqfId, established }: { clinicWaqfId: string; established: boolean }) {
+export function AssetsCard({ programmeId, established }: { programmeId: string; established: boolean }) {
   const { can } = useStaffSession();
-  const [assets, setAssets] = useState<ClinicAsset[] | null>(null);
+  const [assets, setAssets] = useState<ProgrammeAsset[] | null>(null);
   const [pending, setPending] = useState<GovernedAction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(() => {
-    Promise.all([apiFetchJson<ClinicAsset[]>(`/clinic-waqfs/${clinicWaqfId}/assets`), apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed")])
+    Promise.all([apiFetchJson<ProgrammeAsset[]>(`/clinic-waqfs/${programmeId}/assets`), apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed")])
       .then(([a, actions]) => {
         setAssets(a);
         setPending(actions.filter((x) => x.permission.key === "clinic_waqf.asset_add" || x.permission.key === "clinic_waqf.asset_dispose"));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [clinicWaqfId]);
+  }, [programmeId]);
 
   useEffect(() => {
     load();
@@ -89,7 +89,7 @@ export function AssetsCard({ clinicWaqfId, established }: { clinicWaqfId: string
         <RecordAssetForm
           disabled={busy}
           onSubmit={(input) =>
-            run(() => apiFetchJson(`/clinic-waqfs/${clinicWaqfId}/assets`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setShowForm(false))
+            run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/assets`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setShowForm(false))
           }
         />
       )}
@@ -155,7 +155,7 @@ export function AssetsCard({ clinicWaqfId, established }: { clinicWaqfId: string
 }
 
 interface RecordAssetInput {
-  kind: ClinicAsset["kind"];
+  kind: ProgrammeAsset["kind"];
   name: string;
   value: string;
   valuationNote: string;
@@ -166,7 +166,7 @@ interface RecordAssetInput {
 }
 
 function RecordAssetForm({ disabled, onSubmit }: { disabled: boolean; onSubmit: (input: RecordAssetInput) => void }) {
-  const [kind, setKind] = useState<ClinicAsset["kind"]>("land");
+  const [kind, setKind] = useState<ProgrammeAsset["kind"]>("land");
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const [valuationNote, setValuationNote] = useState("");
@@ -195,7 +195,7 @@ function RecordAssetForm({ disabled, onSubmit }: { disabled: boolean; onSubmit: 
       <div className="flex flex-wrap items-start gap-3">
         <div className="w-40 space-y-1.5">
           <label className="block text-sm font-medium text-slate-700">Kind</label>
-          <Select value={kind} onChange={(e) => setKind(e.target.value as ClinicAsset["kind"])}>
+          <Select value={kind} onChange={(e) => setKind(e.target.value as ProgrammeAsset["kind"])}>
             {KINDS.map((k) => (
               <option key={k} value={k}>
                 {humanize(k)}

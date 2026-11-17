@@ -10,7 +10,7 @@ import Link from "next/link";
 import { apiFetchJson } from "../../../lib/api";
 import { humanize } from "../../../lib/format";
 import { useStaffSession } from "../../../lib/staff-session";
-import type { ClinicWaqf } from "../../../lib/ops-types";
+import type { WaqfProgramme } from "../../../lib/ops-types";
 import {
   Alert,
   Badge,
@@ -31,14 +31,14 @@ import { CountrySelect } from "../../../components/forms/CountrySelect";
 import { countryName, FIELD_LIMITS } from "@birr/shared";
 
 export default function ClinicWaqfsPage() {
-  const [clinics, setClinics] = useState<ClinicWaqf[] | null>(null);
+  const [clinics, setClinics] = useState<WaqfProgramme[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const { can } = useStaffSession();
   const canCreate = can("clinic_waqf.manage");
 
   const load = useCallback(() => {
-    apiFetchJson<ClinicWaqf[]>("/clinic-waqfs")
+    apiFetchJson<WaqfProgramme[]>("/clinic-waqfs")
       .then(setClinics)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, []);

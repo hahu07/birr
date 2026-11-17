@@ -122,7 +122,7 @@ export class RecurringGiftsService {
       ["vault", vaultProduct],
       ["waqf", waqfProduct],
       ["zakah", zakahProduct],
-      ...(clinicProduct ? [["clinic", clinicProduct] as [RecurringGiftKind, MonthlyGiftProduct]] : []),
+      ...(clinicProduct ? [["programme", clinicProduct] as [RecurringGiftKind, MonthlyGiftProduct]] : []),
     ]);
   }
 
@@ -504,10 +504,10 @@ export class RecurringGiftsService {
   }
 
   async applyClinicDeed(gift: RecurringGift, input: AcceptClinicDeedInput, who: Who): Promise<RecurringGift> {
-    if (gift.kind !== "clinic" || gift.clinicPot !== "endowment" || gift.status !== "paused" || gift.pauseReason !== "terms_changed") {
+    if (gift.kind !== "programme" || gift.programmePot !== "endowment" || gift.status !== "paused" || gift.pauseReason !== "terms_changed") {
       throw new BadRequestException("This monthly gift isn't waiting for you to accept a new deed.");
     }
-    const approved = await prisma.clinicWaqfDeed.findFirst({ where: { clinicWaqfId: gift.clinicWaqfId!, status: "approved" } });
+    const approved = await prisma.waqfProgrammeDeed.findFirst({ where: { programmeId: gift.programmeId!, status: "approved" } });
     if (!approved || approved.id !== input.deedId || approved.textHash !== input.textHash) {
       throw new BadRequestException({
         statusCode: 400,
@@ -519,7 +519,7 @@ export class RecurringGiftsService {
       gift,
       who,
       "recurring_gift.terms_accepted",
-      { clinicDeedId: approved.id, clinicDeedTextHash: approved.textHash, ...this.resumeData(gift) },
+      { programmeDeedId: approved.id, programmeDeedTextHash: approved.textHash, ...this.resumeData(gift) },
       { status: "paused", pauseReason: "terms_changed" },
     );
     return updated ?? gift;
@@ -527,9 +527,9 @@ export class RecurringGiftsService {
 
   /** The approved deed a paused monthly endowment gift is waiting on, for its manage page. */
   async pendingClinicDeed(gift: RecurringGift) {
-    if (gift.kind !== "clinic" || gift.pauseReason !== "terms_changed") return null;
-    return prisma.clinicWaqfDeed.findFirst({
-      where: { clinicWaqfId: gift.clinicWaqfId!, status: "approved" },
+    if (gift.kind !== "programme" || gift.pauseReason !== "terms_changed") return null;
+    return prisma.waqfProgrammeDeed.findFirst({
+      where: { programmeId: gift.programmeId!, status: "approved" },
       select: { id: true, version: true, text: true, textHash: true },
     });
   }
@@ -616,14 +616,14 @@ export class RecurringGiftsService {
 
   async founderClinicGifts(founderId: string) {
     const gifts = await prisma.recurringGift.findMany({
-      where: { kind: "clinic", founderId, status: { in: ["pending_setup", "active", "paused"] } },
+      where: { kind: "programme", founderId, status: { in: ["pending_setup", "active", "paused"] } },
       orderBy: { createdAt: "desc" },
     });
     return Promise.all(gifts.map(async (g) => ({ id: g.id, ...(await this.present(g)) })));
   }
 
   private async founderClinicGift(giftId: string, founderId: string): Promise<RecurringGift> {
-    const gift = await prisma.recurringGift.findFirst({ where: { id: giftId, kind: "clinic", founderId } });
+    const gift = await prisma.recurringGift.findFirst({ where: { id: giftId, kind: "programme", founderId } });
     if (!gift) throw new NotFoundException("Monthly gift not found.");
     return gift;
   }
@@ -649,7 +649,7 @@ export class RecurringGiftsService {
   /** Monthly gifts, newest first, filtered by status and kind. Never the saved card itself. */
   async staffList(filter: { status?: string; kind?: string }) {
     const statuses = ["pending_setup", "active", "paused", "cancelled", "ended"] as const;
-    const kinds = ["vault", "waqf", "zakah", "clinic"] as const;
+    const kinds = ["vault", "waqf", "zakah", "programme"] as const;
     const gifts = await prisma.recurringGift.findMany({
       where: {
         ...(statuses.includes(filter.status as (typeof statuses)[number]) && { status: filter.status as (typeof statuses)[number] }),
