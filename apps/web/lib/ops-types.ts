@@ -1656,6 +1656,8 @@ export interface ClinicWaqf {
   // Public fundraising targets (slice 8).
   endowmentTarget?: string | null;
   runningMonthlyTarget?: string | null;
+  // Equipment replacement reserve's share of endowment income (slice 9).
+  reserveSharePercent?: number;
 }
 
 export interface ClinicLedgerRow {
@@ -1724,9 +1726,11 @@ export interface ClinicWorksProject {
 
 export interface ClinicSpend {
   id: string;
-  kind: "equipment" | "works_stage" | "investment";
+  kind: "equipment" | "works_stage" | "investment" | "reserve_replacement";
   payee: { id: string; name: string };
   worksProject: { id: string; name: string } | null;
+  // A reserve replacement (slice 9): the equipment it replaces.
+  replacesAsset?: { id: string; name: string } | null;
   description: string;
   amount: string;
   supportingReference: string;

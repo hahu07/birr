@@ -14,7 +14,16 @@ interface PublicClinicReport {
   currency: string;
   targets: { endowment: string | null; runningMonthly: string | null };
   endowment: { endowed: string; cash: string; invested: string; premisesAndEquipment: string };
-  running: { gifts: string; endowmentIncome: string; receivedThisMonth: string; subsidisedVisits: string; runningCosts: string; cash: string };
+  running: {
+    gifts: string;
+    endowmentIncome: string;
+    receivedThisMonth: string;
+    subsidisedVisits: string;
+    runningCosts: string;
+    cash: string;
+    equipmentReserve: string;
+    spentOnReplacements: string;
+  };
   zakah: { paidForPatients: string };
   months: {
     period: string;
@@ -89,12 +98,17 @@ export function ClinicReport({ slug }: { slug: string }) {
 
       <Card>
         <p className="text-sm font-medium text-slate-900">The running fund</p>
-        <p className="text-xs text-slate-500">Gifts and the endowment&apos;s income, spent on subsidised visits and running costs.</p>
+        <p className="text-xs text-slate-500">
+          Gifts and the endowment&apos;s income, spent on subsidised visits and running costs. A share of the income is set aside to replace worn-out
+          equipment.
+        </p>
         <dl className="mt-3 grid grid-cols-2 gap-3">
           <Figure label="Gifts received" value={naira(running.gifts)} />
           <Figure label="Endowment income" value={naira(running.endowmentIncome)} />
           <Figure label="Spent on subsidised visits" value={naira(running.subsidisedVisits)} />
           <Figure label="Running costs" value={naira(running.runningCosts)} />
+          <Figure label="Set aside to replace equipment" value={naira(running.equipmentReserve)} />
+          <Figure label="Spent replacing equipment" value={naira(running.spentOnReplacements)} />
         </dl>
       </Card>
 
