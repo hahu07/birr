@@ -9,10 +9,10 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { IsBoolean, IsEnum, IsIn, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
-import { ClinicPot, ContributionProvider, IdType, prisma, Prisma } from "@birr/db";
+import { ClinicPot, ContributionProvider, IdType, prisma, Prisma, type RecurringGift } from "@birr/db";
 import { processingFeeCover } from "@birr/zakah";
 import { FIELD_LIMITS } from "@birr/shared";
-import { type GiverContact, hasContact, lockGiverContact, moneyText, whatsAppNotice } from "../../common/giving/giver-contact";
+import { type GiverContact, hasContact, lockGiverContact, moneyText, paystackEmailForGift, whatsAppNotice } from "../../common/giving/giver-contact";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
 import { SettingsService } from "../../common/settings/settings.service";
@@ -21,7 +21,9 @@ import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import { ClinicLedgerService } from "./clinic-ledger.service";
-import { assertFounderVerified } from "../../common/auth/current-founder";
+import { assertFounderVerified, findPrimaryContactMembership } from "../../common/auth/current-founder";
+import { RecurringGiftsCoreService } from "../recurring-gifts/recurring-gifts-core.service";
+import type { SavedCardChargeResult } from "../contributions/providers/payment-provider.interface";
 import { ResendClinicReceiptEmailAdapter } from "./clinic-receipt-email.adapter";
 
 const CURRENCY = "NGN";
@@ -97,6 +99,11 @@ export class InitiateClinicGiftInput {
   @MaxLength(50)
   @HasDigits()
   idNumber?: string;
+
+  /** Give this every month, by card (slice 4b): needs an email or WhatsApp number. */
+  @IsOptional()
+  @IsBoolean()
+  monthly?: boolean;
 }
 
 /** A Founder's gift (slice 4a): the giver and receipt contacts come from their signed-in account. */
@@ -122,7 +129,24 @@ export class InitiateFounderClinicGiftInput {
   @IsOptional()
   @TextField(FIELD_LIMITS.code)
   deedTextHash?: string;
+
+  /** Give this every month, by card (slice 4b). */
+  @IsOptional()
+  @IsBoolean()
+  monthly?: boolean;
 }
+
+/**
+ * initiate()'s monthly modes (slice 4b), never taken from the request
+ * body. "setup" starts a monthly gift with a card-only checkout; "charge"
+ * is a later month on the saved card; "card_update" is a card-only
+ * checkout for the month a paused gift is due, which saves the new card.
+ * Same modes as Vault and zakah.
+ */
+export type ClinicMonthlyMode =
+  | { type: "setup" }
+  | { type: "charge"; gift: RecurringGift; period: string }
+  | { type: "card_update"; gift: RecurringGift };
 
 /** Who a gift's audit rows name: a public giver, or a Founder's user. */
 type GiftActor = { type: "public_donor"; donorId: string | null } | { type: "founder_user"; userId: string; founderId: string };
@@ -156,6 +180,7 @@ export class ClinicGiftsService {
     private readonly ledger: ClinicLedgerService,
     private readonly receiptEmail: ResendClinicReceiptEmailAdapter,
     private readonly vaultContributions: VaultContributionsService,
+    private readonly recurring: RecurringGiftsCoreService,
     // Last, so tests that never use WhatsApp needn't pass them.
     private readonly giverWhatsApp?: GiverWhatsAppService,
     private readonly whatsApp?: TwilioWhatsAppAdapter,
@@ -192,20 +217,29 @@ export class ClinicGiftsService {
     };
   }
 
-  async initiate(input: InitiateClinicGiftInput, ipAddress?: string) {
-    const { clinic, subaccount } = await this.openClinic(input.slug);
-    const amount = this.checkedAmount(input.amount, CLINIC_PUBLIC_MINIMUM_NGN);
-    const deed = await this.acceptedDeed(clinic, input);
-    const feeCover = this.feeCoverFor(amount, input.coverFee);
-    const contact: GiverContact = {
-      email: normalizeEmail(input.donorEmail),
-      whatsapp: input.donorWhatsApp ? await this.requireGiverWhatsApp().assertProof(input.donorWhatsApp, input.whatsappProof) : null,
-    };
+  async initiate(input: InitiateClinicGiftInput, ipAddress?: string, monthly?: ClinicMonthlyMode) {
+    if (input.monthly && !monthly) monthly = { type: "setup" };
+    const scheduled = monthly && monthly.type !== "setup" ? monthly.gift : null;
+    if (monthly?.type === "setup" && !input.donorEmail && !input.donorWhatsApp) {
+      throw new BadRequestException("Giving monthly needs your email or WhatsApp number, for receipts and to manage or cancel it.");
+    }
+    const { clinic, subaccount } = await this.openClinic(scheduled ? { id: scheduled.clinicWaqfId! } : { slug: input.slug });
+    const what = this.whatIsGiven(scheduled, input, CLINIC_PUBLIC_MINIMUM_NGN);
+    const deed = await this.acceptedDeed(clinic, what);
+    const feeCover = this.feeCoverFor(what.amount, what.coverFee);
+    // A later month reuses the gift's own contacts; anything a giver starts must prove a WhatsApp number first.
+    const contact: GiverContact = scheduled
+      ? { email: scheduled.email, whatsapp: scheduled.whatsappNumber }
+      : {
+          email: normalizeEmail(input.donorEmail),
+          whatsapp: input.donorWhatsApp ? await this.requireGiverWhatsApp().assertProof(input.donorWhatsApp, input.whatsappProof) : null,
+        };
     const id = randomUUID();
 
     // Reserve the row before calling Paystack, under the same per-giver
     // lock Vault gifts take (prefix ""), so a Vault gift and a clinic gift
     // started together see each other in the threshold check.
+    let recurringGift: RecurringGift | null = scheduled;
     const gift = await prisma.$transaction(async (tx) => {
       await lockGiverContact(tx, "", contact);
       const donor = hasContact(contact)
@@ -213,18 +247,29 @@ export class ClinicGiftsService {
             tx,
             contact,
             { currency: CURRENCY, donorFullName: input.donorFullName, idType: input.idType, idNumber: input.idNumber },
-            amount,
+            what.amount,
+            { scheduledCharge: scheduled !== null },
           )
         : null;
+      const recurringLink = await this.linkMonthly(tx, monthly, id, {
+        email: contact.email,
+        whatsappNumber: contact.whatsapp,
+        clinicWaqfId: clinic.id,
+        pot: what.pot,
+        deed,
+        amount: what.amount,
+        coverFee: what.coverFee,
+      });
+      if (recurringLink.gift) recurringGift = recurringLink.gift;
       const created = await tx.clinicGift.create({
         data: {
           id,
           clinicWaqfId: clinic.id,
-          pot: input.pot,
+          pot: what.pot,
           donorId: donor?.id,
           contactEmail: contact.email,
           contactWhatsApp: contact.whatsapp,
-          amount,
+          amount: what.amount,
           feeCover,
           currency: CURRENCY,
           provider: "paystack",
@@ -232,13 +277,15 @@ export class ClinicGiftsService {
           settlementSubaccount: subaccount,
           deedId: deed?.id,
           deedTextHash: deed?.textHash,
+          recurringGiftId: recurringLink.recurringGiftId,
+          recurringPeriod: recurringLink.recurringPeriod,
           ipAddress,
         },
       });
       await this.audit(tx, "clinic_gift.initiated", created.id, { type: "public_donor", donorId: created.donorId }, null, created);
       return created;
     });
-    return this.checkout(gift, clinic, subaccount, { type: "public_donor", donorId: gift.donorId });
+    return this.checkout(gift, clinic, subaccount, { type: "public_donor", donorId: gift.donorId }, monthly, recurringGift);
   }
 
   /**
@@ -257,29 +304,48 @@ export class ClinicGiftsService {
    * their primary contact (the controller checks), who must have verified
    * their email and WhatsApp, like every Founder self-service payment.
    * No AML ID threshold: a Founder is a verified account holder, as for
-   * Waqf Fund contributions. The receipt goes to the signed-in user.
+   * Waqf Fund contributions. The receipt goes to the signed-in user. A
+   * later month of a monthly gift (slice 4b) is given by whoever is the
+   * primary contact when it's charged.
    */
-  async initiateAsFounder(founderId: string, userId: string, input: InitiateFounderClinicGiftInput, ipAddress?: string) {
+  async initiateAsFounder(founderId: string, userId: string | null, input: InitiateFounderClinicGiftInput, ipAddress?: string, monthly?: ClinicMonthlyMode) {
+    if (input.monthly && !monthly) monthly = { type: "setup" };
+    const scheduled = monthly && monthly.type !== "setup" ? monthly.gift : null;
     await assertFounderVerified(prisma, founderId);
-    const { clinic, subaccount } = await this.openClinic(input.slug);
-    const amount = this.checkedAmount(input.amount, await this.founderMinimum(founderId, clinic.id));
-    const deed = await this.acceptedDeed(clinic, input);
-    const feeCover = this.feeCoverFor(amount, input.coverFee);
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    const actor: GiftActor = { type: "founder_user", userId, founderId };
+    const giverUserId = userId ?? (await findPrimaryContactMembership(prisma, founderId))?.userId;
+    if (!giverUserId) throw new BadRequestException("This Founder has no active primary contact to give.");
+    const { clinic, subaccount } = await this.openClinic(scheduled ? { id: scheduled.clinicWaqfId! } : { slug: input.slug });
+    const what = this.whatIsGiven(scheduled, input, await this.founderMinimum(founderId, clinic.id));
+    const deed = await this.acceptedDeed(clinic, what);
+    const feeCover = this.feeCoverFor(what.amount, what.coverFee);
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: giverUserId } });
+    const actor: GiftActor = { type: "founder_user", userId: giverUserId, founderId };
     const id = randomUUID();
 
+    let recurringGift: RecurringGift | null = scheduled;
     const gift = await prisma.$transaction(async (tx) => {
+      // A monthly gift's card is saved under the account email, which also gets its reminders.
+      const recurringLink = await this.linkMonthly(tx, monthly, id, {
+        email: user.email,
+        whatsappNumber: null,
+        founderId,
+        clinicWaqfId: clinic.id,
+        pot: what.pot,
+        deed,
+        amount: what.amount,
+        coverFee: what.coverFee,
+      });
+      if (recurringLink.gift) recurringGift = recurringLink.gift;
       const created = await tx.clinicGift.create({
         data: {
           id,
           clinicWaqfId: clinic.id,
-          pot: input.pot,
+          pot: what.pot,
           founderId,
-          initiatedByUserId: userId,
+          initiatedByUserId: giverUserId,
           contactEmail: user.email,
           contactWhatsApp: user.whatsappVerifiedAt ? user.whatsappNumber : null,
-          amount,
+          amount: what.amount,
           feeCover,
           currency: CURRENCY,
           provider: "paystack",
@@ -287,13 +353,86 @@ export class ClinicGiftsService {
           settlementSubaccount: subaccount,
           deedId: deed?.id,
           deedTextHash: deed?.textHash,
+          recurringGiftId: recurringLink.recurringGiftId,
+          recurringPeriod: recurringLink.recurringPeriod,
           ipAddress,
         },
       });
       await this.audit(tx, "clinic_gift.initiated", created.id, actor, null, created);
       return created;
     });
-    return this.checkout(gift, clinic, subaccount, actor);
+    return this.checkout(gift, clinic, subaccount, actor, monthly, recurringGift);
+  }
+
+  /** The amount, pot, fee choice and deed: from the monthly gift for a later month, else from the giver's form. */
+  private whatIsGiven(
+    scheduled: RecurringGift | null,
+    input: { pot: ClinicPot; amount: string; coverFee: boolean; deedId?: string; deedTextHash?: string },
+    minimum: string,
+  ) {
+    if (scheduled) {
+      return {
+        pot: scheduled.clinicPot!,
+        amount: new Prisma.Decimal(scheduled.amount),
+        coverFee: scheduled.coverFee,
+        deedId: scheduled.clinicDeedId ?? undefined,
+        deedTextHash: scheduled.clinicDeedTextHash ?? undefined,
+      };
+    }
+    return { pot: input.pot, amount: this.checkedAmount(input.amount, minimum), coverFee: input.coverFee, deedId: input.deedId, deedTextHash: input.deedTextHash };
+  }
+
+  /**
+   * Ties the payment being reserved to its monthly gift: creates the gift
+   * (setup), claims a paused gift's card update, or names the month a
+   * scheduled charge collects. Inside the payment's own transaction.
+   */
+  private async linkMonthly(
+    tx: Prisma.TransactionClient,
+    monthly: ClinicMonthlyMode | undefined,
+    reference: string,
+    setup: {
+      email: string | null;
+      whatsappNumber: string | null;
+      founderId?: string;
+      clinicWaqfId: string;
+      pot: ClinicPot;
+      deed: { id: string; textHash: string } | null;
+      amount: Prisma.Decimal;
+      coverFee: boolean;
+    },
+  ): Promise<{ recurringGiftId?: string; recurringPeriod: string | null; gift?: RecurringGift }> {
+    if (!monthly) return { recurringPeriod: null };
+    if (monthly.type === "charge") return { recurringGiftId: monthly.gift.id, recurringPeriod: monthly.period };
+    if (monthly.type === "card_update") {
+      if (!(await this.recurring.startCardUpdate(tx, monthly.gift, reference))) {
+        throw new BadRequestException("This monthly gift isn't waiting for a new card.");
+      }
+      return { recurringGiftId: monthly.gift.id, recurringPeriod: null };
+    }
+    const gift = await this.recurring.createSetup(tx, {
+      kind: "clinic",
+      email: setup.email,
+      whatsappNumber: setup.whatsappNumber,
+      amount: setup.amount,
+      reference,
+      founderId: setup.founderId,
+      coverFee: setup.coverFee,
+      clinicWaqfId: setup.clinicWaqfId,
+      clinicPot: setup.pot,
+      clinicDeedId: setup.deed?.id,
+      clinicDeedTextHash: setup.deed?.textHash,
+    });
+    return { recurringGiftId: gift.id, recurringPeriod: gift.nextPeriod, gift };
+  }
+
+  /** A monthly gift's payments, newest first (MonthlyGiftProduct.charges). */
+  chargesForGift(recurringGiftId: string) {
+    return prisma.clinicGift.findMany({
+      where: { recurringGiftId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, providerReference: true, amount: true, currency: true, status: true, recurringPeriod: true, createdAt: true, confirmedAt: true },
+    });
   }
 
   /** A Founder's gifts to every clinic waqf, newest first, and what's confirmed in each pot. */
@@ -324,8 +463,8 @@ export class ClinicGiftsService {
     return given > 0 ? CLINIC_PUBLIC_MINIMUM_NGN : CLINIC_FOUNDER_FIRST_GIFT_MINIMUM_NGN;
   }
 
-  private async openClinic(slug: string) {
-    const clinic = await prisma.clinicWaqf.findUnique({ where: { slug } });
+  private async openClinic(where: { slug: string } | { id: string }) {
+    const clinic = await prisma.clinicWaqf.findUnique({ where });
     if (!clinic) throw new NotFoundException("Clinic not found.");
     if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't taking gifts yet.`);
     const subaccount = await this.subaccount();
@@ -363,25 +502,48 @@ export class ClinicGiftsService {
     return approved;
   }
 
-  /** Paystack checkout for a reserved gift, into the clinic waqf's subaccount. */
+  /**
+   * Paystack for a reserved gift, into the clinic waqf's subaccount: a
+   * checkout (card only when it starts or updates a monthly gift), or a
+   * charge on the monthly gift's saved card.
+   */
   private async checkout(
     gift: { id: string; amount: Prisma.Decimal; feeCover: Prisma.Decimal; contactEmail: string | null; pot: ClinicPot; currency: string; status: string; createdAt: Date; confirmedAt: Date | null },
     clinic: { name: string; slug: string },
     subaccount: string,
     actor: GiftActor,
+    monthly?: ClinicMonthlyMode,
+    recurringGift?: RecurringGift | null,
   ) {
     const id = gift.id;
+    // Into the clinic waqf's subaccount; only the fee cover to Birr's main account.
+    const split = { subaccount, mainAccountShareMinorUnits: Number(gift.feeCover.times(100).toFixed(0)) };
+    const amount = gift.amount.plus(gift.feeCover).toFixed(2);
     let result;
+    let charge: SavedCardChargeResult | undefined;
     try {
-      result = await this.paystack.createPayment({
-        amount: gift.amount.plus(gift.feeCover).toFixed(2),
-        currency: CURRENCY,
-        reference: id,
-        payerEmail: gift.contactEmail ?? undefined,
-        returnPath: "clinic-gifts",
-        // Into the clinic waqf's subaccount; only the fee cover to Birr's main account.
-        split: { subaccount, mainAccountShareMinorUnits: Number(gift.feeCover.times(100).toFixed(0)) },
-      });
+      if (monthly?.type === "charge") {
+        charge = await this.paystack.chargeSavedCard({
+          authorizationCode: this.recurring.decryptAuthorization(monthly.gift),
+          email: paystackEmailForGift(monthly.gift),
+          amount,
+          currency: CURRENCY,
+          reference: id,
+          split,
+        });
+        result = { providerReference: id, clientPayload: null };
+      } else {
+        result = await this.paystack.createPayment({
+          amount,
+          currency: CURRENCY,
+          reference: id,
+          // A monthly gift's card is saved under the gift's email, or its stand-in.
+          payerEmail: recurringGift ? paystackEmailForGift(recurringGift) : (gift.contactEmail ?? undefined),
+          returnPath: "clinic-gifts",
+          split,
+          cardOnly: monthly !== undefined,
+        });
+      }
     } catch (err) {
       // Don't leave a reservation counting toward the giver's threshold.
       await prisma.$transaction(async (tx) => {
@@ -391,6 +553,12 @@ export class ClinicGiftsService {
       throw err;
     }
 
+    if (charge) {
+      // Usually settled straight away; "pending" waits for the webhook.
+      const settled =
+        charge.status === "pending" ? this.publicView(gift, clinic) : ((await this.applyProviderOutcome(id, charge.status, charge.providerPaymentId)) ?? this.publicView(gift, clinic));
+      return { gift: settled, clientPayload: null, charge };
+    }
     if (result.providerReference === id) return { gift: this.publicView(gift, clinic), clientPayload: result.clientPayload };
     const withReference = await prisma.$transaction(async (tx) => {
       const updated = await tx.clinicGift.update({ where: { id }, data: { providerReference: result.providerReference } });
@@ -488,6 +656,12 @@ export class ClinicGiftsService {
     });
 
     if (!outcome) return this.findPublicStatus(gift.id);
+    // A monthly gift's card checkout: save the card and schedule the next month.
+    if (status === "confirmed" && outcome.recurringGiftId) {
+      this.recurring.afterPaymentConfirmed(outcome.providerReference, outcome.recurringPeriod).catch((err) => {
+        this.logger.error(`Failed to save the card for monthly clinic gift "${outcome.recurringGiftId}":`, err instanceof Error ? err.stack : String(err));
+      });
+    }
     if (status === "confirmed") this.sendReceipts(outcome, gift.clinicWaqf.name, gift.deed?.version ?? null);
     return this.publicView(outcome, gift.clinicWaqf);
   }
@@ -561,8 +735,12 @@ export class ClinicGiftsService {
   }
 
   async findPublicStatus(id: string) {
-    const gift = await prisma.clinicGift.findUnique({ where: { id }, include: { clinicWaqf: { select: { name: true, slug: true } } } });
-    return gift ? this.publicView(gift, gift.clinicWaqf) : null;
+    const gift = await prisma.clinicGift.findUnique({
+      where: { id },
+      include: { clinicWaqf: { select: { name: true, slug: true } }, recurringGift: { select: { status: true } } },
+    });
+    // Whether this was the first payment of a monthly gift, for the thank-you page.
+    return gift ? { ...this.publicView(gift, gift.clinicWaqf), recurringGift: gift.recurringGift } : null;
   }
 
   /** Staff: a clinic waqf's gifts, newest first, with who gave where known. */

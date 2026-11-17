@@ -22,9 +22,22 @@ export interface GiftTarget {
   phrase: string;
 }
 
-/** Where a gift's messages go: its email and/or WhatsApp number, and a founder's own number for a top-up. */
+/**
+ * A Founder's own gift (a Waqf top-up, or a clinic gift given as the
+ * Founder, 2026-11-17): managed in the Founder Portal, never by a link.
+ */
+export function isFounderGift(gift: RecurringGift): boolean {
+  return gift.founderId !== null;
+}
+
+/** Where a Founder manages this gift in their portal. */
+function founderCtaLabel(gift: RecurringGift): string {
+  return gift.kind === "clinic" ? "View your clinic support" : "View your Waqf Fund";
+}
+
+/** Where a gift's messages go: its email and/or WhatsApp number, and a founder's own number for their gifts. */
 function recipients(gift: RecurringGift) {
-  return { to: gift.email, whatsappTo: gift.whatsappNumber, founderAccountEmail: gift.kind === "waqf" ? gift.email : null };
+  return { to: gift.email, whatsappTo: gift.whatsappNumber, founderAccountEmail: isFounderGift(gift) ? gift.email : null };
 }
 
 function card(gift: RecurringGift): string {
@@ -45,8 +58,8 @@ export function setUpEmail(gift: RecurringGift, target: GiftTarget, manageUrl: s
       (gift.nextChargeAt ? `, starting ${formatDay(gift.nextChargeAt)}` : "") +
       `. We'll remind you a few days before each charge.</p>` +
       (zakah ? "<p>Each payment is zakah paid in advance towards your annual zakah.</p>" : "") +
-      (gift.kind === "waqf" ? "" : KEEP_LINK),
-    ctaLabel: gift.kind === "waqf" ? "View your Waqf Fund" : "Manage your monthly gift",
+      (isFounderGift(gift) ? "" : KEEP_LINK),
+    ctaLabel: isFounderGift(gift) ? founderCtaLabel(gift) : "Manage your monthly gift",
     ctaUrl: manageUrl,
   };
 }
@@ -82,7 +95,10 @@ export function pausedEmail(gift: RecurringGift, target: GiftTarget, manageUrl: 
     card_expired: `${card(gift).replace(/^the/, "The")} has expired. Add a new card to carry on.`,
     needs_identity:
       "Your giving has reached the level where the law requires us to record your full name and ID. Add them to carry on.",
-    terms_changed: "The terms for paying zakah through Birr have changed. Please read and accept them to carry on.",
+    terms_changed:
+      gift.kind === "clinic"
+        ? "A new version of the waqf's deed has been approved. Please read it and accept it to carry on endowing monthly."
+        : "The terms for paying zakah through Birr have changed. Please read and accept them to carry on.",
     below_minimum: `The minimum gift has gone up above ${formatNaira(gift.amount)}. Raise your monthly amount to carry on.`,
   };
   return {
@@ -90,7 +106,7 @@ export function pausedEmail(gift: RecurringGift, target: GiftTarget, manageUrl: 
     subject: "Your monthly gift is paused",
     heading: "Monthly gift paused",
     bodyHtml: `<p>We haven't charged your monthly gift ${target.phrase}. ${why[gift.pauseReason ?? ""] ?? ""}</p>`,
-    ctaLabel: gift.kind === "waqf" ? "View your Waqf Fund" : "Manage your monthly gift",
+    ctaLabel: isFounderGift(gift) ? founderCtaLabel(gift) : "Manage your monthly gift",
     ctaUrl: manageUrl,
   };
 }

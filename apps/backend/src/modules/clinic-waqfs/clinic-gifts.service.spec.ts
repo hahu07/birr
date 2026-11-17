@@ -71,6 +71,7 @@ describe("ClinicGiftsService", () => {
     new ClinicLedgerService(),
     receipts as unknown as ResendClinicReceiptEmailAdapter,
     vaultContributions,
+    createFakeRecurringGiftsCore().core,
   );
   const clinics = new ClinicWaqfsService();
   const email = (name: string) => `clinic-gift-${name}-${run}@example.com`;

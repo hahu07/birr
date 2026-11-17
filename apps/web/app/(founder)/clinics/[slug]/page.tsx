@@ -156,6 +156,8 @@ function GiveForm({
   const [pot, setPot] = useState<Pot>("endowment");
   const [amount, setAmount] = useState("");
   const [coverFee, setCoverFee] = useState(false);
+  // Monthly giving (slice 4b): by card, the same amount each month; a public giver needs an email or WhatsApp number.
+  const [monthly, setMonthly] = useState(false);
   const [contact, setContact] = useState<GiverContactValue>(EMPTY_CONTACT);
   const [fullName, setFullName] = useState("");
   const [idType, setIdType] = useState("national_id");
@@ -183,6 +185,7 @@ function GiveForm({
           pot,
           amount: clean,
           coverFee,
+          ...(monthly && { monthly: true }),
           ...(pot === "endowment" && terms.deed && { deedId: terms.deed.id, deedTextHash: terms.deed.textHash }),
           ...(!founderMode && {
             ...contactPayload(contact, { email: "donorEmail", whatsapp: "donorWhatsApp" }),
@@ -240,19 +243,43 @@ function GiveForm({
         </label>
       )}
 
+      <label className="flex items-start gap-2 rounded-xl border border-slate-200 p-3 text-sm text-slate-700 has-[:checked]:border-primary-300 has-[:checked]:bg-primary-50/60">
+        <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300" checked={monthly} onChange={(e) => setMonthly(e.target.checked)} />
+        <span>
+          <span className="font-medium text-slate-900">Give this every month</span>
+          {monthly && (
+            <span className="mt-1 block text-xs leading-relaxed text-slate-600">
+              We charge your card the same amount each month and remind you before each charge.{" "}
+              {founderMode ? "You can change or stop it from your Founder Portal." : "We'll send you a private link to change or stop it any time."}
+              {pot === "endowment" && " If the waqf's deed is ever revised, we'll pause it until you've read and accepted the new version."}
+            </span>
+          )}
+        </span>
+      </label>
+
       {!founderMode && (
         <GiverContactFields
           idPrefix="gift"
           value={contact}
           onChange={setContact}
-          required={false}
-          legend="Send my receipt to"
+          required={monthly}
+          legend={monthly ? "Send receipts and reminders to" : "Send my receipt to"}
           emailLabel={
-            <>
-              Email for your receipt <span className="font-normal text-slate-500">(optional)</span>
-            </>
+            monthly ? (
+              "Email"
+            ) : (
+              <>
+                Email for your receipt <span className="font-normal text-slate-500">(optional)</span>
+              </>
+            )
           }
-          emailHint={!contact.email.trim() ? "Without an email or WhatsApp number we can't send you a receipt." : undefined}
+          emailHint={
+            monthly
+              ? "For your receipts, reminders, and the link to manage your monthly gift."
+              : !contact.email.trim()
+                ? "Without an email or WhatsApp number we can't send you a receipt."
+                : undefined
+          }
         />
       )}
 
@@ -301,10 +328,18 @@ function GiveForm({
         </Alert>
       )}
 
-      <Button type="submit" className="w-full" disabled={!validAmount || !deedOk || submitting || (!founderMode && !contactReady(contact, false))}>
-        {submitting ? "Taking you to payment…" : total !== null ? `Give ${formatMoney(String(total), terms.currency)}` : "Give"}
+      <Button type="submit" className="w-full" disabled={!validAmount || !deedOk || submitting || (!founderMode && !contactReady(contact, monthly))}>
+        {submitting
+          ? "Taking you to payment…"
+          : total !== null
+            ? `Give ${formatMoney(String(total), terms.currency)}${monthly ? " now, then monthly" : ""}`
+            : "Give"}
       </Button>
-      <p className="text-center text-xs text-slate-500">You&apos;ll pay securely with Paystack — card, bank transfer or USSD.</p>
+      <p className="text-center text-xs text-slate-500">
+        {monthly
+          ? "You'll pay securely with Paystack, by card: only a card can be charged again each month."
+          : "You'll pay securely with Paystack — card, bank transfer or USSD."}
+      </p>
     </form>
   );
 }

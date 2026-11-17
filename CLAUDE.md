@@ -1103,6 +1103,31 @@ How it works:
   gifts aren't listed.
 - **Next:** monthly clinic giving is slice 4b.
 
+Slice 4b, monthly clinic giving (built). Owner's decision: **both pots**.
+A monthly endowment gift keeps the deed version its giver accepted, and
+**pauses (`terms_changed`) once a newer version is approved**, until they
+accept it.
+- **The product:** `RecurringGiftKind.clinic`, charged by
+  `ClinicMonthlyProduct` through `ClinicGiftsService`, so every month
+  passes the same checks as a one-off gift. A public giver's month goes
+  through the shared AML threshold. A Founder's month is given as the
+  Founder, by whoever is their primary contact then.
+  - `RecurringGift.clinicWaqfId`, `clinicPot`, `clinicDeedId` and
+    `clinicDeedTextHash` hold what it gives to, checked by the database.
+  - `ClinicGift.recurringGiftId` and `recurringPeriod`: at most one
+    charge per gift per month.
+- **A Founder's gift, not a Waqf top-up:** "a Founder's own gift" is now
+  `founderId` set (`isFounderGift`), not `kind === "waqf"`. That covers
+  the private link, emails, audit and who cancelled. A Founder's clinic
+  monthly gift has no private link; they manage it on Clinic support
+  (`/clinic-gifts/founder/monthly/...`).
+- **Accepting a new deed:** a public giver does it from their manage link
+  (`POST /giving/manage/:token/deed`); a Founder from Clinic support.
+  Only the current approved version is accepted, as shown.
+- **Fixed along the way:** `RecurringGiftsService.settleCardCheckouts`
+  used to stop the whole scheduler run at the first gift that threw. Each
+  gift is now settled on its own, as charging already was.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
