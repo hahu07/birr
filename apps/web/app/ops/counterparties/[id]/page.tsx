@@ -8,6 +8,9 @@
 // check) — its approval is refused server-side unless gate (1) already
 // happened. Suspend/blacklist are immediate, unilateral compliance_officer
 // actions — no maker-checker, since stopping a bad actor needs speed.
+// A healthcare provider has a third gate (2026-11-17): every required
+// licence verified and in date (LicensesCard), checked again at every
+// payment.
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -18,6 +21,7 @@ import type { Counterparty, CounterpartyExposure, GovernedAction, InvestmentPlac
 import { Alert, Badge, Button, Card, DetailGrid, EmptyState, Input, Skeleton } from "@birr/ui";
 import { CountrySelect } from "../../../../components/forms/CountrySelect";
 import { countryLabel, FIELD_LIMITS } from "@birr/shared";
+import { LicensesCard } from "./LicensesCard";
 
 const STATUS_TONE: Record<Counterparty["status"], "success" | "warning" | "neutral" | "danger"> = {
   active: "success",
@@ -326,6 +330,8 @@ export default function CounterpartyDetailPage() {
           </div>
         )}
       </Card>
+
+      <LicensesCard counterpartyId={counterparty.id} />
 
       {counterparty.status === "active" && (
         <Card className="mt-5">

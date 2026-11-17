@@ -20,6 +20,7 @@ export const JOBS = {
   payment_reconciliation: { label: "Daily Paystack reconciliation (checked hourly)", everyMs: HOUR, slackMs: HOUR, public: true, external: false },
   portfolio_drift: { label: "Portfolio drift check", everyMs: DAY, slackMs: 6 * HOUR, public: true, external: false },
   trustee_license_expiry: { label: "Trustee licence expiry check", everyMs: DAY, slackMs: 6 * HOUR, public: true, external: false },
+  counterparty_license_expiry: { label: "Counterparty licence expiry warnings", everyMs: DAY, slackMs: 6 * HOUR, public: true, external: false },
   access_review_reminder: { label: "Access review reminder", everyMs: DAY, slackMs: 6 * HOUR, public: true, external: false },
   database_backup: { label: "Database backup (scripts/backup-postgres.sh)", everyMs: DAY, slackMs: 6 * HOUR, public: true, external: true },
   restore_check: { label: "Restore drill (scripts/restore-check.sh)", everyMs: 31 * DAY, slackMs: 7 * DAY, public: false, external: true },

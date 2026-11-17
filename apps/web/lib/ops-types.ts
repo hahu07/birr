@@ -2,6 +2,7 @@
 // backend's DTOs (apps/backend/src/modules/*) — kept hand-written here
 // rather than generated, since the two apps aren't wired to a shared
 // schema/codegen step yet.
+import type { CounterpartyLicenseKindKey } from "@birr/shared";
 
 export interface PlatformSettingField {
   key: string;
@@ -393,7 +394,7 @@ export interface InvestmentPlacementDetail extends InvestmentPlacement {
 export interface Counterparty {
   id: string;
   name: string;
-  institutionType: "bank" | "asset_manager" | "broker_dealer" | "fund_administrator" | "business" | "other";
+  institutionType: "bank" | "asset_manager" | "broker_dealer" | "fund_administrator" | "business" | "relief_partner" | "healthcare_provider" | "other";
   jurisdiction: string;
   status: "pending_review" | "active" | "under_review" | "suspended" | "blacklisted";
   registrationNumber: string | null;
@@ -425,6 +426,38 @@ export interface Counterparty {
   // totalInvestedByCurrency below, never blended across currencies.
   totalInvested?: string | null;
   totalInvestedByCurrency?: { currency: string; amount: string }[];
+}
+
+// GET /counterparties/:id/licenses (2026-11-17, clinic slice 1).
+export interface CounterpartyLicense {
+  id: string;
+  counterpartyId: string;
+  kind: CounterpartyLicenseKindKey;
+  licenseNumber: string;
+  issuingAuthority: string;
+  issuedOn: string | null;
+  expiresOn: string;
+  recordedByUserId: string;
+  recordedByUser: { id: string; fullName: string };
+  recordedAt: string;
+  verifiedByUser: { id: string; fullName: string } | null;
+  verifiedAt: string | null;
+  verificationNote: string | null;
+  withdrawnByUser: { id: string; fullName: string } | null;
+  withdrawnAt: string | null;
+  withdrawalReason: string | null;
+}
+
+export interface LicenseRequirement {
+  kind: CounterpartyLicenseKindKey;
+  status: "current" | "expired" | "awaiting_verification" | "missing";
+  expiresOn: string | null;
+}
+
+export interface CounterpartyLicenses {
+  // Only for a type with required licences (a healthcare provider); empty otherwise.
+  requirements: LicenseRequirement[];
+  licenses: CounterpartyLicense[];
 }
 
 export interface CounterpartyExposure {

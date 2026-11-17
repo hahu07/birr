@@ -7,6 +7,12 @@ import {
   SetConcentrationLimitInput,
   SetPayoutDetailsInput,
 } from "./counterparties.service";
+import {
+  CounterpartyLicensesService,
+  RecordCounterpartyLicenseInput,
+  VerifyCounterpartyLicenseInput,
+  WithdrawCounterpartyLicenseInput,
+} from "./counterparty-licenses.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 import { CounterpartyStatus } from "@birr/db";
@@ -24,7 +30,10 @@ class StatusChangeInput {
 // the actions that carry real fiduciary weight.
 @Controller("counterparties")
 export class CounterpartiesController {
-  constructor(private readonly service: CounterpartiesService) {}
+  constructor(
+    private readonly service: CounterpartiesService,
+    private readonly licenses: CounterpartyLicensesService,
+  ) {}
 
   @Post()
   @RequiresAccess("counterparty.register")
@@ -87,6 +96,53 @@ export class CounterpartiesController {
   @RequiresAccess("counterparty.register")
   deregister(@Param("id") id: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
     return this.service.deregister(id, staff.userId);
+  }
+
+  // Licences (2026-11-17, clinic slice 1): one person records what the
+  // certificate says, a different person verifies it, and Compliance can
+  // withdraw one at once. See CounterpartyLicense's schema comment.
+  @Post(":id/licenses")
+  @RequiresAccess("counterparty.license_record")
+  recordLicense(
+    @Param("id") id: string,
+    @Body() body: RecordCounterpartyLicenseInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.licenses.record(id, body, staff.userId);
+  }
+
+  @Post(":id/licenses/:licenseId/verify")
+  @RequiresAccess("counterparty.license_verify")
+  async verifyLicense(
+    @Param("id") id: string,
+    @Param("licenseId") licenseId: string,
+    @Body() body: VerifyCounterpartyLicenseInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    await this.assertLicenseBelongsTo(id, licenseId);
+    return this.licenses.verify(licenseId, body, staff.userId);
+  }
+
+  @Post(":id/licenses/:licenseId/withdraw")
+  @RequiresAccess("counterparty.license_withdraw")
+  async withdrawLicense(
+    @Param("id") id: string,
+    @Param("licenseId") licenseId: string,
+    @Body() body: WithdrawCounterpartyLicenseInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    await this.assertLicenseBelongsTo(id, licenseId);
+    return this.licenses.withdraw(licenseId, body, staff.userId);
+  }
+
+  @Get(":id/licenses")
+  listLicenses(@Param("id") id: string) {
+    return this.licenses.list(id);
+  }
+
+  private async assertLicenseBelongsTo(counterpartyId: string, licenseId: string) {
+    const { licenses } = await this.licenses.list(counterpartyId);
+    if (!licenses.some((l) => l.id === licenseId)) throw new NotFoundException(`Licence "${licenseId}" not found.`);
   }
 
   @Get()
