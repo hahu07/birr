@@ -308,6 +308,14 @@ model User {
   /// lets staff managers spot dormant staff accounts. Null until the next sign-in.
   lastSignInAt                DateTime?
   mfaSecretEncrypted          String?
+  /// The 30-second step of the last two-factor code accepted (security
+  /// review, 2026-11-17): a code is accepted once, never again in its window.
+  mfaLastUsedStep             Int?
+  /// Sessions issued before this are refused (security review, 2026-11-17):
+  /// set when the password is reset or two-factor is reset, so anyone
+  /// already signed in elsewhere is signed out. Null: every unexpired
+  /// session is valid.
+  sessionsValidFrom           DateTime?
   // Real password auth for the Founder Portal — see
   // apps/backend/src/common/auth/session.ts. passwordHash is nullable to
   // accommodate any future non-password-auth users (e.g. an eventual
@@ -315,6 +323,10 @@ model User {
   // sign-ups created through FoundersService.signUp().
   username                    String?    @unique
   passwordHash                String?
+  // Since 2026-11-17 (security review) this and passwordResetToken hold
+  // a SHA-256 hash of the emailed token (hashToken in
+  // common/auth/token-hash.ts), never the token itself, so a database
+  // read or backup can't be used to verify or reset an account.
   // Self-service sign-up email verification. Set on signUp(), nulled out
   // once verifyEmail() consumes it — a single active token per user is
   // enough for this use case (no separate token table), same inline-token

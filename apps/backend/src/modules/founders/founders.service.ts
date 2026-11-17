@@ -1,3 +1,5 @@
+import { claimSignInCode } from "../../common/auth/mfa-claims";
+import { hashToken } from "../../common/auth/token-hash";
 import { EmailField, IdField, LongTextField, NameField, SecretField, TextField } from "../../common/validation/fields";
 import { FIELD_LIMITS } from "@birr/shared";
 import { CountryCode } from "../../common/validation/country-code";
@@ -201,7 +203,7 @@ export class FoundersService {
           fullName: input.fullName,
           username: input.username,
           passwordHash,
-          verificationToken: token,
+          verificationToken: hashToken(token),
           verificationTokenExpiresAt: expiresAt,
         },
       });
@@ -267,7 +269,7 @@ export class FoundersService {
     const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_VALIDITY_HOURS * 60 * 60 * 1000);
     await prisma.user.update({
       where: { id: userId },
-      data: { verificationToken: token, verificationTokenExpiresAt: expiresAt },
+      data: { verificationToken: hashToken(token), verificationTokenExpiresAt: expiresAt },
     });
 
     const verifyLink = `${process.env.BACKEND_URL ?? "http://localhost:4000"}/founders/verify-email?token=${token}`;
@@ -303,7 +305,7 @@ export class FoundersService {
       const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_VALIDITY_HOURS * 60 * 60 * 1000);
       await prisma.user.update({
         where: { id: user.id },
-        data: { passwordResetToken: token, passwordResetTokenExpiresAt: expiresAt },
+        data: { passwordResetToken: hashToken(token), passwordResetTokenExpiresAt: expiresAt },
       });
 
       const portalUrl = process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000";
@@ -331,7 +333,7 @@ export class FoundersService {
       throw new BadRequestException(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
     }
 
-    const user = await prisma.user.findUnique({ where: { passwordResetToken: input.token } });
+    const user = await prisma.user.findUnique({ where: { passwordResetToken: hashToken(input.token) } });
     if (!user || !user.passwordResetTokenExpiresAt || user.passwordResetTokenExpiresAt < new Date()) {
       throw new BadRequestException("This password reset link is invalid or has expired — request a new one.");
     }
@@ -340,7 +342,9 @@ export class FoundersService {
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
-        data: { passwordHash, passwordResetToken: null, passwordResetTokenExpiresAt: null },
+        // Ends every session already open (security review, 2026-11-17):
+        // whoever had the old password is signed out too.
+        data: { passwordHash, passwordResetToken: null, passwordResetTokenExpiresAt: null, sessionsValidFrom: new Date() },
       });
       await tx.auditLog.create({
         data: {
@@ -396,17 +400,7 @@ export class FoundersService {
     if (!user.mfaEnabled || !user.mfaSecretEncrypted) {
       throw new BadRequestException("MFA is not enabled for this account.");
     }
-    const secret = this.encryption.decrypt(user.mfaSecretEncrypted);
-    if (this.mfa.verifyCode(secret, code)) return;
-
-    const unusedCodes = await prisma.mfaBackupCode.findMany({ where: { userId, usedAt: null } });
-    for (const candidate of unusedCodes) {
-      if (await this.mfa.compareBackupCode(code, candidate.codeHash)) {
-        await prisma.mfaBackupCode.update({ where: { id: candidate.id }, data: { usedAt: new Date() } });
-        return;
-      }
-    }
-    throw new UnauthorizedException("Incorrect code.");
+    await claimSignInCode(this.mfa, userId, this.encryption.decrypt(user.mfaSecretEncrypted), code);
   }
 
   /**
@@ -499,13 +493,15 @@ export class FoundersService {
     if (!user.mfaEnabled) {
       throw new BadRequestException(`${user.fullName} has no two-factor authentication enrolled — nothing to reset.`);
     }
-    await tx.user.update({ where: { id: userId }, data: { mfaEnabled: false, mfaSecretEncrypted: null } });
+    // Ends every session already open (security review, 2026-11-17): a reset
+    // usually means a lost or stolen device.
+    await tx.user.update({ where: { id: userId }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaLastUsedStep: null, sessionsValidFrom: new Date() } });
     await tx.mfaBackupCode.deleteMany({ where: { userId } });
     return { userId, fullName: user.fullName };
   }
 
   async verifyEmail(token: string) {
-    const user = await prisma.user.findUnique({ where: { verificationToken: token } });
+    const user = await prisma.user.findUnique({ where: { verificationToken: hashToken(token) } });
     if (!user) {
       throw new NotFoundException("Invalid or already-used verification link.");
     }

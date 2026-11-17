@@ -11,10 +11,11 @@ how it was shown, and where it was fixed.
 | 1 | Critical | Two-factor could be skipped with a password alone | Fixed (urgent PR) |
 | 2 | High | Any staff member could take a founder's or co-founder's seat | Fixed (urgent PR) |
 | 3 | High | Behind a proxy, every visitor would share one IP address | Fixed (urgent PR); set `TRUST_PROXY_HOPS` at deploy |
-| 4 | Medium | No security headers on the web app (clickjacking) | Second PR |
-| 5 | Medium | Sessions survive a password or two-factor reset | Second PR |
-| 6 | Medium | Reset and verification tokens are stored as typed | Second PR |
-| 7 | Low | A two-factor code can be used twice within ~90 seconds | Second PR |
+| 4 | Medium | No security headers on the web app (clickjacking) | Fixed (second PR) |
+| 5 | Medium | Sessions survive a password or two-factor reset | Fixed (second PR) |
+| 6 | Medium | Reset and verification tokens are stored as typed | Fixed (second PR) |
+| 7 | Low | A two-factor code can be used twice within ~90 seconds | Fixed (second PR) |
+| 8 | Info | Next.js 16.4.3 has a moderate advisory | Not reachable here; take 16.4.5 at the next update |
 
 ### 1. Two-factor could be skipped (critical)
 
@@ -74,11 +75,21 @@ when it's unset, and it's on the deploy checklist.
 Nothing stopped another site from showing Ops Console pages in a hidden
 frame and tricking a signed-in staff member into clicking "Approve".
 
+**Fixed:** every page sends `X-Frame-Options: DENY` and
+`frame-ancestors 'none'`, plus `nosniff`, a strict referrer policy, a
+permissions policy and, in production, HSTS (`apps/web/next.config.mjs`).
+Checked on `/ops/sign-in`, `/` and `/zakah`. Paystack checkout is a
+redirect, not a frame, so it isn't affected.
+
 ### 5. Sessions survive a password or two-factor reset (medium)
 
 Sessions last 7 days and nothing ends them early. Resetting a password,
 or having two-factor reset, leaves anyone already signed in still signed
 in. (Suspending staff does take effect at once.)
+
+**Fixed:** `users.sessionsValidFrom`. A password reset, a staff or founder
+two-factor reset, and the emergency two-factor reset set it to now. Both
+portals refuse a session issued before it (`sessionStillValid`).
 
 ### 6. Reset and verification tokens are stored as typed (medium)
 
@@ -86,11 +97,35 @@ in. (Suspending staff does take effect at once.)
 Anyone who can read the database or a backup could reset any account.
 Monthly-giving manage links already store only a hash.
 
+**Fixed:** both are stored as a SHA-256 hash (`common/auth/token-hash.ts`).
+The migration hashed the outstanding ones too, so links already emailed
+still work. Invitation tokens stay as they are, because a founder's
+"copy link" needs the link itself; finding 2 limits who can see one.
+
 ### 7. A two-factor code can be used twice (low)
 
 A code is accepted for its ±30-second window, and nothing records that
 it was used. Someone who sees a code being typed could use it again
 within about 90 seconds (they would still need the password).
+
+**Fixed:** sign-in records the 30-second step of the code it accepts
+(`users.mfaLastUsedStep`) and refuses a code from that step or earlier.
+A backup code is now claimed in one write, so two requests sent at the
+same moment can't both use it (`common/auth/mfa-claims.ts`).
+
+### 8. Next.js advisory (info)
+
+The dependency audit shows no high or critical advisories (18 moderate,
+5 low, mostly in libraries underneath). One is in Next.js 16.4.3: "Information
+disclosure across root params when a 'use cache' function is called
+through unstable_cache()". Birr uses neither feature, so it can't be
+reached here, but 16.4.5 fixes it and should be taken at the next update.
+
+## Follow-on, not security
+
+`AuditLogsService.exportChain()` loads the whole audit trail into memory
+at once (70,500 rows in the dev database). It should page through the
+chain before production grows large.
 
 ## Checked and sound
 

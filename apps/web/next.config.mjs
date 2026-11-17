@@ -13,8 +13,25 @@ try {
   // No root .env — the environment is configured some other way.
 }
 
+// Security headers on every page (security review, 2026-11-17). Most
+// important: no other site may show these pages in a frame, so nobody can
+// put the Ops Console in a hidden frame and trick a signed-in staff
+// member into clicking "Approve" (clickjacking). HSTS only in production,
+// where the site is served over HTTPS.
+const securityHeaders = [
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  ...(process.env.NODE_ENV === "production" ? [{ key: "Strict-Transport-Security", value: "max-age=31536000" }] : []),
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
   // Founder-facing and Ops Console surfaces are merged into this one
   // deployment (see the founder-portal/ops-console merge plan) but stay
   // logically separate inside it: app/(founder) and app/ops are distinct

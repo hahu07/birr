@@ -52,13 +52,23 @@ export class MfaService {
    * `!== null`, not truthiness.
    */
   verifyCode(secretBase32: string, code: string): boolean {
+    return this.matchedStep(secretBase32, code) !== null;
+  }
+
+  /**
+   * The 30-second step a correct code belongs to, or null if it's wrong.
+   * Sign-in records the step used (claimTotpStep) so the same code can't
+   * sign in twice within its window (security review, 2026-11-17).
+   */
+  matchedStep(secretBase32: string, code: string): number | null {
     const totp = new OTPAuth.TOTP({
       algorithm: "SHA1",
       digits: 6,
       period: 30,
       secret: OTPAuth.Secret.fromBase32(secretBase32),
     });
-    return totp.validate({ token: code, window: 1 }) !== null;
+    const delta = totp.validate({ token: code, window: 1 });
+    return delta === null ? null : totp.counter() + delta;
   }
 
   /** Plaintext — caller shows these to the staff member exactly once and hashes them for storage via hashBackupCodes(). */

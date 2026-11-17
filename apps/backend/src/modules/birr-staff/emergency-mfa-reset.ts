@@ -79,7 +79,7 @@ export async function emergencyMfaReset(input: EmergencyMfaResetInput): Promise<
   if (!input.execute) return { executed: false, summary };
 
   await prisma.$transaction(async (tx) => {
-    await tx.user.update({ where: { id: target.user.id }, data: { mfaEnabled: false, mfaSecretEncrypted: null } });
+    await tx.user.update({ where: { id: target.user.id }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaLastUsedStep: null, sessionsValidFrom: new Date() } });
     await tx.mfaBackupCode.deleteMany({ where: { userId: target.user.id } });
     await tx.auditLog.create({
       data: {

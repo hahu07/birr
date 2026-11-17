@@ -1,5 +1,6 @@
+import { claimSignInCode } from "../../common/auth/mfa-claims";
 import { EmailField, SecretField } from "../../common/validation/fields";
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { prisma, Prisma, BirrStaffRole } from "@birr/db";
 import { verifyUserPassword } from "../../common/auth/password-auth";
 import { EncryptionService } from "../../common/settings/encryption.service";
@@ -174,17 +175,7 @@ export class BirrStaffService {
     if (!user.mfaEnabled || !user.mfaSecretEncrypted) {
       throw new BadRequestException("MFA is not enabled for this account.");
     }
-    const secret = this.encryption.decrypt(user.mfaSecretEncrypted);
-    if (this.mfa.verifyCode(secret, code)) return;
-
-    const unusedCodes = await prisma.mfaBackupCode.findMany({ where: { userId, usedAt: null } });
-    for (const candidate of unusedCodes) {
-      if (await this.mfa.compareBackupCode(code, candidate.codeHash)) {
-        await prisma.mfaBackupCode.update({ where: { id: candidate.id }, data: { usedAt: new Date() } });
-        return;
-      }
-    }
-    throw new UnauthorizedException("Incorrect code.");
+    await claimSignInCode(this.mfa, userId, this.encryption.decrypt(user.mfaSecretEncrypted), code);
   }
 
   /**
@@ -281,7 +272,9 @@ export class BirrStaffService {
     if (!staff.user.mfaEnabled) {
       throw new BadRequestException(`${staff.user.fullName} has no two-factor authentication enrolled — nothing to reset.`);
     }
-    await tx.user.update({ where: { id: staff.userId }, data: { mfaEnabled: false, mfaSecretEncrypted: null } });
+    // Ends every session already open (security review, 2026-11-17): a reset
+    // usually means a lost or stolen device.
+    await tx.user.update({ where: { id: staff.userId }, data: { mfaEnabled: false, mfaSecretEncrypted: null, mfaLastUsedStep: null, sessionsValidFrom: new Date() } });
     await tx.mfaBackupCode.deleteMany({ where: { userId: staff.userId } });
     return { userId: staff.userId, fullName: staff.user.fullName };
   }

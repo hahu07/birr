@@ -916,6 +916,12 @@ an email, "call me" as a phone):
   the API (1 for Render or nginx), or every visitor shares one IP for rate
   limits, WhatsApp code limits, the AML network review and deed evidence.
   Never higher than the real number.
+- **Hardening (second PR):** security headers on every web page (no
+  framing, `next.config.mjs`); `users.sessionsValidFrom` ends every older
+  session on a password reset or any two-factor reset; reset and
+  verification tokens are stored only as a SHA-256 hash (`hashToken`); a
+  two-factor code signs in once (`users.mfaLastUsedStep`) and a backup code
+  is claimed in one write (`claimSignInCode`).
 
 **Update, 2026-11-16 — every scheduled job is watched, and backups are
 real.** The five scheduled jobs (monthly giving, Paystack reconciliation,
