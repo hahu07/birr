@@ -18,6 +18,7 @@ import { BeneficiariesModule } from "./modules/beneficiaries/beneficiaries.modul
 import { FounderRequestsModule } from "./modules/founder-requests/founder-requests.module";
 import { InvestmentsModule } from "./modules/investments/investments.module";
 import { CounterpartiesModule } from "./modules/counterparties/counterparties.module";
+import { ClinicWaqfsModule } from "./modules/clinic-waqfs/clinic-waqfs.module";
 import { WaqfProceedsModule } from "./modules/waqf-proceeds/waqf-proceeds.module";
 import { DistributionsModule } from "./modules/distributions/distributions.module";
 import { GovernedActionsModule } from "./modules/governed-actions/governed-actions.module";
@@ -76,6 +77,7 @@ import { SessionAuthGuard } from "./common/guards/session-auth.guard";
     FounderRequestsModule,
     InvestmentsModule,
     CounterpartiesModule,
+    ClinicWaqfsModule,
     WaqfProceedsModule,
     DistributionsModule,
     GovernedActionsModule,

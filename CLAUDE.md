@@ -1028,6 +1028,28 @@ Slice 1, healthcare operator vetting (built):
   registering a clinic operator needs that role or a Roles & Access
   change.
 
+Slice 2, the clinic waqf itself (built, `modules/clinic-waqfs`):
+- **`ClinicWaqf`:** created as a draft by a Mutawalli Officer
+  (`clinic_waqf.manage`). It's established only by the governed
+  `clinic_waqf.establish` (checker: Board of Trustees only), and only
+  once a deed version is approved. Once established it can't be
+  un-established or deleted, and its web address never changes
+  (triggers).
+- **`ClinicWaqfDeed`, versioned:** a Mutawalli Officer drafts a version
+  (the standard wording, `clinic-waqf-deed.ts`, is a **draft** for Legal
+  and the Shariah Supervisory Board). The governed
+  `clinic_waqf.deed_approve` (checker: Shariah board member only) names
+  the text's hash, and approving it supersedes the previous version. A
+  version's wording never changes; the database recomputes its sha256.
+  At most one approved version and one open draft per clinic.
+- **Ledger (`ClinicLedgerService`):** every account belongs to the
+  endowment or the running fund. At commit, the database refuses any
+  entry that doesn't balance within each pot, so money never moves
+  between them. The endowment's income is booked straight into the
+  running fund (4100). Append-only.
+- **Ops Console:** Clinic Waqfs (list, create, deed versions, both
+  proposals, the ledger by pot). Gifts come in slice 3.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

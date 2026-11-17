@@ -1,4 +1,5 @@
 import { SettingsService } from "../../common/settings/settings.service";
+import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
 import { prisma, Beneficiary, Investment, Distribution, BirrStaffRole } from "@birr/db";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
@@ -170,6 +171,7 @@ describe("GovernedActionsService", () => {
     zakahRefundsService,
     zakahFitrService,
     new FounderSuccessionService(notificationsService, new SettingsService(new EncryptionService())),
+    new ClinicWaqfsService(),
   );
 
   const governedActionIds: string[] = [];
@@ -2998,6 +3000,85 @@ describe("GovernedActionsService", () => {
   // governedActionIds: an approved zakah row references its governed
   // action (ON DELETE RESTRICT), and both zakah tables are append-only, so
   // these fixtures stay behind — harmless, per zakah.service.spec.ts.
+  // clinic_waqf.deed_approve / clinic_waqf.establish (2026-11-17). Maker
+  // mutawalli_officer (makerUserId); the deed's checker is a Shariah board
+  // member only (beneficiaryCheckerUserId), establishing's the Board only
+  // (boardCheckerUserId). Clinic waqfs and their deeds are never deleted,
+  // so these fixtures stay behind and their actions aren't cleaned up.
+  describe("clinic waqf", () => {
+    const clinics = new ClinicWaqfsService();
+    const newClinic = () =>
+      clinics.create(
+        { name: "Governed Test Clinic", slug: `ga-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
+        makerUserId,
+      );
+    const proposeDeed = (deed: { id: string; textHash: string }) =>
+      service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+
+    // The checker's role is enforced by PermissionGuard on POST
+    // /governed-actions/:id/decide, from these grants.
+    test("only a Shariah board member may approve a deed, and only the Board may establish", async () => {
+      const checkers = async (key: string) =>
+        (
+          await prisma.rolePermission.findMany({
+            where: { permission: { key }, canChecker: true },
+            select: { role: { select: { key: true } } },
+          })
+        ).map((g) => g.role.key);
+      expect(await checkers("clinic_waqf.deed_approve")).toEqual(["shariah_board_member"]);
+      expect(await checkers("clinic_waqf.establish")).toEqual(["board_of_trustees"]);
+    });
+
+    test("clinic_waqf.deed_approve: approving makes it the live version; a later version supersedes it", async () => {
+      const clinic = await newClinic();
+      const v1 = await clinics.draftDeed(clinic.id, { text: "First wording." }, makerUserId);
+      const action = await proposeDeed(v1);
+      await service.decide({ governedActionId: action.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+
+      expect(await prisma.clinicWaqfDeed.findUniqueOrThrow({ where: { id: v1.id } })).toMatchObject({ status: "approved", approvedActionId: action.id });
+      const logs = await prisma.auditLog.findMany({ where: { entityId: v1.id, action: "clinic_waqf_deed.approved" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0].actorUserId).toBe(beneficiaryCheckerUserId);
+
+      const v2 = await clinics.draftDeed(clinic.id, { text: "Second wording." }, makerUserId);
+      const second = await proposeDeed(v2);
+      await expect(proposeDeed(v2)).rejects.toThrow(ConflictException);
+      await service.decide({ governedActionId: second.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+      expect((await prisma.clinicWaqfDeed.findUniqueOrThrow({ where: { id: v1.id } })).status).toBe("superseded");
+      expect((await prisma.clinicWaqfDeed.findUniqueOrThrow({ where: { id: v2.id } })).status).toBe("approved");
+    });
+
+    test("clinic_waqf.establish: refused before a deed is approved, then established for good", async () => {
+      const clinic = await newClinic();
+      await expect(
+        service.propose({ permissionKey: "clinic_waqf.establish", payload: { clinicWaqfId: clinic.id }, makerUserId }),
+      ).rejects.toThrow(/no approved deed/);
+
+      const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
+      await service.decide({ governedActionId: (await proposeDeed(deed)).id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+
+      const action = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { clinicWaqfId: clinic.id }, makerUserId });
+      await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true });
+
+      expect(await prisma.clinicWaqf.findUniqueOrThrow({ where: { id: clinic.id } })).toMatchObject({
+        status: "established",
+        establishedActionId: action.id,
+      });
+      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "clinic_waqf.established" } })).toBe(1);
+      await expect(
+        service.propose({ permissionKey: "clinic_waqf.establish", payload: { clinicWaqfId: clinic.id }, makerUserId }),
+      ).rejects.toThrow(/already established/);
+    });
+
+    test("the database refuses whoever proposed establishing a clinic waqf as its checker", async () => {
+      const clinic = await newClinic();
+      const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
+      await service.decide({ governedActionId: (await proposeDeed(deed)).id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+      const action = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { clinicWaqfId: clinic.id }, makerUserId });
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+    });
+  });
+
   describe("zakah", () => {
     const run = Date.now().toString(36);
     let n = 0;
