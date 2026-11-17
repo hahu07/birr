@@ -1,4 +1,6 @@
 import { SettingsService } from "../../common/settings/settings.service";
+import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
+import { ClinicLedgerService } from "../clinic-waqfs/clinic-ledger.service";
 import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
 import { prisma, Beneficiary, Investment, Distribution, BirrStaffRole } from "@birr/db";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
@@ -172,6 +174,7 @@ describe("GovernedActionsService", () => {
     zakahFitrService,
     new FounderSuccessionService(notificationsService, new SettingsService(new EncryptionService())),
     new ClinicWaqfsService(),
+    new ClinicAssetsService(new ClinicLedgerService()),
   );
 
   const governedActionIds: string[] = [];
@@ -3076,6 +3079,123 @@ describe("GovernedActionsService", () => {
       await service.decide({ governedActionId: (await proposeDeed(deed)).id, checkerUserId: beneficiaryCheckerUserId, approve: true });
       const action = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { clinicWaqfId: clinic.id }, makerUserId });
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+    });
+  });
+
+  // clinic_waqf.asset_add / clinic_waqf.asset_dispose (slice 5a). Maker
+  // mutawalli_officer (makerUserId), checker the Board (boardCheckerUserId).
+  // Assets and the ledger are never deleted, so these fixtures stay behind.
+  describe("clinic waqf assets", () => {
+    const clinics = new ClinicWaqfsService();
+    const assets = new ClinicAssetsService(new ClinicLedgerService());
+
+    async function establishedClinic() {
+      const clinic = await clinics.create(
+        { name: "Asset Test Clinic", slug: `asset-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
+        makerUserId,
+      );
+      const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
+      const approveDeed = await service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+      await service.decide({ governedActionId: approveDeed.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+      const establish = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { clinicWaqfId: clinic.id }, makerUserId });
+      await service.decide({ governedActionId: establish.id, checkerUserId: boardCheckerUserId, approve: true });
+      return clinic;
+    }
+
+    const land = (clinicWaqfId: string) =>
+      assets.record(
+        clinicWaqfId,
+        { kind: "land", name: "Plot at Bodija", value: "45000000", valuationNote: "Valued by a registered estate valuer; C of O inspected.", donorName: "The Adeyemi family", acquiredOn: "2026-11-01" },
+        makerUserId,
+      );
+
+    const lines = async (sourceId: string, source: "asset_added" | "asset_disposed") =>
+      (await prisma.clinicJournalEntry.findMany({ where: { source, sourceId }, include: { lines: { include: { ledgerAccount: true } } } }))
+        .flatMap((e) => e.lines)
+        .map((l) => [l.ledgerAccount.code, l.debit.toFixed(2), l.credit.toFixed(2)])
+        .sort();
+
+    test("only the Board approves adding or disposing of a clinic asset", async () => {
+      for (const key of ["clinic_waqf.asset_add", "clinic_waqf.asset_dispose"]) {
+        const grants = await prisma.rolePermission.findMany({ where: { permission: { key }, canChecker: true }, select: { role: { select: { key: true } } } });
+        expect(grants.map((g) => g.role.key)).toEqual(["board_of_trustees"]);
+      }
+    });
+
+    test("a gift in kind joins the endowment at its valuation once the Board approves, booked once", async () => {
+      const clinic = await establishedClinic();
+      const asset = await land(clinic.id);
+      expect(asset.status).toBe("proposed");
+      expect(await prisma.auditLog.count({ where: { entityId: asset.id, action: "clinic_asset.recorded" } })).toBe(1);
+
+      const action = await service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId });
+      await expect(service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId })).rejects.toThrow(ConflictException);
+      await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true });
+
+      expect(await prisma.clinicAsset.findUniqueOrThrow({ where: { id: asset.id } })).toMatchObject({ status: "active", approvalActionId: action.id });
+      expect(await lines(asset.id, "asset_added")).toEqual([
+        ["1500", "45000000.00", "0.00"],
+        ["3000", "0.00", "45000000.00"],
+      ]);
+      expect(await prisma.auditLog.count({ where: { entityId: asset.id, action: "clinic_asset.added" } })).toBe(1);
+    });
+
+    test("a rejected gift in kind is never booked", async () => {
+      const clinic = await establishedClinic();
+      const asset = await land(clinic.id);
+      const action = await service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId });
+      await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: false });
+      expect((await prisma.clinicAsset.findUniqueOrThrow({ where: { id: asset.id } })).status).toBe("rejected");
+      expect(await lines(asset.id, "asset_added")).toEqual([]);
+    });
+
+    test("not before the clinic is established", async () => {
+      const draft = await clinics.create({ name: "Draft Asset Clinic", slug: `asset-draft-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      const asset = await land(draft.id);
+      await expect(service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId })).rejects.toThrow(/isn't established/);
+    });
+
+    test("disposing of an asset takes it off the register; proceeds stay in the endowment, the loss comes off its capital", async () => {
+      const clinic = await establishedClinic();
+      const asset = await assets.record(
+        clinic.id,
+        { kind: "equipment", name: "Ultrasound machine", value: "8000000", valuationNote: "Supplier's valuation on delivery.", donorName: "A supporter", acquiredOn: "2026-10-01", serialNumber: "US-12345" },
+        makerUserId,
+      );
+      const add = await service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId });
+      await service.decide({ governedActionId: add.id, checkerUserId: boardCheckerUserId, approve: true });
+
+      await expect(
+        service.propose({ permissionKey: "clinic_waqf.asset_dispose", payload: { assetId: asset.id, disposedOn: "2026-11-10", proceeds: "abc", note: "Sold." }, makerUserId }),
+      ).rejects.toThrow(BadRequestException);
+      const payload = { assetId: asset.id, disposedOn: "2026-11-10", proceeds: "3000000", note: "Beyond repair; sold to a registered dealer for parts." };
+      const dispose = await service.propose({ permissionKey: "clinic_waqf.asset_dispose", payload, makerUserId });
+      await service.decide({ governedActionId: dispose.id, checkerUserId: boardCheckerUserId, approve: true });
+
+      expect(await prisma.clinicAsset.findUniqueOrThrow({ where: { id: asset.id } })).toMatchObject({ status: "disposed", disposalActionId: dispose.id });
+      expect(await lines(asset.id, "asset_disposed")).toEqual([
+        ["1000", "3000000.00", "0.00"],
+        ["1500", "0.00", "8000000.00"],
+        ["3000", "5000000.00", "0.00"],
+      ]);
+    });
+
+    test("the database refuses changing an asset's value, deleting it, or its maker approving it", async () => {
+      const clinic = await establishedClinic();
+      const asset = await land(clinic.id);
+      await expect(prisma.clinicAsset.update({ where: { id: asset.id }, data: { value: 1 } })).rejects.toThrow(/never change/);
+      await expect(prisma.clinicAsset.delete({ where: { id: asset.id } })).rejects.toThrow(/never deleted/);
+      await expect(prisma.clinicAsset.update({ where: { id: asset.id }, data: { status: "disposed" } })).rejects.toThrow();
+      const action = await service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId });
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+    });
+
+    test("care details can be kept up to date, and are audited", async () => {
+      const clinic = await establishedClinic();
+      const asset = await land(clinic.id);
+      const updated = await assets.updateCare(clinic.id, asset.id, { location: "Bodija, Ibadan", nextServiceDue: "2027-06-01" }, makerUserId);
+      expect(updated.location).toBe("Bodija, Ibadan");
+      expect(await prisma.auditLog.count({ where: { entityId: asset.id, action: "clinic_asset.care_updated" } })).toBe(1);
     });
   });
 

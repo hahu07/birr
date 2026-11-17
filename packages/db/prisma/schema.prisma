@@ -386,6 +386,7 @@ model User {
   clinicWaqfsCreated             ClinicWaqf[]                    @relation("ClinicWaqfCreator")
   clinicWaqfDeedsCreated         ClinicWaqfDeed[]                @relation("ClinicWaqfDeedCreator")
   clinicGiftsInitiated           ClinicGift[]                    @relation("ClinicGiftInitiator")
+  clinicAssetsRecorded           ClinicAsset[]                   @relation("ClinicAssetRecorder")
   createdInvestmentPlacements    InvestmentPlacement[]
   sentMessages                   Message[]
   mfaBackupCodes                 MfaBackupCode[]
@@ -1186,6 +1187,8 @@ model GovernedAction {
   approvedZakahRecipient    ZakahRecipient?      @relation("ZakahRecipientApproval")
   establishedClinicWaqf     ClinicWaqf?          @relation("ClinicWaqfEstablishment")
   approvedClinicWaqfDeed    ClinicWaqfDeed?      @relation("ClinicWaqfDeedApproval")
+  approvedClinicAsset       ClinicAsset?         @relation("ClinicAssetApproval")
+  disposedClinicAsset       ClinicAsset?         @relation("ClinicAssetDisposal")
 
   @@index([waqfId])
   @@index([status])
@@ -4012,6 +4015,8 @@ model ClinicWaqf {
 
   recurringGifts RecurringGift[]
 
+  assets ClinicAsset[]
+
   @@map("clinic_waqfs")
 }
 
@@ -4087,6 +4092,8 @@ enum ClinicJournalEntrySource {
   investment_income
   expense
   manual_adjustment
+  asset_added
+  asset_disposed
 }
 
 // Append-only, like every Birr ledger: a mistake is corrected with a new,
@@ -4186,4 +4193,68 @@ model ClinicGift {
   @@index([donorId])
   @@index([founderId])
   @@map("clinic_gifts")
+}
+
+// ---- Clinic waqf assets (2026-11-17, clinic slice 5a) ----
+
+enum ClinicAssetKind {
+  land
+  building
+  equipment
+  vehicle
+  other
+}
+
+enum ClinicAssetStatus {
+  proposed // recorded, waiting for the Board (clinic_waqf.asset_add)
+  active // in the endowment's register
+  rejected // the Board declined it
+  disposed // sold, scrapped or exchanged, with the Board's approval (clinic_waqf.asset_dispose)
+}
+
+// What a clinic waqf's endowment owns: its premises and lasting equipment.
+// This slice records gifts in kind (land, a building, equipment someone
+// donates); buying equipment with endowment cash comes with endowment
+// spending (slice 5b). A Mutawalli Officer records one at its independent
+// valuation; the Board of Trustees approves adding it to the endowment
+// (two-person, governed), which books it to the endowment (1500 Premises
+// and equipment / 3000 Endowment capital). Disposing of one is governed
+// the same way. What it is and what it was valued at never change; its
+// care details (room, service dates, warranty) are kept up to date by
+// staff. Never deleted (triggers).
+model ClinicAsset {
+  id               String            @id @default(uuid())
+  clinicWaqfId     String
+  clinicWaqf       ClinicWaqf        @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  kind             ClinicAssetKind
+  name             String
+  description      String?
+  // At acquisition, in naira: an independent valuation for a gift in kind.
+  value            Decimal
+  // Who valued it, and how (a valuer's report reference), or the title documents for land.
+  valuationNote    String
+  // Who gave it, as they want it recorded.
+  donorName        String?
+  acquiredOn       DateTime          @db.Date
+  serialNumber     String?
+  location         String?
+  warrantyUntil    DateTime?         @db.Date
+  lastServicedOn   DateTime?         @db.Date
+  nextServiceDue   DateTime?         @db.Date
+  status           ClinicAssetStatus @default(proposed)
+  createdByUserId  String
+  createdByUser    User              @relation("ClinicAssetRecorder", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvalActionId String?           @unique
+  approvalAction   GovernedAction?   @relation("ClinicAssetApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  disposalActionId String?           @unique
+  disposalAction   GovernedAction?   @relation("ClinicAssetDisposal", fields: [disposalActionId], references: [id], onDelete: Restrict)
+  disposedOn       DateTime?         @db.Date
+  disposalNote     String?
+  // What a sale or exchange brought into the endowment, in naira (0 if scrapped).
+  disposalProceeds Decimal?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([clinicWaqfId])
+  @@map("clinic_assets")
 }

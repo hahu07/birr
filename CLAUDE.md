@@ -1128,6 +1128,24 @@ accept it.
   used to stop the whole scheduler run at the first gift that threw. Each
   gift is now settled on its own, as charging already was.
 
+Slice 5a, the asset register (built, `ClinicAsset`,
+`ClinicAssetsService`):
+- **Gifts in kind:** a Mutawalli Officer records land, a building or
+  equipment given in kind, at its independent valuation (and title, for
+  land). The governed `clinic_waqf.asset_add` (checker: Board of Trustees)
+  adds it to the endowment, booking 1500/3000. Only an established clinic
+  waqf can take one.
+- **Disposal:** `clinic_waqf.asset_dispose` (checker: the Board). The
+  asset leaves at its booked value, proceeds go to endowment cash, and
+  the difference comes off endowment capital, all within the endowment.
+  Whether disposing of land or a building (istibdal) also needs the
+  Shariah Supervisory Board is still their open question.
+- **Rules:** what an asset is and its value never change (a trigger);
+  care details (room, serial, warranty, service dates) stay editable and
+  audited. Never deleted.
+- **Next:** buying equipment with endowment cash, and building work paid
+  by stage, come with endowment spending (slice 5b).
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

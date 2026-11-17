@@ -4,6 +4,7 @@ import { ClinicWaqfsService } from "./clinic-waqfs.service";
 import { ClinicLedgerService } from "./clinic-ledger.service";
 import { ClinicGiftsController } from "./clinic-gifts.controller";
 import { ClinicGiftsService } from "./clinic-gifts.service";
+import { ClinicAssetsService } from "./clinic-assets.service";
 import { ResendClinicReceiptEmailAdapter } from "./clinic-receipt-email.adapter";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { SettingsModule } from "../../common/settings/settings.module";
@@ -18,7 +19,7 @@ import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-cor
   imports: [SettingsModule, WhatsAppOtpModule, VaultsModule, RecurringGiftsCoreModule],
   controllers: [ClinicWaqfsController, ClinicGiftsController],
   // PaystackAdapter: each consuming module provides its own instance, as VaultsModule and ZakahModule do.
-  providers: [ClinicWaqfsService, ClinicLedgerService, ClinicGiftsService, ResendClinicReceiptEmailAdapter, PaystackAdapter],
-  exports: [ClinicWaqfsService, ClinicLedgerService, ClinicGiftsService],
+  providers: [ClinicWaqfsService, ClinicLedgerService, ClinicGiftsService, ClinicAssetsService, ResendClinicReceiptEmailAdapter, PaystackAdapter],
+  exports: [ClinicWaqfsService, ClinicLedgerService, ClinicGiftsService, ClinicAssetsService],
 })
 export class ClinicWaqfsModule {}

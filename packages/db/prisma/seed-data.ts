@@ -117,6 +117,10 @@ const governedPermissions = [
   // Child Clinic. The Board alone approves establishing one; a Shariah
   // board member alone approves each version of its deed.
   { key: "clinic_waqf.establish", category: "clinic", requiresMakerChecker: true, description: "Establish a clinic waqf, after its deed is approved. Once established it's a waqf for ever." },
+  // Clinic waqf assets (2026-11-17, slice 5a): adding a gift in kind to the
+  // endowment, and disposing of an asset, both approved by the Board.
+  { key: "clinic_waqf.asset_add", category: "clinic", requiresMakerChecker: true, description: "Add land, a building or equipment given in kind to a clinic waqf's endowment, at its valuation." },
+  { key: "clinic_waqf.asset_dispose", category: "clinic", requiresMakerChecker: true, description: "Dispose of a clinic waqf's asset: sell, scrap or exchange it, with any proceeds kept in the endowment." },
   { key: "clinic_waqf.deed_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a version of a clinic waqf's deed, the wording supporters accept when they endow." },
   { key: "zakah.ruleset_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a draft zakah ruleset, making it the version the zakah calculator applies." },
   { key: "zakah.metal_price_set", category: "zakah", requiresMakerChecker: true, description: "Set the gold and silver prices that fix the zakah nisab in Naira." },
@@ -288,6 +292,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "blog.publish": { canMaker: true },
     "zakah.ruleset_approve": { canMaker: true },
     "clinic_waqf.establish": { canMaker: true },
+    "clinic_waqf.asset_add": { canMaker: true },
+    "clinic_waqf.asset_dispose": { canMaker: true },
     "clinic_waqf.deed_approve": { canMaker: true },
     "zakah.distribution_approve": { canMaker: true },
     "zakah.distribution_mark_paid": { canMaker: true },
@@ -305,6 +311,8 @@ const governedRolePermissions: Record<string, Grants> = {
   // except zakah.refund_approve, which the Board approves.
   board_of_trustees: {
     "clinic_waqf.establish": { canChecker: true },
+    "clinic_waqf.asset_add": { canChecker: true },
+    "clinic_waqf.asset_dispose": { canChecker: true },
     "asset.dispose": { canChecker: true },
     "distribution.approve": { canChecker: true },
     "waqf.milestone_complete": { canChecker: true },

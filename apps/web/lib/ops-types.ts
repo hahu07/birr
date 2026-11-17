@@ -1682,3 +1682,25 @@ export interface ClinicGiftRow {
   deed: { version: number } | null;
   donor: { id: string; fullName: string | null } | null;
 }
+
+// GET /clinic-waqfs/:id/assets (2026-11-17, clinic slice 5a).
+export interface ClinicAsset {
+  id: string;
+  kind: "land" | "building" | "equipment" | "vehicle" | "other";
+  name: string;
+  description: string | null;
+  value: string;
+  valuationNote: string;
+  donorName: string | null;
+  acquiredOn: string;
+  serialNumber: string | null;
+  location: string | null;
+  warrantyUntil: string | null;
+  lastServicedOn: string | null;
+  nextServiceDue: string | null;
+  status: "proposed" | "active" | "rejected" | "disposed";
+  disposedOn: string | null;
+  disposalNote: string | null;
+  disposalProceeds: string | null;
+  createdByUser: { id: string; fullName: string };
+}

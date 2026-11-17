@@ -7,6 +7,7 @@ import {
 } from "./clinic-waqfs.service";
 import { ClinicLedgerService } from "./clinic-ledger.service";
 import { ClinicGiftsService } from "./clinic-gifts.service";
+import { ClinicAssetsService, RecordClinicAssetInput, UpdateClinicAssetCareInput } from "./clinic-assets.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 
@@ -20,6 +21,7 @@ export class ClinicWaqfsController {
     private readonly service: ClinicWaqfsService,
     private readonly ledger: ClinicLedgerService,
     private readonly gifts: ClinicGiftsService,
+    private readonly assets: ClinicAssetsService,
   ) {}
 
   @Post()
@@ -59,6 +61,31 @@ export class ClinicWaqfsController {
   @Get(":id/ledger")
   balances(@Param("id") id: string, @Query("currency") currency?: string) {
     return this.ledger.balances(id, currency || "NGN");
+  }
+
+  // The asset register (slice 5a). Adding one to the endowment and
+  // disposing of one go through POST /governed-actions
+  // (clinic_waqf.asset_add, clinic_waqf.asset_dispose).
+  @Post(":id/assets")
+  @RequiresAccess("clinic_waqf.manage")
+  recordAsset(@Param("id") id: string, @Body() body: RecordClinicAssetInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.assets.record(id, body, staff.userId);
+  }
+
+  @Put(":id/assets/:assetId")
+  @RequiresAccess("clinic_waqf.manage")
+  updateAssetCare(
+    @Param("id") id: string,
+    @Param("assetId") assetId: string,
+    @Body() body: UpdateClinicAssetCareInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.assets.updateCare(id, assetId, body, staff.userId);
+  }
+
+  @Get(":id/assets")
+  listAssets(@Param("id") id: string) {
+    return this.assets.list(id);
   }
 
   @Get(":id/gifts")
