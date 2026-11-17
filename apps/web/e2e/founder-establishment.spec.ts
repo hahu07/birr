@@ -9,6 +9,7 @@
 // gate, no automated screening — see CLAUDE.md's 2026-09-15 updates),
 // so this spec exercises exactly those two real gates and nothing else.
 import { test, expect } from "@playwright/test";
+import { createHash, randomBytes } from "crypto";
 import { prisma } from "@birr/db";
 
 const BACKEND_URL = process.env.E2E_BACKEND_URL ?? `http://localhost:${process.env.E2E_BACKEND_PORT ?? "4150"}`;
@@ -71,7 +72,13 @@ test.describe("founder self-service establishment", () => {
     // by the time this runs, and waits for it otherwise); the DB
     // assertions below confirm the backend side of it, so nothing about
     // dropping the fleeting intermediate text check loses real coverage.
-    await page.goto(`${BACKEND_URL}/founders/verify-email?token=${user.verificationToken}`);
+    // The database holds only a hash of the emailed token (security
+    // review, 2026-11-17), and this suite can't read the email: stand in
+    // for the inbox with a token of our own, stored the way the server
+    // stores one, then follow the real link.
+    const emailedToken = randomBytes(32).toString("hex");
+    await prisma.user.update({ where: { id: user.id }, data: { verificationToken: createHash("sha256").update(emailedToken).digest("hex") } });
+    await page.goto(`${BACKEND_URL}/founders/verify-email?token=${emailedToken}`);
     await page.waitForURL("/", { timeout: 10_000 });
 
     const verifiedUser = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });

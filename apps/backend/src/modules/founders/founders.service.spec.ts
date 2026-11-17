@@ -1,3 +1,4 @@
+import { hashToken } from "../../common/auth/token-hash";
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { compare } from "bcryptjs";
@@ -39,6 +40,11 @@ const testEmail = (label: string) => `${label}-${runId}@example.test`;
 // test labels, with the runId suffix still guaranteeing per-run
 // uniqueness.
 const testUsername = (label: string) => `${label.replace(/[^a-z0-9]/gi, "").slice(0, 20)}${runId.slice(0, 8)}`;
+
+// Tokens are stored hashed (security review, 2026-11-17), so a test reads
+// the token from the emailed link, as a person would.
+const tokenIn = (link: string) => new URL(link).searchParams.get("token")!;
+const lastLinkTo = (sent: { to: string; link: string }[], to: string) => [...sent].reverse().find((e) => e.to === to)!.link;
 
 class FakeEmailAdapter {
   sent: { to: string; link: string }[] = [];
@@ -105,9 +111,9 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
     const membership = await prisma.founderMembership.findFirst({ where: { userId } });
     expect(membership).toBeNull();
 
-    expect(emailAdapter.sent).toContainEqual(
-      expect.objectContaining({ to: email, link: expect.stringContaining(user!.verificationToken!) }),
-    );
+    const sentLink = lastLinkTo(emailAdapter.sent, email);
+    expect(user?.verificationToken).toBe(hashToken(tokenIn(sentLink)));
+    expect(sentLink).not.toContain(user!.verificationToken!);
 
     const logs = await prisma.auditLog.findMany({ where: { entityId: userId, action: "user.signed_up" } });
     expect(logs).toHaveLength(1);
@@ -215,7 +221,7 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     expect(user?.verificationToken).not.toBeNull();
 
-    await service.verifyEmail(user!.verificationToken!);
+    await service.verifyEmail(tokenIn(emailAdapter.sent[0]!.link));
 
     await expect(service.resendVerificationEmail(userId)).rejects.toThrow(BadRequestException);
   });
@@ -275,7 +281,7 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
       await prisma.user.update({ where: { id: userId }, data: { passwordResetTokenExpiresAt: new Date(Date.now() - 1000) } });
 
       await expect(
-        service.resetPassword({ token: user.passwordResetToken!, newPassword: "brand-new-password" }),
+        service.resetPassword({ token: tokenIn(lastLinkTo(emailAdapter.passwordResetSent, user.email)), newPassword: "brand-new-password" }),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -349,7 +355,7 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
     });
 
     const userBefore = await prisma.user.findUnique({ where: { id: userId } });
-    const token = userBefore!.verificationToken!;
+    const token = tokenIn(lastLinkTo(emailAdapter.sent, userBefore!.email));
 
     const result = await service.verifyEmail(token);
     expect(result.userId).toBe(userId);
@@ -378,7 +384,7 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
     });
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    const token = user!.verificationToken!;
+    const token = tokenIn(lastLinkTo(emailAdapter.sent, user!.email));
 
     await service.verifyEmail(token);
     await expect(service.verifyEmail(token)).rejects.toThrow(NotFoundException);
@@ -398,7 +404,7 @@ describe("FoundersService.signUp / login / verifyEmail", () => {
       data: { verificationTokenExpiresAt: new Date(Date.now() - 1000) },
     });
 
-    await expect(service.verifyEmail(user!.verificationToken!)).rejects.toThrow(BadRequestException);
+    await expect(service.verifyEmail(tokenIn(lastLinkTo(emailAdapter.sent, user!.email)))).rejects.toThrow(BadRequestException);
   });
 });
 
@@ -700,7 +706,7 @@ describe("FoundersService.getOnboardingStatus", () => {
 
     // State 2: email verified, WhatsApp not yet.
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    await service.verifyEmail(user!.verificationToken!);
+    await service.verifyEmail(tokenIn(lastLinkTo(emailAdapter.sent, user!.email)));
     status = await service.getOnboardingStatus(userId);
     expect(status.currentStep).toBe(1);
     expect(status.steps.emailVerified.complete).toBe(true);

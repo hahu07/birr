@@ -1,7 +1,7 @@
 import { ForbiddenException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
 import { prisma, Prisma, FounderPermissionLevel } from "@birr/db";
-import { SESSION_COOKIE_NAME, verifySessionToken } from "./session";
+import { SESSION_COOKIE_NAME, sessionStillValid, verifySessionToken } from "./session";
 
 export interface AuthenticatedUser {
   id: string;
@@ -46,7 +46,7 @@ export async function resolveUserFromSession(request: Request): Promise<Authenti
     throw new UnauthorizedException("Session expired or invalid — please sign in again.");
   }
   const user = await prisma.user.findUnique({ where: { id: payload.userId } });
-  if (!user || user.deletedAt) {
+  if (!user || user.deletedAt || !sessionStillValid(payload.issuedAt, user.sessionsValidFrom)) {
     throw new UnauthorizedException("Session expired or invalid — please sign in again.");
   }
   return { id: user.id, email: user.email, fullName: user.fullName };

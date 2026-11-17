@@ -7,7 +7,7 @@ import {
 import { Reflector } from "@nestjs/core";
 import { Request } from "express";
 import { prisma, BirrStaffRole } from "@birr/db";
-import { STAFF_SESSION_COOKIE_NAME, verifySessionToken } from "./session";
+import { STAFF_SESSION_COOKIE_NAME, sessionStillValid, verifySessionToken } from "./session";
 import { assertStaffMfa } from "../guards/mfa-exempt.decorator";
 import { ROLE_NAMES, roleNames } from "./staff-roles";
 
@@ -72,10 +72,13 @@ export async function resolveBirrStaffFromSession(
 
   const birrStaff = await prisma.birrStaff.findUnique({
     where: { userId: payload.userId },
-    include: { user: { select: { mfaEnabled: true } }, ...ROLE_NAMES },
+    include: { user: { select: { mfaEnabled: true, sessionsValidFrom: true } }, ...ROLE_NAMES },
   });
   if (!birrStaff || birrStaff.status !== "active") {
     throw new UnauthorizedException("Unknown or inactive Birr staff.");
+  }
+  if (!sessionStillValid(payload.issuedAt, birrStaff.user.sessionsValidFrom)) {
+    throw new UnauthorizedException("Session expired or invalid — please sign in again.");
   }
   // Same message SessionAuthGuard/PermissionGuard already
   // throw via assertStaffMfa, so a caller can't tell which layer caught it.

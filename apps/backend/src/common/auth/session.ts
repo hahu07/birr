@@ -15,6 +15,20 @@ const SESSION_VALIDITY = "7d";
 
 interface SessionTokenPayload {
   userId: string;
+  /** When the session was issued, in seconds (the token's iat). */
+  issuedAt: number;
+}
+
+/**
+ * Whether a session issued at `issuedAt` (seconds) still stands, given the
+ * account's sessionsValidFrom (security review, 2026-11-17): a password or
+ * two-factor reset moves it to now, ending every session issued before.
+ * Compared in whole seconds, as a token's iat is: a session issued in the
+ * same second as the reset stays valid, which only a sign-in made after it
+ * could do.
+ */
+export function sessionStillValid(issuedAt: number, sessionsValidFrom: Date | null | undefined): boolean {
+  return !sessionsValidFrom || issuedAt >= Math.floor(sessionsValidFrom.getTime() / 1000);
 }
 
 function getSecret(): string {
@@ -42,7 +56,7 @@ export function verifySessionToken(token: string): SessionTokenPayload | null {
   try {
     const decoded = jwt.verify(token, getSecret());
     if (typeof decoded === "string" || typeof decoded.userId !== "string" || decoded.purpose !== SESSION_PURPOSE) return null;
-    return { userId: decoded.userId };
+    return { userId: decoded.userId, issuedAt: typeof decoded.iat === "number" ? decoded.iat : 0 };
   } catch {
     return null;
   }

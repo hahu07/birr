@@ -5,7 +5,8 @@
 // which always returns {ok: true} and shows the same "check your email"
 // copy whether or not the address has a real account — an anti-
 // enumeration design this spec specifically proves holds), then follow
-// it with the real, DB-issued token (User.passwordResetToken — the same
+// it with a token whose hash is stored the way the server stores one (the
+// database never holds the token itself since 2026-11-17; the same
 // pattern founder-establishment.spec.ts already uses for email
 // verification's own token) to actually change the password.
 //
@@ -16,6 +17,7 @@
 // /founders/login call, to prove the new password actually works end to
 // end, not to re-test login itself.
 import { test, expect } from "@playwright/test";
+import { createHash, randomBytes } from "crypto";
 import { prisma } from "@birr/db";
 import { seedEstablishedFounder } from "./fixtures/seed";
 
@@ -44,7 +46,13 @@ test.describe("Password reset", () => {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: founder.userId } });
     expect(user.passwordResetToken).toBeTruthy();
 
-    await page.goto(`/reset-password?token=${user.passwordResetToken}`);
+    // The database holds only a hash of the emailed token (security
+    // review, 2026-11-17), and this suite can't read the email: stand in
+    // for the inbox with a token of our own, stored the way the server
+    // stores one, then follow the real link.
+    const emailedToken = randomBytes(32).toString("hex");
+    await prisma.user.update({ where: { id: founder.userId }, data: { passwordResetToken: createHash("sha256").update(emailedToken).digest("hex") } });
+    await page.goto(`/reset-password?token=${emailedToken}`);
     await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
     await page.getByLabel("New password", { exact: true }).fill(newPassword);
     await page.getByLabel("Confirm new password").fill(newPassword);

@@ -11,13 +11,13 @@ describe("session tokens", () => {
   const userId = "00000000-0000-4000-8000-000000000001";
 
   test("a full session token is a session", () => {
-    expect(verifySessionToken(signSessionToken(userId))).toEqual({ userId });
+    expect(verifySessionToken(signSessionToken(userId))).toMatchObject({ userId });
   });
 
   test("the token waiting for a two-factor code is never a session", () => {
     const pending = signMfaPendingToken(userId);
     expect(verifySessionToken(pending)).toBeNull();
-    expect(verifyMfaPendingToken(pending)).toEqual({ userId });
+    expect(verifyMfaPendingToken(pending)).toMatchObject({ userId });
   });
 
   test("a session can't stand in for the two-factor step either", () => {
