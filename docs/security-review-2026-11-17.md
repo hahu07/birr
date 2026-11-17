@@ -123,9 +123,13 @@ reached here, but 16.4.5 fixes it and should be taken at the next update.
 
 ## Follow-on, not security
 
-`AuditLogsService.exportChain()` loads the whole audit trail into memory
-at once (70,500 rows in the dev database). It should page through the
-chain before production grows large.
+`AuditLogsService.exportChain()` loaded the whole audit trail into memory
+at once (70,500 rows in the dev database), and the Ops page then parsed
+and re-encoded it in the browser. **Done, 2026-11-17:** the export now
+fixes the chain head, reads 1,000 rows at a time and streams the file
+(`planChainExport`, `streamChainExport`); the page saves it as it
+arrives. Same file shape. Checked on the dev database: 74,428 records,
+101.5 MB, in 18 seconds.
 
 ## Checked and sound
 

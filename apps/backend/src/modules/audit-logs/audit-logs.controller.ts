@@ -1,5 +1,5 @@
-import { Controller, Get, Query, Req } from "@nestjs/common";
-import type { Request } from "express";
+import { Controller, Get, Query, Req, Res } from "@nestjs/common";
+import type { Request, Response } from "express";
 import { prisma } from "@birr/db";
 import { AuditLogsService } from "./audit-logs.service";
 import { RequiresAccess } from "../../common/guards/permission.guard";
@@ -93,8 +93,13 @@ export class AuditLogsController {
 
   @Get("export")
   @RequiresAccess("audit_log.export")
-  async export(@CurrentBirrStaff() staff: AuthenticatedBirrStaff, @Query("waqfId") waqfId?: string) {
-    const result = await this.auditLogsService.exportChain(waqfId ? { waqfId } : undefined);
+  async export(@CurrentBirrStaff() staff: AuthenticatedBirrStaff, @Res() res: Response, @Query("waqfId") waqfId?: string) {
+    // Streamed a page at a time, never loaded whole (2026-11-17): see
+    // AuditLogsService.planChainExport. The plan fixes the chain head
+    // first, so this "exported" row, written next, falls after it and
+    // isn't part of the file it describes.
+    const filters = waqfId ? { waqfId } : undefined;
+    const plan = await this.auditLogsService.planChainExport(filters);
 
     await this.auditLogsService.write({
       actorType: "birr_staff",
@@ -102,10 +107,22 @@ export class AuditLogsController {
       action: "audit_logs.exported",
       entityType: "AuditLog",
       entityId: "chain",
-      after: { totalRecords: result.totalRecords, chainHeadSequence: result.chainHeadSequence },
+      after: { totalRecords: plan.totalRecords, chainHeadSequence: plan.chainHeadSequence },
     });
 
-    return result;
+    const stamp = plan.exportedAt.replace(/[:.]/g, "-");
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="birr-audit-log-export-${stamp}.json"`);
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      await this.auditLogsService.streamChainExport(res, plan, filters);
+      res.end();
+    } catch (err) {
+      // Headers are already sent, so the status can't change: cut the
+      // response off, and the half-written file fails to parse rather
+      // than passing for a complete export.
+      res.destroy(err instanceof Error ? err : new Error(String(err)));
+    }
   }
 
   @Get("verify")
