@@ -1,4 +1,5 @@
 import { SettingsService } from "../../common/settings/settings.service";
+import { ClinicPriceListsService, canonicalPriceList, priceListHash } from "../clinic-waqfs/clinic-price-lists.service";
 import { ClinicSpendingService } from "../clinic-waqfs/clinic-spending.service";
 import { ClinicInvestmentsService } from "../clinic-waqfs/clinic-investments.service";
 import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
@@ -178,6 +179,7 @@ describe("GovernedActionsService", () => {
     new ClinicWaqfsService(),
     new ClinicAssetsService(new ClinicLedgerService()),
     new ClinicSpendingService(new ClinicLedgerService()),
+    new ClinicPriceListsService(),
   );
 
   const governedActionIds: string[] = [];
@@ -3414,6 +3416,100 @@ describe("GovernedActionsService", () => {
         prisma.clinicInvestmentIncome.create({ data: { investmentId: investment.id, amount: 100, receivedOn: new Date(), bankReference: "X1", description: "Too early", recordedByUserId: makerUserId } }),
       ).rejects.toThrow(/placed/);
       await expect(prisma.clinicInvestment.delete({ where: { id: investment.id } })).rejects.toThrow(/never deleted/);
+    });
+  });
+
+  // clinic_waqf.price_list_approve (slice 6). Maker mutawalli_officer
+  // (makerUserId); checkers the Board (boardCheckerUserId) or Compliance
+  // (distributionCheckerUserId). Price lists are never deleted, so these
+  // fixtures stay behind.
+  describe("clinic waqf price lists", () => {
+    const clinics = new ClinicWaqfsService();
+    const lists = new ClinicPriceListsService();
+    const newClinic = () =>
+      clinics.create({ name: "Price List Test Clinic", slug: `ga-prices-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+    const input = (antenatal = "3500") => ({
+      services: [
+        { code: "anc-visit", name: "Antenatal visit", price: antenatal },
+        { code: "FBC", name: "Full blood count", price: "2500.5" },
+      ],
+      bands: [
+        { code: "B", name: "Low income", whoQualifies: "Household income under ₦100,000 a month", patientSharePercent: 30 },
+        { code: "A", name: "Poorest", whoQualifies: "Household income under ₦50,000 a month", patientSharePercent: 0 },
+      ],
+      monthlySubsidyCap: "2000000",
+    });
+    const propose = (list: { id: string; contentHash: string }) =>
+      service.propose({ permissionKey: "clinic_waqf.price_list_approve", payload: { priceListId: list.id, contentHash: list.contentHash }, makerUserId });
+
+    test("only the Board or Compliance may approve a price list", async () => {
+      const grants = await prisma.rolePermission.findMany({
+        where: { permission: { key: "clinic_waqf.price_list_approve" } },
+        select: { canMaker: true, canChecker: true, role: { select: { key: true } } },
+      });
+      expect(grants.filter((g) => g.canChecker).map((g) => g.role.key).sort()).toEqual(["board_of_trustees", "compliance_officer"]);
+      expect(grants.filter((g) => g.canMaker).map((g) => g.role.key)).toEqual(["mutawalli_officer"]);
+    });
+
+    test("the stored list is canonical, so the same list always has the same hash", () => {
+      const a = canonicalPriceList(input());
+      const b = canonicalPriceList({ ...input(), services: [...input().services].reverse() });
+      expect(a.text).toBe(b.text);
+      expect(a.content.services.map((s) => s.code)).toEqual(["ANC-VISIT", "FBC"]);
+      expect(a.content.services[1].price).toBe("2500.50");
+      expect(() => canonicalPriceList({ ...input(), bands: [...input().bands, { ...input().bands[0], code: "b" }] })).toThrow(/used twice/);
+      expect(() => canonicalPriceList(input("12.345"))).toThrow(/naira and kobo/);
+      expect(() => canonicalPriceList({ ...input(), services: [{ code: "X Y", name: "Bad", price: "1" }] })).toThrow(/capital letters/);
+    });
+
+    test("approving makes a version live and supersedes the last; one draft at a time", async () => {
+      const clinic = await newClinic();
+      expect(await lists.current(prisma, clinic.id)).toBeNull();
+      const v1 = await lists.draft(clinic.id, input(), makerUserId);
+      await expect(lists.draft(clinic.id, input(), makerUserId)).rejects.toThrow(ConflictException);
+      expect(await prisma.auditLog.count({ where: { entityId: v1.id, action: "clinic_price_list.drafted" } })).toBe(1);
+
+      const action = await propose(v1);
+      await expect(propose(v1)).rejects.toThrow(ConflictException);
+      await expect(lists.discard(clinic.id, v1.id, makerUserId)).rejects.toThrow(/waiting for approval/);
+      await service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: true });
+      expect(await prisma.clinicPriceList.findUniqueOrThrow({ where: { id: v1.id } })).toMatchObject({ status: "approved", approvedActionId: action.id });
+      const logs = await prisma.auditLog.findMany({ where: { entityId: v1.id, action: "clinic_price_list.approved" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0].actorUserId).toBe(distributionCheckerUserId);
+      expect((await lists.current(prisma, clinic.id))?.version).toBe(1);
+
+      const v2 = await lists.draft(clinic.id, input("4000"), makerUserId);
+      expect(v2.version).toBe(2);
+      await service.decide({ governedActionId: (await propose(v2)).id, checkerUserId: boardCheckerUserId, approve: true });
+      expect((await prisma.clinicPriceList.findUniqueOrThrow({ where: { id: v1.id } })).status).toBe("superseded");
+      const live = await lists.current(prisma, clinic.id);
+      expect(live?.version).toBe(2);
+      expect(live?.content.services.find((s) => s.code === "ANC-VISIT")?.price).toBe("4000.00");
+
+      const v3 = await lists.draft(clinic.id, input("4500"), makerUserId);
+      await lists.discard(clinic.id, v3.id, makerUserId);
+      expect((await prisma.clinicPriceList.findUniqueOrThrow({ where: { id: v3.id } })).status).toBe("discarded");
+      await expect(propose(v3)).rejects.toThrow(/discarded, not a draft/);
+    });
+
+    test("a proposal must name the hash of the list as drafted", async () => {
+      const clinic = await newClinic();
+      const v1 = await lists.draft(clinic.id, input(), makerUserId);
+      await expect(propose({ id: v1.id, contentHash: "0".repeat(64) })).rejects.toThrow(/changed since it was shown/);
+    });
+
+    test("the database refuses edited content, a wrong hash, deletion, and the maker as checker", async () => {
+      const clinic = await newClinic();
+      const v1 = await lists.draft(clinic.id, input(), makerUserId);
+      await expect(prisma.clinicPriceList.update({ where: { id: v1.id }, data: { content: "{}", contentHash: priceListHash("{}") } })).rejects.toThrow();
+      await expect(
+        prisma.clinicPriceList.create({ data: { clinicWaqfId: clinic.id, version: 99, content: "{}", contentHash: "0".repeat(64), createdByUserId: makerUserId } }),
+      ).rejects.toThrow();
+      await expect(prisma.clinicPriceList.delete({ where: { id: v1.id } })).rejects.toThrow();
+      await expect(prisma.clinicPriceList.update({ where: { id: v1.id }, data: { status: "approved" } })).rejects.toThrow();
+      const action = await propose(v1);
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
     });
   });
 

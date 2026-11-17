@@ -17,6 +17,7 @@ import {
   RecordClinicInvestmentReturnInput,
   ScreenClinicInvestmentInput,
 } from "./clinic-investments.service";
+import { ClinicPriceListsService, DraftClinicPriceListInput } from "./clinic-price-lists.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 
@@ -33,6 +34,7 @@ export class ClinicWaqfsController {
     private readonly assets: ClinicAssetsService,
     private readonly spending: ClinicSpendingService,
     private readonly investments: ClinicInvestmentsService,
+    private readonly priceLists: ClinicPriceListsService,
   ) {}
 
   @Post()
@@ -178,6 +180,25 @@ export class ClinicWaqfsController {
   @Get(":id/investments")
   listInvestments(@Param("id") id: string) {
     return this.investments.list(id);
+  }
+
+  // The price list and subsidy bands (slice 6), versioned. Approving a
+  // version goes through POST /governed-actions (clinic_waqf.price_list_approve).
+  @Post(":id/price-lists")
+  @RequiresAccess("clinic_waqf.manage")
+  draftPriceList(@Param("id") id: string, @Body() body: DraftClinicPriceListInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.priceLists.draft(id, body, staff.userId);
+  }
+
+  @Post(":id/price-lists/:priceListId/discard")
+  @RequiresAccess("clinic_waqf.manage")
+  discardPriceList(@Param("id") id: string, @Param("priceListId") priceListId: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.priceLists.discard(id, priceListId, staff.userId);
+  }
+
+  @Get(":id/price-lists")
+  listPriceLists(@Param("id") id: string) {
+    return this.priceLists.list(id);
   }
 
   @Get(":id/gifts")

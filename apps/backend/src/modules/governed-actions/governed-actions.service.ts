@@ -34,6 +34,7 @@ import { FounderSuccessionService } from "../founder-succession/founder-successi
 import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
 import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
 import { ClinicSpendingService } from "../clinic-waqfs/clinic-spending.service";
+import { ClinicPriceListsService } from "../clinic-waqfs/clinic-price-lists.service";
 import {
   assertPermissionChangesAllowed,
   checkPermissionChanges,
@@ -388,6 +389,7 @@ export class GovernedActionsService {
     private readonly clinicWaqfsService: ClinicWaqfsService,
     private readonly clinicAssetsService: ClinicAssetsService,
     private readonly clinicSpendingService: ClinicSpendingService,
+    private readonly clinicPriceListsService: ClinicPriceListsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       // ---- The clinic waqf (2026-11-17). A Shariah board member alone
@@ -503,6 +505,21 @@ export class GovernedActionsService {
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicSpendingService.markPaid(payload, ctx.governedActionId, tx);
             return { auditAction: "clinic_spend.paid", entityType: "ClinicSpend", entityId: after.id, before, after };
+          },
+        },
+      ],
+      // Clinic waqf price list and subsidy bands (slice 6): the Board or
+      // Compliance approves each version, naming its content's hash.
+      [
+        "clinic_waqf.price_list_approve",
+        {
+          validatePropose: (payload) => this.clinicPriceListsService.validateProposal(payload),
+          checkDuplicate: (payload) => this.clinicPriceListsService.checkDuplicate(payload),
+          describePayload: (payload) => this.clinicPriceListsService.describe(payload),
+          describeCurrentState: (payload) => this.clinicPriceListsService.currentState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicPriceListsService.approve(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_price_list.approved", entityType: "ClinicPriceList", entityId: after.id, before, after };
           },
         },
       ],
