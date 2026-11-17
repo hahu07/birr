@@ -192,13 +192,21 @@ export class ProgrammeGiftsService {
   }
 
   /** Established clinic waqfs, for a Founder choosing where to give. */
-  /** Established programmes of one product, for its public list (e.g. /clinics). */
-  publicProgrammes(product: WaqfProgrammeProduct) {
-    return prisma.waqfProgramme.findMany({
-      where: { status: "established", product },
-      orderBy: { establishedAt: "asc" },
-      select: { name: true, slug: true, city: true, description: true },
-    });
+  /**
+   * Established programmes of one product, for its public list (e.g. /clinics)
+   * and a Founder's Clinic support page. `available` is the same test the
+   * giving page uses: an approved deed, and the subaccount set.
+   */
+  async publicProgrammes(product: WaqfProgrammeProduct) {
+    const [programmes, subaccount] = await Promise.all([
+      prisma.waqfProgramme.findMany({
+        where: { status: "established", product },
+        orderBy: { establishedAt: "asc" },
+        select: { name: true, slug: true, city: true, description: true, deeds: { where: { status: "approved" }, select: { id: true } } },
+      }),
+      this.subaccount(),
+    ]);
+    return programmes.map(({ deeds, ...p }) => ({ ...p, available: deeds.length > 0 && subaccount !== undefined }));
   }
 
   /** What the public giving page needs: the clinic, whether it's taking gifts, and the deed to accept. */

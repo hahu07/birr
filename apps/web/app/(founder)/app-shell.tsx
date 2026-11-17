@@ -94,6 +94,8 @@ const PUBLIC_ROUTES = [
   "/sign-up",
   "/verified",
   "/vaults",
+  // The public list of clinic waqfs (2026-11-17); each clinic's page is under "/clinics/".
+  "/clinics",
   "/forgot-password",
   "/reset-password",
   "/privacy-policy",

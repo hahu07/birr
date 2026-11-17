@@ -100,6 +100,7 @@ const NAV_LINKS = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#waqf-types", label: "Waqf funds" },
   { href: "/vaults", label: "Support a cause" },
+  { href: "/clinics", label: "Clinics" },
   { href: "/zakah", label: "Zakah" },
   { href: "/#governance", label: "Governance" },
   { href: "/blog", label: "Learn" },
@@ -124,12 +125,13 @@ export function SiteHeader({ tone = "light" }: { tone?: "light" | "dark" }) {
           <IconMark className="h-9 w-9" />
           <span className={`text-lg font-semibold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}>Birr</span>
         </Link>
-        <nav className="hidden items-center gap-8 md:flex" aria-label="Page sections">
+        {/* Seven links don't fit beside the logo and buttons below lg (they wrapped and ran into the logo at 800px). */}
+        <nav className="hidden items-center gap-6 lg:flex xl:gap-8" aria-label="Page sections">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className={`text-sm font-medium ${dark ? "text-primary-100/80 hover:text-white" : "text-slate-600 hover:text-slate-900"}`}
+              className={`whitespace-nowrap text-sm font-medium ${dark ? "text-primary-100/80 hover:text-white" : "text-slate-600 hover:text-slate-900"}`}
             >
               {link.label}
             </Link>
@@ -177,6 +179,7 @@ const FOOTER_PLATFORM_LINKS = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#waqf-types", label: "Waqf funds" },
   { href: "/vaults", label: "Support a cause" },
+  { href: "/clinics", label: "Clinics" },
   { href: "/zakah", label: "Zakah" },
   { href: "/#governance", label: "Governance" },
   { href: "/blog", label: "Learn" },
