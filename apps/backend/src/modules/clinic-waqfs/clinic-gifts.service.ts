@@ -9,7 +9,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { IsBoolean, IsEnum, IsIn, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
-import { ClinicPot, ContributionProvider, IdType, prisma, Prisma, type RecurringGift } from "@birr/db";
+import { WaqfProgrammePot, ContributionProvider, IdType, prisma, Prisma, type RecurringGift } from "@birr/db";
 import { processingFeeCover } from "@birr/zakah";
 import { FIELD_LIMITS } from "@birr/shared";
 import { type GiverContact, hasContact, lockGiverContact, moneyText, paystackEmailForGift, whatsAppNotice } from "../../common/giving/giver-contact";
@@ -34,7 +34,7 @@ export const CLINIC_FOUNDER_FIRST_GIFT_MINIMUM_NGN = "250000";
 const VERIFY_MIN_INTERVAL_MS = 5_000;
 
 /** Where each pot's gift is booked: its cash account, and what it's credited to. */
-const GIFT_ACCOUNTS: Record<ClinicPot, { cash: string; credit: string }> = {
+const GIFT_ACCOUNTS: Record<WaqfProgrammePot, { cash: string; credit: string }> = {
   endowment: { cash: "1000", credit: "3000" }, // Endowment cash / Endowment capital
   running: { cash: "1100", credit: "4000" }, // Running fund cash / Gifts to the running fund
 };
@@ -44,7 +44,7 @@ export class InitiateClinicGiftInput {
   slug!: string;
 
   @IsIn(["endowment", "running"])
-  pot!: ClinicPot;
+  pot!: WaqfProgrammePot;
 
   // Public route: MaxDecimal is a blunt sanity ceiling, not a business rule.
   @IsNumberString()
@@ -112,7 +112,7 @@ export class InitiateFounderClinicGiftInput {
   slug!: string;
 
   @IsIn(["endowment", "running"])
-  pot!: ClinicPot;
+  pot!: WaqfProgrammePot;
 
   @IsNumberString()
   @MaxDecimal(MAX_PUBLIC_CONTRIBUTION_AMOUNT)
@@ -193,7 +193,7 @@ export class ClinicGiftsService {
 
   /** Established clinic waqfs, for a Founder choosing where to give. */
   publicClinics() {
-    return prisma.clinicWaqf.findMany({
+    return prisma.waqfProgramme.findMany({
       where: { status: "established" },
       orderBy: { establishedAt: "asc" },
       select: { name: true, slug: true, city: true, description: true },
@@ -202,7 +202,7 @@ export class ClinicGiftsService {
 
   /** What the public giving page needs: the clinic, whether it's taking gifts, and the deed to accept. */
   async givingTerms(slug: string) {
-    const clinic = await prisma.clinicWaqf.findUnique({
+    const clinic = await prisma.waqfProgramme.findUnique({
       where: { slug },
       include: { deeds: { where: { status: "approved" }, select: { id: true, version: true, text: true, textHash: true } } },
     });
@@ -223,7 +223,7 @@ export class ClinicGiftsService {
     if (monthly?.type === "setup" && !input.donorEmail && !input.donorWhatsApp) {
       throw new BadRequestException("Giving monthly needs your email or WhatsApp number, for receipts and to manage or cancel it.");
     }
-    const { clinic, subaccount } = await this.openClinic(scheduled ? { id: scheduled.clinicWaqfId! } : { slug: input.slug });
+    const { clinic, subaccount } = await this.openClinic(scheduled ? { id: scheduled.programmeId! } : { slug: input.slug });
     const what = this.whatIsGiven(scheduled, input, CLINIC_PUBLIC_MINIMUM_NGN);
     const deed = await this.acceptedDeed(clinic, what);
     const feeCover = this.feeCoverFor(what.amount, what.coverFee);
@@ -254,17 +254,17 @@ export class ClinicGiftsService {
       const recurringLink = await this.linkMonthly(tx, monthly, id, {
         email: contact.email,
         whatsappNumber: contact.whatsapp,
-        clinicWaqfId: clinic.id,
+        programmeId: clinic.id,
         pot: what.pot,
         deed,
         amount: what.amount,
         coverFee: what.coverFee,
       });
       if (recurringLink.gift) recurringGift = recurringLink.gift;
-      const created = await tx.clinicGift.create({
+      const created = await tx.programmeGift.create({
         data: {
           id,
-          clinicWaqfId: clinic.id,
+          programmeId: clinic.id,
           pot: what.pot,
           donorId: donor?.id,
           contactEmail: contact.email,
@@ -295,7 +295,7 @@ export class ClinicGiftsService {
    */
   async founderGivingTerms(founderId: string, slug: string) {
     const terms = await this.givingTerms(slug);
-    const clinic = await prisma.clinicWaqf.findUniqueOrThrow({ where: { slug } });
+    const clinic = await prisma.waqfProgramme.findUniqueOrThrow({ where: { slug } });
     return { ...terms, minimumAmount: await this.founderMinimum(founderId, clinic.id) };
   }
 
@@ -314,7 +314,7 @@ export class ClinicGiftsService {
     await assertFounderVerified(prisma, founderId);
     const giverUserId = userId ?? (await findPrimaryContactMembership(prisma, founderId))?.userId;
     if (!giverUserId) throw new BadRequestException("This Founder has no active primary contact to give.");
-    const { clinic, subaccount } = await this.openClinic(scheduled ? { id: scheduled.clinicWaqfId! } : { slug: input.slug });
+    const { clinic, subaccount } = await this.openClinic(scheduled ? { id: scheduled.programmeId! } : { slug: input.slug });
     const what = this.whatIsGiven(scheduled, input, await this.founderMinimum(founderId, clinic.id));
     const deed = await this.acceptedDeed(clinic, what);
     const feeCover = this.feeCoverFor(what.amount, what.coverFee);
@@ -329,17 +329,17 @@ export class ClinicGiftsService {
         email: user.email,
         whatsappNumber: null,
         founderId,
-        clinicWaqfId: clinic.id,
+        programmeId: clinic.id,
         pot: what.pot,
         deed,
         amount: what.amount,
         coverFee: what.coverFee,
       });
       if (recurringLink.gift) recurringGift = recurringLink.gift;
-      const created = await tx.clinicGift.create({
+      const created = await tx.programmeGift.create({
         data: {
           id,
-          clinicWaqfId: clinic.id,
+          programmeId: clinic.id,
           pot: what.pot,
           founderId,
           initiatedByUserId: giverUserId,
@@ -367,16 +367,16 @@ export class ClinicGiftsService {
   /** The amount, pot, fee choice and deed: from the monthly gift for a later month, else from the giver's form. */
   private whatIsGiven(
     scheduled: RecurringGift | null,
-    input: { pot: ClinicPot; amount: string; coverFee: boolean; deedId?: string; deedTextHash?: string },
+    input: { pot: WaqfProgrammePot; amount: string; coverFee: boolean; deedId?: string; deedTextHash?: string },
     minimum: string,
   ) {
     if (scheduled) {
       return {
-        pot: scheduled.clinicPot!,
+        pot: scheduled.programmePot!,
         amount: new Prisma.Decimal(scheduled.amount),
         coverFee: scheduled.coverFee,
-        deedId: scheduled.clinicDeedId ?? undefined,
-        deedTextHash: scheduled.clinicDeedTextHash ?? undefined,
+        deedId: scheduled.programmeDeedId ?? undefined,
+        deedTextHash: scheduled.programmeDeedTextHash ?? undefined,
       };
     }
     return { pot: input.pot, amount: this.checkedAmount(input.amount, minimum), coverFee: input.coverFee, deedId: input.deedId, deedTextHash: input.deedTextHash };
@@ -395,8 +395,8 @@ export class ClinicGiftsService {
       email: string | null;
       whatsappNumber: string | null;
       founderId?: string;
-      clinicWaqfId: string;
-      pot: ClinicPot;
+      programmeId: string;
+      pot: WaqfProgrammePot;
       deed: { id: string; textHash: string } | null;
       amount: Prisma.Decimal;
       coverFee: boolean;
@@ -411,24 +411,24 @@ export class ClinicGiftsService {
       return { recurringGiftId: monthly.gift.id, recurringPeriod: null };
     }
     const gift = await this.recurring.createSetup(tx, {
-      kind: "clinic",
+      kind: "programme",
       email: setup.email,
       whatsappNumber: setup.whatsappNumber,
       amount: setup.amount,
       reference,
       founderId: setup.founderId,
       coverFee: setup.coverFee,
-      clinicWaqfId: setup.clinicWaqfId,
-      clinicPot: setup.pot,
-      clinicDeedId: setup.deed?.id,
-      clinicDeedTextHash: setup.deed?.textHash,
+      programmeId: setup.programmeId,
+      programmePot: setup.pot,
+      programmeDeedId: setup.deed?.id,
+      programmeDeedTextHash: setup.deed?.textHash,
     });
     return { recurringGiftId: gift.id, recurringPeriod: gift.nextPeriod, gift };
   }
 
   /** A monthly gift's payments, newest first (MonthlyGiftProduct.charges). */
   chargesForGift(recurringGiftId: string) {
-    return prisma.clinicGift.findMany({
+    return prisma.programmeGift.findMany({
       where: { recurringGiftId },
       orderBy: { createdAt: "desc" },
       select: { id: true, providerReference: true, amount: true, currency: true, status: true, recurringPeriod: true, createdAt: true, confirmedAt: true },
@@ -437,34 +437,34 @@ export class ClinicGiftsService {
 
   /** A Founder's gifts to every clinic waqf, newest first, and what's confirmed in each pot. */
   async listForFounder(founderId: string) {
-    const gifts = await prisma.clinicGift.findMany({
+    const gifts = await prisma.programmeGift.findMany({
       where: { founderId },
       orderBy: { createdAt: "desc" },
-      include: { clinicWaqf: { select: { name: true, slug: true, city: true } }, deed: { select: { version: true } } },
+      include: { programme: { select: { name: true, slug: true, city: true } }, deed: { select: { version: true } } },
     });
     const totals = new Map<string, { clinic: { name: string; slug: string; city: string }; endowment: Prisma.Decimal; running: Prisma.Decimal }>();
     for (const g of gifts) {
       if (g.status !== "confirmed") continue;
-      const t = totals.get(g.clinicWaqfId) ?? { clinic: g.clinicWaqf, endowment: new Prisma.Decimal(0), running: new Prisma.Decimal(0) };
+      const t = totals.get(g.programmeId) ?? { clinic: g.programme, endowment: new Prisma.Decimal(0), running: new Prisma.Decimal(0) };
       t[g.pot] = t[g.pot].plus(g.amount);
-      totals.set(g.clinicWaqfId, t);
+      totals.set(g.programmeId, t);
     }
     return {
       clinics: [...totals.values()].map((t) => ({ clinic: t.clinic, endowment: t.endowment.toFixed(2), running: t.running.toFixed(2) })),
       gifts: gifts.map((g) => ({
-        ...this.publicView(g, g.clinicWaqf),
+        ...this.publicView(g, g.programme),
         deedVersion: g.deed?.version ?? null,
       })),
     };
   }
 
-  private async founderMinimum(founderId: string, clinicWaqfId: string): Promise<string> {
-    const given = await prisma.clinicGift.count({ where: { founderId, clinicWaqfId, status: "confirmed" } });
+  private async founderMinimum(founderId: string, programmeId: string): Promise<string> {
+    const given = await prisma.programmeGift.count({ where: { founderId, programmeId, status: "confirmed" } });
     return given > 0 ? CLINIC_PUBLIC_MINIMUM_NGN : CLINIC_FOUNDER_FIRST_GIFT_MINIMUM_NGN;
   }
 
   private async openClinic(where: { slug: string } | { id: string }) {
-    const clinic = await prisma.clinicWaqf.findUnique({ where });
+    const clinic = await prisma.waqfProgramme.findUnique({ where });
     if (!clinic) throw new NotFoundException("Clinic not found.");
     if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't taking gifts yet.`);
     const subaccount = await this.subaccount();
@@ -489,9 +489,9 @@ export class ClinicGiftsService {
   }
 
   /** An endowment gift's deed: the approved version, exactly as the giver read it. */
-  private async acceptedDeed(clinic: { id: string }, input: { pot: ClinicPot; deedId?: string; deedTextHash?: string }) {
+  private async acceptedDeed(clinic: { id: string }, input: { pot: WaqfProgrammePot; deedId?: string; deedTextHash?: string }) {
     if (input.pot !== "endowment") return null;
-    const approved = await prisma.clinicWaqfDeed.findFirst({ where: { clinicWaqfId: clinic.id, status: "approved" } });
+    const approved = await prisma.waqfProgrammeDeed.findFirst({ where: { programmeId: clinic.id, status: "approved" } });
     if (!approved || approved.id !== input.deedId || approved.textHash !== input.deedTextHash) {
       throw new BadRequestException({
         statusCode: 400,
@@ -508,7 +508,7 @@ export class ClinicGiftsService {
    * charge on the monthly gift's saved card.
    */
   private async checkout(
-    gift: { id: string; amount: Prisma.Decimal; feeCover: Prisma.Decimal; contactEmail: string | null; pot: ClinicPot; currency: string; status: string; createdAt: Date; confirmedAt: Date | null },
+    gift: { id: string; amount: Prisma.Decimal; feeCover: Prisma.Decimal; contactEmail: string | null; pot: WaqfProgrammePot; currency: string; status: string; createdAt: Date; confirmedAt: Date | null },
     clinic: { name: string; slug: string },
     subaccount: string,
     actor: GiftActor,
@@ -547,7 +547,7 @@ export class ClinicGiftsService {
     } catch (err) {
       // Don't leave a reservation counting toward the giver's threshold.
       await prisma.$transaction(async (tx) => {
-        const failed = await tx.clinicGift.update({ where: { id }, data: { status: "failed" } });
+        const failed = await tx.programmeGift.update({ where: { id }, data: { status: "failed" } });
         await this.audit(tx, "clinic_gift.failed", id, actor, gift, failed);
       });
       throw err;
@@ -561,7 +561,7 @@ export class ClinicGiftsService {
     }
     if (result.providerReference === id) return { gift: this.publicView(gift, clinic), clientPayload: result.clientPayload };
     const withReference = await prisma.$transaction(async (tx) => {
-      const updated = await tx.clinicGift.update({ where: { id }, data: { providerReference: result.providerReference } });
+      const updated = await tx.programmeGift.update({ where: { id }, data: { providerReference: result.providerReference } });
       await this.audit(tx, "clinic_gift.payment_created", id, actor, gift, updated);
       return updated;
     });
@@ -576,7 +576,7 @@ export class ClinicGiftsService {
     if (provider !== "paystack") return null;
     const result = await this.paystack.verifyAndParseWebhook(rawBody, headers);
     if (!result) throw new UnauthorizedException("Invalid webhook signature.");
-    const gift = await prisma.clinicGift.findUnique({ where: { providerReference: result.providerReference }, select: { id: true } });
+    const gift = await prisma.programmeGift.findUnique({ where: { providerReference: result.providerReference }, select: { id: true } });
     if (!gift) return null;
     return this.applyProviderOutcome(result.providerReference, result.status, result.providerPaymentId);
   }
@@ -587,7 +587,7 @@ export class ClinicGiftsService {
    * lost. Confirms only when Paystack charged exactly the gift plus fee cover.
    */
   async reconcile(id: string) {
-    const gift = await prisma.clinicGift.findUnique({ where: { id } });
+    const gift = await prisma.programmeGift.findUnique({ where: { id } });
     if (!gift) return null;
     const last = this.lastVerifiedAt.get(id) ?? 0;
     if (gift.status === "pending" && this.paystack.verifyPayment && Date.now() - last >= VERIFY_MIN_INTERVAL_MS) {
@@ -598,7 +598,7 @@ export class ClinicGiftsService {
         const matches = verified.amountMinorUnits === expectedMinor && verified.currency === gift.currency;
         if (verified.status === "confirmed" && !matches) {
           this.logger.error(
-            `ClinicGift "${id}" verify mismatch: Paystack reports ${verified.amountMinorUnits} ${verified.currency}, ` +
+            `ProgrammeGift "${id}" verify mismatch: Paystack reports ${verified.amountMinorUnits} ${verified.currency}, ` +
               `record is ${expectedMinor} ${gift.currency} — left pending for review.`,
           );
         } else {
@@ -615,12 +615,12 @@ export class ClinicGiftsService {
    * ledger's unique (source, sourceId) is the second guard.
    */
   private async applyProviderOutcome(providerReference: string, status: "confirmed" | "failed", providerPaymentId?: string) {
-    const gift = await prisma.clinicGift.findUnique({ where: { providerReference }, include: { clinicWaqf: true, deed: { select: { version: true } } } });
+    const gift = await prisma.programmeGift.findUnique({ where: { providerReference }, include: { programme: true, deed: { select: { version: true } } } });
     if (!gift) return null;
-    if (gift.status !== "pending") return this.publicView(gift, gift.clinicWaqf);
+    if (gift.status !== "pending") return this.publicView(gift, gift.programme);
 
     const outcome = await prisma.$transaction(async (tx) => {
-      const claim = await tx.clinicGift.updateMany({
+      const claim = await tx.programmeGift.updateMany({
         where: { id: gift.id, status: "pending" },
         data:
           status === "confirmed"
@@ -628,12 +628,12 @@ export class ClinicGiftsService {
             : { status: "failed" },
       });
       if (claim.count !== 1) return null;
-      const after = await tx.clinicGift.findUniqueOrThrow({ where: { id: gift.id } });
+      const after = await tx.programmeGift.findUniqueOrThrow({ where: { id: gift.id } });
       if (status === "confirmed") {
         // Only the gift itself: the fee cover settled to Birr's main account.
         const accounts = GIFT_ACCOUNTS[after.pot];
         await this.ledger.post(tx, {
-          clinicWaqfId: after.clinicWaqfId,
+          programmeId: after.programmeId,
           description: after.pot === "endowment" ? "Gift to the endowment (Paystack)" : "Gift to the running fund (Paystack)",
           currency: after.currency,
           source: "gift",
@@ -645,7 +645,7 @@ export class ClinicGiftsService {
           ],
         });
       }
-      const { clinicWaqf: _clinic, deed: _deed, ...before } = gift;
+      const { programme: _clinic, deed: _deed, ...before } = gift;
       // The webhook or a return page settles it, not the giver, so a Founder's gift is logged against their user.
       const actor: GiftActor =
         gift.founderId && gift.initiatedByUserId
@@ -662,13 +662,13 @@ export class ClinicGiftsService {
         this.logger.error(`Failed to save the card for monthly clinic gift "${outcome.recurringGiftId}":`, err instanceof Error ? err.stack : String(err));
       });
     }
-    if (status === "confirmed") this.sendReceipts(outcome, gift.clinicWaqf.name, gift.deed?.version ?? null);
-    return this.publicView(outcome, gift.clinicWaqf);
+    if (status === "confirmed") this.sendReceipts(outcome, gift.programme.name, gift.deed?.version ?? null);
+    return this.publicView(outcome, gift.programme);
   }
 
   /** Only to what was given with this gift; never holds up the confirmation. */
   private sendReceipts(
-    gift: { id: string; pot: ClinicPot; amount: Prisma.Decimal; feeCover: Prisma.Decimal; contactEmail: string | null; contactWhatsApp: string | null },
+    gift: { id: string; pot: WaqfProgrammePot; amount: Prisma.Decimal; feeCover: Prisma.Decimal; contactEmail: string | null; contactWhatsApp: string | null },
     clinicName: string,
     deedVersion: number | null,
   ) {
@@ -707,7 +707,7 @@ export class ClinicGiftsService {
           ? { actorType: "public_donor" as const, actorDonorId: actor.donorId ?? undefined }
           : { actorType: "founder_user" as const, actorUserId: actor.userId, actorFounderId: actor.founderId }),
         action,
-        entityType: "ClinicGift",
+        entityType: "ProgrammeGift",
         entityId,
         before: (before ?? undefined) as any,
         after: after as any,
@@ -718,7 +718,7 @@ export class ClinicGiftsService {
   // The id travels in the giver's return URL, so only an allow-list of
   // fields: never the giver, contacts, IP or settlement account.
   private publicView(
-    g: { id: string; pot: ClinicPot; amount: Prisma.Decimal; feeCover: Prisma.Decimal; currency: string; status: string; createdAt: Date; confirmedAt: Date | null },
+    g: { id: string; pot: WaqfProgrammePot; amount: Prisma.Decimal; feeCover: Prisma.Decimal; currency: string; status: string; createdAt: Date; confirmedAt: Date | null },
     clinic: { name: string; slug: string },
   ) {
     return {
@@ -735,18 +735,18 @@ export class ClinicGiftsService {
   }
 
   async findPublicStatus(id: string) {
-    const gift = await prisma.clinicGift.findUnique({
+    const gift = await prisma.programmeGift.findUnique({
       where: { id },
-      include: { clinicWaqf: { select: { name: true, slug: true } }, recurringGift: { select: { status: true } } },
+      include: { programme: { select: { name: true, slug: true } }, recurringGift: { select: { status: true } } },
     });
     // Whether this was the first payment of a monthly gift, for the thank-you page.
-    return gift ? { ...this.publicView(gift, gift.clinicWaqf), recurringGift: gift.recurringGift } : null;
+    return gift ? { ...this.publicView(gift, gift.programme), recurringGift: gift.recurringGift } : null;
   }
 
   /** Staff: a clinic waqf's gifts, newest first, with who gave where known. */
-  listForClinic(clinicWaqfId: string) {
-    return prisma.clinicGift.findMany({
-      where: { clinicWaqfId },
+  listForClinic(programmeId: string) {
+    return prisma.programmeGift.findMany({
+      where: { programmeId },
       orderBy: { createdAt: "desc" },
       take: 200,
       select: {

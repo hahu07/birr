@@ -63,19 +63,19 @@ function recentMonths(n: number) {
 export class ClinicReportsService {
   constructor(private readonly ledger: ClinicLedgerService) {}
 
-  async record(clinicWaqfId: string, input: RecordClinicReportInput, actorUserId: string) {
+  async record(programmeId: string, input: RecordClinicReportInput, actorUserId: string) {
     if (input.period > lagosToday().slice(0, 7)) throw new BadRequestException("A report can't be for a month that hasn't started.");
     return prisma.$transaction(async (tx) => {
-      const clinic = await tx.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-      if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
+      const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
+      if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
       if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't established yet.`);
-      const existing = await tx.clinicMonthlyReport.findFirst({ where: { clinicWaqfId, period: input.period, status: { in: ["draft", "published"] } } });
+      const existing = await tx.clinicMonthlyReport.findFirst({ where: { programmeId, period: input.period, status: { in: ["draft", "published"] } } });
       if (existing) {
         throw new ConflictException(
           existing.status === "published" ? "That month's figures are already published." : "That month already has a draft. Publish or discard it first.",
         );
       }
-      const report = await tx.clinicMonthlyReport.create({ data: { clinicWaqfId, ...input, recordedByUserId: actorUserId } });
+      const report = await tx.clinicMonthlyReport.create({ data: { programmeId, ...input, recordedByUserId: actorUserId } });
       await tx.auditLog.create({
         data: { actorType: "birr_staff", actorUserId, action: "clinic_report.recorded", entityType: "ClinicMonthlyReport", entityId: report.id, after: report as any },
       });
@@ -83,19 +83,19 @@ export class ClinicReportsService {
     });
   }
 
-  publish(clinicWaqfId: string, reportId: string, actorUserId: string) {
-    return this.decide(clinicWaqfId, reportId, actorUserId, "published");
+  publish(programmeId: string, reportId: string, actorUserId: string) {
+    return this.decide(programmeId, reportId, actorUserId, "published");
   }
 
-  discard(clinicWaqfId: string, reportId: string, actorUserId: string) {
-    return this.decide(clinicWaqfId, reportId, actorUserId, "discarded");
+  discard(programmeId: string, reportId: string, actorUserId: string) {
+    return this.decide(programmeId, reportId, actorUserId, "discarded");
   }
 
-  private async decide(clinicWaqfId: string, reportId: string, actorUserId: string, status: "published" | "discarded") {
+  private async decide(programmeId: string, reportId: string, actorUserId: string, status: "published" | "discarded") {
     return prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "clinic_monthly_reports" WHERE "id" = ${reportId} FOR UPDATE`;
       const before = await tx.clinicMonthlyReport.findUnique({ where: { id: reportId } });
-      if (!before || before.clinicWaqfId !== clinicWaqfId) throw new NotFoundException(`Report "${reportId}" not found.`);
+      if (!before || before.programmeId !== programmeId) throw new NotFoundException(`Report "${reportId}" not found.`);
       if (before.status !== "draft") throw new BadRequestException(`This report is already ${before.status}.`);
       if (status === "published" && before.recordedByUserId === actorUserId) {
         throw new ForbiddenException("You recorded these figures, so someone else must check and publish them.");
@@ -111,9 +111,9 @@ export class ClinicReportsService {
     });
   }
 
-  list(clinicWaqfId: string) {
+  list(programmeId: string) {
     return prisma.clinicMonthlyReport.findMany({
-      where: { clinicWaqfId },
+      where: { programmeId },
       orderBy: [{ period: "desc" }, { createdAt: "desc" }],
       include: { recordedByUser: userName, publishedByUser: userName },
     });
@@ -121,7 +121,7 @@ export class ClinicReportsService {
 
   /** The public report. Only established clinics have one. */
   async publicReport(slug: string) {
-    const clinic = await prisma.clinicWaqf.findUnique({ where: { slug } });
+    const clinic = await prisma.waqfProgramme.findUnique({ where: { slug } });
     if (!clinic || clinic.status !== "established") throw new NotFoundException("Clinic not found.");
     const balances = await this.ledger.balances(clinic.id);
     const all = [...balances.endowment, ...balances.running];
@@ -130,22 +130,22 @@ export class ClinicReportsService {
     const month = lagosToday().slice(0, 7);
     // Lagos is UTC+1 all year.
     const monthStart = new Date(`${month}-01T00:00:00+01:00`);
-    const thisMonth = await prisma.clinicJournalEntryLine.aggregate({
-      where: { journalEntry: { clinicWaqfId: clinic.id, currency: "NGN", entryDate: { gte: monthStart } }, ledgerAccount: { code: { in: ["4000", "4100"] } } },
+    const thisMonth = await prisma.programmeJournalEntryLine.aggregate({
+      where: { journalEntry: { programmeId: clinic.id, currency: "NGN", entryDate: { gte: monthStart } }, ledgerAccount: { code: { in: ["4000", "4100"] } } },
       _sum: { credit: true, debit: true },
     });
     const runningThisMonth = (thisMonth._sum.credit ?? zero()).minus(thisMonth._sum.debit ?? 0);
 
     const zakahPaid = await prisma.clinicClaim.aggregate({
-      where: { clinicWaqfId: clinic.id, zakahDistribution: { status: "paid" } },
+      where: { programmeId: clinic.id, zakahDistribution: { status: "paid" } },
       _sum: { zakahAmount: true },
     });
 
     const months = recentMonths(MONTHS_SHOWN);
     const [reports, claims] = await Promise.all([
-      prisma.clinicMonthlyReport.findMany({ where: { clinicWaqfId: clinic.id, status: "published", period: { in: months } } }),
+      prisma.clinicMonthlyReport.findMany({ where: { programmeId: clinic.id, status: "published", period: { in: months } } }),
       prisma.clinicClaim.findMany({
-        where: { clinicWaqfId: clinic.id, status: { in: ["approved", "paid"] }, period: { in: months } },
+        where: { programmeId: clinic.id, status: { in: ["approved", "paid"] }, period: { in: months } },
         include: { priceList: { select: { content: true } }, lines: { select: { visitReference: true, serviceCode: true, subsidy: true, zakahEligible: true } } },
       }),
     ]);

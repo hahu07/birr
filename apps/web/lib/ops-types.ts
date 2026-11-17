@@ -1625,9 +1625,9 @@ export interface ZakahStructuringReview {
 
 // The clinic waqf (2026-11-17): a waqf Birr establishes for the Mother &
 // Child Clinic. GET /clinic-waqfs, /clinic-waqfs/:id, /clinic-waqfs/:id/ledger.
-export interface ClinicWaqfDeed {
+export interface WaqfProgrammeDeed {
   id: string;
-  clinicWaqfId: string;
+  programmeId: string;
   version: number;
   text: string;
   textHash: string;
@@ -1638,7 +1638,7 @@ export interface ClinicWaqfDeed {
   createdAt: string;
 }
 
-export interface ClinicWaqf {
+export interface WaqfProgramme {
   id: string;
   name: string;
   slug: string;
@@ -1650,7 +1650,7 @@ export interface ClinicWaqf {
   createdAt: string;
   createdByUser?: { id: string; fullName: string };
   // From the list endpoint: the approved version, if any. From GET /:id: every version, newest first.
-  deeds: (Pick<ClinicWaqfDeed, "version"> & Partial<ClinicWaqfDeed>)[];
+  deeds: (Pick<WaqfProgrammeDeed, "version"> & Partial<WaqfProgrammeDeed>)[];
   // From GET /:id: the licensed operator running the clinic (slice 7).
   operator?: { id: string; name: string; status: string } | null;
   // Public fundraising targets (slice 8).
@@ -1691,7 +1691,7 @@ export interface ClinicGiftRow {
 }
 
 // GET /clinic-waqfs/:id/assets (2026-11-17, clinic slice 5a).
-export interface ClinicAsset {
+export interface ProgrammeAsset {
   id: string;
   kind: "land" | "building" | "equipment" | "vehicle" | "other";
   name: string;
@@ -1713,7 +1713,7 @@ export interface ClinicAsset {
 }
 
 // GET /clinic-waqfs/:id/works and /spends (2026-11-17, clinic slice 5b).
-export interface ClinicWorksProject {
+export interface ProgrammeWorksProject {
   id: string;
   name: string;
   route: "build_on_donated_land" | "build_on_bought_land" | "renovate";
@@ -1724,7 +1724,7 @@ export interface ClinicWorksProject {
   spends: { amount: string; status: string }[];
 }
 
-export interface ClinicSpend {
+export interface ProgrammeSpend {
   id: string;
   kind: "equipment" | "works_stage" | "investment" | "reserve_replacement";
   payee: { id: string; name: string };
@@ -1741,7 +1741,7 @@ export interface ClinicSpend {
 }
 
 // GET /clinic-waqfs/:id/investments (2026-11-17, clinic slice 5c).
-export interface ClinicInvestment {
+export interface ProgrammeInvestment {
   id: string;
   name: string;
   instrumentType: string;

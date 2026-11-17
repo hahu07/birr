@@ -73,7 +73,7 @@ export class PaymentReconciliationService {
     private readonly contributions: ContributionsService,
     private readonly vaultContributions: VaultContributionsService,
     private readonly zakahPayments: ZakahPaymentsService,
-    private readonly clinicGifts: ClinicGiftsService,
+    private readonly programmeGifts: ClinicGiftsService,
   ) {}
 
   // ─── Running a day ───────────────────────────────────────────────────
@@ -162,17 +162,17 @@ export class PaymentReconciliationService {
     const refs = transactions.map((t) => t.reference);
     const created = { createdAt: { gte: window.start, lt: window.end } };
     const inScope = (extra: object) => ({ provider: "paystack" as const, OR: [created, { providerReference: { in: refs } }], ...extra });
-    const [contributions, vaultGifts, zakah, clinicGifts] = await Promise.all([
+    const [contributions, vaultGifts, zakah, programmeGifts] = await Promise.all([
       prisma.contribution.findMany({ where: inScope({}), select: { id: true, providerReference: true, status: true, amount: true, currency: true, createdAt: true } }),
       prisma.vaultContribution.findMany({ where: inScope({}), select: { id: true, providerReference: true, status: true, amount: true, currency: true, createdAt: true } }),
       prisma.zakahPayment.findMany({ where: inScope({}), select: { id: true, providerReference: true, status: true, amount: true, feeCover: true, currency: true, createdAt: true } }),
-      prisma.clinicGift.findMany({ where: inScope({}), select: { id: true, providerReference: true, status: true, amount: true, feeCover: true, currency: true, createdAt: true } }),
+      prisma.programmeGift.findMany({ where: inScope({}), select: { id: true, providerReference: true, status: true, amount: true, feeCover: true, currency: true, createdAt: true } }),
     ]);
     const payments: BirrPayment[] = [
       ...contributions.map((c) => ({ product: "waqf_contribution" as const, id: c.id, reference: c.providerReference, status: c.status, amountKobo: kobo(c.amount), currency: c.currency, createdAt: c.createdAt })),
       ...vaultGifts.map((c) => ({ product: "vault_contribution" as const, id: c.id, reference: c.providerReference, status: c.status, amountKobo: kobo(c.amount), currency: c.currency, createdAt: c.createdAt })),
       ...zakah.map((z) => ({ product: "zakah_payment" as const, id: z.id, reference: z.providerReference, status: z.status, amountKobo: kobo(z.amount) + kobo(z.feeCover), currency: z.currency, createdAt: z.createdAt })),
-      ...clinicGifts.map((g) => ({ product: "clinic_gift" as const, id: g.id, reference: g.providerReference, status: g.status, amountKobo: kobo(g.amount) + kobo(g.feeCover), currency: g.currency, createdAt: g.createdAt })),
+      ...programmeGifts.map((g) => ({ product: "clinic_gift" as const, id: g.id, reference: g.providerReference, status: g.status, amountKobo: kobo(g.amount) + kobo(g.feeCover), currency: g.currency, createdAt: g.createdAt })),
     ];
 
     // Money out: Paystack payouts touched that day, plus any Paystack names.
@@ -306,7 +306,7 @@ export class PaymentReconciliationService {
         : issue.product === "vault_contribution"
           ? await this.vaultContributions.reconcile(issue.recordId)
           : issue.product === "clinic_gift"
-            ? await this.clinicGifts.reconcile(issue.recordId)
+            ? await this.programmeGifts.reconcile(issue.recordId)
             : await this.zakahPayments.reconcile(issue.recordId);
     const now = (record as { status?: string } | null)?.status ?? null;
     await prisma.auditLog.create({

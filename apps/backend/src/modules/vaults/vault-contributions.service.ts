@@ -516,7 +516,7 @@ export class VaultContributionsService {
     const prior = matches.length
       ? [
           ...(await tx.vaultContribution.findMany({ where: counted, select: { amount: true, currency: true } })),
-          ...(await tx.clinicGift.findMany({ where: counted, select: { amount: true, currency: true } })),
+          ...(await tx.programmeGift.findMany({ where: counted, select: { amount: true, currency: true } })),
         ]
       : [];
     const currencies = [...new Set([input.currency, ...prior.map((c) => c.currency)])];
@@ -942,16 +942,16 @@ export class VaultContributionsService {
    * marked as a clinic waqf, so a reviewer sees both products' giving by
    * the same people together.
    */
-  private async clinicGiftsAsContributions(where: Prisma.ClinicGiftWhereInput) {
-    const gifts = await prisma.clinicGift.findMany({
+  private async clinicGiftsAsContributions(where: Prisma.ProgrammeGiftWhereInput) {
+    const gifts = await prisma.programmeGift.findMany({
       where: { ...where, donorId: where.donorId ?? { not: null } },
-      include: { clinicWaqf: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
+      include: { programme: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
       orderBy: { createdAt: "desc" },
     });
     return gifts.map((g) => ({
       ...g,
-      vaultId: g.clinicWaqfId,
-      vault: { id: g.clinicWaqf.id, name: `${g.clinicWaqf.name} (clinic waqf)` },
+      vaultId: g.programmeId,
+      vault: { id: g.programme.id, name: `${g.programme.name} (clinic waqf)` },
     }));
   }
 

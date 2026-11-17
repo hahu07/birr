@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
-import type { ClinicInvestment, Counterparty } from "../../../../lib/ops-types";
+import type { ProgrammeInvestment, Counterparty } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, Input, Select } from "@birr/ui";
 import { FIELD_LIMITS } from "@birr/shared";
 
@@ -18,22 +18,22 @@ const INSTRUMENTS = ["sukuk", "equity_fund", "real_estate_fund", "murabaha", "ot
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
 const clean = (v: string) => v.replace(/[,\s₦]/g, "");
 
-export function InvestmentsCard({ clinicWaqfId, established }: { clinicWaqfId: string; established: boolean }) {
+export function InvestmentsCard({ programmeId, established }: { programmeId: string; established: boolean }) {
   const { can } = useStaffSession();
-  const [investments, setInvestments] = useState<ClinicInvestment[] | null>(null);
+  const [investments, setInvestments] = useState<ProgrammeInvestment[] | null>(null);
   const [partners, setPartners] = useState<Counterparty[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(() => {
-    Promise.all([apiFetchJson<ClinicInvestment[]>(`/clinic-waqfs/${clinicWaqfId}/investments`), apiFetchJson<Counterparty[]>("/counterparties?status=active")])
+    Promise.all([apiFetchJson<ProgrammeInvestment[]>(`/clinic-waqfs/${programmeId}/investments`), apiFetchJson<Counterparty[]>("/counterparties?status=active")])
       .then(([i, c]) => {
         setInvestments(i);
         setPartners(c);
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [clinicWaqfId]);
+  }, [programmeId]);
 
   useEffect(() => {
     load();
@@ -43,7 +43,7 @@ export function InvestmentsCard({ clinicWaqfId, established }: { clinicWaqfId: s
     setError(null);
     setBusy(true);
     try {
-      await apiFetchJson(`/clinic-waqfs/${clinicWaqfId}/investments${path}`, { method: "POST", body: JSON.stringify(body) });
+      await apiFetchJson(`/clinic-waqfs/${programmeId}/investments${path}`, { method: "POST", body: JSON.stringify(body) });
       load();
       return true;
     } catch (err) {

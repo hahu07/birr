@@ -1,7 +1,7 @@
 import { LongTextField, NameField, ReferenceField, TextField } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsEnum, IsNumberString, IsOptional, Matches } from "class-validator";
-import { ClinicAssetKind, prisma, Prisma } from "@birr/db";
+import { ProgrammeAssetKind, prisma, Prisma } from "@birr/db";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { ClinicLedgerService } from "./clinic-ledger.service";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
@@ -11,8 +11,8 @@ const dayMessage = (field: string) => ({ message: `${field} must be a date like 
 const asDate = (day: string) => new Date(`${day}T00:00:00Z`);
 
 export class RecordClinicAssetInput {
-  @IsEnum(ClinicAssetKind)
-  kind!: ClinicAssetKind;
+  @IsEnum(ProgrammeAssetKind)
+  kind!: ProgrammeAssetKind;
 
   @NameField()
   name!: string;
@@ -111,16 +111,16 @@ const naira = (amount: Prisma.Decimal | string) => `₦${Number(amount).toLocale
 export class ClinicAssetsService {
   constructor(private readonly ledger: ClinicLedgerService) {}
 
-  async record(clinicWaqfId: string, input: RecordClinicAssetInput, actorUserId: string) {
+  async record(programmeId: string, input: RecordClinicAssetInput, actorUserId: string) {
     const value = new Prisma.Decimal(input.value);
     if (value.decimalPlaces() > 2) throw new BadRequestException("Enter the value in naira and kobo.");
     if (input.acquiredOn > lagosToday()) throw new BadRequestException("The date it was given can't be in the future.");
     return prisma.$transaction(async (tx) => {
-      const clinic = await tx.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-      if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
-      const asset = await tx.clinicAsset.create({
+      const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
+      if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
+      const asset = await tx.programmeAsset.create({
         data: {
-          clinicWaqfId,
+          programmeId,
           kind: input.kind,
           name: input.name,
           description: input.description,
@@ -137,18 +137,18 @@ export class ClinicAssetsService {
         },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_asset.recorded", entityType: "ClinicAsset", entityId: asset.id, after: asset as any },
+        data: { actorType: "birr_staff", actorUserId, action: "clinic_asset.recorded", entityType: "ProgrammeAsset", entityId: asset.id, after: asset as any },
       });
       return asset;
     });
   }
 
-  async updateCare(clinicWaqfId: string, assetId: string, input: UpdateClinicAssetCareInput, actorUserId: string) {
+  async updateCare(programmeId: string, assetId: string, input: UpdateClinicAssetCareInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
-      const before = await tx.clinicAsset.findUnique({ where: { id: assetId } });
-      if (!before || before.clinicWaqfId !== clinicWaqfId) throw new NotFoundException(`Asset "${assetId}" not found.`);
+      const before = await tx.programmeAsset.findUnique({ where: { id: assetId } });
+      if (!before || before.programmeId !== programmeId) throw new NotFoundException(`Asset "${assetId}" not found.`);
       if (before.status === "rejected" || before.status === "disposed") throw new BadRequestException(`This asset is ${before.status}, so it can't be changed.`);
-      const after = await tx.clinicAsset.update({
+      const after = await tx.programmeAsset.update({
         where: { id: assetId },
         data: {
           description: input.description,
@@ -160,15 +160,15 @@ export class ClinicAssetsService {
         },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_asset.care_updated", entityType: "ClinicAsset", entityId: assetId, before: before as any, after: after as any },
+        data: { actorType: "birr_staff", actorUserId, action: "clinic_asset.care_updated", entityType: "ProgrammeAsset", entityId: assetId, before: before as any, after: after as any },
       });
       return after;
     });
   }
 
-  list(clinicWaqfId: string) {
-    return prisma.clinicAsset.findMany({
-      where: { clinicWaqfId },
+  list(programmeId: string) {
+    return prisma.programmeAsset.findMany({
+      where: { programmeId },
       orderBy: [{ status: "asc" }, { acquiredOn: "desc" }],
       include: { createdByUser: { select: { id: true, fullName: true } } },
     });
@@ -182,7 +182,7 @@ export class ClinicAssetsService {
 
   private async findOrThrow(id: unknown, db: Prisma.TransactionClient | typeof prisma = prisma) {
     if (typeof id !== "string") throw new BadRequestException("payload.assetId is required.");
-    const asset = await db.clinicAsset.findUnique({ where: { id }, include: { clinicWaqf: { select: { name: true, status: true } } } });
+    const asset = await db.programmeAsset.findUnique({ where: { id }, include: { programme: { select: { name: true, status: true } } } });
     if (!asset) throw new NotFoundException(`Asset "${id}" not found.`);
     return asset;
   }
@@ -192,7 +192,7 @@ export class ClinicAssetsService {
   async validateAddProposal(payload: unknown) {
     const asset = await this.findOrThrow((payload as Partial<AddPayload>)?.assetId);
     if (asset.status !== "proposed") throw new BadRequestException(`This asset is already ${asset.status}.`);
-    if (asset.clinicWaqf.status !== "established") throw new BadRequestException(`${asset.clinicWaqf.name} isn't established yet, so it has no endowment to add to.`);
+    if (asset.programme.status !== "established") throw new BadRequestException(`${asset.programme.name} isn't established yet, so it has no endowment to add to.`);
   }
 
   async checkDuplicateAdd(payload: unknown) {
@@ -203,7 +203,7 @@ export class ClinicAssetsService {
 
   async describeAdd(payload: unknown): Promise<string> {
     const a = await this.findOrThrow((payload as AddPayload).assetId);
-    return `Add ${a.name} (${a.kind}) to the endowment of ${a.clinicWaqf.name} at ${naira(a.value)}${a.donorName ? `, given by ${a.donorName}` : ""}. Valuation: ${a.valuationNote}`;
+    return `Add ${a.name} (${a.kind}) to the endowment of ${a.programme.name} at ${naira(a.value)}${a.donorName ? `, given by ${a.donorName}` : ""}. Valuation: ${a.valuationNote}`;
   }
 
   async currentAddState(payload: unknown): Promise<Record<string, unknown>> {
@@ -215,11 +215,11 @@ export class ClinicAssetsService {
     const { assetId } = payload as AddPayload;
     const before = await this.findOrThrow(assetId, tx);
     if (before.status !== "proposed") throw new BadRequestException(`This asset is already ${before.status}.`);
-    if (before.clinicWaqf.status !== "established") throw new BadRequestException(`${before.clinicWaqf.name} isn't established yet.`);
-    const claim = await tx.clinicAsset.updateMany({ where: { id: assetId, status: "proposed" }, data: { status: "active", approvalActionId: governedActionId } });
+    if (before.programme.status !== "established") throw new BadRequestException(`${before.programme.name} isn't established yet.`);
+    const claim = await tx.programmeAsset.updateMany({ where: { id: assetId, status: "proposed" }, data: { status: "active", approvalActionId: governedActionId } });
     if (claim.count !== 1) throw new BadRequestException("This asset changed just now.");
     await this.ledger.post(tx, {
-      clinicWaqfId: before.clinicWaqfId,
+      programmeId: before.programmeId,
       description: `${before.name}, given in kind, added to the endowment`,
       currency: "NGN",
       source: "asset_added",
@@ -230,15 +230,15 @@ export class ClinicAssetsService {
         { accountCode: "3000", credit: before.value },
       ],
     });
-    const { clinicWaqf: _c, ...beforeRow } = before;
-    return { before: beforeRow, after: await tx.clinicAsset.findUniqueOrThrow({ where: { id: assetId } }) };
+    const { programme: _c, ...beforeRow } = before;
+    return { before: beforeRow, after: await tx.programmeAsset.findUniqueOrThrow({ where: { id: assetId } }) };
   }
 
   async rejectAdd(payload: unknown, tx: Prisma.TransactionClient) {
     const { assetId } = payload as AddPayload;
-    const before = await tx.clinicAsset.findUnique({ where: { id: assetId } });
+    const before = await tx.programmeAsset.findUnique({ where: { id: assetId } });
     if (!before || before.status !== "proposed") return null;
-    const after = await tx.clinicAsset.update({ where: { id: assetId }, data: { status: "rejected" } });
+    const after = await tx.programmeAsset.update({ where: { id: assetId }, data: { status: "rejected" } });
     return { before, after };
   }
 
@@ -271,7 +271,7 @@ export class ClinicAssetsService {
   async describeDispose(payload: unknown): Promise<string> {
     const p = payload as DisposePayload;
     const a = await this.findOrThrow(p.assetId);
-    return `Dispose of ${a.name} from ${a.clinicWaqf.name} on ${p.disposedOn} (valued at ${naira(a.value)}), bringing ${naira(p.proceeds)} into the endowment. Why: ${p.note}`;
+    return `Dispose of ${a.name} from ${a.programme.name} on ${p.disposedOn} (valued at ${naira(a.value)}), bringing ${naira(p.proceeds)} into the endowment. Why: ${p.note}`;
   }
 
   async currentDisposeState(payload: unknown): Promise<Record<string, unknown>> {
@@ -289,14 +289,14 @@ export class ClinicAssetsService {
     const before = await this.findOrThrow(p.assetId, tx);
     if (before.status !== "active") throw new BadRequestException(`This asset is ${before.status}, not in the endowment.`);
     const proceeds = new Prisma.Decimal(p.proceeds);
-    const claim = await tx.clinicAsset.updateMany({
+    const claim = await tx.programmeAsset.updateMany({
       where: { id: p.assetId, status: "active" },
       data: { status: "disposed", disposalActionId: governedActionId, disposedOn: asDate(p.disposedOn), disposalProceeds: proceeds, disposalNote: p.note },
     });
     if (claim.count !== 1) throw new BadRequestException("This asset changed just now.");
     const difference = before.value.minus(proceeds);
     await this.ledger.post(tx, {
-      clinicWaqfId: before.clinicWaqfId,
+      programmeId: before.programmeId,
       description: `${before.name} disposed of`,
       currency: "NGN",
       source: "asset_disposed",
@@ -309,7 +309,7 @@ export class ClinicAssetsService {
         ...(difference.lt(0) ? [{ accountCode: "3000", credit: difference.negated() }] : []),
       ],
     });
-    const { clinicWaqf: _c, ...beforeRow } = before;
-    return { before: beforeRow, after: await tx.clinicAsset.findUniqueOrThrow({ where: { id: p.assetId } }) };
+    const { programme: _c, ...beforeRow } = before;
+    return { before: beforeRow, after: await tx.programmeAsset.findUniqueOrThrow({ where: { id: p.assetId } }) };
   }
 }

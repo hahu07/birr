@@ -558,7 +558,7 @@ export class FoundersService {
   /**
    * Owner's decision (2026-11-17): someone who signs up from a clinic waqf's
    * page to support it verifies their email and WhatsApp, like every
-   * Founder, then becomes a Founder without a Foundation (clinicSupporter).
+   * Founder, then becomes a Founder without a Foundation (programmeSupporter).
    * That completes their onboarding; they can still set up a Foundation
    * later. Same checks as step 2 otherwise.
    */
@@ -579,7 +579,7 @@ export class FoundersService {
           kind: input.kind,
           institutionType: input.kind === "institution" ? input.institutionType : undefined,
           homeJurisdiction: input.homeJurisdiction,
-          clinicSupporter: true,
+          programmeSupporter: true,
         },
       });
       await tx.founderMembership.create({ data: { founderId: founder.id, userId, permissionLevel: "primary_contact" } });
@@ -887,7 +887,7 @@ export class FoundersService {
     // they're a Founder, they're done. If they set one up later, the
     // usual steps apply to it.
     const clinicSupporterOnly =
-      founderId !== null && !firstFoundation && (await prisma.founder.findUnique({ where: { id: founderId }, select: { clinicSupporter: true } }))?.clinicSupporter === true;
+      founderId !== null && !firstFoundation && (await prisma.founder.findUnique({ where: { id: founderId }, select: { programmeSupporter: true } }))?.programmeSupporter === true;
 
     let currentStep: 1 | 2 | 3 | 4 | "done";
     if (!founderId) currentStep = !emailVerified || !whatsappVerified ? 1 : 2;

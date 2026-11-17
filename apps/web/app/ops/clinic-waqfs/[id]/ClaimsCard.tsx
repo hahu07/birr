@@ -12,7 +12,7 @@ import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
-import type { ClinicClaim, ClinicClaimLine, ClinicWaqf, Counterparty, GovernedAction } from "../../../../lib/ops-types";
+import type { ClinicClaim, ClinicClaimLine, WaqfProgramme, Counterparty, GovernedAction } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, Input, Select } from "@birr/ui";
 
 const TONE: Record<ClinicClaim["status"], "success" | "warning" | "neutral" | "danger"> = {
@@ -45,7 +45,7 @@ function parseLines(text: string) {
   return lines.length ? { lines } : { error: "Paste at least one claim line." };
 }
 
-export function ClaimsCard({ clinic, onChange }: { clinic: ClinicWaqf; onChange: () => void }) {
+export function ClaimsCard({ clinic, onChange }: { clinic: WaqfProgramme; onChange: () => void }) {
   const { can } = useStaffSession();
   const [claims, setClaims] = useState<ClinicClaim[] | null>(null);
   const [providers, setProviders] = useState<Counterparty[]>([]);
@@ -93,7 +93,7 @@ export function ClaimsCard({ clinic, onChange }: { clinic: ClinicWaqf; onChange:
   const waiting = (key: string, field: string, value: string) =>
     pending.find((a) => a.permission.key === key && (a.payload as Record<string, unknown>)?.[field] === value);
   const canManage = can("clinic_waqf.manage");
-  const operatorProposal = waiting("clinic_waqf.operator_assign", "clinicWaqfId", clinic.id);
+  const operatorProposal = waiting("clinic_waqf.operator_assign", "programmeId", clinic.id);
 
   return (
     <Card className="mt-5">
@@ -131,7 +131,7 @@ export function ClaimsCard({ clinic, onChange }: { clinic: ClinicWaqf; onChange:
           </p>
         ) : (
           can("clinic_waqf.operator_assign") && (
-            <AssignOperator providers={providers.filter((p) => p.id !== clinic.operator?.id)} disabled={busy} onSubmit={(counterpartyId) => propose("clinic_waqf.operator_assign", { clinicWaqfId: clinic.id, counterpartyId })} />
+            <AssignOperator providers={providers.filter((p) => p.id !== clinic.operator?.id)} disabled={busy} onSubmit={(counterpartyId) => propose("clinic_waqf.operator_assign", { programmeId: clinic.id, counterpartyId })} />
           )
         )}
       </div>
@@ -153,7 +153,7 @@ export function ClaimsCard({ clinic, onChange }: { clinic: ClinicWaqf; onChange:
           {claims.map((claim) => (
             <ClaimRow
               key={claim.id}
-              clinicWaqfId={clinic.id}
+              programmeId={clinic.id}
               claim={claim}
               disabled={busy}
               approval={waiting("clinic_waqf.claim_approve", "claimId", claim.id)}
@@ -241,7 +241,7 @@ function UploadForm({
 }
 
 function ClaimRow({
-  clinicWaqfId,
+  programmeId,
   claim,
   disabled,
   approval,
@@ -249,7 +249,7 @@ function ClaimRow({
   run,
   propose,
 }: {
-  clinicWaqfId: string;
+  programmeId: string;
   claim: ClinicClaim;
   disabled: boolean;
   approval?: GovernedAction;
@@ -291,7 +291,7 @@ function ClaimRow({
         <Button
           variant="secondary"
           className="px-3 py-1.5 text-xs"
-          onClick={() => (lines ? setLines(null) : apiFetchJson<ClinicClaimLine[]>(`/clinic-waqfs/${clinicWaqfId}/claims/${claim.id}/lines`).then(setLines))}
+          onClick={() => (lines ? setLines(null) : apiFetchJson<ClinicClaimLine[]>(`/clinic-waqfs/${programmeId}/claims/${claim.id}/lines`).then(setLines))}
         >
           {lines ? "Hide lines" : "Show lines"}
         </Button>
@@ -310,7 +310,7 @@ function ClaimRow({
                   variant="secondary"
                   className="px-3 py-1.5 text-xs"
                   disabled={disabled}
-                  onClick={() => run(() => apiFetchJson(`/clinic-waqfs/${clinicWaqfId}/claims/${claim.id}/discard`, { method: "POST" }))}
+                  onClick={() => run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/claims/${claim.id}/discard`, { method: "POST" }))}
                 >
                   Discard
                 </Button>
@@ -370,7 +370,7 @@ function ClaimRow({
               disabled={disabled || !zakahId.trim()}
               onClick={() =>
                 run(() =>
-                  apiFetchJson(`/clinic-waqfs/${clinicWaqfId}/claims/${claim.id}/zakah-distribution`, {
+                  apiFetchJson(`/clinic-waqfs/${programmeId}/claims/${claim.id}/zakah-distribution`, {
                     method: "POST",
                     body: JSON.stringify({ zakahDistributionId: zakahId.trim() }),
                   }),

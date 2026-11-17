@@ -71,8 +71,8 @@ describe("Monthly clinic waqf gifts", () => {
     });
   }
 
-  async function approveDeed(clinicWaqfId: string, text?: string) {
-    const draft = await clinics.draftDeed(clinicWaqfId, text ? { text } : {}, makerUserId);
+  async function approveDeed(programmeId: string, text?: string) {
+    const draft = await clinics.draftDeed(programmeId, text ? { text } : {}, makerUserId);
     const payload = { deedId: draft.id, textHash: draft.textHash };
     const action = await decidedAction("clinic_waqf.deed_approve", payload);
     await prisma.$transaction((tx) => clinics.approveDeed(payload, action.id, checkerUserId, tx));
@@ -104,7 +104,7 @@ describe("Monthly clinic waqf gifts", () => {
       monthly: true,
       ...(pot === "endowment" && { deedId: deed.id, deedTextHash: deed.textHash }),
     });
-    const row = await prisma.clinicGift.findUniqueOrThrow({ where: { id: result.gift.id } });
+    const row = await prisma.programmeGift.findUniqueOrThrow({ where: { id: result.gift.id } });
     await gifts.reconcile(row.id);
     const gift = await waitFor(() => reload({ id: row.recurringGiftId! }), (g) => g.status !== "pending_setup");
     return { gift, firstGiftId: row.id, giver };
@@ -115,8 +115,8 @@ describe("Monthly clinic waqf gifts", () => {
     checkerUserId = await staff("board_of_trustees");
     const created = await clinics.create({ name: "Monthly Test Clinic", slug: `monthly-clinic-${run}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     deed = await approveDeed(created.id);
-    const establish = await decidedAction("clinic_waqf.establish", { clinicWaqfId: created.id });
-    await prisma.$transaction((tx) => clinics.establish({ clinicWaqfId: created.id }, establish.id, tx));
+    const establish = await decidedAction("clinic_waqf.establish", { programmeId: created.id });
+    await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establish.id, tx));
     clinic = created;
   });
 
@@ -132,9 +132,9 @@ describe("Monthly clinic waqf gifts", () => {
   test("a public monthly endowment gift starts with a card-only checkout and keeps the deed accepted", async () => {
     const { gift, firstGiftId, giver } = await activePublicGift("endowment");
     expect(paystack.checkouts.find((c) => c.reference === firstGiftId)).toMatchObject({ cardOnly: true });
-    expect(gift).toMatchObject({ kind: "clinic", status: "active", clinicWaqfId: clinic.id, clinicPot: "endowment", clinicDeedId: deed.id, founderId: null, cardLast4: "4081" });
+    expect(gift).toMatchObject({ kind: "programme", status: "active", programmeId: clinic.id, programmePot: "endowment", programmeDeedId: deed.id, founderId: null, cardLast4: "4081" });
     expect(gift.manageTokenHash).toMatch(/^[0-9a-f]{64}$/);
-    const first = await prisma.clinicGift.findUniqueOrThrow({ where: { id: firstGiftId } });
+    const first = await prisma.programmeGift.findUniqueOrThrow({ where: { id: firstGiftId } });
     expect(first).toMatchObject({ status: "confirmed", recurringGiftId: gift.id });
     await waitFor(async () => emails.sent.some((e) => e.to === giver && e.subject === "Your monthly gift is set up"), Boolean);
     const mail = emails.sent.find((e) => e.to === giver && e.subject === "Your monthly gift is set up")!;
@@ -150,12 +150,12 @@ describe("Monthly clinic waqf gifts", () => {
     await due(gift);
     await service.processDue(gift.id);
     const charged = await waitFor(
-      () => prisma.clinicGift.findMany({ where: { recurringGiftId: gift.id, recurringPeriod: gift.nextPeriod } }),
+      () => prisma.programmeGift.findMany({ where: { recurringGiftId: gift.id, recurringPeriod: gift.nextPeriod } }),
       (rows) => rows.some((r) => r.status === "confirmed"),
     );
     expect(charged).toHaveLength(1);
     expect(charged[0]).toMatchObject({ pot: "running", amount: expect.anything(), status: "confirmed" });
-    const entries = await prisma.clinicJournalEntry.findMany({ where: { source: "gift", sourceId: charged[0].id }, include: { lines: { include: { ledgerAccount: true } } } });
+    const entries = await prisma.programmeJournalEntry.findMany({ where: { source: "gift", sourceId: charged[0].id }, include: { lines: { include: { ledgerAccount: true } } } });
     expect(entries[0].lines.map((l) => l.ledgerAccount.code).sort()).toEqual(["1100", "4000"]);
     expect((await reload(gift)).nextPeriod).not.toBe(gift.nextPeriod);
   });
@@ -163,11 +163,11 @@ describe("Monthly clinic waqf gifts", () => {
   test("a new deed version pauses a monthly endowment gift until the giver accepts it", async () => {
     const separate = await clinics.create({ name: "Deed Change Clinic", slug: `deed-change-${run}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     const v1 = await approveDeed(separate.id, "Version one.");
-    const establish = await decidedAction("clinic_waqf.establish", { clinicWaqfId: separate.id });
-    await prisma.$transaction((tx) => clinics.establish({ clinicWaqfId: separate.id }, establish.id, tx));
+    const establish = await decidedAction("clinic_waqf.establish", { programmeId: separate.id });
+    await prisma.$transaction((tx) => clinics.establish({ programmeId: separate.id }, establish.id, tx));
     const giver = email();
     const result = await gifts.initiate({ slug: separate.slug, pot: "endowment", amount: "10000", coverFee: false, donorEmail: giver, monthly: true, deedId: v1.id, deedTextHash: v1.textHash });
-    const row = await prisma.clinicGift.findUniqueOrThrow({ where: { id: result.gift.id } });
+    const row = await prisma.programmeGift.findUniqueOrThrow({ where: { id: result.gift.id } });
     await gifts.reconcile(row.id);
     const gift = await waitFor(() => reload({ id: row.recurringGiftId! }), (g) => g.status === "active");
 
@@ -184,7 +184,7 @@ describe("Monthly clinic waqf gifts", () => {
     await expect(service.acceptClinicDeed(token, { deedId: v1.id, textHash: v1.textHash })).rejects.toThrow(/changed again/);
     const resumed = await service.acceptClinicDeed(token, { deedId: v2.id, textHash: v2.textHash });
     expect(resumed.status).toBe("active");
-    expect(await reload(gift)).toMatchObject({ clinicDeedId: v2.id, clinicDeedTextHash: v2.textHash });
+    expect(await reload(gift)).toMatchObject({ programmeDeedId: v2.id, programmeDeedTextHash: v2.textHash });
   });
 
   test("a Founder's monthly gift is theirs: no private link, listed and cancelled in their portal", async () => {
@@ -197,7 +197,7 @@ describe("Monthly clinic waqf gifts", () => {
     ).rejects.toThrow(/at least ₦250,000/);
 
     const result = await gifts.initiateAsFounder(founder.id, user.id, { slug: clinic.slug, pot: "running", amount: "250000", coverFee: false, monthly: true });
-    const row = await prisma.clinicGift.findUniqueOrThrow({ where: { id: result.gift.id } });
+    const row = await prisma.programmeGift.findUniqueOrThrow({ where: { id: result.gift.id } });
     await gifts.reconcile(row.id);
     const gift = await waitFor(() => reload({ id: row.recurringGiftId! }), (g) => g.status === "active");
     expect(gift).toMatchObject({ founderId: founder.id, email: user.email, manageTokenHash: null });
@@ -206,7 +206,7 @@ describe("Monthly clinic waqf gifts", () => {
     await due(gift);
     await service.processDue(gift.id);
     const later = await waitFor(
-      () => prisma.clinicGift.findFirst({ where: { recurringGiftId: gift.id, recurringPeriod: gift.nextPeriod } }),
+      () => prisma.programmeGift.findFirst({ where: { recurringGiftId: gift.id, recurringPeriod: gift.nextPeriod } }),
       (r) => r?.status === "confirmed",
     );
     expect(later).toMatchObject({ founderId: founder.id, initiatedByUserId: user.id, donorId: null });
@@ -220,7 +220,7 @@ describe("Monthly clinic waqf gifts", () => {
   test("the database refuses a monthly clinic endowment gift without the deed accepted", async () => {
     await expect(
       prisma.recurringGift.create({
-        data: { kind: "clinic", email: email(), amount: 10000, dayOfMonth: 1, nextPeriod: "2026-12", clinicWaqfId: clinic.id, clinicPot: "endowment" },
+        data: { kind: "programme", email: email(), amount: 10000, dayOfMonth: 1, nextPeriod: "2026-12", programmeId: clinic.id, programmePot: "endowment" },
       }),
     ).rejects.toThrow(/recurring_gifts_clinic_fields/);
   });

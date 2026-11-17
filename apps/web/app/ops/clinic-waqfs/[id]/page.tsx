@@ -12,7 +12,7 @@ import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
-import type { ClinicGiftRow, ClinicLedger, ClinicLedgerRow, ClinicWaqf, ClinicWaqfDeed, GovernedAction } from "../../../../lib/ops-types";
+import type { ClinicGiftRow, ClinicLedger, ClinicLedgerRow, WaqfProgramme, WaqfProgrammeDeed, GovernedAction } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, DetailGrid, EmptyState, Skeleton } from "@birr/ui";
 import { countryLabel } from "@birr/shared";
 import { AssetsCard } from "./AssetsCard";
@@ -23,7 +23,7 @@ import { PriceListCard } from "./PriceListCard";
 import { ClaimsCard } from "./ClaimsCard";
 import { PublicReportCard } from "./PublicReportCard";
 
-const DEED_TONE: Record<ClinicWaqfDeed["status"], "success" | "warning" | "neutral" | "danger"> = {
+const DEED_TONE: Record<WaqfProgrammeDeed["status"], "success" | "warning" | "neutral" | "danger"> = {
   draft: "warning",
   approved: "success",
   superseded: "neutral",
@@ -35,7 +35,7 @@ const DEED_TEXT_LIMIT = 20_000;
 export default function ClinicWaqfPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useStaffSession();
-  const [clinic, setClinic] = useState<ClinicWaqf | null>(null);
+  const [clinic, setClinic] = useState<WaqfProgramme | null>(null);
   const [ledger, setLedger] = useState<ClinicLedger | null>(null);
   const [pending, setPending] = useState<GovernedAction[] | null>(null);
   const [gifts, setGifts] = useState<ClinicGiftRow[] | null>(null);
@@ -46,7 +46,7 @@ export default function ClinicWaqfPage() {
 
   const load = useCallback(() => {
     Promise.all([
-      apiFetchJson<ClinicWaqf>(`/clinic-waqfs/${id}`),
+      apiFetchJson<WaqfProgramme>(`/clinic-waqfs/${id}`),
       apiFetchJson<ClinicLedger>(`/clinic-waqfs/${id}/ledger`),
       apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"),
       apiFetchJson<ClinicGiftRow[]>(`/clinic-waqfs/${id}/gifts`),
@@ -95,13 +95,13 @@ export default function ClinicWaqfPage() {
     );
   }
 
-  const deeds = clinic.deeds as ClinicWaqfDeed[];
+  const deeds = clinic.deeds as WaqfProgrammeDeed[];
   const draft = deeds.find((d) => d.status === "draft");
   const approved = deeds.find((d) => d.status === "approved");
   const pendingFor = (key: string, field: string, value: string) =>
     pending.find((a) => a.permission.key === key && (a.payload as Record<string, unknown>)?.[field] === value);
   const draftProposal = draft && pendingFor("clinic_waqf.deed_approve", "deedId", draft.id);
-  const establishProposal = pendingFor("clinic_waqf.establish", "clinicWaqfId", clinic.id);
+  const establishProposal = pendingFor("clinic_waqf.establish", "programmeId", clinic.id);
   const canManage = can("clinic_waqf.manage");
 
   async function startDraft() {
@@ -173,7 +173,7 @@ export default function ClinicWaqfPage() {
                     run(() =>
                       apiFetchJson("/governed-actions", {
                         method: "POST",
-                        body: JSON.stringify({ permissionKey: "clinic_waqf.establish", payload: { clinicWaqfId: clinic.id } }),
+                        body: JSON.stringify({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id } }),
                       }),
                     )
                   }
@@ -305,15 +305,15 @@ export default function ClinicWaqfPage() {
         </ul>
       </Card>
 
-      <AssetsCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
+      <AssetsCard programmeId={clinic.id} established={clinic.status === "established"} />
 
-      <SpendingCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
+      <SpendingCard programmeId={clinic.id} established={clinic.status === "established"} />
 
-      <InvestmentsCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
+      <InvestmentsCard programmeId={clinic.id} established={clinic.status === "established"} />
 
       <ReserveCard clinic={clinic} ledger={ledger} pending={pending} onChange={load} />
 
-      <PriceListCard clinicWaqfId={clinic.id} />
+      <PriceListCard programmeId={clinic.id} />
 
       <ClaimsCard clinic={clinic} onChange={load} />
 

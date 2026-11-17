@@ -1275,6 +1275,39 @@ must own and agree to, their conditions, istibdal) stays open.
 - **Public page:** what the reserve holds and has spent, under the running
   fund.
 
+**Update, 2026-11-17 — the clinic waqf becomes the first "waqf programme"
+(shared layer, step 1 of 4).** Owner's decisions: build a shared layer for
+waqfs Birr establishes and curates, so other products (the proposed
+need-based waqf first; design:
+https://claude.ai/artifact/HChJqo1PiWG592hc6UwTda) reuse the clinic's
+general parts; call it a **waqf programme**. Founders' own Waqf Funds,
+Vault and zakah stay separate.
+- **Step 1 (this):** names only, no behaviour change
+  (`20261118070000_waqf_programmes_rename`).
+  - `ClinicWaqf` is now `WaqfProgramme` (`waqf_programmes`), with a fixed
+    `product` (`WaqfProgrammeProduct`; only `clinic` so far). The
+    operator may be set only on a clinic (a CHECK).
+  - The deed, pots and ledger, gifts, assets, works, spends, investments
+    and their income are `WaqfProgrammeDeed`, `WaqfProgrammePot`,
+    `ProgrammeLedgerAccount`, `ProgrammeJournalEntry(Line)`,
+    `ProgrammeGift`, `ProgrammeAsset`, `ProgrammeWorksProject`,
+    `ProgrammeSpend`, `ProgrammeInvestment(Income)`.
+  - Every `clinicWaqfId` is `programmeId`, including on the clinic-only
+    tables, which keep their names: `ClinicPriceList`, `ClinicClaim(Line)`,
+    `ClinicMonthlyReport`.
+  - `RecurringGiftKind.clinic` is `programme`; `RecurringGift.programme*`;
+    `Founder.programmeSupporter`.
+  - Constraint, index and trigger names, and the rule functions (which
+    name tables as text), follow the new names.
+- **Not yet renamed:** services, files, routes (`/clinic-waqfs`,
+  `/clinic-gifts`, `/clinics/:slug`), permission keys (`clinic_waqf.*`),
+  audit action names and the reconciliation label `clinic_gift`. Step 2
+  splits the code into a general module and a clinic module and splits
+  the permission keys, keeping every grant and approval history.
+- **Steps 3 and 4:** a product list in code (pots per product, adding a
+  loan pot; payout kinds; causes, with the clinic tagged Healthcare), then
+  one "Waqf programmes" area in the Ops Console.
+
 Next steps for the clinic (2026-11-17; all nine slices are built and
 merged, nothing is live, no operator or site exists yet; the plan doc's
 "Timeline and next steps" is the working list):

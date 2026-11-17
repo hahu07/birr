@@ -14,12 +14,12 @@ import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
-import type { ClinicAsset, ClinicSpend, ClinicWorksProject, Counterparty, GovernedAction } from "../../../../lib/ops-types";
+import type { ProgrammeAsset, ProgrammeSpend, ProgrammeWorksProject, Counterparty, GovernedAction } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, Input, Select } from "@birr/ui";
 import { FIELD_LIMITS } from "@birr/shared";
 
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date());
-const SPEND_TONE: Record<ClinicSpend["status"], "success" | "warning" | "neutral" | "danger"> = {
+const SPEND_TONE: Record<ProgrammeSpend["status"], "success" | "warning" | "neutral" | "danger"> = {
   pending_approval: "warning",
   approved: "warning",
   rejected: "neutral",
@@ -27,12 +27,12 @@ const SPEND_TONE: Record<ClinicSpend["status"], "success" | "warning" | "neutral
 };
 const clean = (v: string) => v.replace(/[,\s₦]/g, "");
 
-export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: string; established: boolean }) {
+export function SpendingCard({ programmeId, established }: { programmeId: string; established: boolean }) {
   const { can } = useStaffSession();
-  const [works, setWorks] = useState<ClinicWorksProject[] | null>(null);
-  const [spends, setSpends] = useState<ClinicSpend[] | null>(null);
+  const [works, setWorks] = useState<ProgrammeWorksProject[] | null>(null);
+  const [spends, setSpends] = useState<ProgrammeSpend[] | null>(null);
   const [partners, setPartners] = useState<Counterparty[]>([]);
-  const [equipment, setEquipment] = useState<ClinicAsset[]>([]);
+  const [equipment, setEquipment] = useState<ProgrammeAsset[]>([]);
   const [pending, setPending] = useState<GovernedAction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -40,11 +40,11 @@ export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: stri
 
   const load = useCallback(() => {
     Promise.all([
-      apiFetchJson<ClinicWorksProject[]>(`/clinic-waqfs/${clinicWaqfId}/works`),
-      apiFetchJson<ClinicSpend[]>(`/clinic-waqfs/${clinicWaqfId}/spends`),
+      apiFetchJson<ProgrammeWorksProject[]>(`/clinic-waqfs/${programmeId}/works`),
+      apiFetchJson<ProgrammeSpend[]>(`/clinic-waqfs/${programmeId}/spends`),
       apiFetchJson<Counterparty[]>("/counterparties?status=active"),
       apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"),
-      apiFetchJson<ClinicAsset[]>(`/clinic-waqfs/${clinicWaqfId}/assets`),
+      apiFetchJson<ProgrammeAsset[]>(`/clinic-waqfs/${programmeId}/assets`),
     ])
       .then(([w, s, c, actions, a]) => {
         setWorks(w);
@@ -54,7 +54,7 @@ export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: stri
         setPending(actions.filter((a) => a.permission.key.startsWith("clinic_waqf.")));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
-  }, [clinicWaqfId]);
+  }, [programmeId]);
 
   useEffect(() => {
     load();
@@ -107,7 +107,7 @@ export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: stri
         <WorksForm
           partners={partners}
           disabled={busy}
-          onSubmit={(input) => run(() => apiFetchJson(`/clinic-waqfs/${clinicWaqfId}/works`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setForm("none"))}
+          onSubmit={(input) => run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/works`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setForm("none"))}
         />
       )}
       {form === "spend" && works && (
@@ -116,7 +116,7 @@ export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: stri
           partners={partners}
           works={works.filter((w) => w.status === "approved")}
           disabled={busy}
-          onSubmit={(input) => run(() => apiFetchJson(`/clinic-waqfs/${clinicWaqfId}/spends`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setForm("none"))}
+          onSubmit={(input) => run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/spends`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setForm("none"))}
         />
       )}
 
@@ -226,10 +226,10 @@ function WorksForm({
 }: {
   partners: Counterparty[];
   disabled: boolean;
-  onSubmit: (input: { name: string; route: ClinicWorksProject["route"]; contractorId: string; budget: string; budgetNote: string }) => void;
+  onSubmit: (input: { name: string; route: ProgrammeWorksProject["route"]; contractorId: string; budget: string; budgetNote: string }) => void;
 }) {
   const [name, setName] = useState("");
-  const [route, setRoute] = useState<ClinicWorksProject["route"]>("build_on_donated_land");
+  const [route, setRoute] = useState<ProgrammeWorksProject["route"]>("build_on_donated_land");
   const [contractorId, setContractorId] = useState("");
   const [budget, setBudget] = useState("");
   const [budgetNote, setBudgetNote] = useState("");
@@ -248,7 +248,7 @@ function WorksForm({
         </div>
         <div className="w-56 space-y-1.5">
           <label className="block text-sm font-medium text-slate-700">Route</label>
-          <Select value={route} onChange={(e) => setRoute(e.target.value as ClinicWorksProject["route"])} className="w-full">
+          <Select value={route} onChange={(e) => setRoute(e.target.value as ProgrammeWorksProject["route"])} className="w-full">
             <option value="build_on_donated_land">Build on donated land</option>
             <option value="build_on_bought_land">Build on bought land</option>
             <option value="renovate">Renovate a building</option>
@@ -285,12 +285,12 @@ function SpendForm({
   disabled,
   onSubmit,
 }: {
-  equipment: ClinicAsset[];
+  equipment: ProgrammeAsset[];
   partners: Counterparty[];
-  works: ClinicWorksProject[];
+  works: ProgrammeWorksProject[];
   disabled: boolean;
   onSubmit: (input: {
-    kind: ClinicSpend["kind"];
+    kind: ProgrammeSpend["kind"];
     worksProjectId?: string;
     replacesAssetId?: string;
     payeeId: string;
@@ -299,7 +299,7 @@ function SpendForm({
     supportingReference: string;
   }) => void;
 }) {
-  const [kind, setKind] = useState<ClinicSpend["kind"]>("equipment");
+  const [kind, setKind] = useState<ProgrammeSpend["kind"]>("equipment");
   const [worksProjectId, setWorksProjectId] = useState("");
   const [replacesAssetId, setReplacesAssetId] = useState("");
   const [payeeId, setPayeeId] = useState("");
@@ -326,7 +326,7 @@ function SpendForm({
       <div className="flex flex-wrap gap-3">
         <div className="w-48 space-y-1.5">
           <label className="block text-sm font-medium text-slate-700">For</label>
-          <Select value={kind} onChange={(e) => setKind(e.target.value as ClinicSpend["kind"])} className="w-full">
+          <Select value={kind} onChange={(e) => setKind(e.target.value as ProgrammeSpend["kind"])} className="w-full">
             <option value="equipment">Equipment</option>
             <option value="works_stage">A works stage</option>
             <option value="reserve_replacement">Replacing equipment, from the reserve</option>

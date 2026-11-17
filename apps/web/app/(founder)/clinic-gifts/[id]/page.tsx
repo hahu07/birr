@@ -11,7 +11,7 @@ import { apiFetchJson } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
 import { Alert, Button, Card, IconCheckCircle, IconClock, IconXCircle, Skeleton } from "@birr/ui";
 
-interface ClinicGiftStatus {
+interface ProgrammeGiftStatus {
   id: string;
   clinic: { name: string; slug: string };
   pot: "endowment" | "running";
@@ -30,7 +30,7 @@ const STALL_AFTER_MS = 120_000;
 
 export default function ClinicGiftStatusPage() {
   const params = useParams<{ id: string }>();
-  const [payment, setPayment] = useState<ClinicGiftStatus | null>(null);
+  const [payment, setPayment] = useState<ProgrammeGiftStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [gaveUp, setGaveUp] = useState(false);
   const [stalled, setStalled] = useState(false);
@@ -46,9 +46,9 @@ export default function ClinicGiftStatusPage() {
       try {
         const verified =
           polls % VERIFY_EVERY_N_POLLS === 0
-            ? await apiFetchJson<ClinicGiftStatus>(`/clinic-gifts/${params.id}/verify`, { method: "POST" }).catch(() => null)
+            ? await apiFetchJson<ProgrammeGiftStatus>(`/clinic-gifts/${params.id}/verify`, { method: "POST" }).catch(() => null)
             : null;
-        const data = verified ?? (await apiFetchJson<ClinicGiftStatus>(`/clinic-gifts/${params.id}`));
+        const data = verified ?? (await apiFetchJson<ProgrammeGiftStatus>(`/clinic-gifts/${params.id}`));
         polls += 1;
         if (cancelled) return;
         setPayment(data);
@@ -74,7 +74,7 @@ export default function ClinicGiftStatusPage() {
   async function checkAgain() {
     setChecking(true);
     try {
-      setPayment(await apiFetchJson<ClinicGiftStatus>(`/clinic-gifts/${params.id}/verify`, { method: "POST" }));
+      setPayment(await apiFetchJson<ProgrammeGiftStatus>(`/clinic-gifts/${params.id}/verify`, { method: "POST" }));
     } catch {
       // The page keeps polling on its own; nothing more to show here.
     } finally {

@@ -42,8 +42,8 @@ describe("ClinicReportsService", () => {
     const deedPayload = { deedId: draft.id, textHash: draft.textHash };
     const deedAction = await decidedAction("clinic_waqf.deed_approve", deedPayload);
     await prisma.$transaction((tx) => clinics.approveDeed(deedPayload, deedAction.id, publisherUserId, tx));
-    const establishAction = await decidedAction("clinic_waqf.establish", { clinicWaqfId: created.id });
-    await prisma.$transaction((tx) => clinics.establish({ clinicWaqfId: created.id }, establishAction.id, tx));
+    const establishAction = await decidedAction("clinic_waqf.establish", { programmeId: created.id });
+    await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establishAction.id, tx));
     return created;
   }
 
@@ -95,7 +95,7 @@ describe("ClinicReportsService", () => {
     await clinics.update(clinic.id, { endowmentTarget: "50000000", runningMonthlyTarget: "4000000" }, recorderUserId);
     await expect(clinics.update(clinic.id, { endowmentTarget: "1.234" }, recorderUserId)).rejects.toThrow(/naira and kobo/);
     const post = (description: string, lines: { accountCode: string; debit?: string; credit?: string }[]) =>
-      prisma.$transaction((tx) => ledger.post(tx, { clinicWaqfId: clinic.id, description, currency: "NGN", source: "manual_adjustment", actorType: "system", lines }));
+      prisma.$transaction((tx) => ledger.post(tx, { programmeId: clinic.id, description, currency: "NGN", source: "manual_adjustment", actorType: "system", lines }));
     await post("Endowed gifts", [{ accountCode: "1000", debit: "500000" }, { accountCode: "3000", credit: "500000" }]);
     await post("Running gifts", [{ accountCode: "1100", debit: "80000" }, { accountCode: "4000", credit: "80000" }]);
     await post("Endowment income", [{ accountCode: "1100", debit: "5000" }, { accountCode: "4100", credit: "5000" }]);
@@ -127,7 +127,7 @@ describe("ClinicReportsService", () => {
     const claim = await prisma.$transaction(async (tx) => {
       const c = await tx.clinicClaim.create({
         data: {
-          clinicWaqfId: clinic.id,
+          programmeId: clinic.id,
           period: month,
           operatorId: operator.id,
           priceListId: list.id,
@@ -143,9 +143,9 @@ describe("ClinicReportsService", () => {
       const visitDate = new Date(`${month}-01T00:00:00Z`);
       await tx.clinicClaimLine.createMany({
         data: [
-          { claimId: c.id, clinicWaqfId: clinic.id, visitReference: "R1", visitDate, serviceCode: "ANC", bandCode: "A", price: 18500, patientPaid: 0, subsidy: 18500, zakahEligible: false },
-          { claimId: c.id, clinicWaqfId: clinic.id, visitReference: "R2", visitDate, serviceCode: "ANC", bandCode: "A", price: 18500, patientPaid: 0, subsidy: 18500, zakahEligible: true },
-          { claimId: c.id, clinicWaqfId: clinic.id, visitReference: "R2", visitDate, serviceCode: "FBC", bandCode: "A", price: 2500, patientPaid: 0, subsidy: 2500, zakahEligible: true },
+          { claimId: c.id, programmeId: clinic.id, visitReference: "R1", visitDate, serviceCode: "ANC", bandCode: "A", price: 18500, patientPaid: 0, subsidy: 18500, zakahEligible: false },
+          { claimId: c.id, programmeId: clinic.id, visitReference: "R2", visitDate, serviceCode: "ANC", bandCode: "A", price: 18500, patientPaid: 0, subsidy: 18500, zakahEligible: true },
+          { claimId: c.id, programmeId: clinic.id, visitReference: "R2", visitDate, serviceCode: "FBC", bandCode: "A", price: 2500, patientPaid: 0, subsidy: 2500, zakahEligible: true },
         ],
       });
       return tx.clinicClaim.update({ where: { id: c.id }, data: { status: "approved", approvalActionId: claimAction.id, approvedAt: new Date() } });

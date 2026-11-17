@@ -22,7 +22,7 @@ function errorCode(err: unknown): string | undefined {
  */
 @Injectable()
 export class ClinicMonthlyProduct implements MonthlyGiftProduct {
-  readonly kind = "clinic" as const;
+  readonly kind = "programme" as const;
 
   constructor(
     private readonly gifts: ClinicGiftsService,
@@ -30,18 +30,18 @@ export class ClinicMonthlyProduct implements MonthlyGiftProduct {
   ) {}
 
   async precheck(gift: RecurringGift): Promise<MonthlyGiftPrecheck> {
-    const clinic = await prisma.clinicWaqf.findUnique({ where: { id: gift.clinicWaqfId! }, select: { status: true } });
+    const clinic = await prisma.waqfProgramme.findUnique({ where: { id: gift.programmeId! }, select: { status: true } });
     if (!clinic || clinic.status !== "established") return { end: "clinic_closed", reason: "the clinic isn't taking gifts" };
-    if (gift.clinicPot === "endowment") {
-      const approved = await prisma.clinicWaqfDeed.findFirst({ where: { clinicWaqfId: gift.clinicWaqfId!, status: "approved" }, select: { id: true } });
-      if (approved?.id !== gift.clinicDeedId) return { pause: "terms_changed" };
+    if (gift.programmePot === "endowment") {
+      const approved = await prisma.waqfProgrammeDeed.findFirst({ where: { programmeId: gift.programmeId!, status: "approved" }, select: { id: true } });
+      if (approved?.id !== gift.programmeDeedId) return { pause: "terms_changed" };
     }
     if (new Prisma.Decimal(gift.amount).lt(await this.minimum())) return { pause: "below_minimum" };
     return { ok: true };
   }
 
   private async run(gift: RecurringGift, mode: { type: "charge"; gift: RecurringGift; period: string } | { type: "card_update"; gift: RecurringGift }) {
-    const form = { slug: "", pot: gift.clinicPot!, amount: new Prisma.Decimal(gift.amount).toFixed(2), coverFee: gift.coverFee };
+    const form = { slug: "", pot: gift.programmePot!, amount: new Prisma.Decimal(gift.amount).toFixed(2), coverFee: gift.coverFee };
     try {
       return gift.founderId
         ? await this.gifts.initiateAsFounder(gift.founderId, null, form, undefined, mode)
@@ -79,10 +79,10 @@ export class ClinicMonthlyProduct implements MonthlyGiftProduct {
   }
 
   async describe(gift: RecurringGift) {
-    const clinic = await prisma.clinicWaqf.findUnique({ where: { id: gift.clinicWaqfId! }, select: { name: true, slug: true } });
+    const clinic = await prisma.waqfProgramme.findUnique({ where: { id: gift.programmeId! }, select: { name: true, slug: true } });
     return {
       name: clinic?.name ?? "A clinic",
-      detail: gift.clinicPot === "endowment" ? "the endowment" : "the running fund",
+      detail: gift.programmePot === "endowment" ? "the endowment" : "the running fund",
       link: clinic ? `/clinics/${clinic.slug}` : undefined,
     };
   }

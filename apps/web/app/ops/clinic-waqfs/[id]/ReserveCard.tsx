@@ -10,10 +10,10 @@ import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
-import type { ClinicLedger, ClinicWaqf, GovernedAction } from "../../../../lib/ops-types";
+import type { ClinicLedger, WaqfProgramme, GovernedAction } from "../../../../lib/ops-types";
 import { Alert, Button, Card, Input } from "@birr/ui";
 
-export function ReserveCard({ clinic, ledger, pending, onChange }: { clinic: ClinicWaqf; ledger: ClinicLedger; pending: GovernedAction[]; onChange: () => void }) {
+export function ReserveCard({ clinic, ledger, pending, onChange }: { clinic: WaqfProgramme; ledger: ClinicLedger; pending: GovernedAction[]; onChange: () => void }) {
   const { can } = useStaffSession();
   const [percent, setPercent] = useState("");
   const [editing, setEditing] = useState(false);
@@ -22,7 +22,7 @@ export function ReserveCard({ clinic, ledger, pending, onChange }: { clinic: Cli
 
   const holds = ledger.running.find((r) => r.code === "1150")?.balance ?? "0";
   const spent = ledger.running.find((r) => r.code === "5200")?.balance ?? "0";
-  const proposal = pending.find((a) => a.permission.key === "clinic_waqf.reserve_share_set" && (a.payload as Record<string, unknown>)?.clinicWaqfId === clinic.id);
+  const proposal = pending.find((a) => a.permission.key === "clinic_waqf.reserve_share_set" && (a.payload as Record<string, unknown>)?.programmeId === clinic.id);
   const valid = /^\d{1,3}$/.test(percent) && Number(percent) <= 100;
 
   async function propose() {
@@ -31,7 +31,7 @@ export function ReserveCard({ clinic, ledger, pending, onChange }: { clinic: Cli
     try {
       await apiFetchJson("/governed-actions", {
         method: "POST",
-        body: JSON.stringify({ permissionKey: "clinic_waqf.reserve_share_set", payload: { clinicWaqfId: clinic.id, percent: Number(percent) } }),
+        body: JSON.stringify({ permissionKey: "clinic_waqf.reserve_share_set", payload: { programmeId: clinic.id, percent: Number(percent) } }),
       });
       setEditing(false);
       onChange();

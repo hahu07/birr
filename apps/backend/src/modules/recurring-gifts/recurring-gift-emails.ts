@@ -32,7 +32,7 @@ export function isFounderGift(gift: RecurringGift): boolean {
 
 /** Where a Founder manages this gift in their portal. */
 function founderCtaLabel(gift: RecurringGift): string {
-  return gift.kind === "clinic" ? "View your clinic support" : "View your Waqf Fund";
+  return gift.kind === "programme" ? "View your clinic support" : "View your Waqf Fund";
 }
 
 /** Where a gift's messages go: its email and/or WhatsApp number, and a founder's own number for their gifts. */
@@ -96,7 +96,7 @@ export function pausedEmail(gift: RecurringGift, target: GiftTarget, manageUrl: 
     needs_identity:
       "Your giving has reached the level where the law requires us to record your full name and ID. Add them to carry on.",
     terms_changed:
-      gift.kind === "clinic"
+      gift.kind === "programme"
         ? "A new version of the waqf's deed has been approved. Please read it and accept it to carry on endowing monthly."
         : "The terms for paying zakah through Birr have changed. Please read and accept them to carry on.",
     below_minimum: `The minimum gift has gone up above ${formatNaira(gift.amount)}. Raise your monthly amount to carry on.`,

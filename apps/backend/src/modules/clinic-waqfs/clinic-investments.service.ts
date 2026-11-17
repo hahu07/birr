@@ -85,33 +85,33 @@ export class ClinicInvestmentsService {
     private readonly reserve: ClinicReserveService,
   ) {}
 
-  async create(clinicWaqfId: string, input: CreateClinicInvestmentInput, actorUserId: string) {
+  async create(programmeId: string, input: CreateClinicInvestmentInput, actorUserId: string) {
     const amount = new Prisma.Decimal(input.amount);
     if (amount.decimalPlaces() > 2) throw new BadRequestException("Enter the amount in naira and kobo.");
-    const clinic = await prisma.clinicWaqf.findUnique({ where: { id: clinicWaqfId } });
-    if (!clinic) throw new NotFoundException(`Clinic waqf "${clinicWaqfId}" not found.`);
+    const clinic = await prisma.waqfProgramme.findUnique({ where: { id: programmeId } });
+    if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
     if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't established yet.`);
     const counterparty = await prisma.counterparty.findUnique({ where: { id: input.counterpartyId } });
     if (!counterparty || counterparty.deletedAt) throw new NotFoundException("Counterparty not found.");
     if (counterparty.status !== "active") throw new BadRequestException(`${counterparty.name} isn't an active, vetted counterparty.`);
     return prisma.$transaction(async (tx) => {
-      const investment = await tx.clinicInvestment.create({
-        data: { clinicWaqfId, counterpartyId: counterparty.id, name: input.name, instrumentType: input.instrumentType, amount, businessDescription: input.businessDescription, createdByUserId: actorUserId },
+      const investment = await tx.programmeInvestment.create({
+        data: { programmeId, counterpartyId: counterparty.id, name: input.name, instrumentType: input.instrumentType, amount, businessDescription: input.businessDescription, createdByUserId: actorUserId },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.recorded", entityType: "ClinicInvestment", entityId: investment.id, after: investment as any },
+        data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.recorded", entityType: "ProgrammeInvestment", entityId: investment.id, after: investment as any },
       });
       return investment;
     });
   }
 
   /** A Shariah board member's decision. Never whoever recorded it. */
-  async screen(clinicWaqfId: string, investmentId: string, input: ScreenClinicInvestmentInput, actorUserId: string) {
+  async screen(programmeId: string, investmentId: string, input: ScreenClinicInvestmentInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
-      const before = await this.find(tx, clinicWaqfId, investmentId);
+      const before = await this.find(tx, programmeId, investmentId);
       if (before.status !== "pending_shariah_review") throw new ConflictException("This investment's Shariah screening has already been decided.");
       if (before.createdByUserId === actorUserId) throw new ForbiddenException("You recorded this investment, so someone else must screen it.");
-      const after = await tx.clinicInvestment.update({
+      const after = await tx.programmeInvestment.update({
         where: { id: investmentId },
         data: {
           status: input.decision === "approved" ? "shariah_approved" : "shariah_rejected",
@@ -121,17 +121,17 @@ export class ClinicInvestmentsService {
         },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: `clinic_investment.shariah_${input.decision}`, entityType: "ClinicInvestment", entityId: investmentId, before: before as any, after: after as any },
+        data: { actorType: "birr_staff", actorUserId, action: `clinic_investment.shariah_${input.decision}`, entityType: "ProgrammeInvestment", entityId: investmentId, before: before as any, after: after as any },
       });
       return after;
     });
   }
 
   /** Proposes the endowment payment that places it; the Board or Compliance then approves it. */
-  async proposePlacement(clinicWaqfId: string, investmentId: string, input: PlaceClinicInvestmentInput, actorUserId: string) {
-    const investment = await this.find(prisma, clinicWaqfId, investmentId);
+  async proposePlacement(programmeId: string, investmentId: string, input: PlaceClinicInvestmentInput, actorUserId: string) {
+    const investment = await this.find(prisma, programmeId, investmentId);
     return this.spending.createSpend(
-      clinicWaqfId,
+      programmeId,
       {
         kind: "investment",
         investmentId,
@@ -145,18 +145,18 @@ export class ClinicInvestmentsService {
   }
 
   /** Income it paid: into the running fund, never the endowment. */
-  async recordIncome(clinicWaqfId: string, investmentId: string, input: RecordClinicInvestmentIncomeInput, actorUserId: string) {
+  async recordIncome(programmeId: string, investmentId: string, input: RecordClinicInvestmentIncomeInput, actorUserId: string) {
     const amount = new Prisma.Decimal(input.amount);
     if (amount.decimalPlaces() > 2) throw new BadRequestException("Enter the amount in naira and kobo.");
     if (input.receivedOn > lagosToday()) throw new BadRequestException("The date it was received can't be in the future.");
     return prisma.$transaction(async (tx) => {
-      const investment = await this.find(tx, clinicWaqfId, investmentId);
+      const investment = await this.find(tx, programmeId, investmentId);
       if (investment.status !== "placed" && investment.status !== "returned") throw new BadRequestException("Income can only come from an investment that was placed.");
-      const income = await tx.clinicInvestmentIncome.create({
+      const income = await tx.programmeInvestmentIncome.create({
         data: { investmentId, amount, receivedOn: asDate(input.receivedOn), bankReference: input.bankReference, description: input.description, recordedByUserId: actorUserId },
       });
       await this.ledger.post(tx, {
-        clinicWaqfId,
+        programmeId,
         description: `Income from ${investment.name}`,
         currency: "NGN",
         source: "investment_income",
@@ -169,27 +169,27 @@ export class ClinicInvestmentsService {
         ],
       });
       // The equipment replacement reserve's share, set aside at once (slice 9).
-      await this.reserve.setAsideFromIncome(tx, clinicWaqfId, income.id, amount);
+      await this.reserve.setAsideFromIncome(tx, programmeId, income.id, amount);
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.income_recorded", entityType: "ClinicInvestmentIncome", entityId: income.id, after: income as any },
+        data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.income_recorded", entityType: "ProgrammeInvestmentIncome", entityId: income.id, after: income as any },
       });
       return income;
     });
   }
 
   /** The principal came back to endowment cash, in full. */
-  async recordReturn(clinicWaqfId: string, investmentId: string, input: RecordClinicInvestmentReturnInput, actorUserId: string) {
+  async recordReturn(programmeId: string, investmentId: string, input: RecordClinicInvestmentReturnInput, actorUserId: string) {
     if (input.returnedOn > lagosToday()) throw new BadRequestException("The date it came back can't be in the future.");
     return prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "clinic_waqfs" WHERE "id" = ${clinicWaqfId} FOR UPDATE`;
-      const before = await this.find(tx, clinicWaqfId, investmentId);
+      await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
+      const before = await this.find(tx, programmeId, investmentId);
       if (before.status !== "placed") throw new BadRequestException(`Only a placed investment can come back (this one is ${before.status.replace(/_/g, " ")}).`);
-      const after = await tx.clinicInvestment.update({
+      const after = await tx.programmeInvestment.update({
         where: { id: investmentId },
         data: { status: "returned", returnedOn: asDate(input.returnedOn), returnBankReference: input.bankReference },
       });
       await this.ledger.post(tx, {
-        clinicWaqfId,
+        programmeId,
         description: `${before.name}: principal returned`,
         currency: "NGN",
         source: "investment_returned",
@@ -202,15 +202,15 @@ export class ClinicInvestmentsService {
         ],
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.returned", entityType: "ClinicInvestment", entityId: investmentId, before: before as any, after: after as any },
+        data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.returned", entityType: "ProgrammeInvestment", entityId: investmentId, before: before as any, after: after as any },
       });
       return after;
     });
   }
 
-  async list(clinicWaqfId: string) {
-    const investments = await prisma.clinicInvestment.findMany({
-      where: { clinicWaqfId },
+  async list(programmeId: string) {
+    const investments = await prisma.programmeInvestment.findMany({
+      where: { programmeId },
       orderBy: { createdAt: "desc" },
       include: {
         counterparty: { select: { id: true, name: true } },
@@ -221,9 +221,9 @@ export class ClinicInvestmentsService {
     return investments.map(({ income, ...i }) => ({ ...i, incomeTotal: income.reduce((t, x) => t.plus(x.amount), new Prisma.Decimal(0)).toFixed(2) }));
   }
 
-  private async find(db: Prisma.TransactionClient | typeof prisma, clinicWaqfId: string, investmentId: string) {
-    const investment = await db.clinicInvestment.findUnique({ where: { id: investmentId } });
-    if (!investment || investment.clinicWaqfId !== clinicWaqfId) throw new NotFoundException(`Investment "${investmentId}" not found.`);
+  private async find(db: Prisma.TransactionClient | typeof prisma, programmeId: string, investmentId: string) {
+    const investment = await db.programmeInvestment.findUnique({ where: { id: investmentId } });
+    if (!investment || investment.programmeId !== programmeId) throw new NotFoundException(`Investment "${investmentId}" not found.`);
     return investment;
   }
 }
