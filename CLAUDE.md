@@ -901,6 +901,22 @@ an email, "call me" as a phone):
   `ReferenceField` (registration and licence numbers) and `NameField`
   (licensing and regulating authorities).
 
+**Update, 2026-11-17 — security review before launch**
+(`docs/security-review-2026-11-17.md`). Fixed first:
+- **Two-factor could be skipped** with a password alone: the "now enter
+  your code" token was accepted as a session. A full session token is now
+  marked `purpose: "session"` and only those are accepted
+  (`common/auth/session.ts`). Never sign another token type that a
+  session check could mistake for a session.
+- **Staff see a founder or co-founder invitation's link only if they sent
+  it** (`redactInvitationTokenFor`): a link lets its holder set the
+  account's password, so any staff role could have joined a Foundation as
+  someone else.
+- **`TRUST_PROXY_HOPS`** must be set to the number of proxies in front of
+  the API (1 for Render or nginx), or every visitor shares one IP for rate
+  limits, WhatsApp code limits, the AML network review and deed evidence.
+  Never higher than the real number.
+
 **Update, 2026-11-16 — every scheduled job is watched, and backups are
 real.** The five scheduled jobs (monthly giving, Paystack reconciliation,
 portfolio drift, trustee-licence expiry, access-review reminders) used to

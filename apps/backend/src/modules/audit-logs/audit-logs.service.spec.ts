@@ -240,7 +240,9 @@ describe("AuditLogsService", () => {
 
       const exported = result.records.find((r) => r.id === log.id);
       expect(exported?.recordHash).toBe(log.recordHash);
-    });
+      // The whole chain: a long-used dev database holds tens of thousands
+      // of rows, more than the default 5s allows.
+    }, 60_000);
 
     test("exportChain() filters by waqfId when provided", async () => {
       const result = await service.exportChain({ waqfId: "does-not-exist" });

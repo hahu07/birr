@@ -25,15 +25,23 @@ function getSecret(): string {
   return secret;
 }
 
+/**
+ * Every token this file signs uses the same secret, so a full session is
+ * marked as one (security review, 2026-11-17): until then the
+ * "password correct, now enter your code" token also carried a userId and
+ * was accepted as a session, so a password alone got past two-factor.
+ */
+const SESSION_PURPOSE = "session";
+
 export function signSessionToken(userId: string): string {
-  return jwt.sign({ userId } satisfies SessionTokenPayload, getSecret(), { expiresIn: SESSION_VALIDITY });
+  return jwt.sign({ userId, purpose: SESSION_PURPOSE }, getSecret(), { expiresIn: SESSION_VALIDITY });
 }
 
-/** Returns null on any verification failure (expired, tampered, malformed) rather than throwing — callers treat this identically to "no session." */
+/** Returns null on any verification failure (expired, tampered, malformed, or not a full session) rather than throwing — callers treat this identically to "no session." */
 export function verifySessionToken(token: string): SessionTokenPayload | null {
   try {
     const decoded = jwt.verify(token, getSecret());
-    if (typeof decoded === "string" || typeof decoded.userId !== "string") return null;
+    if (typeof decoded === "string" || typeof decoded.userId !== "string" || decoded.purpose !== SESSION_PURPOSE) return null;
     return { userId: decoded.userId };
   } catch {
     return null;

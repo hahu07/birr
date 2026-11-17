@@ -156,7 +156,7 @@ describe("InvitationsService", () => {
     expect(JSON.stringify(log.after)).not.toContain(invitation.token);
   });
 
-  test("list() and findById() hide a staff invitation's token but keep a founder invitation's", async () => {
+  test("list() and findById() hide a staff invitation's token, and show a founder invitation's only to whoever sent it", async () => {
     const staff = await staffInvitation(`list-staff-${Date.now()}@example.com`, "legal_adviser");
     const founder = await service.invite({
       inviteeKind: "founder_user",
@@ -167,11 +167,17 @@ describe("InvitationsService", () => {
     });
     invitationIds.push(founder.id);
 
-    const listed = await service.list();
+    const listed = await service.list(inviterUserId);
     expect(listed.find((i) => i.id === staff.id)?.token).toBeNull();
     expect(listed.find((i) => i.id === founder.id)?.token).toBe(founder.token);
-    expect((await service.findById(staff.id))?.token).toBeNull();
-    expect((await service.findById(founder.id))?.token).toBe(founder.token);
+    expect((await service.findById(staff.id, inviterUserId))?.token).toBeNull();
+    expect((await service.findById(founder.id, inviterUserId))?.token).toBe(founder.token);
+
+    // Security review, 2026-11-17: anyone else on staff (an External
+    // Auditor, say) must not get a link that would let them take the seat.
+    const someoneElse = "00000000-0000-4000-8000-0000000000ff";
+    expect((await service.list(someoneElse)).find((i) => i.id === founder.id)?.token).toBeNull();
+    expect((await service.findById(founder.id, someoneElse))?.token).toBeNull();
   });
 
   test("resendStaffInvitationEmail() re-sends a pending staff invitation and audit-logs it", async () => {

@@ -8,6 +8,7 @@ import * as path from "path";
 import { randomUUID } from "crypto";
 import cookieParser from "cookie-parser";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { HttpException } from "@nestjs/common";
 import { createValidationPipe } from "./common/validation/validation-pipe";
 import { FileStorageService } from "./common/storage/file-storage.service";
@@ -43,7 +44,23 @@ import { resolveFounderFromSession } from "./common/auth/current-founder";
 const WEBHOOK_PATHS = ["/webhooks/stripe", "/webhooks/paystack", "/webhooks/stablecoin"];
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+
+  // How many proxies sit in front of the API (security review, 2026-11-17).
+  // Render and the planned VPS (nginx) both put one there, so without this
+  // request.ip is the proxy's own address for every visitor: the rate
+  // limits, the WhatsApp code limits, the AML "shared network" review and
+  // deed-signing evidence would all treat everyone as one person. Only set
+  // it to the real number of hops: trusting a proxy that isn't there lets
+  // anyone choose their address with an X-Forwarded-For header.
+  const proxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 0);
+  if (Number.isInteger(proxyHops) && proxyHops > 0) {
+    app.set("trust proxy", proxyHops);
+  } else if (process.env.NODE_ENV === "production") {
+    console.warn(
+      "TRUST_PROXY_HOPS is not set: behind a proxy every visitor will share one IP address for rate limits and AML checks. Set it to the number of proxies in front of the API (usually 1).",
+    );
+  }
   // Where /uploads/* files are read from — local disk in dev, the S3-compatible
   // bucket in production (see common/storage/file-storage.service.ts).
   const storage = app.get(FileStorageService);
