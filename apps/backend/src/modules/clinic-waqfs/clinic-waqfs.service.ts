@@ -1,8 +1,9 @@
 import { LongTextField, NameField, TextField } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { IsOptional, Matches } from "class-validator";
+import { IsNumberString, IsOptional, Matches } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { CountryCode } from "../../common/validation/country-code";
+import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { deedTextHash, draftClinicDeedText } from "./clinic-waqf-deed";
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -39,6 +40,17 @@ export class UpdateClinicWaqfInput {
   @IsOptional()
   @LongTextField()
   description?: string;
+
+  // Public fundraising targets (slice 8), in naira.
+  @IsOptional()
+  @IsNumberString()
+  @IsPositiveDecimal()
+  endowmentTarget?: string;
+
+  @IsOptional()
+  @IsNumberString()
+  @IsPositiveDecimal()
+  runningMonthlyTarget?: string;
 }
 
 export class DraftClinicDeedInput {
@@ -92,6 +104,9 @@ export class ClinicWaqfsService {
 
   /** Name, city and description; the address and jurisdiction stay as set. */
   async update(id: string, input: UpdateClinicWaqfInput, actorUserId: string) {
+    for (const target of [input.endowmentTarget, input.runningMonthlyTarget]) {
+      if (target && new Prisma.Decimal(target).decimalPlaces() > 2) throw new BadRequestException("Enter targets in naira and kobo.");
+    }
     return prisma.$transaction(async (tx) => {
       const before = await tx.clinicWaqf.findUnique({ where: { id } });
       if (!before) throw new NotFoundException(`Clinic waqf "${id}" not found.`);

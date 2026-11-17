@@ -4,6 +4,7 @@ import type { Request } from "express";
 import { ClinicGiftsService, InitiateClinicGiftInput, InitiateFounderClinicGiftInput } from "./clinic-gifts.service";
 import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { Public } from "../../common/guards/public.decorator";
+import { ClinicReportsService } from "./clinic-reports.service";
 
 // Public routes for a giver with no account (2026-11-17, clinic slice 3).
 // Paystack's webhook arrives at ContributionsController's shared route,
@@ -11,13 +12,24 @@ import { Public } from "../../common/guards/public.decorator";
 // clinic's gifts at GET /clinic-waqfs/:id/gifts.
 @Controller("clinic-gifts")
 export class ClinicGiftsController {
-  constructor(private readonly service: ClinicGiftsService) {}
+  constructor(
+    private readonly service: ClinicGiftsService,
+    private readonly reports: ClinicReportsService,
+  ) {}
 
   // Declared before ":id", or Nest would match it as an id.
   @Public()
   @Get("clinics")
   clinics() {
     return this.service.publicClinics();
+  }
+
+  // The public report (slice 8): the endowment, running fund and zakah
+  // shown separately, published monthly figures and targets.
+  @Public()
+  @Get("clinics/:slug/report")
+  report(@Param("slug") slug: string) {
+    return this.reports.publicReport(slug);
   }
 
   @Public()

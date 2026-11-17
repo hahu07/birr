@@ -1653,6 +1653,9 @@ export interface ClinicWaqf {
   deeds: (Pick<ClinicWaqfDeed, "version"> & Partial<ClinicWaqfDeed>)[];
   // From GET /:id: the licensed operator running the clinic (slice 7).
   operator?: { id: string; name: string; status: string } | null;
+  // Public fundraising targets (slice 8).
+  endowmentTarget?: string | null;
+  runningMonthlyTarget?: string | null;
 }
 
 export interface ClinicLedgerRow {
@@ -1794,4 +1797,18 @@ export interface ClinicClaimLine {
   patientPaid: string;
   subsidy: string;
   zakahEligible: boolean;
+}
+
+export interface ClinicMonthlyReport {
+  id: string;
+  period: string;
+  visits: number;
+  childrenImmunised: number;
+  testsRun: number;
+  referrals: number;
+  status: "draft" | "published" | "discarded";
+  publishedAt: string | null;
+  recordedByUserId: string;
+  recordedByUser: { id: string; fullName: string } | null;
+  publishedByUser: { id: string; fullName: string } | null;
 }

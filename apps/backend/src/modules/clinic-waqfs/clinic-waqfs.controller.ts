@@ -19,6 +19,7 @@ import {
 } from "./clinic-investments.service";
 import { ClinicPriceListsService, DraftClinicPriceListInput } from "./clinic-price-lists.service";
 import { ClinicClaimsService, CreateClinicClaimInput, LinkClaimZakahInput } from "./clinic-claims.service";
+import { ClinicReportsService, RecordClinicReportInput } from "./clinic-reports.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 
@@ -37,6 +38,7 @@ export class ClinicWaqfsController {
     private readonly investments: ClinicInvestmentsService,
     private readonly priceLists: ClinicPriceListsService,
     private readonly claims: ClinicClaimsService,
+    private readonly reports: ClinicReportsService,
   ) {}
 
   @Post()
@@ -233,6 +235,31 @@ export class ClinicWaqfsController {
   @Get(":id/claims/:claimId/lines")
   claimLines(@Param("id") id: string, @Param("claimId") claimId: string) {
     return this.claims.claimLines(id, claimId);
+  }
+
+  // Monthly figures (slice 8): recorded by one person, published on the
+  // public page by another.
+  @Post(":id/reports")
+  @RequiresAccess("clinic_waqf.report_record")
+  recordReport(@Param("id") id: string, @Body() body: RecordClinicReportInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.reports.record(id, body, staff.userId);
+  }
+
+  @Post(":id/reports/:reportId/publish")
+  @RequiresAccess("clinic_waqf.report_publish")
+  publishReport(@Param("id") id: string, @Param("reportId") reportId: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.reports.publish(id, reportId, staff.userId);
+  }
+
+  @Post(":id/reports/:reportId/discard")
+  @RequiresAccess("clinic_waqf.report_record")
+  discardReport(@Param("id") id: string, @Param("reportId") reportId: string, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.reports.discard(id, reportId, staff.userId);
+  }
+
+  @Get(":id/reports")
+  listReports(@Param("id") id: string) {
+    return this.reports.list(id);
   }
 
   @Get(":id/gifts")

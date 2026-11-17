@@ -1226,6 +1226,25 @@ patient paid, and whether the operator assessed her as poor or needy.
   lines are insert-only, a claim never changes, its status moves only
   forward, the zakah link is set once, and nothing is deleted.
 
+Slice 8, public page and monthly report (built, `ClinicMonthlyReport`,
+`ClinicReportsService`; `GET /clinic-gifts/clinics/:slug/report`, public).
+- **Targets:** endowment, and running fund a month, set by a Mutawalli
+  Officer on the clinic (`clinic_waqf.manage`).
+- **Each pot shown on its own,** from the ledger: the endowment (endowed,
+  premises and equipment, invested, cash); the running fund (gifts,
+  endowment income, spent on subsidised visits, running costs); zakah
+  (paid for patients' bills, counted once its distribution is paid).
+- **Monthly figures, fixed measures only** (visits, children immunised,
+  tests run, referrals), with no free text, so nothing to overstate.
+  - A Mutawalli Officer records them from the operator's report
+    (`clinic_waqf.report_record`).
+  - Compliance or the Audit Committee publishes them
+    (`clinic_waqf.report_publish`), never whoever recorded them (a CHECK).
+  - Published figures never change.
+- **Subsidised visits by service and patients subsidised** come from
+  approved claims. Nothing about any giver, patient or member of staff is
+  shown.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
