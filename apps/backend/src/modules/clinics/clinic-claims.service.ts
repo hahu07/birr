@@ -4,7 +4,7 @@ import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsNumberString, Matches
 import { prisma, Prisma } from "@birr/db";
 import { DateField, IdField, TextField } from "../../common/validation/fields";
 import { assertLicensesCurrent, lagosToday } from "../counterparties/counterparty-licenses.service";
-import { ClinicLedgerService } from "./clinic-ledger.service";
+import { ProgrammeLedgerService } from "../waqf-programmes/programme-ledger.service";
 import { ClinicPriceListsService } from "./clinic-price-lists.service";
 
 type Db = Prisma.TransactionClient | typeof prisma;
@@ -64,7 +64,7 @@ const monthName = (period: string) => new Date(`${period}-01T00:00:00Z`).toLocal
  * A clinic waqf's operator and monthly claims (2026-11-17, clinic slice 7).
  *
  * - Operator: the Board assigns a licensed healthcare provider
- *   (clinic_waqf.operator_assign).
+ *   (clinic.operator_assign).
  * - Claims: a Mutawalli Officer uploads the operator's anonymous claim
  *   lines for a month. Each is checked against the approved price list:
  *   the service's price, and exactly the band's patient share. The
@@ -72,21 +72,21 @@ const monthName = (period: string) => new Date(`${period}-01T00:00:00Z`).toLocal
  *   needy are the zakah part; the rest is the running fund part, which may
  *   not pass the list's monthly cap.
  * - The running fund part: the Board or Compliance approves
- *   (clinic_waqf.claim_approve), within the running fund's free cash; it's
+ *   (clinic.claim_approve), within the running fund's free cash; it's
  *   paid by bank transfer from the clinic waqf's account; Compliance or
  *   the Audit Committee confirms the bank reference
- *   (clinic_waqf.claim_mark_paid), which books it (5000 / 1100).
+ *   (clinic.claim_mark_paid), which books it (5000 / 1100).
  * - The zakah part: paid through zakah's own two-person distribution to
  *   the operator (poor or needy, the exact amount), then linked here.
  */
 @Injectable()
 export class ClinicClaimsService {
   constructor(
-    private readonly ledger: ClinicLedgerService,
+    private readonly ledger: ProgrammeLedgerService,
     private readonly priceLists: ClinicPriceListsService,
   ) {}
 
-  // ---- The operator: clinic_waqf.operator_assign (checker: the Board) ----
+  // ---- The operator: clinic.operator_assign (checker: the Board) ----
 
   private parseOperator(payload: unknown) {
     const p = (payload ?? {}) as Record<string, unknown>;
@@ -113,7 +113,7 @@ export class ClinicClaimsService {
   }
 
   async checkDuplicateOperator(payload: unknown) {
-    if (await this.pending("clinic_waqf.operator_assign", "programmeId", this.parseOperator(payload).programmeId)) {
+    if (await this.pending("clinic.operator_assign", "programmeId", this.parseOperator(payload).programmeId)) {
       throw new ConflictException("An operator for this clinic is already waiting for the Board — check the Approvals queue.");
     }
   }
@@ -260,7 +260,7 @@ export class ClinicClaimsService {
   }
 
   async discardClaim(programmeId: string, claimId: string, actorUserId: string) {
-    if (await this.pending("clinic_waqf.claim_approve", "claimId", claimId)) {
+    if (await this.pending("clinic.claim_approve", "claimId", claimId)) {
       throw new ConflictException("This claim is waiting for approval. Have the proposal rejected first.");
     }
     return prisma.$transaction(async (tx) => {
@@ -322,7 +322,7 @@ export class ClinicClaimsService {
     return row;
   }
 
-  // ---- clinic_waqf.claim_approve (checkers: Board, Compliance) ----
+  // ---- clinic.claim_approve (checkers: Board, Compliance) ----
 
   async validateClaimProposal(payload: unknown) {
     const c = await this.findClaim((payload as { claimId?: unknown })?.claimId);
@@ -330,7 +330,7 @@ export class ClinicClaimsService {
   }
 
   async checkDuplicateClaim(payload: unknown) {
-    if (await this.pending("clinic_waqf.claim_approve", "claimId", (payload as { claimId: string }).claimId)) {
+    if (await this.pending("clinic.claim_approve", "claimId", (payload as { claimId: string }).claimId)) {
       throw new ConflictException("This claim is already waiting for approval — check the Approvals queue.");
     }
   }
@@ -374,7 +374,7 @@ export class ClinicClaimsService {
     return { before, after: await tx.clinicClaim.update({ where: { id: before.id }, data: { status: "rejected" } }) };
   }
 
-  // ---- clinic_waqf.claim_mark_paid (checkers: Compliance, Audit Committee) ----
+  // ---- clinic.claim_mark_paid (checkers: Compliance, Audit Committee) ----
 
   private parsePaid(payload: unknown) {
     const p = (payload ?? {}) as Record<string, unknown>;
@@ -395,7 +395,7 @@ export class ClinicClaimsService {
   }
 
   async checkDuplicatePaid(payload: unknown) {
-    if (await this.pending("clinic_waqf.claim_mark_paid", "claimId", (payload as { claimId: string }).claimId)) {
+    if (await this.pending("clinic.claim_mark_paid", "claimId", (payload as { claimId: string }).claimId)) {
       throw new ConflictException("This claim's payment is already waiting for confirmation.");
     }
   }

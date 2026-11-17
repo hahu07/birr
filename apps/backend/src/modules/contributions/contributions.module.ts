@@ -1,5 +1,5 @@
 import { Module } from "@nestjs/common";
-import { ClinicWaqfsModule } from "../clinic-waqfs/clinic-waqfs.module";
+import { WaqfProgrammesModule } from "../waqf-programmes/waqf-programmes.module";
 import { ContributionsService } from "./contributions.service";
 import { ContributionsController } from "./contributions.controller";
 import { AssetsModule } from "../assets/assets.module";
@@ -23,7 +23,7 @@ import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-cor
 // payout/contribution-adjacent consumer ever shows up; not worth the
 // bigger diff for three.
 @Module({
-  imports: [AssetsModule, NotificationsModule, DistributionsModule, VaultsModule, SettingsModule, WaqfLedgerModule, ZakahModule, RecurringGiftsCoreModule, ClinicWaqfsModule],
+  imports: [AssetsModule, NotificationsModule, DistributionsModule, VaultsModule, SettingsModule, WaqfLedgerModule, ZakahModule, RecurringGiftsCoreModule, WaqfProgrammesModule],
   controllers: [ContributionsController],
   providers: [ContributionsService, StripeAdapter, PaystackAdapter, StablecoinAdapter],
   exports: [ContributionsService],

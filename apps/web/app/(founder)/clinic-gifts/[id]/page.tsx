@@ -46,9 +46,9 @@ export default function ClinicGiftStatusPage() {
       try {
         const verified =
           polls % VERIFY_EVERY_N_POLLS === 0
-            ? await apiFetchJson<ProgrammeGiftStatus>(`/clinic-gifts/${params.id}/verify`, { method: "POST" }).catch(() => null)
+            ? await apiFetchJson<ProgrammeGiftStatus>(`/programme-gifts/${params.id}/verify`, { method: "POST" }).catch(() => null)
             : null;
-        const data = verified ?? (await apiFetchJson<ProgrammeGiftStatus>(`/clinic-gifts/${params.id}`));
+        const data = verified ?? (await apiFetchJson<ProgrammeGiftStatus>(`/programme-gifts/${params.id}`));
         polls += 1;
         if (cancelled) return;
         setPayment(data);
@@ -74,7 +74,7 @@ export default function ClinicGiftStatusPage() {
   async function checkAgain() {
     setChecking(true);
     try {
-      setPayment(await apiFetchJson<ProgrammeGiftStatus>(`/clinic-gifts/${params.id}/verify`, { method: "POST" }));
+      setPayment(await apiFetchJson<ProgrammeGiftStatus>(`/programme-gifts/${params.id}/verify`, { method: "POST" }));
     } catch {
       // The page keeps polling on its own; nothing more to show here.
     } finally {

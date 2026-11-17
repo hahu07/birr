@@ -53,9 +53,9 @@ export function ClinicSupport() {
 
   const load = useCallback(() => {
     Promise.all([
-      apiFetchJson<FounderClinicGifts>("/clinic-gifts/founder/mine"),
-      apiFetchJson<PublicClinic[]>("/clinic-gifts/clinics"),
-      apiFetchJson<ClinicMonthlyGift[]>("/clinic-gifts/founder/monthly"),
+      apiFetchJson<FounderClinicGifts>("/programme-gifts/founder/mine"),
+      apiFetchJson<PublicClinic[]>("/clinics"),
+      apiFetchJson<ClinicMonthlyGift[]>("/programme-gifts/founder/monthly"),
     ])
       .then(([m, c, g]) => {
         setMine(m);
@@ -195,7 +195,7 @@ function MonthlyGiftRow({ gift, onChange }: { gift: ClinicMonthlyGift; onChange:
     setBusy(true);
     setError(null);
     try {
-      const result = await apiFetchJson<{ checkoutUrl?: string }>(`/clinic-gifts/founder/monthly/${gift.id}/${path}`, {
+      const result = await apiFetchJson<{ checkoutUrl?: string }>(`/programme-gifts/founder/monthly/${gift.id}/${path}`, {
         method: "POST",
         ...(body && { body: JSON.stringify(body) }),
       });

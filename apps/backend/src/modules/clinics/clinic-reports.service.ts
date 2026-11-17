@@ -3,7 +3,7 @@ import { IsInt, Matches, Max, Min } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { TextField } from "../../common/validation/fields";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
-import { ClinicLedgerService } from "./clinic-ledger.service";
+import { ProgrammeLedgerService } from "../waqf-programmes/programme-ledger.service";
 
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 const COUNT_MAX = 1_000_000;
@@ -52,16 +52,16 @@ function recentMonths(n: number) {
  * slice 8).
  *
  * - Monthly figures: a Mutawalli Officer records the operator's visits,
- *   children immunised, tests run and referrals (clinic_waqf.report_record);
+ *   children immunised, tests run and referrals (clinic.report_record);
  *   Compliance or the Audit Committee publishes them
- *   (clinic_waqf.report_publish), never whoever recorded them.
+ *   (clinic.report_publish), never whoever recorded them.
  * - The public report: the endowment, the running fund and zakah, each
  *   shown on its own, from the ledger and approved claims; published
  *   figures; targets. Nothing about any giver or patient.
  */
 @Injectable()
 export class ClinicReportsService {
-  constructor(private readonly ledger: ClinicLedgerService) {}
+  constructor(private readonly ledger: ProgrammeLedgerService) {}
 
   async record(programmeId: string, input: RecordClinicReportInput, actorUserId: string) {
     if (input.period > lagosToday().slice(0, 7)) throw new BadRequestException("A report can't be for a month that hasn't started.");

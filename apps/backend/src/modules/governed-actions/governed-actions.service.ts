@@ -31,12 +31,12 @@ import { resolveFounderRecipientUserIdsForWaqf } from "../../common/notification
 import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
 import { FounderSuccessionService } from "../founder-succession/founder-succession.service";
-import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
-import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
-import { ClinicSpendingService } from "../clinic-waqfs/clinic-spending.service";
-import { ClinicPriceListsService } from "../clinic-waqfs/clinic-price-lists.service";
-import { ClinicClaimsService } from "../clinic-waqfs/clinic-claims.service";
-import { ClinicReserveService } from "../clinic-waqfs/clinic-reserve.service";
+import { WaqfProgrammesService } from "../waqf-programmes/waqf-programmes.service";
+import { ProgrammeAssetsService } from "../waqf-programmes/programme-assets.service";
+import { ProgrammeSpendingService } from "../waqf-programmes/programme-spending.service";
+import { ClinicPriceListsService } from "../clinics/clinic-price-lists.service";
+import { ClinicClaimsService } from "../clinics/clinic-claims.service";
+import { ProgrammeReserveService } from "../waqf-programmes/programme-reserve.service";
 import {
   assertPermissionChangesAllowed,
   checkPermissionChanges,
@@ -388,20 +388,20 @@ export class GovernedActionsService {
     private readonly zakahRefundsService: ZakahRefundsService,
     private readonly zakahFitrService: ZakahFitrService,
     private readonly founderSuccessionService: FounderSuccessionService,
-    private readonly clinicWaqfsService: ClinicWaqfsService,
-    private readonly clinicAssetsService: ClinicAssetsService,
-    private readonly clinicSpendingService: ClinicSpendingService,
+    private readonly clinicWaqfsService: WaqfProgrammesService,
+    private readonly clinicAssetsService: ProgrammeAssetsService,
+    private readonly clinicSpendingService: ProgrammeSpendingService,
     private readonly clinicPriceListsService: ClinicPriceListsService,
     private readonly clinicClaimsService: ClinicClaimsService,
-    private readonly clinicReserveService: ClinicReserveService,
+    private readonly clinicReserveService: ProgrammeReserveService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       // ---- The clinic waqf (2026-11-17). A Shariah board member alone
       // approves each version of its deed; the Board of Trustees alone
       // approves establishing it, once a deed version is approved. The
-      // rules live in ClinicWaqfsService. ----
+      // rules live in WaqfProgrammesService. ----
       [
-        "clinic_waqf.deed_approve",
+        "waqf_programme.deed_approve",
         {
           validatePropose: (payload) => this.clinicWaqfsService.validateDeedProposal(payload),
           checkDuplicate: (payload) => this.clinicWaqfsService.checkDuplicateDeedProposal(payload),
@@ -409,14 +409,14 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicWaqfsService.currentDeedState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicWaqfsService.approveDeed(payload, ctx.governedActionId, ctx.checkerUserId, tx);
-            return { auditAction: "clinic_waqf_deed.approved", entityType: "WaqfProgrammeDeed", entityId: after.id, before, after };
+            return { auditAction: "waqf_programme_deed.approved", entityType: "WaqfProgrammeDeed", entityId: after.id, before, after };
           },
         },
       ],
       // Clinic waqf assets (slice 5a): the Board approves adding a gift in
       // kind to the endowment, and disposing of an asset.
       [
-        "clinic_waqf.asset_add",
+        "waqf_programme.asset_add",
         {
           validatePropose: (payload) => this.clinicAssetsService.validateAddProposal(payload),
           checkDuplicate: (payload) => this.clinicAssetsService.checkDuplicateAdd(payload),
@@ -424,12 +424,12 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicAssetsService.currentAddState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicAssetsService.approveAdd(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_asset.added", entityType: "ProgrammeAsset", entityId: after.id, before, after };
+            return { auditAction: "programme_asset.added", entityType: "ProgrammeAsset", entityId: after.id, before, after };
           },
           onReject: async (payload, tx) => {
             const result = await this.clinicAssetsService.rejectAdd(payload, tx);
             return {
-              auditAction: "clinic_asset.rejected",
+              auditAction: "programme_asset.rejected",
               entityType: "ProgrammeAsset",
               entityId: (payload as { assetId: string }).assetId,
               before: result?.before ?? null,
@@ -439,7 +439,7 @@ export class GovernedActionsService {
         },
       ],
       [
-        "clinic_waqf.asset_dispose",
+        "waqf_programme.asset_dispose",
         {
           validatePropose: (payload) => this.clinicAssetsService.validateDisposeProposalAsync(payload),
           checkDuplicate: (payload) => this.clinicAssetsService.checkDuplicateDispose(payload),
@@ -447,7 +447,7 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicAssetsService.currentDisposeState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicAssetsService.approveDispose(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_asset.disposed", entityType: "ProgrammeAsset", entityId: after.id, before, after };
+            return { auditAction: "programme_asset.disposed", entityType: "ProgrammeAsset", entityId: after.id, before, after };
           },
         },
       ],
@@ -455,7 +455,7 @@ export class GovernedActionsService {
       // Board. Payments: the Board or Compliance approves; Compliance or the
       // Audit Committee confirms it was paid, which books it.
       [
-        "clinic_waqf.works_approve",
+        "waqf_programme.works_approve",
         {
           validatePropose: (payload) => this.clinicSpendingService.validateWorksProposal(payload),
           checkDuplicate: (payload) => this.clinicSpendingService.checkDuplicateWorks(payload),
@@ -463,12 +463,12 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicSpendingService.currentWorksState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicSpendingService.approveWorks(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_works.approved", entityType: "ProgrammeWorksProject", entityId: after.id, before, after };
+            return { auditAction: "programme_works.approved", entityType: "ProgrammeWorksProject", entityId: after.id, before, after };
           },
           onReject: async (payload, tx) => {
             const result = await this.clinicSpendingService.rejectWorks(payload, tx);
             return {
-              auditAction: "clinic_works.rejected",
+              auditAction: "programme_works.rejected",
               entityType: "ProgrammeWorksProject",
               entityId: (payload as { worksProjectId: string }).worksProjectId,
               before: result?.before ?? null,
@@ -478,7 +478,7 @@ export class GovernedActionsService {
         },
       ],
       [
-        "clinic_waqf.spend_approve",
+        "waqf_programme.spend_approve",
         {
           validatePropose: (payload) => this.clinicSpendingService.validateSpendProposal(payload),
           checkDuplicate: (payload) => this.clinicSpendingService.checkDuplicateSpend(payload),
@@ -486,12 +486,12 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicSpendingService.currentSpendState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicSpendingService.approveSpend(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_spend.approved", entityType: "ProgrammeSpend", entityId: after.id, before, after };
+            return { auditAction: "programme_spend.approved", entityType: "ProgrammeSpend", entityId: after.id, before, after };
           },
           onReject: async (payload, tx) => {
             const result = await this.clinicSpendingService.rejectSpend(payload, tx);
             return {
-              auditAction: "clinic_spend.rejected",
+              auditAction: "programme_spend.rejected",
               entityType: "ProgrammeSpend",
               entityId: (payload as { spendId: string }).spendId,
               before: result?.before ?? null,
@@ -501,21 +501,21 @@ export class GovernedActionsService {
         },
       ],
       [
-        "clinic_waqf.spend_mark_paid",
+        "waqf_programme.spend_mark_paid",
         {
           validatePropose: (payload) => this.clinicSpendingService.validatePaidProposalAsync(payload),
           checkDuplicate: (payload) => this.clinicSpendingService.checkDuplicatePaid(payload),
           describePayload: (payload) => this.clinicSpendingService.describePaid(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicSpendingService.markPaid(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_spend.paid", entityType: "ProgrammeSpend", entityId: after.id, before, after };
+            return { auditAction: "programme_spend.paid", entityType: "ProgrammeSpend", entityId: after.id, before, after };
           },
         },
       ],
       // Clinic waqf price list and subsidy bands (slice 6): the Board or
       // Compliance approves each version, naming its content's hash.
       [
-        "clinic_waqf.price_list_approve",
+        "clinic.price_list_approve",
         {
           validatePropose: (payload) => this.clinicPriceListsService.validateProposal(payload),
           checkDuplicate: (payload) => this.clinicPriceListsService.checkDuplicate(payload),
@@ -531,7 +531,7 @@ export class GovernedActionsService {
       // the operator; the Board or Compliance approves a claim's running
       // fund part; Compliance or the Audit Committee confirms it was paid.
       [
-        "clinic_waqf.operator_assign",
+        "clinic.operator_assign",
         {
           validatePropose: (payload) => this.clinicClaimsService.validateOperatorProposal(payload),
           checkDuplicate: (payload) => this.clinicClaimsService.checkDuplicateOperator(payload),
@@ -539,12 +539,12 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicClaimsService.currentOperatorState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicClaimsService.assignOperator(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_waqf.operator_assigned", entityType: "WaqfProgramme", entityId: after.id, before, after };
+            return { auditAction: "clinic.operator_assigned", entityType: "WaqfProgramme", entityId: after.id, before, after };
           },
         },
       ],
       [
-        "clinic_waqf.claim_approve",
+        "clinic.claim_approve",
         {
           validatePropose: (payload) => this.clinicClaimsService.validateClaimProposal(payload),
           checkDuplicate: (payload) => this.clinicClaimsService.checkDuplicateClaim(payload),
@@ -567,7 +567,7 @@ export class GovernedActionsService {
         },
       ],
       [
-        "clinic_waqf.claim_mark_paid",
+        "clinic.claim_mark_paid",
         {
           validatePropose: (payload) => this.clinicClaimsService.validatePaidProposal(payload),
           checkDuplicate: (payload) => this.clinicClaimsService.checkDuplicatePaid(payload),
@@ -581,7 +581,7 @@ export class GovernedActionsService {
       // The equipment replacement reserve's share of income (slice 9): the
       // Board sets it.
       [
-        "clinic_waqf.reserve_share_set",
+        "waqf_programme.reserve_share_set",
         {
           validatePropose: (payload) => this.clinicReserveService.validateShareProposal(payload),
           checkDuplicate: (payload) => this.clinicReserveService.checkDuplicateShare(payload),
@@ -589,12 +589,12 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicReserveService.currentShareState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicReserveService.approveShare(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_waqf.reserve_share_set", entityType: "WaqfProgramme", entityId: after.id, before, after };
+            return { auditAction: "waqf_programme.reserve_share_set", entityType: "WaqfProgramme", entityId: after.id, before, after };
           },
         },
       ],
       [
-        "clinic_waqf.establish",
+        "waqf_programme.establish",
         {
           validatePropose: (payload) => this.clinicWaqfsService.validateEstablishProposal(payload),
           checkDuplicate: (payload) => this.clinicWaqfsService.checkDuplicateEstablishProposal(payload),
@@ -602,7 +602,7 @@ export class GovernedActionsService {
           describeCurrentState: (payload) => this.clinicWaqfsService.currentEstablishState(payload),
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicWaqfsService.establish(payload, ctx.governedActionId, tx);
-            return { auditAction: "clinic_waqf.established", entityType: "WaqfProgramme", entityId: after.id, before, after };
+            return { auditAction: "waqf_programme.established", entityType: "WaqfProgramme", entityId: after.id, before, after };
           },
         },
       ],

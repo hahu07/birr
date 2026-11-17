@@ -3,14 +3,14 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { IsEnum, IsNumberString, IsOptional, Matches } from "class-validator";
 import { ProgrammeAssetKind, prisma, Prisma } from "@birr/db";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
-import { ClinicLedgerService } from "./clinic-ledger.service";
+import { ProgrammeLedgerService } from "./programme-ledger.service";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const dayMessage = (field: string) => ({ message: `${field} must be a date like 2027-01-31.` });
 const asDate = (day: string) => new Date(`${day}T00:00:00Z`);
 
-export class RecordClinicAssetInput {
+export class RecordProgrammeAssetInput {
   @IsEnum(ProgrammeAssetKind)
   kind!: ProgrammeAssetKind;
 
@@ -59,7 +59,7 @@ export class RecordClinicAssetInput {
 }
 
 /** Its care details, kept up to date by staff. What it is and its value never change. */
-export class UpdateClinicAssetCareInput {
+export class UpdateProgrammeAssetCareInput {
   @IsOptional()
   @LongTextField()
   description?: string;
@@ -102,16 +102,16 @@ const naira = (amount: Prisma.Decimal | string) => `₦${Number(amount).toLocale
  * A clinic waqf's asset register (2026-11-17, clinic slice 5a): land, a
  * building or equipment given in kind. A Mutawalli Officer records it at
  * its independent valuation; the Board of Trustees approves adding it to
- * the endowment (clinic_waqf.asset_add), which books it (1500 Premises and
+ * the endowment (waqf_programme.asset_add), which books it (1500 Premises and
  * equipment / 3000 Endowment capital). Disposing of one is the Board's
- * decision too (clinic_waqf.asset_dispose): any proceeds stay in the
+ * decision too (waqf_programme.asset_dispose): any proceeds stay in the
  * endowment. The governed-action engine calls the approval methods.
  */
 @Injectable()
-export class ClinicAssetsService {
-  constructor(private readonly ledger: ClinicLedgerService) {}
+export class ProgrammeAssetsService {
+  constructor(private readonly ledger: ProgrammeLedgerService) {}
 
-  async record(programmeId: string, input: RecordClinicAssetInput, actorUserId: string) {
+  async record(programmeId: string, input: RecordProgrammeAssetInput, actorUserId: string) {
     const value = new Prisma.Decimal(input.value);
     if (value.decimalPlaces() > 2) throw new BadRequestException("Enter the value in naira and kobo.");
     if (input.acquiredOn > lagosToday()) throw new BadRequestException("The date it was given can't be in the future.");
@@ -137,13 +137,13 @@ export class ClinicAssetsService {
         },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_asset.recorded", entityType: "ProgrammeAsset", entityId: asset.id, after: asset as any },
+        data: { actorType: "birr_staff", actorUserId, action: "programme_asset.recorded", entityType: "ProgrammeAsset", entityId: asset.id, after: asset as any },
       });
       return asset;
     });
   }
 
-  async updateCare(programmeId: string, assetId: string, input: UpdateClinicAssetCareInput, actorUserId: string) {
+  async updateCare(programmeId: string, assetId: string, input: UpdateProgrammeAssetCareInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
       const before = await tx.programmeAsset.findUnique({ where: { id: assetId } });
       if (!before || before.programmeId !== programmeId) throw new NotFoundException(`Asset "${assetId}" not found.`);
@@ -160,7 +160,7 @@ export class ClinicAssetsService {
         },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_asset.care_updated", entityType: "ProgrammeAsset", entityId: assetId, before: before as any, after: after as any },
+        data: { actorType: "birr_staff", actorUserId, action: "programme_asset.care_updated", entityType: "ProgrammeAsset", entityId: assetId, before: before as any, after: after as any },
       });
       return after;
     });
@@ -187,7 +187,7 @@ export class ClinicAssetsService {
     return asset;
   }
 
-  // ---- clinic_waqf.asset_add (checker: board_of_trustees) ----
+  // ---- waqf_programme.asset_add (checker: board_of_trustees) ----
 
   async validateAddProposal(payload: unknown) {
     const asset = await this.findOrThrow((payload as Partial<AddPayload>)?.assetId);
@@ -196,7 +196,7 @@ export class ClinicAssetsService {
   }
 
   async checkDuplicateAdd(payload: unknown) {
-    if (await this.pendingAction("clinic_waqf.asset_add", (payload as AddPayload).assetId)) {
+    if (await this.pendingAction("waqf_programme.asset_add", (payload as AddPayload).assetId)) {
       throw new ConflictException("Adding this asset is already waiting for the Board — check the Approvals queue.");
     }
   }
@@ -242,7 +242,7 @@ export class ClinicAssetsService {
     return { before, after };
   }
 
-  // ---- clinic_waqf.asset_dispose (checker: board_of_trustees) ----
+  // ---- waqf_programme.asset_dispose (checker: board_of_trustees) ----
 
   validateDisposeProposal(payload: unknown): DisposePayload {
     const p = (payload ?? {}) as Partial<Record<keyof DisposePayload, unknown>>;
@@ -263,7 +263,7 @@ export class ClinicAssetsService {
   }
 
   async checkDuplicateDispose(payload: unknown) {
-    if (await this.pendingAction("clinic_waqf.asset_dispose", (payload as DisposePayload).assetId)) {
+    if (await this.pendingAction("waqf_programme.asset_dispose", (payload as DisposePayload).assetId)) {
       throw new ConflictException("Disposing of this asset is already waiting for the Board — check the Approvals queue.");
     }
   }

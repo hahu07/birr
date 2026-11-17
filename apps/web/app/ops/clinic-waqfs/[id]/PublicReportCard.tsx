@@ -35,7 +35,7 @@ export function PublicReportCard({ clinic, onChange }: { clinic: WaqfProgramme; 
   const [recording, setRecording] = useState(false);
 
   const load = useCallback(() => {
-    apiFetchJson<ClinicMonthlyReport[]>(`/clinic-waqfs/${clinic.id}/reports`)
+    apiFetchJson<ClinicMonthlyReport[]>(`/waqf-programmes/${clinic.id}/reports`)
       .then(setReports)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, [clinic.id]);
@@ -61,7 +61,7 @@ export function PublicReportCard({ clinic, onChange }: { clinic: WaqfProgramme; 
   }
 
   const post = (path: string, body?: object) =>
-    run(() => apiFetchJson(`/clinic-waqfs/${clinic.id}/reports${path}`, { method: "POST", ...(body && { body: JSON.stringify(body) }) }));
+    run(() => apiFetchJson(`/waqf-programmes/${clinic.id}/reports${path}`, { method: "POST", ...(body && { body: JSON.stringify(body) }) }));
 
   return (
     <Card className="mt-5">
@@ -77,7 +77,7 @@ export function PublicReportCard({ clinic, onChange }: { clinic: WaqfProgramme; 
             )}
           </p>
         </div>
-        {can("clinic_waqf.report_record") && clinic.status === "established" && !recording && (
+        {can("clinic.report_record") && clinic.status === "established" && !recording && (
           <Button variant="secondary" className="shrink-0 px-3 py-1.5 text-xs" onClick={() => setRecording(true)}>
             Record a month
           </Button>
@@ -95,7 +95,7 @@ export function PublicReportCard({ clinic, onChange }: { clinic: WaqfProgramme; 
             clinic={clinic}
             disabled={busy}
             onCancel={() => setEditingTargets(false)}
-            onSave={(body) => run(() => apiFetchJson(`/clinic-waqfs/${clinic.id}`, { method: "PUT", body: JSON.stringify(body) })).then((ok) => ok && setEditingTargets(false))}
+            onSave={(body) => run(() => apiFetchJson(`/waqf-programmes/${clinic.id}`, { method: "PUT", body: JSON.stringify(body) })).then((ok) => ok && setEditingTargets(false))}
           />
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -103,7 +103,7 @@ export function PublicReportCard({ clinic, onChange }: { clinic: WaqfProgramme; 
               Endowment target: <span className="font-medium">{clinic.endowmentTarget ? `₦${formatAmount(clinic.endowmentTarget)}` : "none"}</span> · Running fund a
               month: <span className="font-medium">{clinic.runningMonthlyTarget ? `₦${formatAmount(clinic.runningMonthlyTarget)}` : "none"}</span>
             </p>
-            {can("clinic_waqf.manage") && (
+            {can("waqf_programme.manage") && (
               <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setEditingTargets(true)}>
                 Set targets
               </Button>
@@ -134,7 +134,7 @@ export function PublicReportCard({ clinic, onChange }: { clinic: WaqfProgramme; 
               </div>
               {r.status === "draft" && (
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {can("clinic_waqf.report_publish") &&
+                  {can("clinic.report_publish") &&
                     (r.recordedByUserId === staff?.userId ? (
                       <span className="text-xs text-slate-500">You recorded these, so someone else publishes them.</span>
                     ) : (
@@ -142,7 +142,7 @@ export function PublicReportCard({ clinic, onChange }: { clinic: WaqfProgramme; 
                         Checked: publish
                       </Button>
                     ))}
-                  {can("clinic_waqf.report_record") && (
+                  {can("clinic.report_record") && (
                     <Button variant="secondary" className="px-3 py-1.5 text-xs" disabled={busy} onClick={() => post(`/${r.id}/discard`)}>
                       Discard
                     </Button>

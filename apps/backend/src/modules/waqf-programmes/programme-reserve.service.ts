@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { prisma, Prisma } from "@birr/db";
-import { ClinicLedgerService } from "./clinic-ledger.service";
+import { ProgrammeLedgerService } from "./programme-ledger.service";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -10,17 +10,17 @@ const naira = (amount: Prisma.Decimal) => `₦${Number(amount).toLocaleString("e
  * A clinic waqf's equipment replacement reserve (2026-11-17, clinic slice 9).
  *
  * - The share: the Board sets what percentage of the endowment's income is
- *   set aside (clinic_waqf.reserve_share_set; a Mutawalli Officer proposes).
+ *   set aside (waqf_programme.reserve_share_set; a Mutawalli Officer proposes).
  * - Setting aside: every income receipt moves that share from running fund
  *   cash into the reserve (1150 / 1100, both running fund), automatically,
  *   in the same transaction that records the income.
  * - Spending it: only on replacing registered equipment, through endowment
- *   spending's approve, pay and confirm flow (ClinicSpendingService, kind
+ *   spending's approve, pay and confirm flow (ProgrammeSpendingService, kind
  *   reserve_replacement).
  */
 @Injectable()
-export class ClinicReserveService {
-  constructor(private readonly ledger: ClinicLedgerService) {}
+export class ProgrammeReserveService {
+  constructor(private readonly ledger: ProgrammeLedgerService) {}
 
   /** What the reserve holds (1150). */
   async balance(db: Db, programmeId: string) {
@@ -57,7 +57,7 @@ export class ClinicReserveService {
     return amount;
   }
 
-  // ---- clinic_waqf.reserve_share_set (checker: the Board) ----
+  // ---- waqf_programme.reserve_share_set (checker: the Board) ----
 
   private parse(payload: unknown) {
     const p = (payload ?? {}) as Record<string, unknown>;
@@ -84,7 +84,7 @@ export class ClinicReserveService {
   async checkDuplicateShare(payload: unknown) {
     const { programmeId } = this.parse(payload);
     const pending = await prisma.governedAction.findFirst({
-      where: { status: "proposed", permission: { key: "clinic_waqf.reserve_share_set" }, payload: { path: ["programmeId"], equals: programmeId } },
+      where: { status: "proposed", permission: { key: "waqf_programme.reserve_share_set" }, payload: { path: ["programmeId"], equals: programmeId } },
     });
     if (pending) throw new ConflictException("A change to this reserve's share is already waiting for the Board — check the Approvals queue.");
   }

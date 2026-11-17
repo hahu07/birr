@@ -33,10 +33,10 @@ export function AssetsCard({ programmeId, established }: { programmeId: string; 
   const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(() => {
-    Promise.all([apiFetchJson<ProgrammeAsset[]>(`/clinic-waqfs/${programmeId}/assets`), apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed")])
+    Promise.all([apiFetchJson<ProgrammeAsset[]>(`/waqf-programmes/${programmeId}/assets`), apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed")])
       .then(([a, actions]) => {
         setAssets(a);
-        setPending(actions.filter((x) => x.permission.key === "clinic_waqf.asset_add" || x.permission.key === "clinic_waqf.asset_dispose"));
+        setPending(actions.filter((x) => x.permission.key === "waqf_programme.asset_add" || x.permission.key === "waqf_programme.asset_dispose"));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, [programmeId]);
@@ -63,7 +63,7 @@ export function AssetsCard({ programmeId, established }: { programmeId: string; 
   const propose = (permissionKey: string, payload: object) =>
     run(() => apiFetchJson("/governed-actions", { method: "POST", body: JSON.stringify({ permissionKey, payload }) }));
   const waiting = (key: string, assetId: string) => pending.some((a) => a.permission.key === key && (a.payload as { assetId?: string })?.assetId === assetId);
-  const canManage = can("clinic_waqf.manage");
+  const canManage = can("waqf_programme.manage");
 
   return (
     <Card className="mt-5">
@@ -89,7 +89,7 @@ export function AssetsCard({ programmeId, established }: { programmeId: string; 
         <RecordAssetForm
           disabled={busy}
           onSubmit={(input) =>
-            run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/assets`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setShowForm(false))
+            run(() => apiFetchJson(`/waqf-programmes/${programmeId}/assets`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setShowForm(false))
           }
         />
       )}
@@ -121,7 +121,7 @@ export function AssetsCard({ programmeId, established }: { programmeId: string; 
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {a.status === "proposed" &&
-                  (waiting("clinic_waqf.asset_add", a.id) ? (
+                  (waiting("waqf_programme.asset_add", a.id) ? (
                     <p className="text-xs text-slate-500">
                       Waiting for the Board in the{" "}
                       <Link href="/ops/governed-actions" className="font-medium text-primary-700">
@@ -130,9 +130,9 @@ export function AssetsCard({ programmeId, established }: { programmeId: string; 
                       .
                     </p>
                   ) : (
-                    can("clinic_waqf.asset_add") &&
+                    can("waqf_programme.asset_add") &&
                     (established ? (
-                      <Button className="px-3 py-1.5 text-xs" disabled={busy} onClick={() => propose("clinic_waqf.asset_add", { assetId: a.id })}>
+                      <Button className="px-3 py-1.5 text-xs" disabled={busy} onClick={() => propose("waqf_programme.asset_add", { assetId: a.id })}>
                         Propose adding it to the endowment
                       </Button>
                     ) : (
@@ -140,10 +140,10 @@ export function AssetsCard({ programmeId, established }: { programmeId: string; 
                     ))
                   ))}
                 {a.status === "active" &&
-                  (waiting("clinic_waqf.asset_dispose", a.id) ? (
+                  (waiting("waqf_programme.asset_dispose", a.id) ? (
                     <p className="text-xs text-slate-500">Disposal is waiting for the Board.</p>
                   ) : (
-                    can("clinic_waqf.asset_dispose") && <DisposeButton disabled={busy} onSubmit={(p) => propose("clinic_waqf.asset_dispose", { assetId: a.id, ...p })} />
+                    can("waqf_programme.asset_dispose") && <DisposeButton disabled={busy} onSubmit={(p) => propose("waqf_programme.asset_dispose", { assetId: a.id, ...p })} />
                   ))}
               </div>
             </li>

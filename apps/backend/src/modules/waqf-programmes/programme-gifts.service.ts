@@ -9,7 +9,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { IsBoolean, IsEnum, IsIn, IsNumberString, IsOptional, IsString, MaxLength } from "class-validator";
-import { WaqfProgrammePot, ContributionProvider, IdType, prisma, Prisma, type RecurringGift } from "@birr/db";
+import { WaqfProgrammePot, WaqfProgrammeProduct, ContributionProvider, IdType, prisma, Prisma, type RecurringGift } from "@birr/db";
 import { processingFeeCover } from "@birr/zakah";
 import { FIELD_LIMITS } from "@birr/shared";
 import { type GiverContact, hasContact, lockGiverContact, moneyText, paystackEmailForGift, whatsAppNotice } from "../../common/giving/giver-contact";
@@ -20,11 +20,11 @@ import { MAX_PUBLIC_CONTRIBUTION_AMOUNT, MaxDecimal } from "../../common/validat
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
-import { ClinicLedgerService } from "./clinic-ledger.service";
+import { ProgrammeLedgerService } from "./programme-ledger.service";
 import { assertFounderVerified, findPrimaryContactMembership } from "../../common/auth/current-founder";
 import { RecurringGiftsCoreService } from "../recurring-gifts/recurring-gifts-core.service";
 import type { SavedCardChargeResult } from "../contributions/providers/payment-provider.interface";
-import { ResendClinicReceiptEmailAdapter } from "./clinic-receipt-email.adapter";
+import { ResendProgrammeReceiptEmailAdapter } from "./programme-receipt-email.adapter";
 
 const CURRENCY = "NGN";
 /** The smallest public gift, and a Founder's later gifts (owner's decisions, 2026-11-17). */
@@ -39,7 +39,7 @@ const GIFT_ACCOUNTS: Record<WaqfProgrammePot, { cash: string; credit: string }> 
   running: { cash: "1100", credit: "4000" }, // Running fund cash / Gifts to the running fund
 };
 
-export class InitiateClinicGiftInput {
+export class InitiateProgrammeGiftInput {
   @TextField(100)
   slug!: string;
 
@@ -107,7 +107,7 @@ export class InitiateClinicGiftInput {
 }
 
 /** A Founder's gift (slice 4a): the giver and receipt contacts come from their signed-in account. */
-export class InitiateFounderClinicGiftInput {
+export class InitiateFounderProgrammeGiftInput {
   @TextField(100)
   slug!: string;
 
@@ -143,7 +143,7 @@ export class InitiateFounderClinicGiftInput {
  * checkout for the month a paused gift is due, which saves the new card.
  * Same modes as Vault and zakah.
  */
-export type ClinicMonthlyMode =
+export type ProgrammeMonthlyMode =
   | { type: "setup" }
   | { type: "charge"; gift: RecurringGift; period: string }
   | { type: "card_update"; gift: RecurringGift };
@@ -170,15 +170,15 @@ function normalizeEmail(email: string | undefined): string | null {
  * Audit rows use actorType "public_donor" with the donor as actorDonorId.
  */
 @Injectable()
-export class ClinicGiftsService {
-  private readonly logger = new Logger(ClinicGiftsService.name);
+export class ProgrammeGiftsService {
+  private readonly logger = new Logger(ProgrammeGiftsService.name);
   private readonly lastVerifiedAt = new Map<string, number>();
 
   constructor(
     private readonly settings: SettingsService,
     private readonly paystack: PaystackAdapter,
-    private readonly ledger: ClinicLedgerService,
-    private readonly receiptEmail: ResendClinicReceiptEmailAdapter,
+    private readonly ledger: ProgrammeLedgerService,
+    private readonly receiptEmail: ResendProgrammeReceiptEmailAdapter,
     private readonly vaultContributions: VaultContributionsService,
     private readonly recurring: RecurringGiftsCoreService,
     // Last, so tests that never use WhatsApp needn't pass them.
@@ -192,9 +192,10 @@ export class ClinicGiftsService {
   }
 
   /** Established clinic waqfs, for a Founder choosing where to give. */
-  publicClinics() {
+  /** Established programmes of one product, for its public list (e.g. /clinics). */
+  publicProgrammes(product: WaqfProgrammeProduct) {
     return prisma.waqfProgramme.findMany({
-      where: { status: "established" },
+      where: { status: "established", product },
       orderBy: { establishedAt: "asc" },
       select: { name: true, slug: true, city: true, description: true },
     });
@@ -217,7 +218,7 @@ export class ClinicGiftsService {
     };
   }
 
-  async initiate(input: InitiateClinicGiftInput, ipAddress?: string, monthly?: ClinicMonthlyMode) {
+  async initiate(input: InitiateProgrammeGiftInput, ipAddress?: string, monthly?: ProgrammeMonthlyMode) {
     if (input.monthly && !monthly) monthly = { type: "setup" };
     const scheduled = monthly && monthly.type !== "setup" ? monthly.gift : null;
     if (monthly?.type === "setup" && !input.donorEmail && !input.donorWhatsApp) {
@@ -282,7 +283,7 @@ export class ClinicGiftsService {
           ipAddress,
         },
       });
-      await this.audit(tx, "clinic_gift.initiated", created.id, { type: "public_donor", donorId: created.donorId }, null, created);
+      await this.audit(tx, "programme_gift.initiated", created.id, { type: "public_donor", donorId: created.donorId }, null, created);
       return created;
     });
     return this.checkout(gift, clinic, subaccount, { type: "public_donor", donorId: gift.donorId }, monthly, recurringGift);
@@ -308,7 +309,7 @@ export class ClinicGiftsService {
    * later month of a monthly gift (slice 4b) is given by whoever is the
    * primary contact when it's charged.
    */
-  async initiateAsFounder(founderId: string, userId: string | null, input: InitiateFounderClinicGiftInput, ipAddress?: string, monthly?: ClinicMonthlyMode) {
+  async initiateAsFounder(founderId: string, userId: string | null, input: InitiateFounderProgrammeGiftInput, ipAddress?: string, monthly?: ProgrammeMonthlyMode) {
     if (input.monthly && !monthly) monthly = { type: "setup" };
     const scheduled = monthly && monthly.type !== "setup" ? monthly.gift : null;
     await assertFounderVerified(prisma, founderId);
@@ -358,7 +359,7 @@ export class ClinicGiftsService {
           ipAddress,
         },
       });
-      await this.audit(tx, "clinic_gift.initiated", created.id, actor, null, created);
+      await this.audit(tx, "programme_gift.initiated", created.id, actor, null, created);
       return created;
     });
     return this.checkout(gift, clinic, subaccount, actor, monthly, recurringGift);
@@ -389,7 +390,7 @@ export class ClinicGiftsService {
    */
   private async linkMonthly(
     tx: Prisma.TransactionClient,
-    monthly: ClinicMonthlyMode | undefined,
+    monthly: ProgrammeMonthlyMode | undefined,
     reference: string,
     setup: {
       email: string | null;
@@ -512,7 +513,7 @@ export class ClinicGiftsService {
     clinic: { name: string; slug: string },
     subaccount: string,
     actor: GiftActor,
-    monthly?: ClinicMonthlyMode,
+    monthly?: ProgrammeMonthlyMode,
     recurringGift?: RecurringGift | null,
   ) {
     const id = gift.id;
@@ -548,7 +549,7 @@ export class ClinicGiftsService {
       // Don't leave a reservation counting toward the giver's threshold.
       await prisma.$transaction(async (tx) => {
         const failed = await tx.programmeGift.update({ where: { id }, data: { status: "failed" } });
-        await this.audit(tx, "clinic_gift.failed", id, actor, gift, failed);
+        await this.audit(tx, "programme_gift.failed", id, actor, gift, failed);
       });
       throw err;
     }
@@ -562,7 +563,7 @@ export class ClinicGiftsService {
     if (result.providerReference === id) return { gift: this.publicView(gift, clinic), clientPayload: result.clientPayload };
     const withReference = await prisma.$transaction(async (tx) => {
       const updated = await tx.programmeGift.update({ where: { id }, data: { providerReference: result.providerReference } });
-      await this.audit(tx, "clinic_gift.payment_created", id, actor, gift, updated);
+      await this.audit(tx, "programme_gift.payment_created", id, actor, gift, updated);
       return updated;
     });
     return { gift: this.publicView(withReference, clinic), clientPayload: result.clientPayload };
@@ -651,7 +652,7 @@ export class ClinicGiftsService {
         gift.founderId && gift.initiatedByUserId
           ? { type: "founder_user", userId: gift.initiatedByUserId, founderId: gift.founderId }
           : { type: "public_donor", donorId: gift.donorId };
-      await this.audit(tx, `clinic_gift.${status}`, gift.id, actor, before, after);
+      await this.audit(tx, `programme_gift.${status}`, gift.id, actor, before, after);
       return after;
     });
 

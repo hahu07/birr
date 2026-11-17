@@ -40,11 +40,11 @@ export function SpendingCard({ programmeId, established }: { programmeId: string
 
   const load = useCallback(() => {
     Promise.all([
-      apiFetchJson<ProgrammeWorksProject[]>(`/clinic-waqfs/${programmeId}/works`),
-      apiFetchJson<ProgrammeSpend[]>(`/clinic-waqfs/${programmeId}/spends`),
+      apiFetchJson<ProgrammeWorksProject[]>(`/waqf-programmes/${programmeId}/works`),
+      apiFetchJson<ProgrammeSpend[]>(`/waqf-programmes/${programmeId}/spends`),
       apiFetchJson<Counterparty[]>("/counterparties?status=active"),
       apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"),
-      apiFetchJson<ProgrammeAsset[]>(`/clinic-waqfs/${programmeId}/assets`),
+      apiFetchJson<ProgrammeAsset[]>(`/waqf-programmes/${programmeId}/assets`),
     ])
       .then(([w, s, c, actions, a]) => {
         setWorks(w);
@@ -78,7 +78,7 @@ export function SpendingCard({ programmeId, established }: { programmeId: string
   const propose = (permissionKey: string, payload: object) =>
     run(() => apiFetchJson("/governed-actions", { method: "POST", body: JSON.stringify({ permissionKey, payload }) }));
   const waiting = (key: string, field: string, id: string) => pending.some((a) => a.permission.key === key && (a.payload as Record<string, unknown>)?.[field] === id);
-  const canManage = can("clinic_waqf.manage") && established;
+  const canManage = can("waqf_programme.manage") && established;
 
   return (
     <Card className="mt-5">
@@ -107,7 +107,7 @@ export function SpendingCard({ programmeId, established }: { programmeId: string
         <WorksForm
           partners={partners}
           disabled={busy}
-          onSubmit={(input) => run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/works`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setForm("none"))}
+          onSubmit={(input) => run(() => apiFetchJson(`/waqf-programmes/${programmeId}/works`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setForm("none"))}
         />
       )}
       {form === "spend" && works && (
@@ -116,7 +116,7 @@ export function SpendingCard({ programmeId, established }: { programmeId: string
           partners={partners}
           works={works.filter((w) => w.status === "approved")}
           disabled={busy}
-          onSubmit={(input) => run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/spends`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setForm("none"))}
+          onSubmit={(input) => run(() => apiFetchJson(`/waqf-programmes/${programmeId}/spends`, { method: "POST", body: JSON.stringify(input) })).then((ok) => ok && setForm("none"))}
         />
       )}
 
@@ -138,11 +138,11 @@ export function SpendingCard({ programmeId, established }: { programmeId: string
                     <Badge tone={w.status === "approved" ? "success" : w.status === "rejected" ? "neutral" : "warning"}>{humanize(w.status)}</Badge>
                   </div>
                   {w.status === "proposed" &&
-                    (waiting("clinic_waqf.works_approve", "worksProjectId", w.id) ? (
+                    (waiting("waqf_programme.works_approve", "worksProjectId", w.id) ? (
                       <p className="mt-1 text-xs text-slate-500">Waiting for the Board.</p>
                     ) : (
-                      can("clinic_waqf.works_approve") && (
-                        <Button className="mt-2 px-3 py-1.5 text-xs" disabled={busy} onClick={() => propose("clinic_waqf.works_approve", { worksProjectId: w.id })}>
+                      can("waqf_programme.works_approve") && (
+                        <Button className="mt-2 px-3 py-1.5 text-xs" disabled={busy} onClick={() => propose("waqf_programme.works_approve", { worksProjectId: w.id })}>
                           Propose to the Board
                         </Button>
                       )
@@ -178,22 +178,22 @@ export function SpendingCard({ programmeId, established }: { programmeId: string
                 <Badge tone={SPEND_TONE[s.status]}>{humanize(s.status)}</Badge>
               </div>
               {s.status === "pending_approval" &&
-                (waiting("clinic_waqf.spend_approve", "spendId", s.id) ? (
+                (waiting("waqf_programme.spend_approve", "spendId", s.id) ? (
                   <p className="mt-1 text-xs text-slate-500">
                     Waiting for approval in the <Link href="/ops/governed-actions" className="font-medium text-primary-700">Approvals queue</Link>.
                   </p>
                 ) : (
-                  can("clinic_waqf.spend_approve") && (
-                    <Button className="mt-2 px-3 py-1.5 text-xs" disabled={busy} onClick={() => propose("clinic_waqf.spend_approve", { spendId: s.id })}>
+                  can("waqf_programme.spend_approve") && (
+                    <Button className="mt-2 px-3 py-1.5 text-xs" disabled={busy} onClick={() => propose("waqf_programme.spend_approve", { spendId: s.id })}>
                       Propose for approval
                     </Button>
                   )
                 ))}
               {s.status === "approved" &&
-                (waiting("clinic_waqf.spend_mark_paid", "spendId", s.id) ? (
+                (waiting("waqf_programme.spend_mark_paid", "spendId", s.id) ? (
                   <p className="mt-1 text-xs text-slate-500">Payment waiting for confirmation.</p>
                 ) : (
-                  can("clinic_waqf.spend_mark_paid") && <MarkPaid disabled={busy} onSubmit={(p) => propose("clinic_waqf.spend_mark_paid", { spendId: s.id, ...p })} />
+                  can("waqf_programme.spend_mark_paid") && <MarkPaid disabled={busy} onSubmit={(p) => propose("waqf_programme.spend_mark_paid", { spendId: s.id, ...p })} />
                 ))}
             </li>
           ))}

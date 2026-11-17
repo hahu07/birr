@@ -2,18 +2,18 @@ import { prisma } from "@birr/db";
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
-import { ClinicLedgerService } from "./clinic-ledger.service";
+import { ProgrammeLedgerService } from "../waqf-programmes/programme-ledger.service";
 import { ClinicPriceListsService } from "./clinic-price-lists.service";
 import { ClinicReportsService } from "./clinic-reports.service";
-import { ClinicWaqfsService } from "./clinic-waqfs.service";
+import { WaqfProgrammesService } from "../waqf-programmes/waqf-programmes.service";
 
 // Clinic waqfs, reports, claims and ledgers are never deleted (triggers),
 // so these fixtures stay in the dev database. The one zakah distribution
 // is rejected afterwards so it commits nothing.
 describe("ClinicReportsService", () => {
-  const ledger = new ClinicLedgerService();
+  const ledger = new ProgrammeLedgerService();
   const service = new ClinicReportsService(ledger);
-  const clinics = new ClinicWaqfsService();
+  const clinics = new WaqfProgrammesService();
   const lists = new ClinicPriceListsService();
   const month = lagosToday().slice(0, 7);
 
@@ -40,9 +40,9 @@ describe("ClinicReportsService", () => {
     if (!established) return created;
     const draft = await clinics.draftDeed(created.id, {}, recorderUserId);
     const deedPayload = { deedId: draft.id, textHash: draft.textHash };
-    const deedAction = await decidedAction("clinic_waqf.deed_approve", deedPayload);
+    const deedAction = await decidedAction("waqf_programme.deed_approve", deedPayload);
     await prisma.$transaction((tx) => clinics.approveDeed(deedPayload, deedAction.id, publisherUserId, tx));
-    const establishAction = await decidedAction("clinic_waqf.establish", { programmeId: created.id });
+    const establishAction = await decidedAction("waqf_programme.establish", { programmeId: created.id });
     await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establishAction.id, tx));
     return created;
   }
@@ -118,12 +118,12 @@ describe("ClinicReportsService", () => {
       },
       recorderUserId,
     );
-    const listAction = await decidedAction("clinic_waqf.price_list_approve", { priceListId: list.id, contentHash: list.contentHash });
+    const listAction = await decidedAction("clinic.price_list_approve", { priceListId: list.id, contentHash: list.contentHash });
     await prisma.$transaction((tx) => lists.approve({ priceListId: list.id, contentHash: list.contentHash }, listAction.id, tx));
     const operator = await prisma.counterparty.create({
       data: { name: `Report Test Operator ${randomUUID()}`, institutionType: "healthcare_provider", jurisdiction: "NG", status: "active" },
     });
-    const claimAction = await decidedAction("clinic_waqf.claim_approve", {});
+    const claimAction = await decidedAction("clinic.claim_approve", {});
     const claim = await prisma.$transaction(async (tx) => {
       const c = await tx.clinicClaim.create({
         data: {
