@@ -1220,8 +1220,16 @@ patient paid, and whether the operator assessed her as poor or needy.
   (`clinic_waqf.claim_mark_paid`, 5000 / 1100).
 - **Zakah part:** paid as an ordinary zakah distribution to the operator
   (zakah on wealth, poor or needy, the exact amount), with zakah's own
-  approvals, then linked to the claim once. The Shariah Supervisory
-  Board's ruling on tamlik (zakah paying a patient's bill) is still open.
+  approvals, then linked to the claim once.
+- **Tamlik, owner's decision 2026-11-17** (plan question 1): the
+  patient's written authorisation is enough. A patient assessed as poor
+  or needy authorises Birr in writing to pay her bill to the clinic for
+  her, so zakah is paid to the operator, not handed to her. Decided
+  before the Shariah Supervisory Board ruled; add it to the Board's
+  review list.
+  - The code doesn't record the authorisation. Proposed, not yet
+    decided: it stays with the operator, with her records, and auditors
+    check it when they sample claims on site.
 - **Database:** a claim's totals must equal its lines' (a deferred check),
   lines are insert-only, a claim never changes, its status moves only
   forward, the zakah link is set once, and nothing is deleted.
@@ -1249,7 +1257,8 @@ Slice 9, equipment replacement reserve (built, `ClinicReserveService`).
 **Owner's decision, 2026-11-17: a reserve is allowed, since it is spent
 only on replacing the waqf's own equipment. Built before the Shariah
 Supervisory Board ruled on it** (plan question 9); add it to the Board's
-review list.
+review list. The rest of question 9 (what a donor of land or a building
+must own and agree to, their conditions, istibdal) stays open.
 - **Funding:** the Board sets a share of the endowment's income
   (`clinic_waqf.reserve_share_set`; a Mutawalli Officer proposes). Each
   income receipt sets that share aside at once, rounded down to the kobo
