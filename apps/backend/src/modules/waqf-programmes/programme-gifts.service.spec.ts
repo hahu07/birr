@@ -97,7 +97,7 @@ describe("ProgrammeGiftsService", () => {
   }
 
   async function establishedClinic() {
-    const created = await clinics.create({ name: "Gift Test Clinic", slug: `gift-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+    const created = await clinics.create({ product: "clinic", name: "Gift Test Clinic", slug: `gift-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     const draft = await clinics.draftDeed(created.id, {}, makerUserId);
     const deedPayload = { deedId: draft.id, textHash: draft.textHash };
     const deedAction = await decidedAction("waqf_programme.deed_approve", deedPayload);
@@ -144,7 +144,7 @@ describe("ProgrammeGiftsService", () => {
       subaccount = undefined;
       await expect(service.initiate(running())).rejects.toThrow(ServiceUnavailableException);
       subaccount = "ACCT_test_clinic";
-      const draft = await clinics.create({ name: "Draft Clinic", slug: `gift-draft-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      const draft = await clinics.create({ product: "clinic", name: "Draft Clinic", slug: `gift-draft-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       await expect(service.initiate({ ...running(), slug: draft.slug })).rejects.toThrow(/isn't taking gifts/);
       await expect(service.initiate({ ...running(), slug: "no-such-clinic" })).rejects.toThrow(NotFoundException);
     });

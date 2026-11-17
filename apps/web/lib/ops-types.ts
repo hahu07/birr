@@ -1640,6 +1640,10 @@ export interface WaqfProgrammeDeed {
 
 export interface WaqfProgramme {
   id: string;
+  // Which product (WAQF_PROGRAMME_PRODUCTS in @birr/shared); the clinic is the first.
+  product: "clinic";
+  // The causes it serves, from the cause catalog (shared layer step 3).
+  causes?: { causeCategory: { id: string; name: string } }[];
   name: string;
   slug: string;
   city: string;

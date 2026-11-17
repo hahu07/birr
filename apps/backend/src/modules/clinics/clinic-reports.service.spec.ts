@@ -36,7 +36,7 @@ describe("ClinicReportsService", () => {
   }
 
   async function newClinic(established = true) {
-    const created = await clinics.create({ name: "Report Test Clinic", slug: `report-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, recorderUserId);
+    const created = await clinics.create({ product: "clinic", name: "Report Test Clinic", slug: `report-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, recorderUserId);
     if (!established) return created;
     const draft = await clinics.draftDeed(created.id, {}, recorderUserId);
     const deedPayload = { deedId: draft.id, textHash: draft.textHash };

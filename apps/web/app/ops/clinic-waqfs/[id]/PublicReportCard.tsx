@@ -13,18 +13,15 @@ import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
 import type { ClinicMonthlyReport, WaqfProgramme } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, Input } from "@birr/ui";
+import { WAQF_PROGRAMME_PRODUCTS } from "@birr/shared";
 
 const thisMonth = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos" }).format(new Date()).slice(0, 7);
 const monthName = (period: string) => new Date(`${period}-01T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 const clean = (v: string) => v.replace(/[,\s₦]/g, "");
 
 const TONE: Record<ClinicMonthlyReport["status"], "success" | "warning" | "neutral"> = { draft: "warning", published: "success", discarded: "neutral" };
-const MEASURES = [
-  ["visits", "Visits"],
-  ["childrenImmunised", "Children immunised"],
-  ["testsRun", "Tests run"],
-  ["referrals", "Referrals"],
-] as const;
+// The clinic product's fixed monthly measures, from the shared product list.
+const MEASURES = WAQF_PROGRAMME_PRODUCTS.clinic.monthlyMeasures.map((m) => [m.key, m.label] as const);
 
 export function PublicReportCard({ clinic, onChange }: { clinic: WaqfProgramme; onChange: () => void }) {
   const { can, staff } = useStaffSession();
