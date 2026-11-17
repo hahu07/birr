@@ -1719,7 +1719,7 @@ export interface ClinicWorksProject {
 
 export interface ClinicSpend {
   id: string;
-  kind: "equipment" | "works_stage";
+  kind: "equipment" | "works_stage" | "investment";
   payee: { id: string; name: string };
   worksProject: { id: string; name: string } | null;
   description: string;
@@ -1729,4 +1729,19 @@ export interface ClinicSpend {
   paidOn: string | null;
   bankReference: string | null;
   createdAt: string;
+}
+
+// GET /clinic-waqfs/:id/investments (2026-11-17, clinic slice 5c).
+export interface ClinicInvestment {
+  id: string;
+  name: string;
+  instrumentType: string;
+  amount: string;
+  businessDescription: string;
+  status: "pending_shariah_review" | "shariah_rejected" | "shariah_approved" | "placed" | "returned";
+  shariahNote: string | null;
+  returnedOn: string | null;
+  counterparty: { id: string; name: string };
+  placement: { id: string; status: string } | null;
+  incomeTotal: string;
 }

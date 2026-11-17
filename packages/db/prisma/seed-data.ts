@@ -182,6 +182,13 @@ export const accessPermissions = [
   { key: "caseload.view_all", category: "staff", description: "See every waqf fund's beneficiaries and Founder requests, not just assigned ones.", roles: ["platform_admin"] },
   { key: "cause_category.manage", category: "catalog", description: "Maintain the cause category catalog, including Founder suggestions.", roles: ["platform_admin"] },
   { key: "cause_impact.log", category: "waqf", description: "Log an impact update on a waqf fund's cause.", roles: ["mutawalli_officer"] },
+  // Clinic waqf investments (2026-11-17, slice 5c): the Investment
+  // Committee records and places them (placing is an endowment payment,
+  // approved and confirmed by others) and records their return; a Shariah
+  // board member screens each; income is recorded as proceeds are.
+  { key: "clinic_waqf.investment_manage", category: "clinic", description: "Record a clinic waqf investment, propose placing it, and record its principal coming back.", roles: ["investment_committee"] },
+  { key: "clinic_waqf.investment_shariah_screen", category: "shariah", description: "Decide the Shariah screening of a clinic waqf investment.", roles: ["shariah_board_member"] },
+  { key: "clinic_waqf.investment_income_record", category: "clinic", description: "Record income a clinic waqf investment paid, into the running fund.", roles: ["investment_committee", "mutawalli_officer"] },
   { key: "clinic_waqf.manage", category: "clinic", description: "Create a clinic waqf and draft or discard versions of its deed (establishing and approving are separate).", roles: ["mutawalli_officer"] },
   { key: "coi.review", category: "staff", description: "Review another staff member's conflict-of-interest declaration.", roles: ["compliance_officer"] },
   // Licences (2026-11-17, clinic slice 1): two people. Whoever records one
@@ -352,6 +359,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.refund_approve": { canChecker: true },
   },
   investment_committee: {
+    "clinic_waqf.spend_approve": { canMaker: true },
+    "clinic_waqf.spend_mark_paid": { canMaker: true },
     "asset.dispose": { canChecker: true },
     "investment.change": { canMaker: true },
     // Same reversed-pairing posture as investment.change: the committee

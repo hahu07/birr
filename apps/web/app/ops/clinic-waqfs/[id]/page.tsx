@@ -17,6 +17,7 @@ import { Alert, Badge, Button, Card, DetailGrid, EmptyState, Skeleton } from "@b
 import { countryLabel } from "@birr/shared";
 import { AssetsCard } from "./AssetsCard";
 import { SpendingCard } from "./SpendingCard";
+import { InvestmentsCard } from "./InvestmentsCard";
 
 const DEED_TONE: Record<ClinicWaqfDeed["status"], "success" | "warning" | "neutral" | "danger"> = {
   draft: "warning",
@@ -303,6 +304,8 @@ export default function ClinicWaqfPage() {
       <AssetsCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
 
       <SpendingCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
+
+      <InvestmentsCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
 
       <Card className="mt-5">
         <p className="text-sm font-medium text-slate-700">Gifts</p>
