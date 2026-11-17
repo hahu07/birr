@@ -20,6 +20,7 @@ import { SpendingCard } from "./SpendingCard";
 import { InvestmentsCard } from "./InvestmentsCard";
 import { PriceListCard } from "./PriceListCard";
 import { ClaimsCard } from "./ClaimsCard";
+import { PublicReportCard } from "./PublicReportCard";
 
 const DEED_TONE: Record<ClinicWaqfDeed["status"], "success" | "warning" | "neutral" | "danger"> = {
   draft: "warning",
@@ -312,6 +313,8 @@ export default function ClinicWaqfPage() {
       <PriceListCard clinicWaqfId={clinic.id} />
 
       <ClaimsCard clinic={clinic} onChange={load} />
+
+      <PublicReportCard clinic={clinic} onChange={load} />
 
       <Card className="mt-5">
         <p className="text-sm font-medium text-slate-700">Gifts</p>

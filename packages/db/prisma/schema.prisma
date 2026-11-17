@@ -391,6 +391,8 @@ model User {
   clinicSpendsCreated            ClinicSpend[]                   @relation("ClinicSpendCreator")
   clinicPriceListsCreated        ClinicPriceList[]               @relation("ClinicPriceListCreator")
   clinicClaimsCreated            ClinicClaim[]                   @relation("ClinicClaimCreator")
+  clinicReportsRecorded          ClinicMonthlyReport[]           @relation("ClinicReportRecorder")
+  clinicReportsPublished         ClinicMonthlyReport[]           @relation("ClinicReportPublisher")
   clinicInvestmentsCreated       ClinicInvestment[]              @relation("ClinicInvestmentCreator")
   clinicInvestmentsScreened      ClinicInvestment[]              @relation("ClinicInvestmentShariahReviewer")
   clinicInvestmentIncomeRecorded ClinicInvestmentIncome[]        @relation("ClinicInvestmentIncomeRecorder")
@@ -4061,6 +4063,12 @@ model ClinicWaqf {
   claims     ClinicClaim[]
   claimLines ClinicClaimLine[]
 
+  // Public fundraising targets (slice 8), set by a Mutawalli Officer.
+  endowmentTarget      Decimal?
+  runningMonthlyTarget Decimal?
+
+  monthlyReports ClinicMonthlyReport[]
+
   @@map("clinic_waqfs")
 }
 
@@ -4609,4 +4617,42 @@ model ClinicClaimLine {
   @@unique([claimId, visitReference, serviceCode])
   @@index([clinicWaqfId, visitReference])
   @@map("clinic_claim_lines")
+}
+
+// ---- Clinic waqf monthly reports (2026-11-17, clinic slice 8) ----
+// The operator's monthly figures, as fixed measures only (no free text, so
+// no health claims to overstate). A Mutawalli Officer records them from
+// the operator's report; a second person (Compliance or the Audit
+// Committee) publishes them on the clinic's public page, never whoever
+// recorded them (a CHECK). Published figures never change. Subsidised
+// visits by service, patients subsidised and the money come from approved
+// claims and the ledger, not from this report.
+
+enum ClinicReportStatus {
+  draft
+  published
+  discarded
+}
+
+model ClinicMonthlyReport {
+  id                String             @id @default(uuid())
+  clinicWaqfId      String
+  clinicWaqf        ClinicWaqf         @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  // "2027-03"
+  period            String
+  visits            Int
+  childrenImmunised Int
+  testsRun          Int
+  referrals         Int
+  status            ClinicReportStatus @default(draft)
+  recordedByUserId  String
+  recordedByUser    User               @relation("ClinicReportRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  publishedByUserId String?
+  publishedByUser   User?              @relation("ClinicReportPublisher", fields: [publishedByUserId], references: [id], onDelete: Restrict)
+  publishedAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([clinicWaqfId, period])
+  @@map("clinic_monthly_reports")
 }

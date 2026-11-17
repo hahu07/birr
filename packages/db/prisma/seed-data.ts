@@ -194,6 +194,8 @@ export const accessPermissions = [
   { key: "clinic_waqf.investment_manage", category: "clinic", description: "Record a clinic waqf investment, propose placing it, and record its principal coming back.", roles: ["investment_committee"] },
   { key: "clinic_waqf.investment_shariah_screen", category: "shariah", description: "Decide the Shariah screening of a clinic waqf investment.", roles: ["shariah_board_member"] },
   { key: "clinic_waqf.investment_income_record", category: "clinic", description: "Record income a clinic waqf investment paid, into the running fund.", roles: ["investment_committee", "mutawalli_officer"] },
+  { key: "clinic_waqf.report_record", category: "clinic", description: "Record a clinic's monthly figures from its operator's report, for a second person to publish.", roles: ["mutawalli_officer"] },
+  { key: "clinic_waqf.report_publish", category: "clinic", description: "Publish a clinic's monthly figures on its public page, after checking them against the operator's report.", roles: ["compliance_officer", "audit_committee"] },
   { key: "clinic_waqf.manage", category: "clinic", description: "Create a clinic waqf and draft or discard versions of its deed (establishing and approving are separate).", roles: ["mutawalli_officer"] },
   { key: "coi.review", category: "staff", description: "Review another staff member's conflict-of-interest declaration.", roles: ["compliance_officer"] },
   // Licences (2026-11-17, clinic slice 1): two people. Whoever records one

@@ -6,7 +6,8 @@
 // (spent on subsidised visits and running costs). A signed-in Founder
 // gives as themselves (slice 4a): recorded in their Founder Portal, first
 // gift from ₦250,000. Anyone else can sign up as a Founder from here. The
-// fuller public page, with targets and the monthly report, comes later.
+// public report below it (slice 8) shows targets, each pot on its own and
+// the monthly figures.
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { processingFeeCover } from "@birr/zakah";
@@ -18,6 +19,7 @@ import { contactPayload, contactReady, EMPTY_CONTACT, GiverContactFields, type G
 import { useFounderSession } from "../../../../lib/founder-session";
 import { setReturnTo } from "../../../../lib/return-to";
 import Link from "next/link";
+import { ClinicReport } from "./ClinicReport";
 
 interface GivingTerms {
   clinic: { name: string; slug: string; city: string; description: string | null };
@@ -134,6 +136,7 @@ export default function ClinicGivingPage() {
                   </Link>
                 </p>
               )}
+              <ClinicReport slug={slug} />
             </>
           )}
         </div>
