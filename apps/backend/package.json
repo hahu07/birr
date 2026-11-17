@@ -15,7 +15,7 @@
     "@birr/db": "workspace:*",
     "@birr/shared": "workspace:*",
     "@birr/zakah": "workspace:*",
-    "@nestjs/common": "^11.2.7",
+    "@nestjs/common": "^12.5.0",
     "@nestjs/core": "^11.2.7",
     "@nestjs/platform-express": "^11.2.7",
     "@nestjs/swagger": "^12.1.1",
