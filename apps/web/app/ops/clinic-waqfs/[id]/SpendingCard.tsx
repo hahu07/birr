@@ -158,7 +158,8 @@ export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: stri
                     ₦{formatAmount(s.amount)} to {s.payee.name}: {s.description}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {s.kind === "works_stage" ? `${s.worksProject?.name} · engineer's certificate` : "Equipment · invoice"} {s.supportingReference}
+                    {s.kind === "works_stage" ? `${s.worksProject?.name} · engineer's certificate` : s.kind === "investment" ? "Investment placement · agreement" : "Equipment · invoice"}{" "}
+                    {s.supportingReference}
                     {s.paidOn ? ` · paid ${formatDate(s.paidOn)}, bank reference ${s.bankReference}` : ""}
                   </p>
                 </div>

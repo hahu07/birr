@@ -389,6 +389,9 @@ model User {
   clinicAssetsRecorded           ClinicAsset[]                   @relation("ClinicAssetRecorder")
   clinicWorksCreated             ClinicWorksProject[]            @relation("ClinicWorksCreator")
   clinicSpendsCreated            ClinicSpend[]                   @relation("ClinicSpendCreator")
+  clinicInvestmentsCreated       ClinicInvestment[]              @relation("ClinicInvestmentCreator")
+  clinicInvestmentsScreened      ClinicInvestment[]              @relation("ClinicInvestmentShariahReviewer")
+  clinicInvestmentIncomeRecorded ClinicInvestmentIncome[]        @relation("ClinicInvestmentIncomeRecorder")
   createdInvestmentPlacements    InvestmentPlacement[]
   sentMessages                   Message[]
   mfaBackupCodes                 MfaBackupCode[]
@@ -1725,6 +1728,8 @@ model Counterparty {
 
   clinicWorksProjects ClinicWorksProject[] @relation("ClinicWorksContractor")
   clinicSpends        ClinicSpend[]        @relation("ClinicSpendPayee")
+
+  clinicInvestments ClinicInvestment[] @relation("ClinicInvestmentCounterparty")
 
   @@map("counterparties")
 }
@@ -4028,6 +4033,8 @@ model ClinicWaqf {
   worksProjects ClinicWorksProject[]
   spends        ClinicSpend[]
 
+  investments ClinicInvestment[]
+
   @@map("clinic_waqfs")
 }
 
@@ -4106,6 +4113,7 @@ enum ClinicJournalEntrySource {
   asset_added
   asset_disposed
   spend_paid
+  investment_returned
 }
 
 // Append-only, like every Birr ledger: a mistake is corrected with a new,
@@ -4332,6 +4340,7 @@ model ClinicWorksProject {
 enum ClinicSpendKind {
   equipment // buying a piece of equipment; becomes a ClinicAsset once paid
   works_stage // one certified stage of a works project
+  investment // placing endowed cash in a Shariah-screened ClinicInvestment (slice 5c)
 }
 
 enum ClinicSpendStatus {
@@ -4355,6 +4364,8 @@ model ClinicSpend {
   kind                ClinicSpendKind
   worksProjectId      String?
   worksProject        ClinicWorksProject? @relation(fields: [worksProjectId], references: [id], onDelete: Restrict)
+  investmentId        String?             @unique
+  investment          ClinicInvestment?   @relation(fields: [investmentId], references: [id], onDelete: Restrict)
   payeeId             String
   payee               Counterparty        @relation("ClinicSpendPayee", fields: [payeeId], references: [id], onDelete: Restrict)
   description         String
@@ -4380,4 +4391,70 @@ model ClinicSpend {
   @@index([clinicWaqfId])
   @@index([worksProjectId])
   @@map("clinic_spends")
+}
+
+// ---- Clinic waqf investments (2026-11-17, clinic slice 5c) ----
+// Endowed cash invested for income: the principal stays in the endowment
+// (1200 Endowment investments), and only the income is spent, earned
+// straight into the running fund (1100 / 4100). The Investment Committee
+// records an investment; a Shariah board member screens it; placing it is
+// an endowment payment (ClinicSpend, kind investment: approved, paid by
+// bank transfer, confirmed), which books 1200 / 1000. When it matures the
+// principal comes back to endowment cash (1000 / 1200).
+
+enum ClinicInvestmentStatus {
+  pending_shariah_review
+  shariah_rejected
+  shariah_approved // ready to place
+  placed // its placement payment was confirmed
+  returned // the principal came back to endowment cash
+}
+
+model ClinicInvestment {
+  id                     String                   @id @default(uuid())
+  clinicWaqfId           String
+  clinicWaqf             ClinicWaqf               @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  counterpartyId         String
+  counterparty           Counterparty             @relation("ClinicInvestmentCounterparty", fields: [counterpartyId], references: [id], onDelete: Restrict)
+  name                   String
+  instrumentType         InvestmentInstrumentType
+  amount                 Decimal
+  // What the money does, for the Shariah reviewer.
+  businessDescription    String
+  status                 ClinicInvestmentStatus   @default(pending_shariah_review)
+  shariahDecidedByUserId String?
+  shariahDecidedByUser   User?                    @relation("ClinicInvestmentShariahReviewer", fields: [shariahDecidedByUserId], references: [id], onDelete: Restrict)
+  shariahDecidedAt       DateTime?
+  shariahNote            String?
+  returnedOn             DateTime?                @db.Date
+  returnBankReference    String?
+  createdByUserId        String
+  createdByUser          User                     @relation("ClinicInvestmentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  placement ClinicSpend?
+  income    ClinicInvestmentIncome[]
+
+  @@index([clinicWaqfId])
+  @@map("clinic_investments")
+}
+
+// Income an investment paid: into the running fund, never the endowment.
+// Append-only (a trigger); recorded by the Investment Committee or a
+// Mutawalli Officer, as proceeds are elsewhere in Birr.
+model ClinicInvestmentIncome {
+  id               String           @id @default(uuid())
+  investmentId     String
+  investment       ClinicInvestment @relation(fields: [investmentId], references: [id], onDelete: Restrict)
+  amount           Decimal
+  receivedOn       DateTime         @db.Date
+  bankReference    String
+  description      String
+  recordedByUserId String
+  recordedByUser   User             @relation("ClinicInvestmentIncomeRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  createdAt        DateTime         @default(now())
+
+  @@index([investmentId])
+  @@map("clinic_investment_income")
 }

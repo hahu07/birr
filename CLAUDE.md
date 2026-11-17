@@ -1166,6 +1166,21 @@ premises and equipment (1500/1000), so it stays in the endowment.
 - **Database:** what a payment or project is never changes; status only
   moves forward; never deleted.
 
+Slice 5c, investments (built, `ClinicInvestment`, `ClinicInvestmentIncome`,
+`ClinicInvestmentsService`). The principal stays in the endowment (1200);
+only the income is spent, booked straight into the running fund
+(1100/4100).
+- **Recording and screening:** the Investment Committee records an
+  investment (`clinic_waqf.investment_manage`). A Shariah board member
+  screens it (`clinic_waqf.investment_shariah_screen`), never whoever
+  recorded it (a CHECK).
+- **Placing:** an endowment payment of kind `investment`, through the
+  slice 5b approve, pay and confirm flow, which books 1200/1000. The
+  Investment Committee may propose those payments.
+- **Income and return:** income is recorded by the Investment Committee
+  or a Mutawalli Officer (append-only, only once placed). The principal
+  coming back is recorded by the Investment Committee (1000/1200).
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

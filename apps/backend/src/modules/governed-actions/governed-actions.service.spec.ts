@@ -1,5 +1,6 @@
 import { SettingsService } from "../../common/settings/settings.service";
 import { ClinicSpendingService } from "../clinic-waqfs/clinic-spending.service";
+import { ClinicInvestmentsService } from "../clinic-waqfs/clinic-investments.service";
 import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
 import { ClinicLedgerService } from "../clinic-waqfs/clinic-ledger.service";
 import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
@@ -3323,6 +3324,96 @@ describe("GovernedActionsService", () => {
       await expect(prisma.clinicSpend.update({ where: { id: spend.id }, data: { status: "paid" } })).rejects.toThrow();
       const action = await service.propose({ permissionKey: "clinic_waqf.spend_approve", payload: { spendId: spend.id }, makerUserId });
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+    });
+  });
+
+  // Clinic waqf investments (slice 5c). The Investment Committee
+  // (investmentMakerUserId) records and places; a Shariah board member
+  // (beneficiaryCheckerUserId) screens; the Board approves the placement
+  // payment; Compliance (distributionCheckerUserId) confirms it.
+  describe("clinic waqf investments", () => {
+    const clinics = new ClinicWaqfsService();
+    const ledger = new ClinicLedgerService();
+    const spending = new ClinicSpendingService(ledger);
+    const investments = new ClinicInvestmentsService(ledger, spending);
+
+    async function clinicWithCash(cash: string) {
+      const clinic = await clinics.create({ name: "Investment Test Clinic", slug: `invest-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
+      const d = await service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+      await service.decide({ governedActionId: d.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
+      const e = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { clinicWaqfId: clinic.id }, makerUserId });
+      await service.decide({ governedActionId: e.id, checkerUserId: boardCheckerUserId, approve: true });
+      await prisma.$transaction((tx) =>
+        ledger.post(tx, {
+          clinicWaqfId: clinic.id,
+          description: "Test endowed gifts",
+          currency: "NGN",
+          source: "manual_adjustment",
+          actorType: "system",
+          lines: [
+            { accountCode: "1000", debit: cash },
+            { accountCode: "3000", credit: cash },
+          ],
+        }),
+      );
+      return clinic;
+    }
+
+    const balances = async (clinicWaqfId: string) => {
+      const b = await ledger.balances(clinicWaqfId);
+      return Object.fromEntries([...b.endowment, ...b.running].map((r) => [r.code, r.balance]));
+    };
+
+    test("recorded, screened by someone else, placed through an approved and confirmed payment; income goes to the running fund; the principal comes back", async () => {
+      const clinic = await clinicWithCash("20000000");
+      const bank = await prisma.counterparty.create({ data: { name: `Fixture Islamic Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "NG", status: "active", businessActivities: "Non-interest banking." } });
+      const investment = await investments.create(
+        clinic.id,
+        { counterpartyId: bank.id, name: "12-month mudarabah deposit", instrumentType: "other", amount: "15000000", businessDescription: "A profit-sharing deposit with a non-interest bank." },
+        investmentMakerUserId,
+      );
+      await expect(investments.screen(clinic.id, investment.id, { decision: "approved", note: "Fine." }, investmentMakerUserId)).rejects.toThrow(ForbiddenException);
+      await expect(investments.proposePlacement(clinic.id, investment.id, { agreementReference: "MUD-2026-01" }, investmentMakerUserId)).rejects.toThrow(/not ready to place/);
+      await investments.screen(clinic.id, investment.id, { decision: "approved", note: "A permissible profit-sharing deposit." }, beneficiaryCheckerUserId);
+
+      const placement = await investments.proposePlacement(clinic.id, investment.id, { agreementReference: "MUD-2026-01" }, investmentMakerUserId);
+      expect(placement).toMatchObject({ kind: "investment", investmentId: investment.id, payeeId: bank.id });
+      const approve = await service.propose({ permissionKey: "clinic_waqf.spend_approve", payload: { spendId: placement.id }, makerUserId: investmentMakerUserId });
+      await service.decide({ governedActionId: approve.id, checkerUserId: boardCheckerUserId, approve: true });
+      const markPaid = await service.propose({
+        permissionKey: "clinic_waqf.spend_mark_paid",
+        payload: { spendId: placement.id, bankReference: "ZENITH/INV/0001", paidOn: "2026-11-17" },
+        makerUserId: investmentMakerUserId,
+      });
+      await service.decide({ governedActionId: markPaid.id, checkerUserId: distributionCheckerUserId, approve: true });
+
+      expect((await prisma.clinicInvestment.findUniqueOrThrow({ where: { id: investment.id } })).status).toBe("placed");
+      expect(await balances(clinic.id)).toMatchObject({ "1000": "5000000.00", "1200": "15000000.00" });
+
+      await investments.recordIncome(clinic.id, investment.id, { amount: "600000", receivedOn: "2026-11-17", bankReference: "ZENITH/PRF/0001", description: "First quarter's profit share" }, makerUserId);
+      expect(await balances(clinic.id)).toMatchObject({ "1100": "600000.00", "4100": "600000.00", "1000": "5000000.00", "3000": "20000000.00" });
+
+      await investments.recordReturn(clinic.id, investment.id, { returnedOn: "2026-11-17", bankReference: "ZENITH/RET/0001" }, investmentMakerUserId);
+      expect(await balances(clinic.id)).toMatchObject({ "1000": "20000000.00", "1200": "0.00" });
+      expect((await prisma.clinicInvestment.findUniqueOrThrow({ where: { id: investment.id } })).status).toBe("returned");
+    });
+
+    test("the database refuses a self-screening, income from an unplaced investment, or rewriting income", async () => {
+      const clinic = await clinicWithCash("1000000");
+      const bank = await prisma.counterparty.create({ data: { name: `Fixture Bank ${randomUUID()}`, institutionType: "bank", jurisdiction: "NG", status: "active", businessActivities: "Banking." } });
+      const investment = await investments.create(
+        clinic.id,
+        { counterpartyId: bank.id, name: "Sukuk", instrumentType: "sukuk", amount: "500000", businessDescription: "Government sukuk." },
+        investmentMakerUserId,
+      );
+      await expect(
+        prisma.clinicInvestment.update({ where: { id: investment.id }, data: { status: "shariah_approved", shariahDecidedByUserId: investmentMakerUserId, shariahDecidedAt: new Date() } }),
+      ).rejects.toThrow(/clinic_investments_reviewer_not_creator/);
+      await expect(
+        prisma.clinicInvestmentIncome.create({ data: { investmentId: investment.id, amount: 100, receivedOn: new Date(), bankReference: "X1", description: "Too early", recordedByUserId: makerUserId } }),
+      ).rejects.toThrow(/placed/);
+      await expect(prisma.clinicInvestment.delete({ where: { id: investment.id } })).rejects.toThrow(/never deleted/);
     });
   });
 

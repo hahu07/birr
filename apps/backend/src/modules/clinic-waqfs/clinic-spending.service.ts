@@ -35,6 +35,11 @@ export class CreateClinicSpendInput {
   @IdField()
   worksProjectId?: string;
 
+  // An investment's placement (slice 5c) is made from the investment itself, not this form.
+  @IsOptional()
+  @IdField()
+  investmentId?: string;
+
   @IdField()
   payeeId!: string;
 
@@ -174,7 +179,8 @@ export class ClinicSpendingService {
     const amount = new Prisma.Decimal(input.amount);
     if (amount.decimalPlaces() > 2) throw new BadRequestException("Enter the amount in naira and kobo.");
     if (input.kind === "works_stage" && !input.worksProjectId) throw new BadRequestException("Choose the works project this stage belongs to.");
-    if (input.kind === "equipment" && input.worksProjectId) throw new BadRequestException("Equipment isn't part of a works project.");
+    if (input.kind !== "works_stage" && input.worksProjectId) throw new BadRequestException("Only a works stage is part of a works project.");
+    if ((input.kind === "investment") !== Boolean(input.investmentId)) throw new BadRequestException("An investment's placement names its investment, and only it does.");
     const payee = await this.activeCounterparty(input.payeeId, "payee");
 
     return prisma.$transaction(async (tx) => {
@@ -192,6 +198,15 @@ export class ClinicSpendingService {
           throw new BadRequestException(`That would take the project past its budget: ${naira(project.budget.minus(spent))} of ${naira(project.budget)} is left.`);
         }
       }
+      if (input.investmentId) {
+        const investment = await tx.clinicInvestment.findUnique({ where: { id: input.investmentId }, include: { placement: true } });
+        if (!investment || investment.clinicWaqfId !== clinicWaqfId) throw new NotFoundException("Investment not found.");
+        if (investment.status !== "shariah_approved") throw new BadRequestException(`This investment is ${investment.status.replace(/_/g, " ")}, not ready to place.`);
+        if (investment.placement && investment.placement.status !== "rejected") throw new ConflictException("This investment's placement is already proposed.");
+        if (investment.counterpartyId !== payee.id || !investment.amount.equals(amount)) {
+          throw new BadRequestException("A placement pays the investment's own counterparty its exact amount.");
+        }
+      }
       const { balance, committed } = await this.headroom(tx, clinicWaqfId);
       if (committed.plus(amount).gt(balance)) {
         throw new BadRequestException(`Only ${naira(balance.minus(committed))} of the endowment's cash is free to commit.`);
@@ -201,6 +216,7 @@ export class ClinicSpendingService {
           clinicWaqfId,
           kind: input.kind,
           worksProjectId: input.worksProjectId,
+          investmentId: input.investmentId,
           payeeId: payee.id,
           description: input.description,
           amount,
@@ -245,7 +261,12 @@ export class ClinicSpendingService {
 
   async describeSpend(payload: unknown): Promise<string> {
     const s = await this.findSpend((payload as { spendId: string }).spendId);
-    const what = s.kind === "works_stage" ? `a stage of ${s.worksProject!.name} (engineer's certificate ${s.supportingReference})` : `equipment (invoice ${s.supportingReference})`;
+    const what =
+      s.kind === "works_stage"
+        ? `a stage of ${s.worksProject!.name} (engineer's certificate ${s.supportingReference})`
+        : s.kind === "investment"
+          ? `placing a Shariah-screened investment (agreement ${s.supportingReference})`
+          : `equipment (invoice ${s.supportingReference})`;
     return `${naira(s.amount)} from ${s.clinicWaqf.name}'s endowment cash to ${s.payee.name}, for ${what}: ${s.description}`;
   }
 
@@ -347,15 +368,25 @@ export class ClinicSpendingService {
       where: { id: p.spendId },
       data: { status: "paid", paymentActionId: governedActionId, paidOn, bankReference: p.bankReference, assetId: asset?.id },
     });
+    // An investment's placement: the investment is now placed.
+    if (before.kind === "investment") {
+      const placed = await tx.clinicInvestment.updateMany({ where: { id: before.investmentId!, status: "shariah_approved" }, data: { status: "placed" } });
+      if (placed.count !== 1) throw new BadRequestException("This investment is no longer waiting to be placed.");
+    }
     await this.ledger.post(tx, {
       clinicWaqfId: before.clinicWaqfId,
-      description: before.kind === "works_stage" ? `${before.worksProject!.name}: certified stage paid` : `Equipment bought: ${before.description.slice(0, 120)}`,
+      description:
+        before.kind === "works_stage"
+          ? `${before.worksProject!.name}: certified stage paid`
+          : before.kind === "investment"
+            ? `Endowed cash invested: ${before.description.slice(0, 120)}`
+            : `Equipment bought: ${before.description.slice(0, 120)}`,
       currency: "NGN",
       source: "spend_paid",
       sourceId: before.id,
       actorType: "system",
       lines: [
-        { accountCode: "1500", debit: before.amount },
+        { accountCode: before.kind === "investment" ? "1200" : "1500", debit: before.amount },
         { accountCode: "1000", credit: before.amount },
       ],
     });

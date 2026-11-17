@@ -9,6 +9,14 @@ import { ClinicLedgerService } from "./clinic-ledger.service";
 import { ClinicGiftsService } from "./clinic-gifts.service";
 import { ClinicAssetsService, RecordClinicAssetInput, UpdateClinicAssetCareInput } from "./clinic-assets.service";
 import { ClinicSpendingService, CreateClinicSpendInput, ProposeClinicWorksInput } from "./clinic-spending.service";
+import {
+  ClinicInvestmentsService,
+  CreateClinicInvestmentInput,
+  PlaceClinicInvestmentInput,
+  RecordClinicInvestmentIncomeInput,
+  RecordClinicInvestmentReturnInput,
+  ScreenClinicInvestmentInput,
+} from "./clinic-investments.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 
@@ -24,6 +32,7 @@ export class ClinicWaqfsController {
     private readonly gifts: ClinicGiftsService,
     private readonly assets: ClinicAssetsService,
     private readonly spending: ClinicSpendingService,
+    private readonly investments: ClinicInvestmentsService,
   ) {}
 
   @Post()
@@ -112,6 +121,63 @@ export class ClinicWaqfsController {
   @Get(":id/spends")
   listSpends(@Param("id") id: string) {
     return this.spending.listSpends(id);
+  }
+
+  // Investments (slice 5c). Placing one is an endowment payment, approved
+  // and confirmed through POST /governed-actions like any other.
+  @Post(":id/investments")
+  @RequiresAccess("clinic_waqf.investment_manage")
+  createInvestment(@Param("id") id: string, @Body() body: CreateClinicInvestmentInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.investments.create(id, body, staff.userId);
+  }
+
+  @Post(":id/investments/:investmentId/shariah")
+  @RequiresAccess("clinic_waqf.investment_shariah_screen")
+  screenInvestment(
+    @Param("id") id: string,
+    @Param("investmentId") investmentId: string,
+    @Body() body: ScreenClinicInvestmentInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.investments.screen(id, investmentId, body, staff.userId);
+  }
+
+  @Post(":id/investments/:investmentId/placement")
+  @RequiresAccess("clinic_waqf.investment_manage")
+  placeInvestment(
+    @Param("id") id: string,
+    @Param("investmentId") investmentId: string,
+    @Body() body: PlaceClinicInvestmentInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.investments.proposePlacement(id, investmentId, body, staff.userId);
+  }
+
+  @Post(":id/investments/:investmentId/income")
+  @RequiresAccess("clinic_waqf.investment_income_record")
+  recordInvestmentIncome(
+    @Param("id") id: string,
+    @Param("investmentId") investmentId: string,
+    @Body() body: RecordClinicInvestmentIncomeInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.investments.recordIncome(id, investmentId, body, staff.userId);
+  }
+
+  @Post(":id/investments/:investmentId/return")
+  @RequiresAccess("clinic_waqf.investment_manage")
+  recordInvestmentReturn(
+    @Param("id") id: string,
+    @Param("investmentId") investmentId: string,
+    @Body() body: RecordClinicInvestmentReturnInput,
+    @CurrentBirrStaff() staff: AuthenticatedBirrStaff,
+  ) {
+    return this.investments.recordReturn(id, investmentId, body, staff.userId);
+  }
+
+  @Get(":id/investments")
+  listInvestments(@Param("id") id: string) {
+    return this.investments.list(id);
   }
 
   @Get(":id/gifts")
