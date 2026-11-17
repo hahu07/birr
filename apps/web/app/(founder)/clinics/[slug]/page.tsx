@@ -3,8 +3,10 @@
 // A clinic waqf's public giving page (2026-11-17, clinic slice 3). Anyone
 // can give, with no account, to one of its two pots: the endowment (kept
 // for ever; the giver accepts the waqf's deed) or the running fund
-// (spent on subsidised visits and running costs). The fuller public page,
-// with targets and the monthly report, comes in a later slice.
+// (spent on subsidised visits and running costs). A signed-in Founder
+// gives as themselves (slice 4a): recorded in their Founder Portal, first
+// gift from ₦250,000. Anyone else can sign up as a Founder from here. The
+// fuller public page, with targets and the monthly report, comes later.
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { processingFeeCover } from "@birr/zakah";
@@ -13,6 +15,9 @@ import { ApiError, apiFetchJson } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
 import { SiteFooter, SiteHeader } from "../../SiteChrome";
 import { contactPayload, contactReady, EMPTY_CONTACT, GiverContactFields, type GiverContactValue } from "../../_components/GiverContactFields";
+import { useFounderSession } from "../../../../lib/founder-session";
+import { setReturnTo } from "../../../../lib/return-to";
+import Link from "next/link";
 
 interface GivingTerms {
   clinic: { name: string; slug: string; city: string; description: string | null };
@@ -46,14 +51,25 @@ const ID_TYPES = [
 
 export default function ClinicGivingPage() {
   const { slug } = useParams<{ slug: string }>();
+  const { founder, loading: sessionLoading } = useFounderSession();
   const [terms, setTerms] = useState<GivingTerms | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // A signed-in Founder gives as themselves unless they choose otherwise.
+  const [asFounder, setAsFounder] = useState(true);
+  const founderMode = Boolean(founder) && asFounder;
 
   useEffect(() => {
-    apiFetchJson<GivingTerms>(`/clinic-gifts/terms/${encodeURIComponent(slug)}`)
+    if (sessionLoading) return;
+    const path = founderMode ? `/clinic-gifts/founder/terms/${encodeURIComponent(slug)}` : `/clinic-gifts/terms/${encodeURIComponent(slug)}`;
+    apiFetchJson<GivingTerms>(path)
       .then(setTerms)
       .catch((err: unknown) => setLoadError(err instanceof ApiError && err.status === 404 ? "We couldn't find this clinic." : "Something went wrong."));
-  }, [slug]);
+  }, [slug, founderMode, sessionLoading]);
+
+  function startFounderAccount(route: "/sign-up" | "/sign-in") {
+    setReturnTo(`/clinics/${slug}`);
+    window.location.assign(route);
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -79,11 +95,45 @@ export default function ClinicGivingPage() {
               </div>
               <Card className="mt-8">
                 {terms.available ? (
-                  <GiveForm terms={terms} />
+                  <>
+                    {founder && (
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-primary-50/70 px-3 py-2 text-sm text-slate-700">
+                        <span>{founderMode ? <>Giving as <strong>{founder.name}</strong>, recorded in your Founder Portal.</> : "Giving without your Founder account."}</span>
+                        <button type="button" className="text-xs font-medium text-primary-700 hover:text-primary-800" onClick={() => setAsFounder((v) => !v)}>
+                          {founderMode ? "Give without it" : `Give as ${founder.name}`}
+                        </button>
+                      </div>
+                    )}
+                    <GiveForm key={founderMode ? "founder" : "public"} terms={terms} founderMode={founderMode} />
+                  </>
                 ) : (
                   <p className="text-center text-sm text-slate-600">This clinic isn&apos;t taking gifts yet. Please check back soon.</p>
                 )}
               </Card>
+              {terms.available && !founder && !sessionLoading && (
+                <Card className="mt-4">
+                  <p className="text-sm font-medium text-slate-900">Giving ₦250,000 or more? Support it as a Founder.</p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Your gifts are recorded under your name in your own Founder Portal, with statements for your records. You won&apos;t need to set
+                    up a Foundation. Your first gift is at least ₦250,000; later gifts from ₦5,000.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button className="px-3 py-1.5 text-xs" onClick={() => startFounderAccount("/sign-up")}>
+                      Sign up as a Founder
+                    </Button>
+                    <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => startFounderAccount("/sign-in")}>
+                      I already have an account
+                    </Button>
+                  </div>
+                </Card>
+              )}
+              {founder && (
+                <p className="mt-4 text-center text-xs text-slate-500">
+                  <Link href="/clinic-support" className="font-medium text-primary-700 hover:text-primary-800">
+                    Your clinic support
+                  </Link>
+                </p>
+              )}
             </>
           )}
         </div>
@@ -93,7 +143,16 @@ export default function ClinicGivingPage() {
   );
 }
 
-function GiveForm({ terms, redirectTo = (url: string) => window.location.assign(url) }: { terms: GivingTerms; redirectTo?: (url: string) => void }) {
+function GiveForm({
+  terms,
+  founderMode = false,
+  redirectTo = (url: string) => window.location.assign(url),
+}: {
+  terms: GivingTerms;
+  /** A signed-in Founder: no contact or ID fields; the receipt goes to their account. */
+  founderMode?: boolean;
+  redirectTo?: (url: string) => void;
+}) {
   const [pot, setPot] = useState<Pot>("endowment");
   const [amount, setAmount] = useState("");
   const [coverFee, setCoverFee] = useState(false);
@@ -117,7 +176,7 @@ function GiveForm({ terms, redirectTo = (url: string) => window.location.assign(
     setError(null);
     setSubmitting(true);
     try {
-      const { clientPayload } = await apiFetchJson<{ clientPayload: { checkoutUrl: string } }>("/clinic-gifts", {
+      const { clientPayload } = await apiFetchJson<{ clientPayload: { checkoutUrl: string } }>(founderMode ? "/clinic-gifts/founder" : "/clinic-gifts", {
         method: "POST",
         body: JSON.stringify({
           slug: terms.clinic.slug,
@@ -125,9 +184,11 @@ function GiveForm({ terms, redirectTo = (url: string) => window.location.assign(
           amount: clean,
           coverFee,
           ...(pot === "endowment" && terms.deed && { deedId: terms.deed.id, deedTextHash: terms.deed.textHash }),
-          ...contactPayload(contact, { email: "donorEmail", whatsapp: "donorWhatsApp" }),
-          donorFullName: fullName.trim() || undefined,
-          ...(needsIdentity && { idType, idNumber }),
+          ...(!founderMode && {
+            ...contactPayload(contact, { email: "donorEmail", whatsapp: "donorWhatsApp" }),
+            donorFullName: fullName.trim() || undefined,
+            ...(needsIdentity && { idType, idNumber }),
+          }),
         }),
       });
       redirectTo(clientPayload.checkoutUrl);
@@ -179,19 +240,21 @@ function GiveForm({ terms, redirectTo = (url: string) => window.location.assign(
         </label>
       )}
 
-      <GiverContactFields
-        idPrefix="gift"
-        value={contact}
-        onChange={setContact}
-        required={false}
-        legend="Send my receipt to"
-        emailLabel={
-          <>
-            Email for your receipt <span className="font-normal text-slate-500">(optional)</span>
-          </>
-        }
-        emailHint={!contact.email.trim() ? "Without an email or WhatsApp number we can't send you a receipt." : undefined}
-      />
+      {!founderMode && (
+        <GiverContactFields
+          idPrefix="gift"
+          value={contact}
+          onChange={setContact}
+          required={false}
+          legend="Send my receipt to"
+          emailLabel={
+            <>
+              Email for your receipt <span className="font-normal text-slate-500">(optional)</span>
+            </>
+          }
+          emailHint={!contact.email.trim() ? "Without an email or WhatsApp number we can't send you a receipt." : undefined}
+        />
+      )}
 
       {needsIdentity && (
         <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -238,7 +301,7 @@ function GiveForm({ terms, redirectTo = (url: string) => window.location.assign(
         </Alert>
       )}
 
-      <Button type="submit" className="w-full" disabled={!validAmount || !deedOk || submitting || !contactReady(contact, false)}>
+      <Button type="submit" className="w-full" disabled={!validAmount || !deedOk || submitting || (!founderMode && !contactReady(contact, false))}>
         {submitting ? "Taking you to payment…" : total !== null ? `Give ${formatMoney(String(total), terms.currency)}` : "Give"}
       </Button>
       <p className="text-center text-xs text-slate-500">You&apos;ll pay securely with Paystack — card, bank transfer or USSD.</p>

@@ -10,7 +10,9 @@ import { VaultContributionsService } from "../vaults/vault-contributions.service
 import { VaultLedgerService } from "../vaults/vault-ledger.service";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
-import { ClinicGiftsService, CLINIC_PUBLIC_MINIMUM_NGN } from "./clinic-gifts.service";
+import { ClinicGiftsService, CLINIC_FOUNDER_FIRST_GIFT_MINIMUM_NGN, CLINIC_PUBLIC_MINIMUM_NGN } from "./clinic-gifts.service";
+import { FoundersService } from "../founders/founders.service";
+import { MfaService } from "../../common/auth/mfa.service";
 import { ClinicLedgerService } from "./clinic-ledger.service";
 import { ClinicWaqfsService } from "./clinic-waqfs.service";
 import type { ClinicGiftReceipt, ResendClinicReceiptEmailAdapter } from "./clinic-receipt-email.adapter";
@@ -231,6 +233,97 @@ describe("ClinicGiftsService", () => {
       await expect(service.initiate({ ...running(), amount: "5000", donorEmail: giver })).rejects.toThrow(/confirm your identity/);
       const { gift } = await service.initiate({ ...running(), amount: "5000", donorEmail: giver, donorFullName: "Amina Bello", idType: "national_id", idNumber: "12345678901" });
       expect(gift.status).toBe("pending");
+    });
+  });
+
+  // Slice 4a: a Founder who joined from the clinic page, without a Foundation.
+  describe("Founders", () => {
+    const founders = new FoundersService(undefined as never, undefined as never, encryption, new MfaService(), new FunnelEventsService());
+
+    async function verifiedUser(label: string, verified = true) {
+      return prisma.user.create({
+        data: {
+          email: email(`founder-${label}`),
+          fullName: `Founder ${label}`,
+          status: verified ? "active" : "invited",
+          whatsappNumber: "+2348030000000",
+          whatsappVerifiedAt: verified ? new Date() : null,
+        },
+      });
+    }
+
+    test("a verified user becomes a clinic supporter: a Founder with no Foundation, onboarding done, audited", async () => {
+      const user = await verifiedUser("supporter");
+      const founder = await founders.establishClinicSupporter(user.id, { founderName: "Amina Bello", kind: "individual" });
+      expect(founder).toMatchObject({ clinicSupporter: true, kind: "individual" });
+      expect(await prisma.auditLog.count({ where: { entityId: founder.id, action: "founder.created" } })).toBe(1);
+      const status = await founders.getOnboardingStatus(user.id);
+      expect(status).toMatchObject({ founderId: founder.id, currentStep: "done", onboardingComplete: true, clinicSupporterOnly: true });
+      await expect(founders.establishClinicSupporter(user.id, { founderName: "Again", kind: "individual" })).rejects.toThrow(/already part of a Founder/);
+    });
+
+    test("not before email and WhatsApp are verified; an institution says what kind it is", async () => {
+      const unverified = await verifiedUser("unverified", false);
+      await expect(founders.establishClinicSupporter(unverified.id, { founderName: "Not Yet", kind: "individual" })).rejects.toThrow();
+      const user = await verifiedUser("institution");
+      await expect(founders.establishClinicSupporter(user.id, { founderName: "Fixture Bank", kind: "institution" })).rejects.toThrow(/kind of institution/);
+    });
+
+    test("a Founder's first gift is at least ₦250,000, later ones ₦5,000; recorded as theirs, receipt to their account", async () => {
+      const user = await verifiedUser("giver");
+      const founder = await founders.establishClinicSupporter(user.id, { founderName: "Giving Founder", kind: "individual" });
+      expect((await service.founderGivingTerms(founder.id, clinic.slug)).minimumAmount).toBe(CLINIC_FOUNDER_FIRST_GIFT_MINIMUM_NGN);
+      await expect(service.initiateAsFounder(founder.id, user.id, { ...running(), amount: "249999" })).rejects.toThrow(/at least ₦250,000/);
+
+      const { gift } = await service.initiateAsFounder(founder.id, user.id, { ...endowment(), amount: "250000" });
+      const row = await prisma.clinicGift.findUniqueOrThrow({ where: { id: gift.id } });
+      expect(row).toMatchObject({ founderId: founder.id, initiatedByUserId: user.id, donorId: null, contactEmail: user.email, contactWhatsApp: "+2348030000000" });
+      const [log] = await prisma.auditLog.findMany({ where: { entityId: gift.id, action: "clinic_gift.initiated" } });
+      expect(log).toMatchObject({ actorType: "founder_user", actorUserId: user.id, actorFounderId: founder.id });
+
+      await confirmViaWebhook(gift.id);
+      expect((await service.founderGivingTerms(founder.id, clinic.slug)).minimumAmount).toBe(CLINIC_PUBLIC_MINIMUM_NGN);
+      await service.initiateAsFounder(founder.id, user.id, { ...running(), amount: "5000" });
+
+      const mine = await service.listForFounder(founder.id);
+      expect(mine.clinics).toEqual([{ clinic: expect.objectContaining({ slug: clinic.slug }), endowment: "250000.00", running: "0.00" }]);
+      expect(mine.gifts).toHaveLength(2);
+    });
+
+    test("an unverified Founder can't give", async () => {
+      const user = await verifiedUser("lapsed");
+      const founder = await founders.establishClinicSupporter(user.id, { founderName: "Lapsed Founder", kind: "individual" });
+      await prisma.user.update({ where: { id: user.id }, data: { whatsappVerifiedAt: null } });
+      await expect(service.initiateAsFounder(founder.id, user.id, { ...running(), amount: "250000" })).rejects.toThrow(/WhatsApp/);
+    });
+
+    test("the database refuses a gift that is both a Founder's and a public giver's", async () => {
+      const user = await verifiedUser("both");
+      const founder = await founders.establishClinicSupporter(user.id, { founderName: "Both Founder", kind: "individual" });
+      const donor = await prisma.vaultDonor.create({ data: { email: email("both-donor") } });
+      await expect(
+        prisma.clinicGift.create({
+          data: { clinicWaqfId: clinic.id, pot: "running", amount: 5000, currency: "NGN", provider: "paystack", providerReference: randomUUID(), settlementSubaccount: "ACCT_x", founderId: founder.id, initiatedByUserId: user.id, donorId: donor.id },
+        }),
+      ).rejects.toThrow(/clinic_gifts_one_giver/);
+    });
+  });
+
+  describe("the AML review", () => {
+    test("lists public clinic gifts near the threshold alongside Vault gifts, under the clinic's name", async () => {
+      const threshold = await prisma.vaultDonorThreshold.findUnique({ where: { currency: "NGN" } });
+      if (!threshold || threshold.thresholdAmount.lte(0)) return;
+      const near = threshold.thresholdAmount.times(0.9).toFixed(2);
+      const ids: string[] = [];
+      for (const n of [1, 2]) {
+        const { gift } = await service.initiate({ ...running(), amount: near, donorEmail: email(`near-${n}`), donorFullName: "Near Giver", idType: "national_id", idNumber: `9000000000${n}` });
+        await confirmViaWebhook(gift.id);
+        ids.push(gift.id);
+      }
+      const { groups } = await vaultContributions.getStructuringReview();
+      const group = groups.find((g) => g.vaultId === clinic.id);
+      expect(group).toMatchObject({ vaultName: "Gift Test Clinic (clinic waqf)", currency: "NGN" });
+      expect(group!.contributions.map((c) => c.id)).toEqual(expect.arrayContaining(ids));
     });
   });
 

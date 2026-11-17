@@ -101,6 +101,8 @@ const UNGATED_WRITE_ROUTES: Record<string, string> = {
   "POST /zakah-payments/:id/verify": PUBLIC_GIVING,
   "POST /clinic-gifts": PUBLIC_GIVING,
   "POST /clinic-gifts/:id/verify": PUBLIC_GIVING,
+  "POST /clinic-gifts/founder": FOUNDER_SELF_SERVICE,
+  "POST /founders/clinic-supporter": FOUNDER_SELF_SERVICE,
   "POST /webhooks/stripe": PROVIDER_WEBHOOK,
   "POST /webhooks/paystack": PROVIDER_WEBHOOK,
   "POST /webhooks/stablecoin": PROVIDER_WEBHOOK,

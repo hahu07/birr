@@ -937,6 +937,25 @@ export class VaultContributionsService {
   }
 
   /**
+   * Public clinic waqf gifts in the shape the AML review reads Vault gifts
+   * in (2026-11-17): the clinic stands where the vault would, its name
+   * marked as a clinic waqf, so a reviewer sees both products' giving by
+   * the same people together.
+   */
+  private async clinicGiftsAsContributions(where: Prisma.ClinicGiftWhereInput) {
+    const gifts = await prisma.clinicGift.findMany({
+      where: { ...where, donorId: where.donorId ?? { not: null } },
+      include: { clinicWaqf: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return gifts.map((g) => ({
+      ...g,
+      vaultId: g.clinicWaqfId,
+      vault: { id: g.clinicWaqf.id, name: `${g.clinicWaqf.name} (clinic waqf)` },
+    }));
+  }
+
+  /**
    * The manual/off-platform review this file's own findOrCreateDonor
    * comment points to (see CLAUDE.md's dated note, 2026-09-15): the AML
    * threshold check only ever recognizes a donor by email, so someone
@@ -961,11 +980,20 @@ export class VaultContributionsService {
     const thresholdByCurrency = new Map(thresholds.map((t) => [t.currency, t.thresholdAmount]));
     if (thresholdByCurrency.size === 0) return { groups: [], ipClusters };
 
-    const contributions = await prisma.vaultContribution.findMany({
+    const donorSelect = { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } };
+    const vaultContributions = await prisma.vaultContribution.findMany({
       where: { status: "confirmed", currency: { in: [...thresholdByCurrency.keys()] } },
-      include: { vault: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
+      include: { vault: { select: { id: true, name: true } }, donor: donorSelect },
       orderBy: { createdAt: "desc" },
     });
+    // Public clinic waqf gifts (2026-11-17) share the same givers and
+    // threshold, so they're reviewed alongside, grouped per clinic.
+    // Founders' gifts have no donor and aren't included: they're verified
+    // account holders.
+    const contributions = [
+      ...vaultContributions,
+      ...(await this.clinicGiftsAsContributions({ status: "confirmed", currency: { in: [...thresholdByCurrency.keys()] } })),
+    ];
 
     const nearThreshold = contributions
       .map((c) => {
@@ -1043,11 +1071,14 @@ export class VaultContributionsService {
    * legitimately produce this) and never proof by itself.
    */
   private async getIpClusters() {
-    const contributions = await prisma.vaultContribution.findMany({
-      where: { status: "confirmed", ipAddress: { not: null }, donorId: { not: null } },
-      include: { vault: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
-      orderBy: { createdAt: "desc" },
-    });
+    const contributions = [
+      ...(await prisma.vaultContribution.findMany({
+        where: { status: "confirmed", ipAddress: { not: null }, donorId: { not: null } },
+        include: { vault: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
+        orderBy: { createdAt: "desc" },
+      })),
+      ...(await this.clinicGiftsAsContributions({ status: "confirmed", ipAddress: { not: null }, donorId: { not: null } })),
+    ];
 
     const byIp = new Map<string, typeof contributions>();
     for (const c of contributions) {

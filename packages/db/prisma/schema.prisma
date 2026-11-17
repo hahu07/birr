@@ -385,6 +385,7 @@ model User {
   counterpartyLicensesWithdrawn  CounterpartyLicense[]           @relation("CounterpartyLicenseWithdrawer")
   clinicWaqfsCreated             ClinicWaqf[]                    @relation("ClinicWaqfCreator")
   clinicWaqfDeedsCreated         ClinicWaqfDeed[]                @relation("ClinicWaqfDeedCreator")
+  clinicGiftsInitiated           ClinicGift[]                    @relation("ClinicGiftInitiator")
   createdInvestmentPlacements    InvestmentPlacement[]
   sentMessages                   Message[]
   mfaBackupCodes                 MfaBackupCode[]
@@ -444,6 +445,11 @@ model Founder {
   institutionType  InstitutionType?
   homeJurisdiction String?
   status           FounderStatus    @default(active)
+  // A Founder who joined from a clinic waqf's page to support it, without
+  // setting up a Foundation (owner's decision, 2026-11-17: verify, then
+  // give). Their onboarding is complete once verified; they can still set
+  // up a Foundation later.
+  clinicSupporter  Boolean          @default(false)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   deletedAt        DateTime?
@@ -461,6 +467,7 @@ model Founder {
   founderRequests           FounderRequest[]
   funnelEvents              FunnelEvent[]
   primaryContactSuccessions PrimaryContactSuccession[]
+  clinicGifts               ClinicGift[]
 
   @@map("founders")
 }
@@ -4127,6 +4134,13 @@ model ClinicGift {
   pot                  ClinicPot
   donorId              String?
   donor                VaultDonor?          @relation(fields: [donorId], references: [id], onDelete: Restrict)
+  // A Founder's gift (slice 4a): recorded as theirs, given by one of their
+  // users. Never both a Founder and a VaultDonor (a CHECK). A Founder's
+  // first gift to a clinic is at least ₦250,000, later ones ₦5,000.
+  founderId            String?
+  founder              Founder?             @relation(fields: [founderId], references: [id], onDelete: Restrict)
+  initiatedByUserId    String?
+  initiatedByUser      User?                @relation("ClinicGiftInitiator", fields: [initiatedByUserId], references: [id], onDelete: Restrict)
   // Where this gift's receipt goes: only what was given with it.
   contactEmail         String?
   contactWhatsApp      String?
@@ -4148,5 +4162,6 @@ model ClinicGift {
 
   @@index([clinicWaqfId])
   @@index([donorId])
+  @@index([founderId])
   @@map("clinic_gifts")
 }

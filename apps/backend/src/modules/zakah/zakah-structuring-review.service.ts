@@ -107,11 +107,23 @@ export class ZakahStructuringReviewService {
    * leaves open, since each product only counts its own payments.
    */
   private async acrossVault(rows: { ipAddress: string | null; row: PaymentRow }[], threshold: Prisma.Decimal | null) {
-    const vaultGifts = await prisma.vaultContribution.findMany({
-      where: { status: "confirmed", currency: CURRENCY, donorId: { not: null } },
-      include: { donor: { select: { email: true, whatsappNumber: true, fullName: true, idType: true } }, vault: { select: { name: true } } },
-      orderBy: { createdAt: "desc" },
-    });
+    const donor = { select: { email: true, whatsappNumber: true, fullName: true, idType: true } };
+    // Public clinic waqf gifts (2026-11-17) have the same givers as Vault,
+    // so they sit on the Vault side, their name marked as a clinic waqf.
+    const vaultGifts = [
+      ...(await prisma.vaultContribution.findMany({
+        where: { status: "confirmed", currency: CURRENCY, donorId: { not: null } },
+        include: { donor, vault: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+      })),
+      ...(
+        await prisma.clinicGift.findMany({
+          where: { status: "confirmed", currency: CURRENCY, donorId: { not: null } },
+          include: { donor, clinicWaqf: { select: { name: true } } },
+          orderBy: { createdAt: "desc" },
+        })
+      ).map((g) => ({ ...g, vault: { name: `${g.clinicWaqf.name} (clinic waqf)` } })),
+    ];
     const vaultRow = (g: (typeof vaultGifts)[number]) => ({
       id: g.id,
       vaultName: g.vault.name,
