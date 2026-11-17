@@ -46,10 +46,10 @@ export default function ClinicWaqfPage() {
 
   const load = useCallback(() => {
     Promise.all([
-      apiFetchJson<WaqfProgramme>(`/clinic-waqfs/${id}`),
-      apiFetchJson<ClinicLedger>(`/clinic-waqfs/${id}/ledger`),
+      apiFetchJson<WaqfProgramme>(`/waqf-programmes/${id}`),
+      apiFetchJson<ClinicLedger>(`/waqf-programmes/${id}/ledger`),
       apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"),
-      apiFetchJson<ClinicGiftRow[]>(`/clinic-waqfs/${id}/gifts`),
+      apiFetchJson<ClinicGiftRow[]>(`/waqf-programmes/${id}/gifts`),
     ])
       .then(([c, l, actions, g]) => {
         setClinic(c);
@@ -100,15 +100,15 @@ export default function ClinicWaqfPage() {
   const approved = deeds.find((d) => d.status === "approved");
   const pendingFor = (key: string, field: string, value: string) =>
     pending.find((a) => a.permission.key === key && (a.payload as Record<string, unknown>)?.[field] === value);
-  const draftProposal = draft && pendingFor("clinic_waqf.deed_approve", "deedId", draft.id);
-  const establishProposal = pendingFor("clinic_waqf.establish", "programmeId", clinic.id);
-  const canManage = can("clinic_waqf.manage");
+  const draftProposal = draft && pendingFor("waqf_programme.deed_approve", "deedId", draft.id);
+  const establishProposal = pendingFor("waqf_programme.establish", "programmeId", clinic.id);
+  const canManage = can("waqf_programme.manage");
 
   async function startDraft() {
     // Start from the latest version's wording, or the standard wording for a first draft.
     const latest = deeds.find((d) => d.status !== "discarded");
     if (latest) return setDrafting(latest.text);
-    const template = await apiFetchJson<{ text: string }>(`/clinic-waqfs/${clinic!.id}/deed-template`);
+    const template = await apiFetchJson<{ text: string }>(`/waqf-programmes/${clinic!.id}/deed-template`);
     setDrafting(template.text);
   }
 
@@ -165,7 +165,7 @@ export default function ClinicWaqfPage() {
               </p>
             ) : !approved ? (
               <p className="text-sm text-slate-600">It can be proposed for establishing once a Shariah board member approves a deed version.</p>
-            ) : can("clinic_waqf.establish") ? (
+            ) : can("waqf_programme.establish") ? (
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   disabled={busy}
@@ -173,7 +173,7 @@ export default function ClinicWaqfPage() {
                     run(() =>
                       apiFetchJson("/governed-actions", {
                         method: "POST",
-                        body: JSON.stringify({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id } }),
+                        body: JSON.stringify({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id } }),
                       }),
                     )
                   }
@@ -225,7 +225,7 @@ export default function ClinicWaqfPage() {
               <Button
                 disabled={busy || !drafting.trim()}
                 onClick={() =>
-                  run(() => apiFetchJson(`/clinic-waqfs/${clinic.id}/deeds`, { method: "POST", body: JSON.stringify({ text: drafting }) })).then(
+                  run(() => apiFetchJson(`/waqf-programmes/${clinic.id}/deeds`, { method: "POST", body: JSON.stringify({ text: drafting }) })).then(
                     (ok) => ok && setDrafting(null),
                   )
                 }
@@ -266,7 +266,7 @@ export default function ClinicWaqfPage() {
                       </p>
                     ) : (
                       <>
-                        {can("clinic_waqf.deed_approve") && (
+                        {can("waqf_programme.deed_approve") && (
                           <Button
                             className="px-3 py-1.5 text-xs"
                             disabled={busy}
@@ -275,7 +275,7 @@ export default function ClinicWaqfPage() {
                                 apiFetchJson("/governed-actions", {
                                   method: "POST",
                                   body: JSON.stringify({
-                                    permissionKey: "clinic_waqf.deed_approve",
+                                    permissionKey: "waqf_programme.deed_approve",
                                     payload: { deedId: deed.id, textHash: deed.textHash },
                                   }),
                                 }),
@@ -290,7 +290,7 @@ export default function ClinicWaqfPage() {
                             variant="secondary"
                             className="px-3 py-1.5 text-xs"
                             disabled={busy}
-                            onClick={() => run(() => apiFetchJson(`/clinic-waqfs/${clinic.id}/deeds/${deed.id}/discard`, { method: "POST" }))}
+                            onClick={() => run(() => apiFetchJson(`/waqf-programmes/${clinic.id}/deeds/${deed.id}/discard`, { method: "POST" }))}
                           >
                             Discard draft
                           </Button>

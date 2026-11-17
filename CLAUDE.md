@@ -1299,11 +1299,29 @@ Vault and zakah stay separate.
     `Founder.programmeSupporter`.
   - Constraint, index and trigger names, and the rule functions (which
     name tables as text), follow the new names.
-- **Not yet renamed:** services, files, routes (`/clinic-waqfs`,
-  `/clinic-gifts`, `/clinics/:slug`), permission keys (`clinic_waqf.*`),
-  audit action names and the reconciliation label `clinic_gift`. Step 2
-  splits the code into a general module and a clinic module and splits
-  the permission keys, keeping every grant and approval history.
+- **Step 2 (built):** the code is split, and the permission keys too
+  (`20261118080000_programme_permission_keys`).
+  - `modules/waqf-programmes`: the general parts (`WaqfProgrammesService`,
+    `ProgrammeLedgerService`, `ProgrammeGiftsService`, `ProgrammeAssets`,
+    `ProgrammeSpending`, `ProgrammeInvestments`, `ProgrammeReserve`).
+    `modules/clinics`: the clinic's own (price lists, claims, monthly
+    figures, the public report, the standard deed wording).
+  - API: Ops `/waqf-programmes/...` (clinic-only routes under the same
+    address, from `ClinicsOpsController`); public giving `/programme-gifts`,
+    Founders' monthly `/programme-gifts/founder/monthly`; the public clinic
+    list and report `GET /clinics`, `/clinics/:slug/report`. Web page
+    addresses (`/clinics/...`, `/clinic-gifts/...`, `/ops/clinic-waqfs`) and
+    the Paystack return path are unchanged.
+  - Permissions: `waqf_programme.*` (manage, deed, establish, assets,
+    works, spending, investments, reserve) and `clinic.*` (operator, price
+    list, claims, monthly figures). Renamed in place, so every grant and
+    governed action keeps its permission.
+  - Audit actions follow (`waqf_programme.*`, `waqf_programme_deed.*`,
+    `programme_gift.*`, `programme_asset.*`, `programme_works.*`,
+    `programme_spend.*`, `programme_investment.*`;
+    `clinic.operator_assigned`; clinic price list, claim and report actions
+    unchanged). Rows written before keep their old names. The
+    reconciliation label is `programme_gift`.
 - **Steps 3 and 4:** a product list in code (pots per product, adding a
   loan pot; payout kinds; causes, with the clinic tagged Healthcare), then
   one "Waqf programmes" area in the Ops Console.

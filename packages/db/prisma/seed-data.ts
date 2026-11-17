@@ -116,25 +116,25 @@ const governedPermissions = [
   // The clinic waqf (2026-11-17): a Birr-established waqf for the Mother &
   // Child Clinic. The Board alone approves establishing one; a Shariah
   // board member alone approves each version of its deed.
-  { key: "clinic_waqf.establish", category: "clinic", requiresMakerChecker: true, description: "Establish a clinic waqf, after its deed is approved. Once established it's a waqf for ever." },
+  { key: "waqf_programme.establish", category: "waqf_programme", requiresMakerChecker: true, description: "Establish a waqf programme, after its deed is approved. Once established it's a waqf for ever." },
   // Clinic waqf assets (2026-11-17, slice 5a): adding a gift in kind to the
   // endowment, and disposing of an asset, both approved by the Board.
-  { key: "clinic_waqf.asset_add", category: "clinic", requiresMakerChecker: true, description: "Add land, a building or equipment given in kind to a clinic waqf's endowment, at its valuation." },
-  { key: "clinic_waqf.asset_dispose", category: "clinic", requiresMakerChecker: true, description: "Dispose of a clinic waqf's asset: sell, scrap or exchange it, with any proceeds kept in the endowment." },
+  { key: "waqf_programme.asset_add", category: "waqf_programme", requiresMakerChecker: true, description: "Add land, a building or equipment given in kind to a waqf programme's endowment, at its valuation." },
+  { key: "waqf_programme.asset_dispose", category: "waqf_programme", requiresMakerChecker: true, description: "Dispose of a waqf programme's asset: sell, scrap or exchange it, with any proceeds kept in the endowment." },
   // Clinic waqf endowment spending (2026-11-17, slice 5b): the Board
   // approves a works project's route and budget; the Board or Compliance
   // approves each payment out of endowment cash; Compliance or the Audit
   // Committee confirms it was paid, from the bank reference.
-  { key: "clinic_waqf.works_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a clinic waqf's building or renovation project: its route, contractor and budget." },
-  { key: "clinic_waqf.spend_approve", category: "clinic", requiresMakerChecker: true, description: "Approve paying out of a clinic waqf's endowment cash, for equipment or a certified works stage." },
-  { key: "clinic_waqf.spend_mark_paid", category: "clinic", requiresMakerChecker: true, description: "Confirm an approved clinic waqf payment was made, from the bank's reference, which books it." },
+  { key: "waqf_programme.works_approve", category: "waqf_programme", requiresMakerChecker: true, description: "Approve a waqf programme's building or renovation project: its route, contractor and budget." },
+  { key: "waqf_programme.spend_approve", category: "waqf_programme", requiresMakerChecker: true, description: "Approve paying out of a waqf programme's endowment cash, for equipment or a certified works stage." },
+  { key: "waqf_programme.spend_mark_paid", category: "waqf_programme", requiresMakerChecker: true, description: "Confirm an approved waqf programme payment was made, from the bank's reference, which books it." },
   // Clinic waqf price list and subsidy bands (2026-11-17, slice 6).
-  { key: "clinic_waqf.price_list_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a version of a clinic waqf's price list and subsidy bands, which monthly claims are checked against." },
-  { key: "clinic_waqf.operator_assign", category: "clinic", requiresMakerChecker: true, description: "Assign the licensed healthcare provider that runs a clinic waqf's clinic, whose monthly claims it pays." },
-  { key: "clinic_waqf.claim_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a clinic's monthly claim, checked against the price list, bands and monthly cap, so its running fund part may be paid." },
-  { key: "clinic_waqf.claim_mark_paid", category: "clinic", requiresMakerChecker: true, description: "Confirm a clinic claim's running fund part was paid, from the bank's reference, which books it." },
-  { key: "clinic_waqf.reserve_share_set", category: "clinic", requiresMakerChecker: true, description: "Set the share of a clinic waqf's endowment income set aside for replacing its equipment." },
-  { key: "clinic_waqf.deed_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a version of a clinic waqf's deed, the wording supporters accept when they endow." },
+  { key: "clinic.price_list_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a version of a clinic waqf's price list and subsidy bands, which monthly claims are checked against." },
+  { key: "clinic.operator_assign", category: "clinic", requiresMakerChecker: true, description: "Assign the licensed healthcare provider that runs a clinic waqf's clinic, whose monthly claims it pays." },
+  { key: "clinic.claim_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a clinic's monthly claim, checked against the price list, bands and monthly cap, so its running fund part may be paid." },
+  { key: "clinic.claim_mark_paid", category: "clinic", requiresMakerChecker: true, description: "Confirm a clinic claim's running fund part was paid, from the bank's reference, which books it." },
+  { key: "waqf_programme.reserve_share_set", category: "waqf_programme", requiresMakerChecker: true, description: "Set the share of a waqf programme's endowment income set aside for replacing its equipment." },
+  { key: "waqf_programme.deed_approve", category: "waqf_programme", requiresMakerChecker: true, description: "Approve a version of a waqf programme's deed, the wording supporters accept when they endow." },
   { key: "zakah.ruleset_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a draft zakah ruleset, making it the version the zakah calculator applies." },
   { key: "zakah.metal_price_set", category: "zakah", requiresMakerChecker: true, description: "Set the gold and silver prices that fix the zakah nisab in Naira." },
   // Distribution (2026-11-11). Owner's decisions: a Mutawalli Officer
@@ -192,12 +192,12 @@ export const accessPermissions = [
   // Committee records and places them (placing is an endowment payment,
   // approved and confirmed by others) and records their return; a Shariah
   // board member screens each; income is recorded as proceeds are.
-  { key: "clinic_waqf.investment_manage", category: "clinic", description: "Record a clinic waqf investment, propose placing it, and record its principal coming back.", roles: ["investment_committee"] },
-  { key: "clinic_waqf.investment_shariah_screen", category: "shariah", description: "Decide the Shariah screening of a clinic waqf investment.", roles: ["shariah_board_member"] },
-  { key: "clinic_waqf.investment_income_record", category: "clinic", description: "Record income a clinic waqf investment paid, into the running fund.", roles: ["investment_committee", "mutawalli_officer"] },
-  { key: "clinic_waqf.report_record", category: "clinic", description: "Record a clinic's monthly figures from its operator's report, for a second person to publish.", roles: ["mutawalli_officer"] },
-  { key: "clinic_waqf.report_publish", category: "clinic", description: "Publish a clinic's monthly figures on its public page, after checking them against the operator's report.", roles: ["compliance_officer", "audit_committee"] },
-  { key: "clinic_waqf.manage", category: "clinic", description: "Create a clinic waqf and draft or discard versions of its deed (establishing and approving are separate).", roles: ["mutawalli_officer"] },
+  { key: "waqf_programme.investment_manage", category: "waqf_programme", description: "Record a waqf programme investment, propose placing it, and record its principal coming back.", roles: ["investment_committee"] },
+  { key: "waqf_programme.investment_shariah_screen", category: "shariah", description: "Decide the Shariah screening of a waqf programme investment.", roles: ["shariah_board_member"] },
+  { key: "waqf_programme.investment_income_record", category: "waqf_programme", description: "Record income a waqf programme investment paid, into the running fund.", roles: ["investment_committee", "mutawalli_officer"] },
+  { key: "clinic.report_record", category: "clinic", description: "Record a clinic's monthly figures from its operator's report, for a second person to publish.", roles: ["mutawalli_officer"] },
+  { key: "clinic.report_publish", category: "clinic", description: "Publish a clinic's monthly figures on its public page, after checking them against the operator's report.", roles: ["compliance_officer", "audit_committee"] },
+  { key: "waqf_programme.manage", category: "waqf_programme", description: "Create a waqf programme and draft or discard versions of its deed (establishing and approving are separate).", roles: ["mutawalli_officer"] },
   { key: "coi.review", category: "staff", description: "Review another staff member's conflict-of-interest declaration.", roles: ["compliance_officer"] },
   // Licences (2026-11-17, clinic slice 1): two people. Whoever records one
   // never verifies it (a database CHECK), and only a verified licence lets
@@ -298,10 +298,10 @@ type Grants = Record<string, { canMaker?: boolean; canChecker?: boolean }>;
 
 const governedRolePermissions: Record<string, Grants> = {
   mutawalli_officer: {
-    "clinic_waqf.reserve_share_set": { canMaker: true },
-    "clinic_waqf.operator_assign": { canMaker: true },
-    "clinic_waqf.claim_approve": { canMaker: true },
-    "clinic_waqf.claim_mark_paid": { canMaker: true },
+    "waqf_programme.reserve_share_set": { canMaker: true },
+    "clinic.operator_assign": { canMaker: true },
+    "clinic.claim_approve": { canMaker: true },
+    "clinic.claim_mark_paid": { canMaker: true },
     "founder.primary_contact_change": { canMaker: true },
     "asset.dispose": { canMaker: true },
     "distribution.approve": { canMaker: true },
@@ -317,14 +317,14 @@ const governedRolePermissions: Record<string, Grants> = {
     "vault.milestone_complete": { canMaker: true },
     "blog.publish": { canMaker: true },
     "zakah.ruleset_approve": { canMaker: true },
-    "clinic_waqf.establish": { canMaker: true },
-    "clinic_waqf.asset_add": { canMaker: true },
-    "clinic_waqf.asset_dispose": { canMaker: true },
-    "clinic_waqf.works_approve": { canMaker: true },
-    "clinic_waqf.price_list_approve": { canMaker: true },
-    "clinic_waqf.spend_approve": { canMaker: true },
-    "clinic_waqf.spend_mark_paid": { canMaker: true },
-    "clinic_waqf.deed_approve": { canMaker: true },
+    "waqf_programme.establish": { canMaker: true },
+    "waqf_programme.asset_add": { canMaker: true },
+    "waqf_programme.asset_dispose": { canMaker: true },
+    "waqf_programme.works_approve": { canMaker: true },
+    "clinic.price_list_approve": { canMaker: true },
+    "waqf_programme.spend_approve": { canMaker: true },
+    "waqf_programme.spend_mark_paid": { canMaker: true },
+    "waqf_programme.deed_approve": { canMaker: true },
     "zakah.distribution_approve": { canMaker: true },
     "zakah.distribution_mark_paid": { canMaker: true },
     "zakah.refund_mark_paid": { canMaker: true },
@@ -340,15 +340,15 @@ const governedRolePermissions: Record<string, Grants> = {
   // Compliance and the Audit Committee (see their definitions above) —
   // except zakah.refund_approve, which the Board approves.
   board_of_trustees: {
-    "clinic_waqf.reserve_share_set": { canChecker: true },
-    "clinic_waqf.operator_assign": { canChecker: true },
-    "clinic_waqf.claim_approve": { canChecker: true },
-    "clinic_waqf.establish": { canChecker: true },
-    "clinic_waqf.asset_add": { canChecker: true },
-    "clinic_waqf.asset_dispose": { canChecker: true },
-    "clinic_waqf.works_approve": { canChecker: true },
-    "clinic_waqf.price_list_approve": { canChecker: true },
-    "clinic_waqf.spend_approve": { canChecker: true },
+    "waqf_programme.reserve_share_set": { canChecker: true },
+    "clinic.operator_assign": { canChecker: true },
+    "clinic.claim_approve": { canChecker: true },
+    "waqf_programme.establish": { canChecker: true },
+    "waqf_programme.asset_add": { canChecker: true },
+    "waqf_programme.asset_dispose": { canChecker: true },
+    "waqf_programme.works_approve": { canChecker: true },
+    "clinic.price_list_approve": { canChecker: true },
+    "waqf_programme.spend_approve": { canChecker: true },
     "asset.dispose": { canChecker: true },
     "distribution.approve": { canChecker: true },
     "waqf.milestone_complete": { canChecker: true },
@@ -376,8 +376,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.refund_approve": { canChecker: true },
   },
   investment_committee: {
-    "clinic_waqf.spend_approve": { canMaker: true },
-    "clinic_waqf.spend_mark_paid": { canMaker: true },
+    "waqf_programme.spend_approve": { canMaker: true },
+    "waqf_programme.spend_mark_paid": { canMaker: true },
     "asset.dispose": { canChecker: true },
     "investment.change": { canMaker: true },
     // Same reversed-pairing posture as investment.change: the committee
@@ -399,15 +399,15 @@ const governedRolePermissions: Record<string, Grants> = {
     "vault.distribution_approve": { canChecker: true },
     "vault.milestone_complete": { canChecker: true },
     "zakah.ruleset_approve": { canChecker: true },
-    "clinic_waqf.deed_approve": { canChecker: true },
+    "waqf_programme.deed_approve": { canChecker: true },
     "zakah.distribution_approve": { canChecker: true },
     "zakah.fitr_campaign_approve": { canChecker: true },
     "zakah.recipient_approve": { canChecker: true },
     "zakah.recipient_change": { canChecker: true },
   },
   audit_committee: {
-    "clinic_waqf.claim_mark_paid": { canChecker: true },
-    "clinic_waqf.spend_mark_paid": { canChecker: true },
+    "clinic.claim_mark_paid": { canChecker: true },
+    "waqf_programme.spend_mark_paid": { canChecker: true },
     "asset.dispose": { canChecker: true },
     "investment.change": { canChecker: true },
     "counterparty.onboard": { canChecker: true },
@@ -418,11 +418,11 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.refund_mark_paid": { canChecker: true },
   },
   compliance_officer: {
-    "clinic_waqf.claim_approve": { canChecker: true },
-    "clinic_waqf.claim_mark_paid": { canChecker: true },
-    "clinic_waqf.price_list_approve": { canChecker: true },
-    "clinic_waqf.spend_approve": { canChecker: true },
-    "clinic_waqf.spend_mark_paid": { canChecker: true },
+    "clinic.claim_approve": { canChecker: true },
+    "clinic.claim_mark_paid": { canChecker: true },
+    "clinic.price_list_approve": { canChecker: true },
+    "waqf_programme.spend_approve": { canChecker: true },
+    "waqf_programme.spend_mark_paid": { canChecker: true },
     "distribution.approve": { canChecker: true },
     "waqf.milestone_complete": { canChecker: true },
     "beneficiary.criteria_update": { canChecker: true },

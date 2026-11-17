@@ -56,7 +56,7 @@ export function ClaimsCard({ clinic, onChange }: { clinic: WaqfProgramme; onChan
 
   const load = useCallback(() => {
     Promise.all([
-      apiFetchJson<ClinicClaim[]>(`/clinic-waqfs/${clinic.id}/claims`),
+      apiFetchJson<ClinicClaim[]>(`/waqf-programmes/${clinic.id}/claims`),
       apiFetchJson<Counterparty[]>("/counterparties?status=active"),
       apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"),
     ])
@@ -92,8 +92,8 @@ export function ClaimsCard({ clinic, onChange }: { clinic: WaqfProgramme; onChan
     run(() => apiFetchJson("/governed-actions", { method: "POST", body: JSON.stringify({ permissionKey, payload }) }));
   const waiting = (key: string, field: string, value: string) =>
     pending.find((a) => a.permission.key === key && (a.payload as Record<string, unknown>)?.[field] === value);
-  const canManage = can("clinic_waqf.manage");
-  const operatorProposal = waiting("clinic_waqf.operator_assign", "programmeId", clinic.id);
+  const canManage = can("waqf_programme.manage");
+  const operatorProposal = waiting("clinic.operator_assign", "programmeId", clinic.id);
 
   return (
     <Card className="mt-5">
@@ -130,8 +130,8 @@ export function ClaimsCard({ clinic, onChange }: { clinic: WaqfProgramme; onChan
             .
           </p>
         ) : (
-          can("clinic_waqf.operator_assign") && (
-            <AssignOperator providers={providers.filter((p) => p.id !== clinic.operator?.id)} disabled={busy} onSubmit={(counterpartyId) => propose("clinic_waqf.operator_assign", { programmeId: clinic.id, counterpartyId })} />
+          can("clinic.operator_assign") && (
+            <AssignOperator providers={providers.filter((p) => p.id !== clinic.operator?.id)} disabled={busy} onSubmit={(counterpartyId) => propose("clinic.operator_assign", { programmeId: clinic.id, counterpartyId })} />
           )
         )}
       </div>
@@ -141,7 +141,7 @@ export function ClaimsCard({ clinic, onChange }: { clinic: WaqfProgramme; onChan
           disabled={busy}
           onCancel={() => setUploading(false)}
           onSubmit={(body) =>
-            run(() => apiFetchJson(`/clinic-waqfs/${clinic.id}/claims`, { method: "POST", body: JSON.stringify(body) })).then((ok) => ok && setUploading(false))
+            run(() => apiFetchJson(`/waqf-programmes/${clinic.id}/claims`, { method: "POST", body: JSON.stringify(body) })).then((ok) => ok && setUploading(false))
           }
           onError={setError}
         />
@@ -156,8 +156,8 @@ export function ClaimsCard({ clinic, onChange }: { clinic: WaqfProgramme; onChan
               programmeId={clinic.id}
               claim={claim}
               disabled={busy}
-              approval={waiting("clinic_waqf.claim_approve", "claimId", claim.id)}
-              payment={waiting("clinic_waqf.claim_mark_paid", "claimId", claim.id)}
+              approval={waiting("clinic.claim_approve", "claimId", claim.id)}
+              payment={waiting("clinic.claim_mark_paid", "claimId", claim.id)}
               run={run}
               propose={propose}
             />
@@ -291,7 +291,7 @@ function ClaimRow({
         <Button
           variant="secondary"
           className="px-3 py-1.5 text-xs"
-          onClick={() => (lines ? setLines(null) : apiFetchJson<ClinicClaimLine[]>(`/clinic-waqfs/${programmeId}/claims/${claim.id}/lines`).then(setLines))}
+          onClick={() => (lines ? setLines(null) : apiFetchJson<ClinicClaimLine[]>(`/waqf-programmes/${programmeId}/claims/${claim.id}/lines`).then(setLines))}
         >
           {lines ? "Hide lines" : "Show lines"}
         </Button>
@@ -300,17 +300,17 @@ function ClaimRow({
             <span className="text-xs text-slate-500">Waiting for the Board or Compliance.</span>
           ) : (
             <>
-              {can("clinic_waqf.claim_approve") && (
-                <Button className="px-3 py-1.5 text-xs" disabled={disabled} onClick={() => propose("clinic_waqf.claim_approve", { claimId: claim.id })}>
+              {can("clinic.claim_approve") && (
+                <Button className="px-3 py-1.5 text-xs" disabled={disabled} onClick={() => propose("clinic.claim_approve", { claimId: claim.id })}>
                   Propose for approval
                 </Button>
               )}
-              {can("clinic_waqf.manage") && (
+              {can("waqf_programme.manage") && (
                 <Button
                   variant="secondary"
                   className="px-3 py-1.5 text-xs"
                   disabled={disabled}
-                  onClick={() => run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/claims/${claim.id}/discard`, { method: "POST" }))}
+                  onClick={() => run(() => apiFetchJson(`/waqf-programmes/${programmeId}/claims/${claim.id}/discard`, { method: "POST" }))}
                 >
                   Discard
                 </Button>
@@ -322,7 +322,7 @@ function ClaimRow({
           (payment ? (
             <span className="text-xs text-slate-500">Payment waiting for confirmation.</span>
           ) : (
-            can("clinic_waqf.claim_mark_paid") &&
+            can("clinic.claim_mark_paid") &&
             !paying && (
               <Button className="px-3 py-1.5 text-xs" onClick={() => setPaying(true)}>
                 Record the running fund payment
@@ -344,7 +344,7 @@ function ClaimRow({
           <Button
             className="px-3 py-1.5 text-xs"
             disabled={disabled || bankReference.trim().length < 3}
-            onClick={() => propose("clinic_waqf.claim_mark_paid", { claimId: claim.id, bankReference: bankReference.trim(), paidOn }).then((ok) => ok && setPaying(false))}
+            onClick={() => propose("clinic.claim_mark_paid", { claimId: claim.id, bankReference: bankReference.trim(), paidOn }).then((ok) => ok && setPaying(false))}
           >
             Send for confirmation
           </Button>
@@ -354,7 +354,7 @@ function ClaimRow({
         </div>
       )}
 
-      {(claim.status === "approved" || claim.status === "paid") && zakah && !claim.zakahDistribution && can("clinic_waqf.manage") && (
+      {(claim.status === "approved" || claim.status === "paid") && zakah && !claim.zakahDistribution && can("waqf_programme.manage") && (
         <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2">
           <p className="text-xs text-slate-600">
             Pay the zakah part as a{" "}
@@ -370,7 +370,7 @@ function ClaimRow({
               disabled={disabled || !zakahId.trim()}
               onClick={() =>
                 run(() =>
-                  apiFetchJson(`/clinic-waqfs/${programmeId}/claims/${claim.id}/zakah-distribution`, {
+                  apiFetchJson(`/waqf-programmes/${programmeId}/claims/${claim.id}/zakah-distribution`, {
                     method: "POST",
                     body: JSON.stringify({ zakahDistributionId: zakahId.trim() }),
                   }),

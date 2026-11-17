@@ -27,7 +27,7 @@ export function InvestmentsCard({ programmeId, established }: { programmeId: str
   const [showForm, setShowForm] = useState(false);
 
   const load = useCallback(() => {
-    Promise.all([apiFetchJson<ProgrammeInvestment[]>(`/clinic-waqfs/${programmeId}/investments`), apiFetchJson<Counterparty[]>("/counterparties?status=active")])
+    Promise.all([apiFetchJson<ProgrammeInvestment[]>(`/waqf-programmes/${programmeId}/investments`), apiFetchJson<Counterparty[]>("/counterparties?status=active")])
       .then(([i, c]) => {
         setInvestments(i);
         setPartners(c);
@@ -43,7 +43,7 @@ export function InvestmentsCard({ programmeId, established }: { programmeId: str
     setError(null);
     setBusy(true);
     try {
-      await apiFetchJson(`/clinic-waqfs/${programmeId}/investments${path}`, { method: "POST", body: JSON.stringify(body) });
+      await apiFetchJson(`/waqf-programmes/${programmeId}/investments${path}`, { method: "POST", body: JSON.stringify(body) });
       load();
       return true;
     } catch (err) {
@@ -54,7 +54,7 @@ export function InvestmentsCard({ programmeId, established }: { programmeId: str
     }
   }
 
-  const canManage = can("clinic_waqf.investment_manage") && established;
+  const canManage = can("waqf_programme.investment_manage") && established;
 
   return (
     <Card className="mt-5">
@@ -96,7 +96,7 @@ export function InvestmentsCard({ programmeId, established }: { programmeId: str
                 </Badge>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {i.status === "pending_shariah_review" && can("clinic_waqf.investment_shariah_screen") && (
+                {i.status === "pending_shariah_review" && can("waqf_programme.investment_shariah_screen") && (
                   <Screen disabled={busy} onSubmit={(p) => post(`/${i.id}/shariah`, p)} />
                 )}
                 {i.status === "shariah_approved" && (!i.placement || i.placement.status === "rejected") && canManage && (
@@ -105,7 +105,7 @@ export function InvestmentsCard({ programmeId, established }: { programmeId: str
                 {i.status === "shariah_approved" && i.placement && i.placement.status !== "rejected" && (
                   <p className="text-xs text-slate-500">Placement is under Endowment spending ({humanize(i.placement.status)}).</p>
                 )}
-                {(i.status === "placed" || i.status === "returned") && can("clinic_waqf.investment_income_record") && (
+                {(i.status === "placed" || i.status === "returned") && can("waqf_programme.investment_income_record") && (
                   <RecordIncome disabled={busy} onSubmit={(p) => post(`/${i.id}/income`, p)} />
                 )}
                 {i.status === "placed" && canManage && (

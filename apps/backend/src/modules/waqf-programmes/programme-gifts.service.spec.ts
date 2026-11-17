@@ -10,12 +10,12 @@ import { VaultContributionsService } from "../vaults/vault-contributions.service
 import { VaultLedgerService } from "../vaults/vault-ledger.service";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { createFakeRecurringGiftsCore } from "../recurring-gifts/test-support/fake-recurring-gifts";
-import { ClinicGiftsService, CLINIC_FOUNDER_FIRST_GIFT_MINIMUM_NGN, CLINIC_PUBLIC_MINIMUM_NGN } from "./clinic-gifts.service";
+import { ProgrammeGiftsService, CLINIC_FOUNDER_FIRST_GIFT_MINIMUM_NGN, CLINIC_PUBLIC_MINIMUM_NGN } from "./programme-gifts.service";
 import { FoundersService } from "../founders/founders.service";
 import { MfaService } from "../../common/auth/mfa.service";
-import { ClinicLedgerService } from "./clinic-ledger.service";
-import { ClinicWaqfsService } from "./clinic-waqfs.service";
-import type { ClinicGiftReceipt, ResendClinicReceiptEmailAdapter } from "./clinic-receipt-email.adapter";
+import { ProgrammeLedgerService } from "./programme-ledger.service";
+import { WaqfProgrammesService } from "./waqf-programmes.service";
+import type { ProgrammeGiftReceipt, ResendProgrammeReceiptEmailAdapter } from "./programme-receipt-email.adapter";
 
 // A fake Paystack: records what would be sent, and lets each test decide
 // what the webhook or verify call reports. Nothing reaches Paystack.
@@ -36,8 +36,8 @@ class FakePaystack {
 }
 
 class FakeReceipts {
-  sent: ClinicGiftReceipt[] = [];
-  async sendReceipt(input: ClinicGiftReceipt) {
+  sent: ProgrammeGiftReceipt[] = [];
+  async sendReceipt(input: ProgrammeGiftReceipt) {
     this.sent.push(input);
   }
 }
@@ -46,7 +46,7 @@ const unusedAdapter = {} as any;
 
 // Gifts, clinic waqfs and their ledgers are never deleted (triggers), so
 // these fixtures stay in the dev database, identifiable by per-run emails.
-describe("ClinicGiftsService", () => {
+describe("ProgrammeGiftsService", () => {
   const run = Date.now().toString(36);
   let subaccount: string | undefined = "ACCT_test_clinic";
   const settings = {
@@ -65,15 +65,15 @@ describe("ClinicGiftsService", () => {
     unusedAdapter,
     unusedAdapter,
   );
-  const service = new ClinicGiftsService(
+  const service = new ProgrammeGiftsService(
     settings,
     paystack as unknown as PaystackAdapter,
-    new ClinicLedgerService(),
-    receipts as unknown as ResendClinicReceiptEmailAdapter,
+    new ProgrammeLedgerService(),
+    receipts as unknown as ResendProgrammeReceiptEmailAdapter,
     vaultContributions,
     createFakeRecurringGiftsCore().core,
   );
-  const clinics = new ClinicWaqfsService();
+  const clinics = new WaqfProgrammesService();
   const email = (name: string) => `clinic-gift-${name}-${run}@example.com`;
 
   let makerUserId: string;
@@ -100,9 +100,9 @@ describe("ClinicGiftsService", () => {
     const created = await clinics.create({ name: "Gift Test Clinic", slug: `gift-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     const draft = await clinics.draftDeed(created.id, {}, makerUserId);
     const deedPayload = { deedId: draft.id, textHash: draft.textHash };
-    const deedAction = await decidedAction("clinic_waqf.deed_approve", deedPayload);
+    const deedAction = await decidedAction("waqf_programme.deed_approve", deedPayload);
     await prisma.$transaction((tx) => clinics.approveDeed(deedPayload, deedAction.id, checkerUserId, tx));
-    const establishAction = await decidedAction("clinic_waqf.establish", { programmeId: created.id });
+    const establishAction = await decidedAction("waqf_programme.establish", { programmeId: created.id });
     await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establishAction.id, tx));
     return { clinic: created, deed: draft };
   }
@@ -173,7 +173,7 @@ describe("ClinicGiftsService", () => {
       const row = await prisma.programmeGift.findUniqueOrThrow({ where: { id: gift.id } });
       expect(row).toMatchObject({ settlementSubaccount: "ACCT_test_clinic", deedId: deed.id, deedTextHash: deed.textHash, contactEmail: email("endow") });
       expect(row.donorId).not.toBeNull();
-      expect(await prisma.auditLog.count({ where: { entityId: gift.id, action: "clinic_gift.initiated" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: gift.id, action: "programme_gift.initiated" } })).toBe(1);
     });
   });
 
@@ -190,7 +190,7 @@ describe("ClinicGiftsService", () => {
         ["1000", "10000.00", "0.00"],
         ["3000", "0.00", "10000.00"],
       ]);
-      expect(await prisma.auditLog.count({ where: { entityId: gift.id, action: "clinic_gift.confirmed" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: gift.id, action: "programme_gift.confirmed" } })).toBe(1);
       expect(receipts.sent.filter((r) => r.giftId === gift.id)).toEqual([
         expect.objectContaining({ to: email("confirm-endow"), pot: "endowment", amount: "10000.00", deedVersion: 1 }),
       ]);
@@ -282,7 +282,7 @@ describe("ClinicGiftsService", () => {
       const { gift } = await service.initiateAsFounder(founder.id, user.id, { ...endowment(), amount: "250000" });
       const row = await prisma.programmeGift.findUniqueOrThrow({ where: { id: gift.id } });
       expect(row).toMatchObject({ founderId: founder.id, initiatedByUserId: user.id, donorId: null, contactEmail: user.email, contactWhatsApp: "+2348030000000" });
-      const [log] = await prisma.auditLog.findMany({ where: { entityId: gift.id, action: "clinic_gift.initiated" } });
+      const [log] = await prisma.auditLog.findMany({ where: { entityId: gift.id, action: "programme_gift.initiated" } });
       expect(log).toMatchObject({ actorType: "founder_user", actorUserId: user.id, actorFounderId: founder.id });
 
       await confirmViaWebhook(gift.id);

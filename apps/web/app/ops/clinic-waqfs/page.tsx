@@ -35,10 +35,10 @@ export default function ClinicWaqfsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const { can } = useStaffSession();
-  const canCreate = can("clinic_waqf.manage");
+  const canCreate = can("waqf_programme.manage");
 
   const load = useCallback(() => {
-    apiFetchJson<WaqfProgramme[]>("/clinic-waqfs")
+    apiFetchJson<WaqfProgramme[]>("/waqf-programmes")
       .then(setClinics)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, []);
@@ -140,7 +140,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
     setError(null);
     setBusy(true);
     try {
-      await apiFetchJson("/clinic-waqfs", {
+      await apiFetchJson("/waqf-programmes", {
         method: "POST",
         body: JSON.stringify({ name, slug, city, jurisdiction, description: description || undefined }),
       });

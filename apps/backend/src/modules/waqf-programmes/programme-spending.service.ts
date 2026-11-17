@@ -3,12 +3,12 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { IsEnum, IsNumberString, IsOptional } from "class-validator";
 import { ProgrammeAsset, ProgrammeSpendKind, ProgrammeWorksRoute, prisma, Prisma } from "@birr/db";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
-import { ClinicLedgerService } from "./clinic-ledger.service";
+import { ProgrammeLedgerService } from "./programme-ledger.service";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
-export class ProposeClinicWorksInput {
+export class ProposeProgrammeWorksInput {
   @NameField()
   name!: string;
 
@@ -27,7 +27,7 @@ export class ProposeClinicWorksInput {
   budgetNote!: string;
 }
 
-export class CreateClinicSpendInput {
+export class CreateProgrammeSpendInput {
   @IsEnum(ProgrammeSpendKind)
   kind!: ProgrammeSpendKind;
 
@@ -74,12 +74,12 @@ const poolOf = (kind: ProgrammeSpendKind): Pool => (kind === "reserve_replacemen
  * in the endowment (1500 / 1000).
  *
  * - Works projects: the Board approves the route, contractor and budget
- *   (clinic_waqf.works_approve).
+ *   (waqf_programme.works_approve).
  * - Payments: a Mutawalli Officer proposes one (equipment, or a works stage
  *   against the engineer's certificate); the Board or Compliance approves
- *   it (clinic_waqf.spend_approve); it's paid by bank transfer from the
+ *   it (waqf_programme.spend_approve); it's paid by bank transfer from the
  *   clinic waqf's account; a second person confirms the bank reference
- *   (clinic_waqf.spend_mark_paid), which books it and, for equipment, adds
+ *   (waqf_programme.spend_mark_paid), which books it and, for equipment, adds
  *   the asset to the register.
  * - Limits, under the clinic's row lock: what's committed (proposed or
  *   approved, not yet paid) never exceeds the endowment's cash, and a
@@ -91,12 +91,12 @@ const poolOf = (kind: ProgrammeSpendKind): Pool => (kind === "reserve_replacemen
  *   is retired at its booked value (3000 / 1500).
  */
 @Injectable()
-export class ClinicSpendingService {
-  constructor(private readonly ledger: ClinicLedgerService) {}
+export class ProgrammeSpendingService {
+  constructor(private readonly ledger: ProgrammeLedgerService) {}
 
   // ---- Works projects ----
 
-  async proposeWorks(programmeId: string, input: ProposeClinicWorksInput, actorUserId: string) {
+  async proposeWorks(programmeId: string, input: ProposeProgrammeWorksInput, actorUserId: string) {
     const budget = new Prisma.Decimal(input.budget);
     if (budget.decimalPlaces() > 2) throw new BadRequestException("Enter the budget in naira and kobo.");
     const clinic = await prisma.waqfProgramme.findUnique({ where: { id: programmeId } });
@@ -107,7 +107,7 @@ export class ClinicSpendingService {
         data: { programmeId, name: input.name, route: input.route, contractorId: input.contractorId, budget, budgetNote: input.budgetNote, createdByUserId: actorUserId },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_works.proposed", entityType: "ProgrammeWorksProject", entityId: project.id, after: project as any },
+        data: { actorType: "birr_staff", actorUserId, action: "programme_works.proposed", entityType: "ProgrammeWorksProject", entityId: project.id, after: project as any },
       });
       return project;
     });
@@ -134,7 +134,7 @@ export class ClinicSpendingService {
   }
 
   async checkDuplicateWorks(payload: unknown) {
-    if (await this.pending("clinic_waqf.works_approve", "worksProjectId", (payload as { worksProjectId: string }).worksProjectId)) {
+    if (await this.pending("waqf_programme.works_approve", "worksProjectId", (payload as { worksProjectId: string }).worksProjectId)) {
       throw new ConflictException("This works project is already waiting for the Board — check the Approvals queue.");
     }
   }
@@ -193,7 +193,7 @@ export class ClinicSpendingService {
     return counterparty;
   }
 
-  async createSpend(programmeId: string, input: CreateClinicSpendInput, actorUserId: string) {
+  async createSpend(programmeId: string, input: CreateProgrammeSpendInput, actorUserId: string) {
     const amount = new Prisma.Decimal(input.amount);
     if (amount.decimalPlaces() > 2) throw new BadRequestException("Enter the amount in naira and kobo.");
     if (input.kind === "works_stage" && !input.worksProjectId) throw new BadRequestException("Choose the works project this stage belongs to.");
@@ -256,7 +256,7 @@ export class ClinicSpendingService {
         },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_spend.created", entityType: "ProgrammeSpend", entityId: spend.id, after: spend as any },
+        data: { actorType: "birr_staff", actorUserId, action: "programme_spend.created", entityType: "ProgrammeSpend", entityId: spend.id, after: spend as any },
       });
       return spend;
     });
@@ -284,7 +284,7 @@ export class ClinicSpendingService {
     return spend;
   }
 
-  // ---- clinic_waqf.spend_approve (checkers: Board, Compliance) ----
+  // ---- waqf_programme.spend_approve (checkers: Board, Compliance) ----
 
   async validateSpendProposal(payload: unknown) {
     const s = await this.findSpend((payload as { spendId?: unknown })?.spendId);
@@ -292,7 +292,7 @@ export class ClinicSpendingService {
   }
 
   async checkDuplicateSpend(payload: unknown) {
-    if (await this.pending("clinic_waqf.spend_approve", "spendId", (payload as { spendId: string }).spendId)) {
+    if (await this.pending("waqf_programme.spend_approve", "spendId", (payload as { spendId: string }).spendId)) {
       throw new ConflictException("This payment is already waiting for approval — check the Approvals queue.");
     }
   }
@@ -350,7 +350,7 @@ export class ClinicSpendingService {
     return { before, after: await tx.programmeSpend.update({ where: { id: before.id }, data: { status: "rejected" } }) };
   }
 
-  // ---- clinic_waqf.spend_mark_paid (checkers: Compliance, Audit Committee) ----
+  // ---- waqf_programme.spend_mark_paid (checkers: Compliance, Audit Committee) ----
 
   validatePaidProposal(payload: unknown) {
     const p = (payload ?? {}) as Record<string, unknown>;
@@ -370,7 +370,7 @@ export class ClinicSpendingService {
   }
 
   async checkDuplicatePaid(payload: unknown) {
-    if (await this.pending("clinic_waqf.spend_mark_paid", "spendId", (payload as { spendId: string }).spendId)) {
+    if (await this.pending("waqf_programme.spend_mark_paid", "spendId", (payload as { spendId: string }).spendId)) {
       throw new ConflictException("This payment is already waiting for confirmation.");
     }
   }

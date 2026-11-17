@@ -7,10 +7,10 @@ import { VaultContributionsService } from "../vaults/vault-contributions.service
 import { VaultLedgerService } from "../vaults/vault-ledger.service";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { FoundersService } from "../founders/founders.service";
-import { ClinicGiftsService } from "../clinic-waqfs/clinic-gifts.service";
-import { ClinicLedgerService } from "../clinic-waqfs/clinic-ledger.service";
-import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
-import { ClinicMonthlyProduct } from "./clinic-monthly.product";
+import { ProgrammeGiftsService } from "../waqf-programmes/programme-gifts.service";
+import { ProgrammeLedgerService } from "../waqf-programmes/programme-ledger.service";
+import { WaqfProgrammesService } from "../waqf-programmes/waqf-programmes.service";
+import { ProgrammeMonthlyProduct } from "./programme-monthly.product";
 import { RecurringGiftsService } from "./recurring-gifts.service";
 import { VaultMonthlyProduct } from "./vault-monthly.product";
 import { WaqfMonthlyProduct } from "./waqf-monthly.product";
@@ -39,16 +39,16 @@ describe("Monthly clinic waqf gifts", () => {
     unused,
     unused,
   );
-  const gifts = new ClinicGiftsService(settings, paystack as any, new ClinicLedgerService(), { sendReceipt: async () => undefined } as any, vaultContributions, core);
+  const gifts = new ProgrammeGiftsService(settings, paystack as any, new ProgrammeLedgerService(), { sendReceipt: async () => undefined } as any, vaultContributions, core);
   const service = new RecurringGiftsService(
     core,
     new VaultMonthlyProduct(null as any),
     new WaqfMonthlyProduct(null as any),
     new ZakahMonthlyProduct(null as any),
     undefined,
-    new ClinicMonthlyProduct(gifts, vaultContributions),
+    new ProgrammeMonthlyProduct(gifts, vaultContributions),
   );
-  const clinics = new ClinicWaqfsService();
+  const clinics = new WaqfProgrammesService();
   const founders = new FoundersService(undefined as never, undefined as never, new EncryptionService(), new MfaService(), new FunnelEventsService());
 
   let makerUserId: string;
@@ -74,7 +74,7 @@ describe("Monthly clinic waqf gifts", () => {
   async function approveDeed(programmeId: string, text?: string) {
     const draft = await clinics.draftDeed(programmeId, text ? { text } : {}, makerUserId);
     const payload = { deedId: draft.id, textHash: draft.textHash };
-    const action = await decidedAction("clinic_waqf.deed_approve", payload);
+    const action = await decidedAction("waqf_programme.deed_approve", payload);
     await prisma.$transaction((tx) => clinics.approveDeed(payload, action.id, checkerUserId, tx));
     return draft;
   }
@@ -115,7 +115,7 @@ describe("Monthly clinic waqf gifts", () => {
     checkerUserId = await staff("board_of_trustees");
     const created = await clinics.create({ name: "Monthly Test Clinic", slug: `monthly-clinic-${run}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     deed = await approveDeed(created.id);
-    const establish = await decidedAction("clinic_waqf.establish", { programmeId: created.id });
+    const establish = await decidedAction("waqf_programme.establish", { programmeId: created.id });
     await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establish.id, tx));
     clinic = created;
   });
@@ -163,7 +163,7 @@ describe("Monthly clinic waqf gifts", () => {
   test("a new deed version pauses a monthly endowment gift until the giver accepts it", async () => {
     const separate = await clinics.create({ name: "Deed Change Clinic", slug: `deed-change-${run}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     const v1 = await approveDeed(separate.id, "Version one.");
-    const establish = await decidedAction("clinic_waqf.establish", { programmeId: separate.id });
+    const establish = await decidedAction("waqf_programme.establish", { programmeId: separate.id });
     await prisma.$transaction((tx) => clinics.establish({ programmeId: separate.id }, establish.id, tx));
     const giver = email();
     const result = await gifts.initiate({ slug: separate.slug, pot: "endowment", amount: "10000", coverFee: false, donorEmail: giver, monthly: true, deedId: v1.id, deedTextHash: v1.textHash });
@@ -181,8 +181,8 @@ describe("Monthly clinic waqf gifts", () => {
     const token = emails.sent.find((e) => e.to === giver && e.subject === "Your monthly gift is set up")!.ctaUrl!.split("/giving/manage/")[1];
     const view = await service.view(token);
     expect(view.newDeed).toMatchObject({ id: v2.id, version: 2 });
-    await expect(service.acceptClinicDeed(token, { deedId: v1.id, textHash: v1.textHash })).rejects.toThrow(/changed again/);
-    const resumed = await service.acceptClinicDeed(token, { deedId: v2.id, textHash: v2.textHash });
+    await expect(service.acceptProgrammeDeed(token, { deedId: v1.id, textHash: v1.textHash })).rejects.toThrow(/changed again/);
+    const resumed = await service.acceptProgrammeDeed(token, { deedId: v2.id, textHash: v2.textHash });
     expect(resumed.status).toBe("active");
     expect(await reload(gift)).toMatchObject({ programmeDeedId: v2.id, programmeDeedTextHash: v2.textHash });
   });
@@ -211,7 +211,7 @@ describe("Monthly clinic waqf gifts", () => {
     );
     expect(later).toMatchObject({ founderId: founder.id, initiatedByUserId: user.id, donorId: null });
 
-    const listed = await service.founderClinicGifts(founder.id);
+    const listed = await service.founderProgrammeGifts(founder.id);
     expect(listed.map((g) => g.id)).toEqual([gift.id]);
     expect((await service.founderClinicCancel(gift.id, founder.id)).status).toBe("cancelled");
     await expect(service.founderClinicCancel(gift.id, randomUUID())).rejects.toThrow(/not found/);

@@ -22,7 +22,7 @@ export function ReserveCard({ clinic, ledger, pending, onChange }: { clinic: Waq
 
   const holds = ledger.running.find((r) => r.code === "1150")?.balance ?? "0";
   const spent = ledger.running.find((r) => r.code === "5200")?.balance ?? "0";
-  const proposal = pending.find((a) => a.permission.key === "clinic_waqf.reserve_share_set" && (a.payload as Record<string, unknown>)?.programmeId === clinic.id);
+  const proposal = pending.find((a) => a.permission.key === "waqf_programme.reserve_share_set" && (a.payload as Record<string, unknown>)?.programmeId === clinic.id);
   const valid = /^\d{1,3}$/.test(percent) && Number(percent) <= 100;
 
   async function propose() {
@@ -31,7 +31,7 @@ export function ReserveCard({ clinic, ledger, pending, onChange }: { clinic: Waq
     try {
       await apiFetchJson("/governed-actions", {
         method: "POST",
-        body: JSON.stringify({ permissionKey: "clinic_waqf.reserve_share_set", payload: { programmeId: clinic.id, percent: Number(percent) } }),
+        body: JSON.stringify({ permissionKey: "waqf_programme.reserve_share_set", payload: { programmeId: clinic.id, percent: Number(percent) } }),
       });
       setEditing(false);
       onChange();
@@ -51,7 +51,7 @@ export function ReserveCard({ clinic, ledger, pending, onChange }: { clinic: Waq
             A share of the endowment&apos;s income, set aside as it comes in, to replace equipment on the register when it wears out.
           </p>
         </div>
-        {can("clinic_waqf.reserve_share_set") && clinic.status === "established" && !proposal && !editing && (
+        {can("waqf_programme.reserve_share_set") && clinic.status === "established" && !proposal && !editing && (
           <Button variant="secondary" className="shrink-0 px-3 py-1.5 text-xs" onClick={() => setEditing(true)}>
             Change the share
           </Button>

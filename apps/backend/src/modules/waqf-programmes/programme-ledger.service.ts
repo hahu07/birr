@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ActorType, ProgrammeJournalEntrySource, WaqfProgrammePot, prisma, Prisma } from "@birr/db";
 
-export interface ClinicJournalLineInput {
+export interface ProgrammeJournalLineInput {
   /** The account's code, e.g. "1000" (Endowment cash). */
   accountCode: string;
   debit?: Prisma.Decimal | string;
@@ -16,7 +16,7 @@ export interface PostClinicJournalEntryInput {
   sourceId?: string;
   actorType: ActorType;
   actorUserId?: string;
-  lines: ClinicJournalLineInput[];
+  lines: ProgrammeJournalLineInput[];
 }
 
 const DEBIT_NORMAL: ReadonlySet<string> = new Set(["asset", "expense"]);
@@ -29,7 +29,7 @@ const DEBIT_NORMAL: ReadonlySet<string> = new Set(["asset", "expense"]);
  * again by the database at commit (clinic_journal_check_balanced).
  */
 @Injectable()
-export class ClinicLedgerService {
+export class ProgrammeLedgerService {
   /** Posts one entry inside the caller's transaction. */
   async post(tx: Prisma.TransactionClient, input: PostClinicJournalEntryInput) {
     if (input.lines.length < 2) {

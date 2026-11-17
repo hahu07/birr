@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { prisma, Prisma, type RecurringGift } from "@birr/db";
-import { ClinicGiftsService, CLINIC_PUBLIC_MINIMUM_NGN } from "../clinic-waqfs/clinic-gifts.service";
+import { ProgrammeGiftsService, CLINIC_PUBLIC_MINIMUM_NGN } from "../waqf-programmes/programme-gifts.service";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import { GiftNeedsGiver, type GiverIdentity, type MonthlyGiftCharge, type MonthlyGiftPrecheck, type MonthlyGiftProduct } from "./monthly-gift-product";
 
@@ -14,18 +14,18 @@ function errorCode(err: unknown): string | undefined {
 
 /**
  * Monthly gifts to a clinic waqf's endowment or running fund (2026-11-17,
- * clinic slice 4b), charged through ClinicGiftsService, so each month
+ * clinic slice 4b), charged through ProgrammeGiftsService, so each month
  * passes every check a one-off gift does: a public giver's through the
  * shared AML threshold, a Founder's as the Founder. Owner's decision: a
  * monthly endowment gift pauses (terms_changed) once a newer deed version
  * is approved, until the giver accepts it.
  */
 @Injectable()
-export class ClinicMonthlyProduct implements MonthlyGiftProduct {
+export class ProgrammeMonthlyProduct implements MonthlyGiftProduct {
   readonly kind = "programme" as const;
 
   constructor(
-    private readonly gifts: ClinicGiftsService,
+    private readonly gifts: ProgrammeGiftsService,
     private readonly vaultContributions: VaultContributionsService,
   ) {}
 

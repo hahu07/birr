@@ -110,8 +110,8 @@ const userName = { select: { id: true, fullName: true } };
 /**
  * A clinic waqf's price list and subsidy bands (2026-11-17, clinic slice
  * 6), versioned like its deed. A Mutawalli Officer drafts a version
- * (clinic_waqf.manage); the Board of Trustees or Compliance approves it
- * (clinic_waqf.price_list_approve), naming its content's hash; approving
+ * (waqf_programme.manage); the Board of Trustees or Compliance approves it
+ * (clinic.price_list_approve), naming its content's hash; approving
  * supersedes the previous version. Monthly claims (slice 7) are checked
  * against the approved version.
  */
@@ -165,7 +165,7 @@ export class ClinicPriceListsService {
     return list ? { id: list.id, version: list.version, content: JSON.parse(list.content) as PriceListContent } : null;
   }
 
-  // ---- clinic_waqf.price_list_approve (checkers: Board, Compliance) ----
+  // ---- clinic.price_list_approve (checkers: Board, Compliance) ----
 
   private parse(payload: unknown): ApprovalPayload {
     const p = (payload ?? {}) as Partial<Record<keyof ApprovalPayload, unknown>>;
@@ -218,7 +218,7 @@ export class ClinicPriceListsService {
 
   private pending(priceListId: string) {
     return prisma.governedAction.findFirst({
-      where: { status: "proposed", permission: { key: "clinic_waqf.price_list_approve" }, payload: { path: ["priceListId"], equals: priceListId } },
+      where: { status: "proposed", permission: { key: "clinic.price_list_approve" }, payload: { path: ["priceListId"], equals: priceListId } },
     });
   }
 }

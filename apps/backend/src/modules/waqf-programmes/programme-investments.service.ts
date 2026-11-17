@@ -3,15 +3,15 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { IsEnum, IsIn, IsNumberString, Matches } from "class-validator";
 import { InvestmentInstrumentType, prisma, Prisma } from "@birr/db";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
-import { ClinicLedgerService } from "./clinic-ledger.service";
-import { ClinicSpendingService } from "./clinic-spending.service";
-import { ClinicReserveService } from "./clinic-reserve.service";
+import { ProgrammeLedgerService } from "./programme-ledger.service";
+import { ProgrammeSpendingService } from "./programme-spending.service";
+import { ProgrammeReserveService } from "./programme-reserve.service";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const asDate = (day: string) => new Date(`${day}T00:00:00Z`);
 
-export class CreateClinicInvestmentInput {
+export class CreateProgrammeInvestmentInput {
   @IdField()
   counterpartyId!: string;
 
@@ -30,7 +30,7 @@ export class CreateClinicInvestmentInput {
   businessDescription!: string;
 }
 
-export class ScreenClinicInvestmentInput {
+export class ScreenProgrammeInvestmentInput {
   @IsIn(["approved", "rejected"])
   decision!: "approved" | "rejected";
 
@@ -38,13 +38,13 @@ export class ScreenClinicInvestmentInput {
   note!: string;
 }
 
-export class PlaceClinicInvestmentInput {
+export class PlaceProgrammeInvestmentInput {
   // The placement agreement or term sheet's reference.
   @ReferenceField()
   agreementReference!: string;
 }
 
-export class RecordClinicInvestmentIncomeInput {
+export class RecordProgrammeInvestmentIncomeInput {
   @IsNumberString()
   @IsPositiveDecimal()
   amount!: string;
@@ -59,7 +59,7 @@ export class RecordClinicInvestmentIncomeInput {
   description!: string;
 }
 
-export class RecordClinicInvestmentReturnInput {
+export class RecordProgrammeInvestmentReturnInput {
   @Matches(DAY, { message: "returnedOn must be a date like 2027-01-31." })
   returnedOn!: string;
 
@@ -73,19 +73,19 @@ export class RecordClinicInvestmentReturnInput {
  * only the income is spent, earned straight into the running fund (1100 /
  * 4100) — the two pots never mix. The Investment Committee records one; a
  * Shariah board member screens it (never whoever recorded it, also a
- * CHECK); placing it is an endowment payment (ClinicSpendingService,
+ * CHECK); placing it is an endowment payment (ProgrammeSpendingService,
  * approved and confirmed by others); when it matures the principal comes
  * back to endowment cash (1000 / 1200).
  */
 @Injectable()
-export class ClinicInvestmentsService {
+export class ProgrammeInvestmentsService {
   constructor(
-    private readonly ledger: ClinicLedgerService,
-    private readonly spending: ClinicSpendingService,
-    private readonly reserve: ClinicReserveService,
+    private readonly ledger: ProgrammeLedgerService,
+    private readonly spending: ProgrammeSpendingService,
+    private readonly reserve: ProgrammeReserveService,
   ) {}
 
-  async create(programmeId: string, input: CreateClinicInvestmentInput, actorUserId: string) {
+  async create(programmeId: string, input: CreateProgrammeInvestmentInput, actorUserId: string) {
     const amount = new Prisma.Decimal(input.amount);
     if (amount.decimalPlaces() > 2) throw new BadRequestException("Enter the amount in naira and kobo.");
     const clinic = await prisma.waqfProgramme.findUnique({ where: { id: programmeId } });
@@ -99,14 +99,14 @@ export class ClinicInvestmentsService {
         data: { programmeId, counterpartyId: counterparty.id, name: input.name, instrumentType: input.instrumentType, amount, businessDescription: input.businessDescription, createdByUserId: actorUserId },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.recorded", entityType: "ProgrammeInvestment", entityId: investment.id, after: investment as any },
+        data: { actorType: "birr_staff", actorUserId, action: "programme_investment.recorded", entityType: "ProgrammeInvestment", entityId: investment.id, after: investment as any },
       });
       return investment;
     });
   }
 
   /** A Shariah board member's decision. Never whoever recorded it. */
-  async screen(programmeId: string, investmentId: string, input: ScreenClinicInvestmentInput, actorUserId: string) {
+  async screen(programmeId: string, investmentId: string, input: ScreenProgrammeInvestmentInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
       const before = await this.find(tx, programmeId, investmentId);
       if (before.status !== "pending_shariah_review") throw new ConflictException("This investment's Shariah screening has already been decided.");
@@ -121,14 +121,14 @@ export class ClinicInvestmentsService {
         },
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: `clinic_investment.shariah_${input.decision}`, entityType: "ProgrammeInvestment", entityId: investmentId, before: before as any, after: after as any },
+        data: { actorType: "birr_staff", actorUserId, action: `programme_investment.shariah_${input.decision}`, entityType: "ProgrammeInvestment", entityId: investmentId, before: before as any, after: after as any },
       });
       return after;
     });
   }
 
   /** Proposes the endowment payment that places it; the Board or Compliance then approves it. */
-  async proposePlacement(programmeId: string, investmentId: string, input: PlaceClinicInvestmentInput, actorUserId: string) {
+  async proposePlacement(programmeId: string, investmentId: string, input: PlaceProgrammeInvestmentInput, actorUserId: string) {
     const investment = await this.find(prisma, programmeId, investmentId);
     return this.spending.createSpend(
       programmeId,
@@ -145,7 +145,7 @@ export class ClinicInvestmentsService {
   }
 
   /** Income it paid: into the running fund, never the endowment. */
-  async recordIncome(programmeId: string, investmentId: string, input: RecordClinicInvestmentIncomeInput, actorUserId: string) {
+  async recordIncome(programmeId: string, investmentId: string, input: RecordProgrammeInvestmentIncomeInput, actorUserId: string) {
     const amount = new Prisma.Decimal(input.amount);
     if (amount.decimalPlaces() > 2) throw new BadRequestException("Enter the amount in naira and kobo.");
     if (input.receivedOn > lagosToday()) throw new BadRequestException("The date it was received can't be in the future.");
@@ -171,14 +171,14 @@ export class ClinicInvestmentsService {
       // The equipment replacement reserve's share, set aside at once (slice 9).
       await this.reserve.setAsideFromIncome(tx, programmeId, income.id, amount);
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.income_recorded", entityType: "ProgrammeInvestmentIncome", entityId: income.id, after: income as any },
+        data: { actorType: "birr_staff", actorUserId, action: "programme_investment.income_recorded", entityType: "ProgrammeInvestmentIncome", entityId: income.id, after: income as any },
       });
       return income;
     });
   }
 
   /** The principal came back to endowment cash, in full. */
-  async recordReturn(programmeId: string, investmentId: string, input: RecordClinicInvestmentReturnInput, actorUserId: string) {
+  async recordReturn(programmeId: string, investmentId: string, input: RecordProgrammeInvestmentReturnInput, actorUserId: string) {
     if (input.returnedOn > lagosToday()) throw new BadRequestException("The date it came back can't be in the future.");
     return prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
@@ -202,7 +202,7 @@ export class ClinicInvestmentsService {
         ],
       });
       await tx.auditLog.create({
-        data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.returned", entityType: "ProgrammeInvestment", entityId: investmentId, before: before as any, after: after as any },
+        data: { actorType: "birr_staff", actorUserId, action: "programme_investment.returned", entityType: "ProgrammeInvestment", entityId: investmentId, before: before as any, after: after as any },
       });
       return after;
     });

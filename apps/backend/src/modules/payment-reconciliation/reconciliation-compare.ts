@@ -18,7 +18,7 @@ export interface Window {
 
 /** A payment into Birr, from any product. */
 export interface BirrPayment {
-  product: "waqf_contribution" | "vault_contribution" | "zakah_payment" | "clinic_gift";
+  product: "waqf_contribution" | "vault_contribution" | "zakah_payment" | "programme_gift";
   id: string;
   reference: string;
   status: "pending" | "confirmed" | "failed";

@@ -1,36 +1,18 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Req } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
-import { ClinicGiftsService, InitiateClinicGiftInput, InitiateFounderClinicGiftInput } from "./clinic-gifts.service";
+import { ProgrammeGiftsService, InitiateProgrammeGiftInput, InitiateFounderProgrammeGiftInput } from "./programme-gifts.service";
 import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { Public } from "../../common/guards/public.decorator";
-import { ClinicReportsService } from "./clinic-reports.service";
 
-// Public routes for a giver with no account (2026-11-17, clinic slice 3).
-// Paystack's webhook arrives at ContributionsController's shared route,
-// which hands clinic gift references on to ClinicGiftsService. Staff see a
-// clinic's gifts at GET /clinic-waqfs/:id/gifts.
-@Controller("clinic-gifts")
-export class ClinicGiftsController {
-  constructor(
-    private readonly service: ClinicGiftsService,
-    private readonly reports: ClinicReportsService,
-  ) {}
-
-  // Declared before ":id", or Nest would match it as an id.
-  @Public()
-  @Get("clinics")
-  clinics() {
-    return this.service.publicClinics();
-  }
-
-  // The public report (slice 8): the endowment, running fund and zakah
-  // shown separately, published monthly figures and targets.
-  @Public()
-  @Get("clinics/:slug/report")
-  report(@Param("slug") slug: string) {
-    return this.reports.publicReport(slug);
-  }
+// Public giving to a waqf programme (2026-11-17; the clinic waqf, clinic
+// slice 3). Paystack's webhook arrives at ContributionsController's shared
+// route, which hands programme gift references on to ProgrammeGiftsService.
+// Staff see a programme's gifts at GET /waqf-programmes/:id/gifts. The
+// public list of clinics and each clinic's report are in ClinicsModule.
+@Controller("programme-gifts")
+export class ProgrammeGiftsController {
+  constructor(private readonly service: ProgrammeGiftsService) {}
 
   @Public()
   @Get("terms/:slug")
@@ -43,7 +25,7 @@ export class ClinicGiftsController {
   @Throttle({ default: { limit: 10, ttl: 600_000 } })
   @Public()
   @Post()
-  initiate(@Body() body: InitiateClinicGiftInput, @Req() request: Request) {
+  initiate(@Body() body: InitiateProgrammeGiftInput, @Req() request: Request) {
     return this.service.initiate(body, request.ip);
   }
 
@@ -57,7 +39,7 @@ export class ClinicGiftsController {
 
   @Throttle({ default: { limit: 20, ttl: 600_000 } })
   @Post("founder")
-  async initiateAsFounder(@Body() body: InitiateFounderClinicGiftInput, @Req() request: Request) {
+  async initiateAsFounder(@Body() body: InitiateFounderProgrammeGiftInput, @Req() request: Request) {
     const founder = await resolveFounderFromSession(request);
     assertPrimaryContact(founder);
     const user = await resolveUserFromSession(request);

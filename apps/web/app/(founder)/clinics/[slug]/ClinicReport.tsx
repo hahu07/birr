@@ -65,7 +65,7 @@ export function ClinicReport({ slug }: { slug: string }) {
   const [report, setReport] = useState<PublicClinicReport | null>(null);
 
   useEffect(() => {
-    apiFetchJson<PublicClinicReport>(`/clinic-gifts/clinics/${encodeURIComponent(slug)}/report`)
+    apiFetchJson<PublicClinicReport>(`/clinics/${encodeURIComponent(slug)}/report`)
       .then(setReport)
       // Not established yet, or unavailable: the giving card already says so.
       .catch(() => setReport(null));

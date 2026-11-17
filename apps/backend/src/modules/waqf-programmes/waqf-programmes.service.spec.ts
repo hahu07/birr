@@ -1,16 +1,16 @@
 import { prisma } from "@birr/db";
 import { ConflictException } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { ClinicWaqfsService } from "./clinic-waqfs.service";
-import { ClinicLedgerService } from "./clinic-ledger.service";
-import { deedTextHash } from "./clinic-waqf-deed";
+import { WaqfProgrammesService } from "./waqf-programmes.service";
+import { ProgrammeLedgerService } from "./programme-ledger.service";
+import { deedTextHash } from "../clinics/clinic-waqf-deed";
 
 // Fixtures stay behind: clinic waqfs, their deeds and their ledger are
 // never deleted (triggers), like audit_logs. Approving and establishing go
 // through the governed-action engine: governed-actions.service.spec.ts.
-describe("ClinicWaqfsService", () => {
-  const service = new ClinicWaqfsService();
-  const ledger = new ClinicLedgerService();
+describe("WaqfProgrammesService", () => {
+  const service = new WaqfProgrammesService();
+  const ledger = new ProgrammeLedgerService();
   let actorUserId: string;
 
   const slug = () => `test-clinic-${randomUUID().slice(0, 8)}`;
@@ -30,7 +30,7 @@ describe("ClinicWaqfsService", () => {
     test("starts as a draft and is audited; an address is used once", async () => {
       const clinic = await newClinic();
       expect(clinic.status).toBe("draft");
-      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "clinic_waqf.created" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "waqf_programme.created" } })).toBe(1);
       await expect(
         service.create({ name: "Another", slug: clinic.slug, city: "Ibadan", jurisdiction: "NG" }, actorUserId),
       ).rejects.toThrow(ConflictException);
@@ -56,7 +56,7 @@ describe("ClinicWaqfsService", () => {
       expect(deed).toMatchObject({ version: 1, status: "draft", textHash: deedTextHash(deed.text) });
       expect(deed.text).toContain("Test Mother & Child Clinic");
       expect(deed.text).toContain("Ibadan");
-      expect(await prisma.auditLog.count({ where: { entityId: deed.id, action: "clinic_waqf_deed.drafted" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: deed.id, action: "waqf_programme_deed.drafted" } })).toBe(1);
     });
 
     test("one open draft at a time; discarding it allows the next version", async () => {
@@ -64,7 +64,7 @@ describe("ClinicWaqfsService", () => {
       const first = await service.draftDeed(clinic.id, { text: "Version one wording." }, actorUserId);
       await expect(service.draftDeed(clinic.id, { text: "Another draft." }, actorUserId)).rejects.toThrow(ConflictException);
       await service.discardDeed(clinic.id, first.id, actorUserId);
-      expect(await prisma.auditLog.count({ where: { entityId: first.id, action: "clinic_waqf_deed.discarded" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: first.id, action: "waqf_programme_deed.discarded" } })).toBe(1);
       const second = await service.draftDeed(clinic.id, { text: "Version two wording." }, actorUserId);
       expect(second.version).toBe(2);
     });

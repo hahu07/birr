@@ -2,25 +2,25 @@ import { Body, Controller, Get, Param, Post, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { Public } from "../../common/guards/public.decorator";
 import { assertPrimaryContact, resolveFounderFromSession } from "../../common/auth/current-founder";
-import { AcceptClinicDeedInput, ChangeRecurringGiftAmountInput, RecurringGiftsService } from "./recurring-gifts.service";
+import { AcceptProgrammeDeedInput, ChangeRecurringGiftAmountInput, RecurringGiftsService } from "./recurring-gifts.service";
 
 /**
  * A Founder's monthly gifts to clinic waqfs (2026-11-17, clinic slice 4b),
  * in the Founder Portal's Clinic support page. Set up from a clinic's page
- * through POST /clinic-gifts/founder with monthly: true. Any member of the
+ * through POST /programme-gifts/founder with monthly: true. Any member of the
  * Founder can see them; only the primary contact can change them, as with
  * giving. @Public() like FounderMonthlyTopUpController: each route resolves
  * the Founder session itself.
  */
 @Public()
-@Controller("clinic-gifts/founder/monthly")
-export class FounderClinicMonthlyController {
+@Controller("programme-gifts/founder/monthly")
+export class FounderProgrammeMonthlyController {
   constructor(private readonly service: RecurringGiftsService) {}
 
   @Get()
   async list(@Req() request: Request) {
     const founder = await resolveFounderFromSession(request);
-    return this.service.founderClinicGifts(founder.id);
+    return this.service.founderProgrammeGifts(founder.id);
   }
 
   @Post(":giftId/amount")
@@ -45,7 +45,7 @@ export class FounderClinicMonthlyController {
   }
 
   @Post(":giftId/deed")
-  async acceptDeed(@Param("giftId") giftId: string, @Body() body: AcceptClinicDeedInput, @Req() request: Request) {
+  async acceptDeed(@Param("giftId") giftId: string, @Body() body: AcceptProgrammeDeedInput, @Req() request: Request) {
     const founder = await resolveFounderFromSession(request);
     assertPrimaryContact(founder);
     return this.service.founderClinicAcceptDeed(giftId, founder.id, body);

@@ -1,14 +1,14 @@
 import { SettingsService } from "../../common/settings/settings.service";
-import { ClinicReserveService } from "../clinic-waqfs/clinic-reserve.service";
+import { ProgrammeReserveService } from "../waqf-programmes/programme-reserve.service";
 import { CounterpartyLicensesService, lagosToday } from "../counterparties/counterparty-licenses.service";
 import { REQUIRED_COUNTERPARTY_LICENSES } from "@birr/shared";
-import { ClinicClaimsService } from "../clinic-waqfs/clinic-claims.service";
-import { ClinicPriceListsService, canonicalPriceList, priceListHash } from "../clinic-waqfs/clinic-price-lists.service";
-import { ClinicSpendingService } from "../clinic-waqfs/clinic-spending.service";
-import { ClinicInvestmentsService } from "../clinic-waqfs/clinic-investments.service";
-import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
-import { ClinicLedgerService } from "../clinic-waqfs/clinic-ledger.service";
-import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
+import { ClinicClaimsService } from "../clinics/clinic-claims.service";
+import { ClinicPriceListsService, canonicalPriceList, priceListHash } from "../clinics/clinic-price-lists.service";
+import { ProgrammeSpendingService } from "../waqf-programmes/programme-spending.service";
+import { ProgrammeInvestmentsService } from "../waqf-programmes/programme-investments.service";
+import { ProgrammeAssetsService } from "../waqf-programmes/programme-assets.service";
+import { ProgrammeLedgerService } from "../waqf-programmes/programme-ledger.service";
+import { WaqfProgrammesService } from "../waqf-programmes/waqf-programmes.service";
 import { prisma, Beneficiary, Investment, Distribution, BirrStaffRole } from "@birr/db";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { randomUUID } from "crypto";
@@ -180,12 +180,12 @@ describe("GovernedActionsService", () => {
     zakahRefundsService,
     zakahFitrService,
     new FounderSuccessionService(notificationsService, new SettingsService(new EncryptionService())),
-    new ClinicWaqfsService(),
-    new ClinicAssetsService(new ClinicLedgerService()),
-    new ClinicSpendingService(new ClinicLedgerService()),
+    new WaqfProgrammesService(),
+    new ProgrammeAssetsService(new ProgrammeLedgerService()),
+    new ProgrammeSpendingService(new ProgrammeLedgerService()),
     new ClinicPriceListsService(),
-    new ClinicClaimsService(new ClinicLedgerService(), new ClinicPriceListsService()),
-    new ClinicReserveService(new ClinicLedgerService()),
+    new ClinicClaimsService(new ProgrammeLedgerService(), new ClinicPriceListsService()),
+    new ProgrammeReserveService(new ProgrammeLedgerService()),
   );
 
   const governedActionIds: string[] = [];
@@ -3014,20 +3014,20 @@ describe("GovernedActionsService", () => {
   // governedActionIds: an approved zakah row references its governed
   // action (ON DELETE RESTRICT), and both zakah tables are append-only, so
   // these fixtures stay behind — harmless, per zakah.service.spec.ts.
-  // clinic_waqf.deed_approve / clinic_waqf.establish (2026-11-17). Maker
+  // waqf_programme.deed_approve / waqf_programme.establish (2026-11-17). Maker
   // mutawalli_officer (makerUserId); the deed's checker is a Shariah board
   // member only (beneficiaryCheckerUserId), establishing's the Board only
   // (boardCheckerUserId). Clinic waqfs and their deeds are never deleted,
   // so these fixtures stay behind and their actions aren't cleaned up.
   describe("clinic waqf", () => {
-    const clinics = new ClinicWaqfsService();
+    const clinics = new WaqfProgrammesService();
     const newClinic = () =>
       clinics.create(
         { name: "Governed Test Clinic", slug: `ga-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
         makerUserId,
       );
     const proposeDeed = (deed: { id: string; textHash: string }) =>
-      service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+      service.propose({ permissionKey: "waqf_programme.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
 
     // The checker's role is enforced by PermissionGuard on POST
     // /governed-actions/:id/decide, from these grants.
@@ -3039,18 +3039,18 @@ describe("GovernedActionsService", () => {
             select: { role: { select: { key: true } } },
           })
         ).map((g) => g.role.key);
-      expect(await checkers("clinic_waqf.deed_approve")).toEqual(["shariah_board_member"]);
-      expect(await checkers("clinic_waqf.establish")).toEqual(["board_of_trustees"]);
+      expect(await checkers("waqf_programme.deed_approve")).toEqual(["shariah_board_member"]);
+      expect(await checkers("waqf_programme.establish")).toEqual(["board_of_trustees"]);
     });
 
-    test("clinic_waqf.deed_approve: approving makes it the live version; a later version supersedes it", async () => {
+    test("waqf_programme.deed_approve: approving makes it the live version; a later version supersedes it", async () => {
       const clinic = await newClinic();
       const v1 = await clinics.draftDeed(clinic.id, { text: "First wording." }, makerUserId);
       const action = await proposeDeed(v1);
       await service.decide({ governedActionId: action.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
 
       expect(await prisma.waqfProgrammeDeed.findUniqueOrThrow({ where: { id: v1.id } })).toMatchObject({ status: "approved", approvedActionId: action.id });
-      const logs = await prisma.auditLog.findMany({ where: { entityId: v1.id, action: "clinic_waqf_deed.approved" } });
+      const logs = await prisma.auditLog.findMany({ where: { entityId: v1.id, action: "waqf_programme_deed.approved" } });
       expect(logs).toHaveLength(1);
       expect(logs[0].actorUserId).toBe(beneficiaryCheckerUserId);
 
@@ -3062,25 +3062,25 @@ describe("GovernedActionsService", () => {
       expect((await prisma.waqfProgrammeDeed.findUniqueOrThrow({ where: { id: v2.id } })).status).toBe("approved");
     });
 
-    test("clinic_waqf.establish: refused before a deed is approved, then established for good", async () => {
+    test("waqf_programme.establish: refused before a deed is approved, then established for good", async () => {
       const clinic = await newClinic();
       await expect(
-        service.propose({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id }, makerUserId }),
+        service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId }),
       ).rejects.toThrow(/no approved deed/);
 
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
       await service.decide({ governedActionId: (await proposeDeed(deed)).id, checkerUserId: beneficiaryCheckerUserId, approve: true });
 
-      const action = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id }, makerUserId });
+      const action = await service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId });
       await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true });
 
       expect(await prisma.waqfProgramme.findUniqueOrThrow({ where: { id: clinic.id } })).toMatchObject({
         status: "established",
         establishedActionId: action.id,
       });
-      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "clinic_waqf.established" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "waqf_programme.established" } })).toBe(1);
       await expect(
-        service.propose({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id }, makerUserId }),
+        service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId }),
       ).rejects.toThrow(/already established/);
     });
 
@@ -3088,17 +3088,17 @@ describe("GovernedActionsService", () => {
       const clinic = await newClinic();
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
       await service.decide({ governedActionId: (await proposeDeed(deed)).id, checkerUserId: beneficiaryCheckerUserId, approve: true });
-      const action = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id }, makerUserId });
+      const action = await service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId });
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
     });
   });
 
-  // clinic_waqf.asset_add / clinic_waqf.asset_dispose (slice 5a). Maker
+  // waqf_programme.asset_add / waqf_programme.asset_dispose (slice 5a). Maker
   // mutawalli_officer (makerUserId), checker the Board (boardCheckerUserId).
   // Assets and the ledger are never deleted, so these fixtures stay behind.
   describe("clinic waqf assets", () => {
-    const clinics = new ClinicWaqfsService();
-    const assets = new ClinicAssetsService(new ClinicLedgerService());
+    const clinics = new WaqfProgrammesService();
+    const assets = new ProgrammeAssetsService(new ProgrammeLedgerService());
 
     async function establishedClinic() {
       const clinic = await clinics.create(
@@ -3106,9 +3106,9 @@ describe("GovernedActionsService", () => {
         makerUserId,
       );
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
-      const approveDeed = await service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+      const approveDeed = await service.propose({ permissionKey: "waqf_programme.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
       await service.decide({ governedActionId: approveDeed.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
-      const establish = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id }, makerUserId });
+      const establish = await service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId });
       await service.decide({ governedActionId: establish.id, checkerUserId: boardCheckerUserId, approve: true });
       return clinic;
     }
@@ -3127,7 +3127,7 @@ describe("GovernedActionsService", () => {
         .sort();
 
     test("only the Board approves adding or disposing of a clinic asset", async () => {
-      for (const key of ["clinic_waqf.asset_add", "clinic_waqf.asset_dispose"]) {
+      for (const key of ["waqf_programme.asset_add", "waqf_programme.asset_dispose"]) {
         const grants = await prisma.rolePermission.findMany({ where: { permission: { key }, canChecker: true }, select: { role: { select: { key: true } } } });
         expect(grants.map((g) => g.role.key)).toEqual(["board_of_trustees"]);
       }
@@ -3137,10 +3137,10 @@ describe("GovernedActionsService", () => {
       const clinic = await establishedClinic();
       const asset = await land(clinic.id);
       expect(asset.status).toBe("proposed");
-      expect(await prisma.auditLog.count({ where: { entityId: asset.id, action: "clinic_asset.recorded" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: asset.id, action: "programme_asset.recorded" } })).toBe(1);
 
-      const action = await service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId });
-      await expect(service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId })).rejects.toThrow(ConflictException);
+      const action = await service.propose({ permissionKey: "waqf_programme.asset_add", payload: { assetId: asset.id }, makerUserId });
+      await expect(service.propose({ permissionKey: "waqf_programme.asset_add", payload: { assetId: asset.id }, makerUserId })).rejects.toThrow(ConflictException);
       await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true });
 
       expect(await prisma.programmeAsset.findUniqueOrThrow({ where: { id: asset.id } })).toMatchObject({ status: "active", approvalActionId: action.id });
@@ -3148,13 +3148,13 @@ describe("GovernedActionsService", () => {
         ["1500", "45000000.00", "0.00"],
         ["3000", "0.00", "45000000.00"],
       ]);
-      expect(await prisma.auditLog.count({ where: { entityId: asset.id, action: "clinic_asset.added" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: asset.id, action: "programme_asset.added" } })).toBe(1);
     });
 
     test("a rejected gift in kind is never booked", async () => {
       const clinic = await establishedClinic();
       const asset = await land(clinic.id);
-      const action = await service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId });
+      const action = await service.propose({ permissionKey: "waqf_programme.asset_add", payload: { assetId: asset.id }, makerUserId });
       await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: false });
       expect((await prisma.programmeAsset.findUniqueOrThrow({ where: { id: asset.id } })).status).toBe("rejected");
       expect(await lines(asset.id, "asset_added")).toEqual([]);
@@ -3163,7 +3163,7 @@ describe("GovernedActionsService", () => {
     test("not before the clinic is established", async () => {
       const draft = await clinics.create({ name: "Draft Asset Clinic", slug: `asset-draft-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       const asset = await land(draft.id);
-      await expect(service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId })).rejects.toThrow(/isn't established/);
+      await expect(service.propose({ permissionKey: "waqf_programme.asset_add", payload: { assetId: asset.id }, makerUserId })).rejects.toThrow(/isn't established/);
     });
 
     test("disposing of an asset takes it off the register; proceeds stay in the endowment, the loss comes off its capital", async () => {
@@ -3173,14 +3173,14 @@ describe("GovernedActionsService", () => {
         { kind: "equipment", name: "Ultrasound machine", value: "8000000", valuationNote: "Supplier's valuation on delivery.", donorName: "A supporter", acquiredOn: "2026-10-01", serialNumber: "US-12345" },
         makerUserId,
       );
-      const add = await service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId });
+      const add = await service.propose({ permissionKey: "waqf_programme.asset_add", payload: { assetId: asset.id }, makerUserId });
       await service.decide({ governedActionId: add.id, checkerUserId: boardCheckerUserId, approve: true });
 
       await expect(
-        service.propose({ permissionKey: "clinic_waqf.asset_dispose", payload: { assetId: asset.id, disposedOn: "2026-11-10", proceeds: "abc", note: "Sold." }, makerUserId }),
+        service.propose({ permissionKey: "waqf_programme.asset_dispose", payload: { assetId: asset.id, disposedOn: "2026-11-10", proceeds: "abc", note: "Sold." }, makerUserId }),
       ).rejects.toThrow(BadRequestException);
       const payload = { assetId: asset.id, disposedOn: "2026-11-10", proceeds: "3000000", note: "Beyond repair; sold to a registered dealer for parts." };
-      const dispose = await service.propose({ permissionKey: "clinic_waqf.asset_dispose", payload, makerUserId });
+      const dispose = await service.propose({ permissionKey: "waqf_programme.asset_dispose", payload, makerUserId });
       await service.decide({ governedActionId: dispose.id, checkerUserId: boardCheckerUserId, approve: true });
 
       expect(await prisma.programmeAsset.findUniqueOrThrow({ where: { id: asset.id } })).toMatchObject({ status: "disposed", disposalActionId: dispose.id });
@@ -3197,7 +3197,7 @@ describe("GovernedActionsService", () => {
       await expect(prisma.programmeAsset.update({ where: { id: asset.id }, data: { value: 1 } })).rejects.toThrow(/never change/);
       await expect(prisma.programmeAsset.delete({ where: { id: asset.id } })).rejects.toThrow(/never deleted/);
       await expect(prisma.programmeAsset.update({ where: { id: asset.id }, data: { status: "disposed" } })).rejects.toThrow();
-      const action = await service.propose({ permissionKey: "clinic_waqf.asset_add", payload: { assetId: asset.id }, makerUserId });
+      const action = await service.propose({ permissionKey: "waqf_programme.asset_add", payload: { assetId: asset.id }, makerUserId });
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
     });
 
@@ -3206,18 +3206,18 @@ describe("GovernedActionsService", () => {
       const asset = await land(clinic.id);
       const updated = await assets.updateCare(clinic.id, asset.id, { location: "Bodija, Ibadan", nextServiceDue: "2027-06-01" }, makerUserId);
       expect(updated.location).toBe("Bodija, Ibadan");
-      expect(await prisma.auditLog.count({ where: { entityId: asset.id, action: "clinic_asset.care_updated" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: asset.id, action: "programme_asset.care_updated" } })).toBe(1);
     });
   });
 
-  // clinic_waqf.works_approve / spend_approve / spend_mark_paid (slice 5b).
+  // waqf_programme.works_approve / spend_approve / spend_mark_paid (slice 5b).
   // Maker mutawalli_officer (makerUserId); the Board (boardCheckerUserId)
   // approves; Compliance (distributionCheckerUserId) confirms payment.
   // Spending rows and the ledger are never deleted: fixtures stay behind.
   describe("clinic waqf spending", () => {
-    const clinics = new ClinicWaqfsService();
-    const ledger = new ClinicLedgerService();
-    const spending = new ClinicSpendingService(ledger);
+    const clinics = new WaqfProgrammesService();
+    const ledger = new ProgrammeLedgerService();
+    const spending = new ProgrammeSpendingService(ledger);
 
     async function clinicWithCash(cash: string) {
       const clinic = await clinics.create(
@@ -3225,9 +3225,9 @@ describe("GovernedActionsService", () => {
         makerUserId,
       );
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
-      const d = await service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+      const d = await service.propose({ permissionKey: "waqf_programme.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
       await service.decide({ governedActionId: d.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
-      const e = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id }, makerUserId });
+      const e = await service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId });
       await service.decide({ governedActionId: e.id, checkerUserId: boardCheckerUserId, approve: true });
       await prisma.$transaction((tx) =>
         ledger.post(tx, {
@@ -3253,9 +3253,9 @@ describe("GovernedActionsService", () => {
     test("the Board approves works; the Board or Compliance approves a payment; Compliance or Audit confirms it", async () => {
       const checkers = async (key: string) =>
         (await prisma.rolePermission.findMany({ where: { permission: { key }, canChecker: true }, select: { role: { select: { key: true } } } })).map((g) => g.role.key).sort();
-      expect(await checkers("clinic_waqf.works_approve")).toEqual(["board_of_trustees"]);
-      expect(await checkers("clinic_waqf.spend_approve")).toEqual(["board_of_trustees", "compliance_officer"]);
-      expect(await checkers("clinic_waqf.spend_mark_paid")).toEqual(["audit_committee", "compliance_officer"]);
+      expect(await checkers("waqf_programme.works_approve")).toEqual(["board_of_trustees"]);
+      expect(await checkers("waqf_programme.spend_approve")).toEqual(["board_of_trustees", "compliance_officer"]);
+      expect(await checkers("waqf_programme.spend_mark_paid")).toEqual(["audit_committee", "compliance_officer"]);
     });
 
     test("buying equipment: approved, paid by bank transfer, then confirmed — which books it and adds the asset at cost", async () => {
@@ -3266,15 +3266,15 @@ describe("GovernedActionsService", () => {
         { kind: "equipment", payeeId: supplier.id, description: "Haematology analyser", amount: "4000000", supportingReference: "INV-2026-0042" },
         makerUserId,
       );
-      expect(await prisma.auditLog.count({ where: { entityId: spend.id, action: "clinic_spend.created" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: spend.id, action: "programme_spend.created" } })).toBe(1);
 
-      await expect(service.propose({ permissionKey: "clinic_waqf.spend_mark_paid", payload: paid(spend.id), makerUserId })).rejects.toThrow(/Only an approved payment/);
-      const approve = await service.propose({ permissionKey: "clinic_waqf.spend_approve", payload: { spendId: spend.id }, makerUserId });
+      await expect(service.propose({ permissionKey: "waqf_programme.spend_mark_paid", payload: paid(spend.id), makerUserId })).rejects.toThrow(/Only an approved payment/);
+      const approve = await service.propose({ permissionKey: "waqf_programme.spend_approve", payload: { spendId: spend.id }, makerUserId });
       await service.decide({ governedActionId: approve.id, checkerUserId: boardCheckerUserId, approve: true });
       await expect(
-        service.propose({ permissionKey: "clinic_waqf.spend_mark_paid", payload: paid(spend.id, "2999-01-01"), makerUserId }),
+        service.propose({ permissionKey: "waqf_programme.spend_mark_paid", payload: paid(spend.id, "2999-01-01"), makerUserId }),
       ).rejects.toThrow(/future/);
-      const markPaid = await service.propose({ permissionKey: "clinic_waqf.spend_mark_paid", payload: paid(spend.id), makerUserId });
+      const markPaid = await service.propose({ permissionKey: "waqf_programme.spend_mark_paid", payload: paid(spend.id), makerUserId });
       await service.decide({ governedActionId: markPaid.id, checkerUserId: distributionCheckerUserId, approve: true });
 
       const done = await prisma.programmeSpend.findUniqueOrThrow({ where: { id: spend.id }, include: { asset: true } });
@@ -3313,7 +3313,7 @@ describe("GovernedActionsService", () => {
         spending.createSpend(clinic.id, { kind: "works_stage", worksProjectId: project.id, payeeId, description: "Foundations", amount, supportingReference: "ENG-CERT-1" }, makerUserId);
       await expect(stage("1000000")).rejects.toThrow(/hasn't approved/);
 
-      const approve = await service.propose({ permissionKey: "clinic_waqf.works_approve", payload: { worksProjectId: project.id }, makerUserId });
+      const approve = await service.propose({ permissionKey: "waqf_programme.works_approve", payload: { worksProjectId: project.id }, makerUserId });
       await service.decide({ governedActionId: approve.id, checkerUserId: boardCheckerUserId, approve: true });
       expect((await prisma.programmeWorksProject.findUniqueOrThrow({ where: { id: project.id } })).status).toBe("approved");
 
@@ -3330,7 +3330,7 @@ describe("GovernedActionsService", () => {
       await expect(prisma.programmeSpend.update({ where: { id: spend.id }, data: { amount: 1 } })).rejects.toThrow(/never change/);
       await expect(prisma.programmeSpend.delete({ where: { id: spend.id } })).rejects.toThrow(/never deleted/);
       await expect(prisma.programmeSpend.update({ where: { id: spend.id }, data: { status: "paid" } })).rejects.toThrow();
-      const action = await service.propose({ permissionKey: "clinic_waqf.spend_approve", payload: { spendId: spend.id }, makerUserId });
+      const action = await service.propose({ permissionKey: "waqf_programme.spend_approve", payload: { spendId: spend.id }, makerUserId });
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
     });
   });
@@ -3340,17 +3340,17 @@ describe("GovernedActionsService", () => {
   // (beneficiaryCheckerUserId) screens; the Board approves the placement
   // payment; Compliance (distributionCheckerUserId) confirms it.
   describe("clinic waqf investments", () => {
-    const clinics = new ClinicWaqfsService();
-    const ledger = new ClinicLedgerService();
-    const spending = new ClinicSpendingService(ledger);
-    const investments = new ClinicInvestmentsService(ledger, spending, new ClinicReserveService(ledger));
+    const clinics = new WaqfProgrammesService();
+    const ledger = new ProgrammeLedgerService();
+    const spending = new ProgrammeSpendingService(ledger);
+    const investments = new ProgrammeInvestmentsService(ledger, spending, new ProgrammeReserveService(ledger));
 
     async function clinicWithCash(cash: string) {
       const clinic = await clinics.create({ name: "Investment Test Clinic", slug: `invest-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
-      const d = await service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+      const d = await service.propose({ permissionKey: "waqf_programme.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
       await service.decide({ governedActionId: d.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
-      const e = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id }, makerUserId });
+      const e = await service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId });
       await service.decide({ governedActionId: e.id, checkerUserId: boardCheckerUserId, approve: true });
       await prisma.$transaction((tx) =>
         ledger.post(tx, {
@@ -3387,10 +3387,10 @@ describe("GovernedActionsService", () => {
 
       const placement = await investments.proposePlacement(clinic.id, investment.id, { agreementReference: "MUD-2026-01" }, investmentMakerUserId);
       expect(placement).toMatchObject({ kind: "investment", investmentId: investment.id, payeeId: bank.id });
-      const approve = await service.propose({ permissionKey: "clinic_waqf.spend_approve", payload: { spendId: placement.id }, makerUserId: investmentMakerUserId });
+      const approve = await service.propose({ permissionKey: "waqf_programme.spend_approve", payload: { spendId: placement.id }, makerUserId: investmentMakerUserId });
       await service.decide({ governedActionId: approve.id, checkerUserId: boardCheckerUserId, approve: true });
       const markPaid = await service.propose({
-        permissionKey: "clinic_waqf.spend_mark_paid",
+        permissionKey: "waqf_programme.spend_mark_paid",
         payload: { spendId: placement.id, bankReference: "ZENITH/INV/0001", paidOn: "2026-11-17" },
         makerUserId: investmentMakerUserId,
       });
@@ -3425,25 +3425,25 @@ describe("GovernedActionsService", () => {
     });
   });
 
-  // clinic_waqf.reserve_share_set (slice 9), and reserve replacements
-  // through clinic_waqf.spend_approve / spend_mark_paid. Maker
+  // waqf_programme.reserve_share_set (slice 9), and reserve replacements
+  // through waqf_programme.spend_approve / spend_mark_paid. Maker
   // mutawalli_officer (makerUserId); the share's checker is the Board only
   // (boardCheckerUserId). Clinic waqfs, assets, spends and ledgers are
   // never deleted, so these fixtures stay behind.
   describe("clinic waqf equipment reserve", () => {
-    const clinics = new ClinicWaqfsService();
-    const ledger = new ClinicLedgerService();
-    const reserve = new ClinicReserveService(ledger);
-    const spending = new ClinicSpendingService(ledger);
-    const investments = new ClinicInvestmentsService(ledger, spending, reserve);
+    const clinics = new WaqfProgrammesService();
+    const ledger = new ProgrammeLedgerService();
+    const reserve = new ProgrammeReserveService(ledger);
+    const spending = new ProgrammeSpendingService(ledger);
+    const investments = new ProgrammeInvestmentsService(ledger, spending, reserve);
     const today = lagosToday();
 
     async function clinicWithCash(cash: string) {
       const clinic = await clinics.create({ name: "Reserve Test Clinic", slug: `reserve-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
-      const d = await service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+      const d = await service.propose({ permissionKey: "waqf_programme.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
       await service.decide({ governedActionId: d.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
-      const e = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id }, makerUserId });
+      const e = await service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId });
       await service.decide({ governedActionId: e.id, checkerUserId: boardCheckerUserId, approve: true });
       await prisma.$transaction((tx) =>
         ledger.post(tx, {
@@ -3470,15 +3470,15 @@ describe("GovernedActionsService", () => {
 
     /** Approves (Board) and confirms (Compliance) a payment. */
     async function pay(spendId: string) {
-      const a = await service.propose({ permissionKey: "clinic_waqf.spend_approve", payload: { spendId }, makerUserId });
+      const a = await service.propose({ permissionKey: "waqf_programme.spend_approve", payload: { spendId }, makerUserId });
       await service.decide({ governedActionId: a.id, checkerUserId: boardCheckerUserId, approve: true });
-      const m = await service.propose({ permissionKey: "clinic_waqf.spend_mark_paid", payload: { spendId, bankReference: "ZENITH/EQP/0001", paidOn: today }, makerUserId });
+      const m = await service.propose({ permissionKey: "waqf_programme.spend_mark_paid", payload: { spendId, bankReference: "ZENITH/EQP/0001", paidOn: today }, makerUserId });
       await service.decide({ governedActionId: m.id, checkerUserId: distributionCheckerUserId, approve: true });
       return prisma.programmeSpend.findUniqueOrThrow({ where: { id: spendId } });
     }
 
     async function setShare(programmeId: string, percent: number) {
-      const action = await service.propose({ permissionKey: "clinic_waqf.reserve_share_set", payload: { programmeId, percent }, makerUserId });
+      const action = await service.propose({ permissionKey: "waqf_programme.reserve_share_set", payload: { programmeId, percent }, makerUserId });
       await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true });
       return action;
     }
@@ -3499,7 +3499,7 @@ describe("GovernedActionsService", () => {
 
     test("only the Board sets the reserve's share", async () => {
       const grants = await prisma.rolePermission.findMany({
-        where: { permission: { key: "clinic_waqf.reserve_share_set" } },
+        where: { permission: { key: "waqf_programme.reserve_share_set" } },
         select: { canMaker: true, canChecker: true, role: { select: { key: true } } },
       });
       expect(grants.filter((g) => g.canChecker).map((g) => g.role.key)).toEqual(["board_of_trustees"]);
@@ -3515,13 +3515,13 @@ describe("GovernedActionsService", () => {
       await income("100000");
       expect(await balances(clinic.id)).toMatchObject({ "1100": "100000.00", "1150": "0.00" });
 
-      await expect(service.propose({ permissionKey: "clinic_waqf.reserve_share_set", payload: { programmeId: clinic.id, percent: 101 }, makerUserId })).rejects.toThrow(/0 to 100/);
-      const action = await service.propose({ permissionKey: "clinic_waqf.reserve_share_set", payload: { programmeId: clinic.id, percent: 15 }, makerUserId });
-      await expect(service.propose({ permissionKey: "clinic_waqf.reserve_share_set", payload: { programmeId: clinic.id, percent: 20 }, makerUserId })).rejects.toThrow(ConflictException);
+      await expect(service.propose({ permissionKey: "waqf_programme.reserve_share_set", payload: { programmeId: clinic.id, percent: 101 }, makerUserId })).rejects.toThrow(/0 to 100/);
+      const action = await service.propose({ permissionKey: "waqf_programme.reserve_share_set", payload: { programmeId: clinic.id, percent: 15 }, makerUserId });
+      await expect(service.propose({ permissionKey: "waqf_programme.reserve_share_set", payload: { programmeId: clinic.id, percent: 20 }, makerUserId })).rejects.toThrow(ConflictException);
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
       await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true });
       expect(await prisma.waqfProgramme.findUniqueOrThrow({ where: { id: clinic.id } })).toMatchObject({ reserveSharePercent: 15, reserveShareActionId: action.id });
-      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "clinic_waqf.reserve_share_set" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "waqf_programme.reserve_share_set" } })).toBe(1);
 
       // 15% of ₦33,333.33 is ₦4,999.9995: ₦4,999.99 is set aside.
       await income("33333.33");
@@ -3593,12 +3593,12 @@ describe("GovernedActionsService", () => {
     });
   });
 
-  // clinic_waqf.price_list_approve (slice 6). Maker mutawalli_officer
+  // clinic.price_list_approve (slice 6). Maker mutawalli_officer
   // (makerUserId); checkers the Board (boardCheckerUserId) or Compliance
   // (distributionCheckerUserId). Price lists are never deleted, so these
   // fixtures stay behind.
   describe("clinic waqf price lists", () => {
-    const clinics = new ClinicWaqfsService();
+    const clinics = new WaqfProgrammesService();
     const lists = new ClinicPriceListsService();
     const newClinic = () =>
       clinics.create({ name: "Price List Test Clinic", slug: `ga-prices-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
@@ -3614,11 +3614,11 @@ describe("GovernedActionsService", () => {
       monthlySubsidyCap: "2000000",
     });
     const propose = (list: { id: string; contentHash: string }) =>
-      service.propose({ permissionKey: "clinic_waqf.price_list_approve", payload: { priceListId: list.id, contentHash: list.contentHash }, makerUserId });
+      service.propose({ permissionKey: "clinic.price_list_approve", payload: { priceListId: list.id, contentHash: list.contentHash }, makerUserId });
 
     test("only the Board or Compliance may approve a price list", async () => {
       const grants = await prisma.rolePermission.findMany({
-        where: { permission: { key: "clinic_waqf.price_list_approve" } },
+        where: { permission: { key: "clinic.price_list_approve" } },
         select: { canMaker: true, canChecker: true, role: { select: { key: true } } },
       });
       expect(grants.filter((g) => g.canChecker).map((g) => g.role.key).sort()).toEqual(["board_of_trustees", "compliance_officer"]);
@@ -3687,7 +3687,7 @@ describe("GovernedActionsService", () => {
     });
   });
 
-  // clinic_waqf.operator_assign / claim_approve / claim_mark_paid (slice 7).
+  // clinic.operator_assign / claim_approve / claim_mark_paid (slice 7).
   // Maker mutawalli_officer (makerUserId). The operator's checker is the
   // Board (boardCheckerUserId); a claim's, the Board or Compliance
   // (distributionCheckerUserId); its payment's, Compliance or the Audit
@@ -3695,8 +3695,8 @@ describe("GovernedActionsService", () => {
   // fixtures stay behind; the one zakah distribution is rejected afterwards
   // so it commits nothing.
   describe("clinic waqf claims", () => {
-    const clinics = new ClinicWaqfsService();
-    const ledger = new ClinicLedgerService();
+    const clinics = new WaqfProgrammesService();
+    const ledger = new ProgrammeLedgerService();
     const lists = new ClinicPriceListsService();
     const claims = new ClinicClaimsService(ledger, lists);
     const licenses = new CounterpartyLicensesService();
@@ -3719,9 +3719,9 @@ describe("GovernedActionsService", () => {
     async function readyClinic(runningCash = "100000", withOperator = true) {
       const clinic = await clinics.create({ name: "Claims Test Clinic", slug: `claims-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       const deed = await clinics.draftDeed(clinic.id, {}, makerUserId);
-      const d = await service.propose({ permissionKey: "clinic_waqf.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
+      const d = await service.propose({ permissionKey: "waqf_programme.deed_approve", payload: { deedId: deed.id, textHash: deed.textHash }, makerUserId });
       await service.decide({ governedActionId: d.id, checkerUserId: beneficiaryCheckerUserId, approve: true });
-      const e = await service.propose({ permissionKey: "clinic_waqf.establish", payload: { programmeId: clinic.id }, makerUserId });
+      const e = await service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId });
       await service.decide({ governedActionId: e.id, checkerUserId: boardCheckerUserId, approve: true });
       await prisma.$transaction((tx) =>
         ledger.post(tx, {
@@ -3751,11 +3751,11 @@ describe("GovernedActionsService", () => {
         },
         makerUserId,
       );
-      const l = await service.propose({ permissionKey: "clinic_waqf.price_list_approve", payload: { priceListId: list.id, contentHash: list.contentHash }, makerUserId });
+      const l = await service.propose({ permissionKey: "clinic.price_list_approve", payload: { priceListId: list.id, contentHash: list.contentHash }, makerUserId });
       await service.decide({ governedActionId: l.id, checkerUserId: boardCheckerUserId, approve: true });
       const operator = await provider();
       if (withOperator) {
-        const a = await service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { programmeId: clinic.id, counterpartyId: operator.id }, makerUserId });
+        const a = await service.propose({ permissionKey: "clinic.operator_assign", payload: { programmeId: clinic.id, counterpartyId: operator.id }, makerUserId });
         await service.decide({ governedActionId: a.id, checkerUserId: boardCheckerUserId, approve: true });
       }
       return { clinic, operator };
@@ -3773,9 +3773,9 @@ describe("GovernedActionsService", () => {
     test("the Board assigns the operator; the Board or Compliance approves a claim; Compliance or Audit confirms it paid", async () => {
       const checkers = async (key: string) =>
         (await prisma.rolePermission.findMany({ where: { permission: { key }, canChecker: true }, select: { role: { select: { key: true } } } })).map((g) => g.role.key).sort();
-      expect(await checkers("clinic_waqf.operator_assign")).toEqual(["board_of_trustees"]);
-      expect(await checkers("clinic_waqf.claim_approve")).toEqual(["board_of_trustees", "compliance_officer"]);
-      expect(await checkers("clinic_waqf.claim_mark_paid")).toEqual(["audit_committee", "compliance_officer"]);
+      expect(await checkers("clinic.operator_assign")).toEqual(["board_of_trustees"]);
+      expect(await checkers("clinic.claim_approve")).toEqual(["board_of_trustees", "compliance_officer"]);
+      expect(await checkers("clinic.claim_mark_paid")).toEqual(["audit_committee", "compliance_officer"]);
     });
 
     test("only a licensed, active healthcare provider can be assigned; the assignment is audited", async () => {
@@ -3784,24 +3784,24 @@ describe("GovernedActionsService", () => {
         data: { name: `Not A Clinic ${randomUUID()}`, institutionType: "business", jurisdiction: "NG", status: "active", businessActivities: "Sells things." },
       });
       await expect(
-        service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { programmeId: clinic.id, counterpartyId: business.id }, makerUserId }),
+        service.propose({ permissionKey: "clinic.operator_assign", payload: { programmeId: clinic.id, counterpartyId: business.id }, makerUserId }),
       ).rejects.toThrow(/isn't a healthcare provider/);
       const unlicensed = await prisma.counterparty.create({
         data: { name: `Unlicensed Clinic ${randomUUID()}`, institutionType: "healthcare_provider", jurisdiction: "NG", status: "active" },
       });
       await expect(
-        service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { programmeId: clinic.id, counterpartyId: unlicensed.id }, makerUserId }),
+        service.propose({ permissionKey: "clinic.operator_assign", payload: { programmeId: clinic.id, counterpartyId: unlicensed.id }, makerUserId }),
       ).rejects.toThrow(/licences are in order/);
       await expect(claims.createClaim(clinic.id, { period: month, lines: [line("V1", "FBC", "A", "0")] }, makerUserId)).rejects.toThrow(/No operator/);
 
-      const action = await service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { programmeId: clinic.id, counterpartyId: operator.id }, makerUserId });
+      const action = await service.propose({ permissionKey: "clinic.operator_assign", payload: { programmeId: clinic.id, counterpartyId: operator.id }, makerUserId });
       await expect(
-        service.propose({ permissionKey: "clinic_waqf.operator_assign", payload: { programmeId: clinic.id, counterpartyId: operator.id }, makerUserId }),
+        service.propose({ permissionKey: "clinic.operator_assign", payload: { programmeId: clinic.id, counterpartyId: operator.id }, makerUserId }),
       ).rejects.toThrow(ConflictException);
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
       await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true });
       expect(await prisma.waqfProgramme.findUniqueOrThrow({ where: { id: clinic.id } })).toMatchObject({ operatorId: operator.id, operatorActionId: action.id });
-      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "clinic_waqf.operator_assigned" } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityId: clinic.id, action: "clinic.operator_assigned" } })).toBe(1);
       await expect(prisma.waqfProgramme.update({ where: { id: clinic.id }, data: { operatorActionId: null } })).rejects.toThrow(/operator_consistent/);
     });
 
@@ -3844,22 +3844,22 @@ describe("GovernedActionsService", () => {
     test("approve within the running fund's cash, confirm the payment, link the zakah part", async () => {
       const { clinic, operator } = await readyClinic("10000");
       const claim = await claims.createClaim(clinic.id, { period: month, lines: [line("P1", "ANC", "B", "3700"), line("P2", "FBC", "A", "0", true)] }, makerUserId);
-      const approve = await service.propose({ permissionKey: "clinic_waqf.claim_approve", payload: { claimId: claim.id }, makerUserId });
-      await expect(service.propose({ permissionKey: "clinic_waqf.claim_approve", payload: { claimId: claim.id }, makerUserId })).rejects.toThrow(ConflictException);
+      const approve = await service.propose({ permissionKey: "clinic.claim_approve", payload: { claimId: claim.id }, makerUserId });
+      await expect(service.propose({ permissionKey: "clinic.claim_approve", payload: { claimId: claim.id }, makerUserId })).rejects.toThrow(ConflictException);
       await expect(claims.discardClaim(clinic.id, claim.id, makerUserId)).rejects.toThrow(/waiting for approval/);
       // ₦14,800 from the running fund, which holds ₦10,000.
       await expect(service.decide({ governedActionId: approve.id, checkerUserId: distributionCheckerUserId, approve: true })).rejects.toThrow(/₦10,000.00 free/);
 
       const { clinic: funded, operator: fundedOperator } = await readyClinic("20000");
       const ok = await claims.createClaim(funded.id, { period: month, lines: [line("P1", "ANC", "B", "3700"), line("P2", "FBC", "A", "0", true)] }, makerUserId);
-      const a = await service.propose({ permissionKey: "clinic_waqf.claim_approve", payload: { claimId: ok.id }, makerUserId });
+      const a = await service.propose({ permissionKey: "clinic.claim_approve", payload: { claimId: ok.id }, makerUserId });
       await service.decide({ governedActionId: a.id, checkerUserId: boardCheckerUserId, approve: true });
       expect(await prisma.clinicClaim.findUniqueOrThrow({ where: { id: ok.id } })).toMatchObject({ status: "approved", approvalActionId: a.id });
       expect(await prisma.auditLog.count({ where: { entityId: ok.id, action: "clinic_claim.approved" } })).toBe(1);
 
       const paid = { claimId: ok.id, bankReference: "ZENITH/TRF/0042", paidOn: lagosToday() };
-      await expect(service.propose({ permissionKey: "clinic_waqf.claim_mark_paid", payload: { ...paid, paidOn: "2999-01-01" }, makerUserId })).rejects.toThrow(/future/);
-      const markPaid = await service.propose({ permissionKey: "clinic_waqf.claim_mark_paid", payload: paid, makerUserId });
+      await expect(service.propose({ permissionKey: "clinic.claim_mark_paid", payload: { ...paid, paidOn: "2999-01-01" }, makerUserId })).rejects.toThrow(/future/);
+      const markPaid = await service.propose({ permissionKey: "clinic.claim_mark_paid", payload: paid, makerUserId });
       await service.decide({ governedActionId: markPaid.id, checkerUserId: distributionCheckerUserId, approve: true });
       expect(await prisma.clinicClaim.findUniqueOrThrow({ where: { id: ok.id } })).toMatchObject({ status: "paid", bankReference: "ZENITH/TRF/0042" });
       const balances = await ledger.balances(funded.id);
@@ -3905,7 +3905,7 @@ describe("GovernedActionsService", () => {
       await expect(prisma.clinicClaim.update({ where: { id: claim.id }, data: { runningFundAmount: 1 } })).rejects.toThrow();
       await expect(prisma.clinicClaim.update({ where: { id: claim.id }, data: { status: "paid" } })).rejects.toThrow();
       await expect(prisma.clinicClaim.delete({ where: { id: claim.id } })).rejects.toThrow(/never deleted/);
-      const action = await service.propose({ permissionKey: "clinic_waqf.claim_approve", payload: { claimId: claim.id }, makerUserId });
+      const action = await service.propose({ permissionKey: "clinic.claim_approve", payload: { claimId: claim.id }, makerUserId });
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
       await service.decide({ governedActionId: action.id, checkerUserId: distributionCheckerUserId, approve: false });
       expect((await prisma.clinicClaim.findUniqueOrThrow({ where: { id: claim.id } })).status).toBe("rejected");

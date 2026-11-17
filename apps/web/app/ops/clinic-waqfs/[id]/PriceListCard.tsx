@@ -41,12 +41,12 @@ export function PriceListCard({ programmeId }: { programmeId: string }) {
 
   const load = useCallback(() => {
     Promise.all([
-      apiFetchJson<ClinicPriceList[]>(`/clinic-waqfs/${programmeId}/price-lists`),
+      apiFetchJson<ClinicPriceList[]>(`/waqf-programmes/${programmeId}/price-lists`),
       apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"),
     ])
       .then(([l, a]) => {
         setLists(l);
-        setPending(a.filter((x) => x.permission.key === "clinic_waqf.price_list_approve"));
+        setPending(a.filter((x) => x.permission.key === "clinic.price_list_approve"));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, [programmeId]);
@@ -70,7 +70,7 @@ export function PriceListCard({ programmeId }: { programmeId: string }) {
     }
   }
 
-  const canManage = can("clinic_waqf.manage");
+  const canManage = can("waqf_programme.manage");
   const draft = lists?.find((l) => l.status === "draft");
   const latest = lists?.find((l) => l.status !== "discarded");
 
@@ -80,7 +80,7 @@ export function PriceListCard({ programmeId }: { programmeId: string }) {
       bands: content.bands.map((b) => ({ ...b, patientSharePercent: Number(b.patientSharePercent) })),
       monthlySubsidyCap: clean(content.monthlySubsidyCap),
     };
-    return run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/price-lists`, { method: "POST", body: JSON.stringify(body) })).then(
+    return run(() => apiFetchJson(`/waqf-programmes/${programmeId}/price-lists`, { method: "POST", body: JSON.stringify(body) })).then(
       (ok) => ok && setEditing(null),
     );
   }
@@ -139,7 +139,7 @@ export function PriceListCard({ programmeId }: { programmeId: string }) {
                         </p>
                       ) : (
                         <>
-                          {can("clinic_waqf.price_list_approve") && (
+                          {can("clinic.price_list_approve") && (
                             <Button
                               className="px-3 py-1.5 text-xs"
                               disabled={busy}
@@ -148,7 +148,7 @@ export function PriceListCard({ programmeId }: { programmeId: string }) {
                                   apiFetchJson("/governed-actions", {
                                     method: "POST",
                                     body: JSON.stringify({
-                                      permissionKey: "clinic_waqf.price_list_approve",
+                                      permissionKey: "clinic.price_list_approve",
                                       payload: { priceListId: list.id, contentHash: list.contentHash },
                                     }),
                                   }),
@@ -163,7 +163,7 @@ export function PriceListCard({ programmeId }: { programmeId: string }) {
                               variant="secondary"
                               className="px-3 py-1.5 text-xs"
                               disabled={busy}
-                              onClick={() => run(() => apiFetchJson(`/clinic-waqfs/${programmeId}/price-lists/${list.id}/discard`, { method: "POST" }))}
+                              onClick={() => run(() => apiFetchJson(`/waqf-programmes/${programmeId}/price-lists/${list.id}/discard`, { method: "POST" }))}
                             >
                               Discard draft
                             </Button>

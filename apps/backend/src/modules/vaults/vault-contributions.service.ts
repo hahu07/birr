@@ -477,7 +477,7 @@ export class VaultContributionsService {
   // 2026-11-16: a donor is an email, a confirmed WhatsApp number, or both.
   // Gifts under any donor record sharing either one count together toward
   // the threshold, which narrows the "different email each time" gap.
-  // Also used by ClinicGiftsService (2026-11-17): a clinic gift's giver is a
+  // Also used by ProgrammeGiftsService (2026-11-17): a clinic gift's giver is a
   // VaultDonor too, so the same email or number counts toward one threshold
   // across Vault and clinic giving. Callers hold lockGiverContact(tx, "", …).
   async findOrCreateDonor(

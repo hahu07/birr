@@ -4,12 +4,12 @@ import { IsNumberString, IsOptional, Matches } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
 import { CountryCode } from "../../common/validation/country-code";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
-import { deedTextHash, draftClinicDeedText } from "./clinic-waqf-deed";
+import { deedTextHash, draftProgrammeDeedText } from "../clinics/clinic-waqf-deed";
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const DEED_TEXT_LIMIT = 20_000;
 
-export class CreateClinicWaqfInput {
+export class CreateWaqfProgrammeInput {
   @NameField()
   name!: string;
 
@@ -28,7 +28,7 @@ export class CreateClinicWaqfInput {
   description?: string;
 }
 
-export class UpdateClinicWaqfInput {
+export class UpdateWaqfProgrammeInput {
   @IsOptional()
   @NameField()
   name?: string;
@@ -53,7 +53,7 @@ export class UpdateClinicWaqfInput {
   runningMonthlyTarget?: string;
 }
 
-export class DraftClinicDeedInput {
+export class DraftProgrammeDeedInput {
   // Omitted: the standard wording (clinic-waqf-deed.ts), filled in for this clinic.
   @IsOptional()
   @LongTextField(DEED_TEXT_LIMIT)
@@ -75,14 +75,14 @@ const userName = { select: { id: true, fullName: true } };
  * The clinic waqf (2026-11-17, clinic slice 2): a waqf Birr itself
  * establishes for the Mother & Child Clinic, with a versioned deed and a
  * ledger that keeps the endowment and the running fund apart. A Mutawalli
- * Officer creates it and drafts its deed (clinic_waqf.manage); a Shariah
- * board member approves each deed version (clinic_waqf.deed_approve); the
- * Board of Trustees approves establishing it (clinic_waqf.establish). The
+ * Officer creates it and drafts its deed (waqf_programme.manage); a Shariah
+ * board member approves each deed version (waqf_programme.deed_approve); the
+ * Board of Trustees approves establishing it (waqf_programme.establish). The
  * governed-action engine calls the approval methods below.
  */
 @Injectable()
-export class ClinicWaqfsService {
-  async create(input: CreateClinicWaqfInput, actorUserId: string) {
+export class WaqfProgrammesService {
+  async create(input: CreateWaqfProgrammeInput, actorUserId: string) {
     if (await prisma.waqfProgramme.findUnique({ where: { slug: input.slug } })) {
       throw new ConflictException(`The address "${input.slug}" is already used by another clinic waqf.`);
     }
@@ -92,7 +92,7 @@ export class ClinicWaqfsService {
         data: {
           actorType: "birr_staff",
           actorUserId,
-          action: "clinic_waqf.created",
+          action: "waqf_programme.created",
           entityType: "WaqfProgramme",
           entityId: clinic.id,
           after: clinic as any,
@@ -103,7 +103,7 @@ export class ClinicWaqfsService {
   }
 
   /** Name, city and description; the address and jurisdiction stay as set. */
-  async update(id: string, input: UpdateClinicWaqfInput, actorUserId: string) {
+  async update(id: string, input: UpdateWaqfProgrammeInput, actorUserId: string) {
     for (const target of [input.endowmentTarget, input.runningMonthlyTarget]) {
       if (target && new Prisma.Decimal(target).decimalPlaces() > 2) throw new BadRequestException("Enter targets in naira and kobo.");
     }
@@ -115,7 +115,7 @@ export class ClinicWaqfsService {
         data: {
           actorType: "birr_staff",
           actorUserId,
-          action: "clinic_waqf.updated",
+          action: "waqf_programme.updated",
           entityType: "WaqfProgramme",
           entityId: id,
           before: before as any,
@@ -150,11 +150,11 @@ export class ClinicWaqfsService {
   async deedTemplate(id: string) {
     const clinic = await prisma.waqfProgramme.findUnique({ where: { id } });
     if (!clinic) throw new NotFoundException(`Clinic waqf "${id}" not found.`);
-    return { text: draftClinicDeedText(clinic) };
+    return { text: draftProgrammeDeedText(clinic) };
   }
 
   /** A new version, as a draft. One open draft at a time; its text never changes once drafted. */
-  async draftDeed(programmeId: string, input: DraftClinicDeedInput, actorUserId: string) {
+  async draftDeed(programmeId: string, input: DraftProgrammeDeedInput, actorUserId: string) {
     return prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
       const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
@@ -164,7 +164,7 @@ export class ClinicWaqfsService {
         throw new ConflictException(`Version ${openDraft.version} is still a draft. Discard it, or have it approved, before drafting another.`);
       }
       const latest = await tx.waqfProgrammeDeed.aggregate({ where: { programmeId }, _max: { version: true } });
-      const text = (input.text ?? draftClinicDeedText(clinic)).replace(/\r\n/g, "\n");
+      const text = (input.text ?? draftProgrammeDeedText(clinic)).replace(/\r\n/g, "\n");
       const deed = await tx.waqfProgrammeDeed.create({
         data: {
           programmeId,
@@ -178,7 +178,7 @@ export class ClinicWaqfsService {
         data: {
           actorType: "birr_staff",
           actorUserId,
-          action: "clinic_waqf_deed.drafted",
+          action: "waqf_programme_deed.drafted",
           entityType: "WaqfProgrammeDeed",
           entityId: deed.id,
           after: deed as any,
@@ -190,7 +190,7 @@ export class ClinicWaqfsService {
 
   /** Drops a draft that won't be approved. Refused while its approval is waiting. */
   async discardDeed(programmeId: string, deedId: string, actorUserId: string) {
-    if (await this.pendingAction("clinic_waqf.deed_approve", "deedId", deedId)) {
+    if (await this.pendingAction("waqf_programme.deed_approve", "deedId", deedId)) {
       throw new ConflictException("This draft is waiting for Shariah approval. Have the proposal rejected first.");
     }
     return prisma.$transaction(async (tx) => {
@@ -202,7 +202,7 @@ export class ClinicWaqfsService {
         data: {
           actorType: "birr_staff",
           actorUserId,
-          action: "clinic_waqf_deed.discarded",
+          action: "waqf_programme_deed.discarded",
           entityType: "WaqfProgrammeDeed",
           entityId: deedId,
           before: before as any,
@@ -213,7 +213,7 @@ export class ClinicWaqfsService {
     });
   }
 
-  // ---- clinic_waqf.deed_approve (checker: shariah_board_member only) ----
+  // ---- waqf_programme.deed_approve (checker: shariah_board_member only) ----
 
   private parseDeedPayload(payload: unknown): DeedApprovalPayload {
     const p = (payload ?? {}) as Partial<Record<keyof DeedApprovalPayload, unknown>>;
@@ -231,7 +231,7 @@ export class ClinicWaqfsService {
   }
 
   async checkDuplicateDeedProposal(payload: unknown) {
-    if (await this.pendingAction("clinic_waqf.deed_approve", "deedId", this.parseDeedPayload(payload).deedId)) {
+    if (await this.pendingAction("waqf_programme.deed_approve", "deedId", this.parseDeedPayload(payload).deedId)) {
       throw new ConflictException("This deed version is already waiting for Shariah approval — check the Approvals queue.");
     }
   }
@@ -278,7 +278,7 @@ export class ClinicWaqfsService {
         data: {
           actorType: "birr_staff",
           actorUserId: checkerUserId,
-          action: "clinic_waqf_deed.superseded",
+          action: "waqf_programme_deed.superseded",
           entityType: "WaqfProgrammeDeed",
           entityId: live.id,
           before: live as any,
@@ -289,7 +289,7 @@ export class ClinicWaqfsService {
     return { before: draft, after };
   }
 
-  // ---- clinic_waqf.establish (checker: board_of_trustees only) ----
+  // ---- waqf_programme.establish (checker: board_of_trustees only) ----
 
   private parseEstablishPayload(payload: unknown): EstablishPayload {
     const p = (payload ?? {}) as Partial<Record<keyof EstablishPayload, unknown>>;
@@ -311,7 +311,7 @@ export class ClinicWaqfsService {
   }
 
   async checkDuplicateEstablishProposal(payload: unknown) {
-    if (await this.pendingAction("clinic_waqf.establish", "programmeId", this.parseEstablishPayload(payload).programmeId)) {
+    if (await this.pendingAction("waqf_programme.establish", "programmeId", this.parseEstablishPayload(payload).programmeId)) {
       throw new ConflictException("Establishing this clinic waqf is already waiting for the Board — check the Approvals queue.");
     }
   }
