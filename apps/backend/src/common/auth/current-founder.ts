@@ -112,7 +112,7 @@ export function assertUserWhatsAppVerified(user: { whatsappVerifiedAt: Date | nu
   }
 }
 
-async function findPrimaryContactMembership(
+export async function findPrimaryContactMembership(
   tx: Prisma.TransactionClient | typeof prisma,
   founderId: string,
 ) {

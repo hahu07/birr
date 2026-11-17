@@ -3661,6 +3661,7 @@ enum RecurringGiftKind {
   vault
   waqf
   zakah
+  clinic // a clinic waqf's endowment or running fund (2026-11-17, clinic slice 4b)
 }
 
 enum RecurringGiftStatus {
@@ -3717,7 +3718,18 @@ model RecurringGift {
   founderId    String?
   founder      Founder?    @relation(fields: [founderId], references: [id], onDelete: Restrict)
 
-  /// Zakah: add the processing fee on top (as at setup).
+  /// Clinic waqf (slice 4b): which clinic and pot. A monthly endowment
+  /// gift keeps the deed version its giver accepted; a charge pauses
+  /// (terms_changed) once a newer version is approved, until they accept
+  /// it. A public giver's gift has no founderId; a Founder's does.
+  clinicWaqfId       String?
+  clinicWaqf         ClinicWaqf?     @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  clinicPot          ClinicPot?
+  clinicDeedId       String?
+  clinicDeed         ClinicWaqfDeed? @relation(fields: [clinicDeedId], references: [id], onDelete: Restrict)
+  clinicDeedTextHash String?
+
+  /// Zakah and clinic gifts: add the processing fee on top (as at setup).
   coverFee              Boolean @default(false)
   /// Zakah: the wakalah wording accepted; a charge pauses if it changes.
   wakalahConsentVersion String?
@@ -3755,6 +3767,7 @@ model RecurringGift {
   contributions      Contribution[]
   vaultContributions VaultContribution[]
   zakahPayments      ZakahPayment[]
+  clinicGifts        ClinicGift[]
 
   @@index([status, nextChargeAt])
   @@index([email])
@@ -3997,6 +4010,8 @@ model ClinicWaqf {
 
   gifts ClinicGift[]
 
+  recurringGifts RecurringGift[]
+
   @@map("clinic_waqfs")
 }
 
@@ -4033,6 +4048,8 @@ model ClinicWaqfDeed {
   updatedAt        DateTime             @updatedAt
 
   gifts ClinicGift[]
+
+  recurringGifts RecurringGift[]
 
   @@unique([clinicWaqfId, version])
   @@map("clinic_waqf_deeds")
@@ -4141,6 +4158,11 @@ model ClinicGift {
   founder              Founder?             @relation(fields: [founderId], references: [id], onDelete: Restrict)
   initiatedByUserId    String?
   initiatedByUser      User?                @relation("ClinicGiftInitiator", fields: [initiatedByUserId], references: [id], onDelete: Restrict)
+  // A monthly gift's payment (slice 4b): the gift, and the month it collects
+  // (null for a card-update checkout, as for Vault and zakah).
+  recurringGiftId      String?
+  recurringGift        RecurringGift?       @relation(fields: [recurringGiftId], references: [id], onDelete: Restrict)
+  recurringPeriod      String?
   // Where this gift's receipt goes: only what was given with it.
   contactEmail         String?
   contactWhatsApp      String?

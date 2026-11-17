@@ -9,11 +9,13 @@ import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { SettingsModule } from "../../common/settings/settings.module";
 import { WhatsAppOtpModule } from "../../common/whatsapp/whatsapp-otp.module";
 import { VaultsModule } from "../vaults/vaults.module";
+import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-core.module";
 
 @Module({
   // VaultsModule: a clinic gift's giver is a VaultDonor, checked by
   // VaultContributionsService.findOrCreateDonor (the shared AML threshold).
-  imports: [SettingsModule, WhatsAppOtpModule, VaultsModule],
+  // RecurringGiftsCoreModule: monthly clinic gifts (slice 4b).
+  imports: [SettingsModule, WhatsAppOtpModule, VaultsModule, RecurringGiftsCoreModule],
   controllers: [ClinicWaqfsController, ClinicGiftsController],
   // PaystackAdapter: each consuming module provides its own instance, as VaultsModule and ZakahModule do.
   providers: [ClinicWaqfsService, ClinicLedgerService, ClinicGiftsService, ResendClinicReceiptEmailAdapter, PaystackAdapter],

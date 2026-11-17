@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { Public } from "../../common/guards/public.decorator";
 import {
+  AcceptClinicDeedInput,
   AcceptZakahTermsInput,
   ChangeRecurringGiftAmountInput,
   GiverIdentityInput,
@@ -10,7 +11,7 @@ import {
 } from "./recurring-gifts.service";
 
 /**
- * A Vault or zakah giver managing their monthly gift. No account: the
+ * A Vault, zakah or clinic waqf giver managing their monthly gift. No account: the
  * private link's token is the credential (only its hash is stored; see
  * RecurringGift.manageTokenHash). Throttled like the giving routes.
  */
@@ -65,5 +66,13 @@ export class GivingManageController {
   @Post("manage/:token/terms")
   acceptTerms(@Param("token") token: string, @Body() body: AcceptZakahTermsInput) {
     return this.service.acceptZakahTerms(token, body);
+  }
+
+  // A monthly clinic endowment gift paused for a newly approved deed (slice 4b).
+  @Throttle({ default: { limit: 10, ttl: 600_000 } })
+  @Public()
+  @Post("manage/:token/deed")
+  acceptDeed(@Param("token") token: string, @Body() body: AcceptClinicDeedInput) {
+    return this.service.acceptClinicDeed(token, body);
   }
 }

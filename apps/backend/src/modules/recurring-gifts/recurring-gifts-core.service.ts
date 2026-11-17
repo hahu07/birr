@@ -7,7 +7,7 @@ import { EncryptionService } from "../../common/settings/encryption.service";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { ResendRecurringGiftEmailAdapter, type RecurringGiftEmail } from "./email/resend-recurring-gift-email.adapter";
 import { addMonths, chargeDateFor, dayOfMonthFor, periodOf } from "./recurring-gift-dates";
-import { type GiftTarget, endedEmail, setUpEmail } from "./recurring-gift-emails";
+import { type GiftTarget, endedEmail, isFounderGift, setUpEmail } from "./recurring-gift-emails";
 
 export interface RecurringGiftSetupInput {
   kind: RecurringGiftKind;
@@ -27,6 +27,11 @@ export interface RecurringGiftSetupInput {
   zakahRulesetVersion?: number;
   zakahMetalPriceId?: string;
   zakahNisabBasis?: string | null;
+  /** Clinic waqf gifts (2026-11-17): the clinic, the pot, and for the endowment the deed accepted. */
+  clinicWaqfId?: string;
+  clinicPot?: "endowment" | "running";
+  clinicDeedId?: string;
+  clinicDeedTextHash?: string;
 }
 
 type Who = { type: "giver" } | { type: "system" } | { type: "staff"; userId: string };
@@ -86,6 +91,10 @@ export class RecurringGiftsCoreService {
         zakahRulesetVersion: input.zakahRulesetVersion,
         zakahNisabBasis: input.zakahNisabBasis ?? null,
         zakahMetalPriceId: input.zakahMetalPriceId,
+        clinicWaqfId: input.clinicWaqfId,
+        clinicPot: input.clinicPot,
+        clinicDeedId: input.clinicDeedId,
+        clinicDeedTextHash: input.clinicDeedTextHash,
       },
     });
     await this.audit(tx, gift, { type: "giver" }, "recurring_gift.set_up_started", null, gift);
@@ -134,7 +143,8 @@ export class RecurringGiftsCoreService {
     }
 
     const nextPeriod = addMonths(collected, 1);
-    const token = wasSetup && gift.kind !== "waqf" ? randomBytes(32).toString("base64url") : null;
+    // A Founder manages their gifts in the portal, so only a public giver gets a private link.
+    const token = wasSetup && !isFounderGift(gift) ? randomBytes(32).toString("base64url") : null;
     const activated = await prisma.$transaction(async (tx) => {
       const claim = await tx.recurringGift.updateMany({
         where: { id: gift.id, pendingCardReference: reference },
@@ -190,6 +200,7 @@ export class RecurringGiftsCoreService {
   manageUrl(gift: RecurringGift, token: string | null): string {
     const base = process.env.FOUNDER_PORTAL_URL ?? "http://localhost:3000";
     if (gift.kind === "waqf") return `${base}/portfolio/${gift.waqfId}`;
+    if (isFounderGift(gift)) return `${base}/clinic-support`;
     return token ? `${base}/giving/manage/${token}` : `${base}/giving/manage`;
   }
 
@@ -205,6 +216,11 @@ export class RecurringGiftsCoreService {
     if (gift.kind === "waqf" && gift.waqfId) {
       const waqf = await prisma.waqf.findUnique({ where: { id: gift.waqfId }, select: { name: true } });
       return { phrase: `to ${escapeHtml(waqf?.name ?? "your Waqf Fund")}` };
+    }
+    if (gift.kind === "clinic" && gift.clinicWaqfId) {
+      const clinic = await prisma.clinicWaqf.findUnique({ where: { id: gift.clinicWaqfId }, select: { name: true } });
+      const pot = gift.clinicPot === "endowment" ? "endowment" : "running fund";
+      return { phrase: `to the ${pot} of ${escapeHtml(clinic?.name ?? "the clinic")}` };
     }
     return { phrase: "towards your zakah" };
   }
@@ -270,7 +286,7 @@ export class RecurringGiftsCoreService {
         ? { actorType: "birr_staff" as const, actorUserId: who.userId }
         : who.type === "system"
           ? { actorType: "system" as const }
-          : gift.kind === "waqf"
+          : isFounderGift(gift)
             ? { actorType: "founder_user" as const, actorFounderId: gift.founderId }
             : { actorType: "public_donor" as const };
     await tx.auditLog.create({

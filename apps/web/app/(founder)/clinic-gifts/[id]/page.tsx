@@ -19,6 +19,8 @@ interface ClinicGiftStatus {
   feeCover: string;
   currency: string;
   status: "pending" | "confirmed" | "failed";
+  /** Set when this was the first payment of a monthly gift. */
+  recurringGift?: { status: "pending_setup" | "active" | "paused" | "cancelled" | "ended" } | null;
 }
 
 const POLL_INTERVAL_MS = 2000;
@@ -136,6 +138,17 @@ export default function ClinicGiftStatusPage() {
               : ", for subsidised visits and the clinic's running costs."}
             {Number(payment.feeCover) > 0 && ` Thank you for also covering the ${formatMoney(payment.feeCover, payment.currency)} processing fee.`}
           </p>
+          {payment.recurringGift && payment.recurringGift.status !== "ended" && (
+            <p className="mx-auto mt-3 max-w-sm rounded-lg bg-primary-50/70 px-3 py-2.5 text-xs leading-relaxed text-slate-700">
+              Your monthly gift has begun: the same amount will be charged to your card each month, and we&apos;ll remind you before each
+              charge.
+            </p>
+          )}
+          {payment.recurringGift?.status === "ended" && (
+            <p className="mx-auto mt-3 max-w-sm rounded-lg bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
+              Your card can&apos;t be charged again automatically, so this won&apos;t repeat. Today&apos;s gift still went through.
+            </p>
+          )}
           <p className="mt-2 text-xs text-slate-500">If you gave an email or WhatsApp number, a receipt is on its way. May Allah accept it from you.</p>
           {reference}
           <Link href={`/clinics/${payment.clinic.slug}`} className="mt-4 inline-block text-sm font-medium text-primary-700 hover:text-primary-800">

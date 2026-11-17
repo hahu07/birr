@@ -1,6 +1,6 @@
 "use client";
 
-// A Vault (or zakah) giver managing their monthly gift from the private
+// A Vault, zakah or clinic waqf giver managing their monthly gift from the private
 // link we email them (RecurringGiftsService; GET/POST /giving/manage/:token).
 // No account: the token in the link is the credential, so the page never
 // shows more than the giver already knows (the card's last four digits).
@@ -13,7 +13,7 @@ import { Alert, Button, Card, IconCheckCircle, IconShieldCheck, Input, Select, S
 import { MoneyInput } from "../../../_components/form";
 
 interface ManagedGift {
-  kind: "vault" | "zakah" | "waqf";
+  kind: "vault" | "zakah" | "waqf" | "clinic";
   status: "pending_setup" | "active" | "paused" | "cancelled" | "ended";
   pauseReason: "card_failed" | "card_expired" | "needs_identity" | "terms_changed" | "below_minimum" | null;
   email: string;
@@ -28,6 +28,8 @@ interface ManagedGift {
   charges: { id: string; period: string | null; amount: string; status: "pending" | "confirmed" | "failed"; date: string }[];
   cancelledAt: string | null;
   endedReason: string | null;
+  /** A monthly clinic endowment gift paused for a newly approved deed: the deed to read and accept. */
+  newDeed?: { id: string; version: number; text: string; textHash: string } | null;
 }
 
 const ID_TYPES = ["national_id", "passport", "drivers_license", "other"] as const;
@@ -37,6 +39,7 @@ const ENDED_REASONS: Record<string, string> = {
   cause_removed: "the cause you chose is no longer part of the Vault",
   card_not_reusable: "the card used can't be charged again automatically",
   setup_not_completed: "the first payment wasn't completed",
+  clinic_closed: "the clinic isn't taking gifts",
 };
 
 function formatDay(iso: string): string {
@@ -296,7 +299,8 @@ function PausedAction({ token, gift, onChange }: { token: string; gift: ManagedG
           </Button>
         </form>
       )}
-      {gift.pauseReason === "terms_changed" && <AcceptNewTerms token={token} onChange={onChange} />}
+      {gift.pauseReason === "terms_changed" && gift.kind === "clinic" && <AcceptNewDeed token={token} gift={gift} onChange={onChange} />}
+      {gift.pauseReason === "terms_changed" && gift.kind !== "clinic" && <AcceptNewTerms token={token} onChange={onChange} />}
       {gift.pauseReason === "below_minimum" && (
         <>
           <p className="text-sm font-semibold text-amber-950">The minimum gift has gone up</p>
@@ -355,6 +359,59 @@ function AcceptNewTerms({ token, onChange }: { token: string; onChange: (gift: M
         </label>
       )}
       <Button type="button" className="mt-4" disabled={!terms || !accepted || busy} onClick={accept}>
+        {busy ? "Saving…" : "Accept and carry on"}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Monthly clinic endowment gifts (2026-11-17): a new version of the waqf's
+ * deed was approved after the giver set it up, so it's paused until they
+ * accept it. Shows the full text and sends its id and hash; the server
+ * accepts only the current approved version.
+ */
+function AcceptNewDeed({ token, gift, onChange }: { token: string; gift: ManagedGift; onChange: (gift: ManagedGift) => void }) {
+  const [accepted, setAccepted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const deed = gift.newDeed;
+
+  async function accept() {
+    if (!deed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      onChange(
+        await apiFetchJson<ManagedGift>(`/giving/manage/${token}/deed`, { method: "POST", body: JSON.stringify({ deedId: deed.id, textHash: deed.textHash }) }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <p className="text-sm font-semibold text-amber-950">The waqf&apos;s deed has a new version</p>
+      <p className="mt-1 text-sm leading-relaxed text-amber-900">Please read it. Your monthly endowment gift carries on once you accept it.</p>
+      {error && (
+        <Alert tone="danger" title="That didn't work" className="mt-3">
+          {error}
+        </Alert>
+      )}
+      {deed && (
+        <>
+          <pre className="mt-4 max-h-64 overflow-auto whitespace-pre-wrap rounded-xl border border-amber-200 bg-white p-3 font-sans text-xs leading-relaxed text-slate-700">
+            {deed.text}
+          </pre>
+          <label className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+            <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+            <span>I give each monthly gift as a waqf under version {deed.version} of this deed.</span>
+          </label>
+        </>
+      )}
+      <Button type="button" className="mt-4" disabled={!deed || !accepted || busy} onClick={accept}>
         {busy ? "Saving…" : "Accept and carry on"}
       </Button>
     </div>
