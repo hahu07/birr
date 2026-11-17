@@ -389,6 +389,7 @@ model User {
   clinicAssetsRecorded           ClinicAsset[]                   @relation("ClinicAssetRecorder")
   clinicWorksCreated             ClinicWorksProject[]            @relation("ClinicWorksCreator")
   clinicSpendsCreated            ClinicSpend[]                   @relation("ClinicSpendCreator")
+  clinicPriceListsCreated        ClinicPriceList[]               @relation("ClinicPriceListCreator")
   clinicInvestmentsCreated       ClinicInvestment[]              @relation("ClinicInvestmentCreator")
   clinicInvestmentsScreened      ClinicInvestment[]              @relation("ClinicInvestmentShariahReviewer")
   clinicInvestmentIncomeRecorded ClinicInvestmentIncome[]        @relation("ClinicInvestmentIncomeRecorder")
@@ -1197,6 +1198,7 @@ model GovernedAction {
   approvedClinicWorks       ClinicWorksProject?  @relation("ClinicWorksApproval")
   approvedClinicSpend       ClinicSpend?         @relation("ClinicSpendApproval")
   paidClinicSpend           ClinicSpend?         @relation("ClinicSpendPayment")
+  approvedClinicPriceList   ClinicPriceList?     @relation("ClinicPriceListApproval")
 
   @@index([waqfId])
   @@index([status])
@@ -4035,6 +4037,8 @@ model ClinicWaqf {
 
   investments ClinicInvestment[]
 
+  priceLists ClinicPriceList[]
+
   @@map("clinic_waqfs")
 }
 
@@ -4457,4 +4461,42 @@ model ClinicInvestmentIncome {
 
   @@index([investmentId])
   @@map("clinic_investment_income")
+}
+
+// ---- Clinic waqf price list and subsidy bands (2026-11-17, clinic slice 6) ----
+
+enum ClinicPriceListStatus {
+  draft
+  approved // the version claims are checked against from now on
+  superseded
+  discarded
+}
+
+// What the clinic charges for each service, the subsidy bands (how much of
+// a visit a patient pays, by household income), and the most the running
+// fund pays in subsidies a month. Agreed with the operator, and versioned
+// like the deed: a Mutawalli Officer drafts a version; the Board of
+// Trustees or Compliance approves it (clinic_waqf.price_list_approve),
+// naming its content's hash. A version's content never changes; the
+// database recomputes the hash. At most one approved version and one open
+// draft per clinic. Monthly claims (slice 7) are checked against it.
+model ClinicPriceList {
+  id               String                @id @default(uuid())
+  clinicWaqfId     String
+  clinicWaqf       ClinicWaqf            @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  version          Int
+  // Canonical JSON (clinic-price-list.ts): services, bands, monthly cap.
+  content          String                @db.Text
+  contentHash      String
+  status           ClinicPriceListStatus @default(draft)
+  createdByUserId  String
+  createdByUser    User                  @relation("ClinicPriceListCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvedAt       DateTime?
+  approvedActionId String?               @unique
+  approvedAction   GovernedAction?       @relation("ClinicPriceListApproval", fields: [approvedActionId], references: [id], onDelete: Restrict)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@unique([clinicWaqfId, version])
+  @@map("clinic_price_lists")
 }

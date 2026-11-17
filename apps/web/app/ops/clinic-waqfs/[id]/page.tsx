@@ -18,6 +18,7 @@ import { countryLabel } from "@birr/shared";
 import { AssetsCard } from "./AssetsCard";
 import { SpendingCard } from "./SpendingCard";
 import { InvestmentsCard } from "./InvestmentsCard";
+import { PriceListCard } from "./PriceListCard";
 
 const DEED_TONE: Record<ClinicWaqfDeed["status"], "success" | "warning" | "neutral" | "danger"> = {
   draft: "warning",
@@ -306,6 +307,8 @@ export default function ClinicWaqfPage() {
       <SpendingCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
 
       <InvestmentsCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
+
+      <PriceListCard clinicWaqfId={clinic.id} />
 
       <Card className="mt-5">
         <p className="text-sm font-medium text-slate-700">Gifts</p>

@@ -1745,3 +1745,20 @@ export interface ClinicInvestment {
   placement: { id: string; status: string } | null;
   incomeTotal: string;
 }
+
+export interface ClinicPriceListContent {
+  services: { code: string; name: string; price: string }[];
+  bands: { code: string; name: string; whoQualifies: string; patientSharePercent: number }[];
+  monthlySubsidyCap: string;
+}
+
+export interface ClinicPriceList {
+  id: string;
+  version: number;
+  status: "draft" | "approved" | "superseded" | "discarded";
+  content: ClinicPriceListContent;
+  contentHash: string;
+  createdAt: string;
+  approvedAt: string | null;
+  createdByUser: { id: string; fullName: string } | null;
+}

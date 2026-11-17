@@ -1181,6 +1181,21 @@ only the income is spent, booked straight into the running fund
   or a Mutawalli Officer (append-only, only once placed). The principal
   coming back is recorded by the Investment Committee (1000/1200).
 
+Slice 6, price list and subsidy bands (built, `ClinicPriceList`,
+`ClinicPriceListsService`). Versioned like the deed: each version is
+canonical JSON (services with code and price, bands with who qualifies and
+the patient's share, the running fund's monthly subsidy cap), with its
+sha256 checked by the database.
+- **Drafting:** a Mutawalli Officer (`clinic_waqf.manage`), one draft at a
+  time.
+- **Approving:** the Board **or** Compliance
+  (`clinic_waqf.price_list_approve`), naming the content's hash; approving
+  supersedes the previous version.
+- **Database:** content never changes; status moves draft → approved or
+  discarded, approved → superseded; never deleted; one approved and one
+  draft per clinic.
+- Monthly claims (slice 7) are checked against the approved version.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
