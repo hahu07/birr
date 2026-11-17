@@ -121,6 +121,13 @@ const governedPermissions = [
   // endowment, and disposing of an asset, both approved by the Board.
   { key: "clinic_waqf.asset_add", category: "clinic", requiresMakerChecker: true, description: "Add land, a building or equipment given in kind to a clinic waqf's endowment, at its valuation." },
   { key: "clinic_waqf.asset_dispose", category: "clinic", requiresMakerChecker: true, description: "Dispose of a clinic waqf's asset: sell, scrap or exchange it, with any proceeds kept in the endowment." },
+  // Clinic waqf endowment spending (2026-11-17, slice 5b): the Board
+  // approves a works project's route and budget; the Board or Compliance
+  // approves each payment out of endowment cash; Compliance or the Audit
+  // Committee confirms it was paid, from the bank reference.
+  { key: "clinic_waqf.works_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a clinic waqf's building or renovation project: its route, contractor and budget." },
+  { key: "clinic_waqf.spend_approve", category: "clinic", requiresMakerChecker: true, description: "Approve paying out of a clinic waqf's endowment cash, for equipment or a certified works stage." },
+  { key: "clinic_waqf.spend_mark_paid", category: "clinic", requiresMakerChecker: true, description: "Confirm an approved clinic waqf payment was made, from the bank's reference, which books it." },
   { key: "clinic_waqf.deed_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a version of a clinic waqf's deed, the wording supporters accept when they endow." },
   { key: "zakah.ruleset_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a draft zakah ruleset, making it the version the zakah calculator applies." },
   { key: "zakah.metal_price_set", category: "zakah", requiresMakerChecker: true, description: "Set the gold and silver prices that fix the zakah nisab in Naira." },
@@ -294,6 +301,9 @@ const governedRolePermissions: Record<string, Grants> = {
     "clinic_waqf.establish": { canMaker: true },
     "clinic_waqf.asset_add": { canMaker: true },
     "clinic_waqf.asset_dispose": { canMaker: true },
+    "clinic_waqf.works_approve": { canMaker: true },
+    "clinic_waqf.spend_approve": { canMaker: true },
+    "clinic_waqf.spend_mark_paid": { canMaker: true },
     "clinic_waqf.deed_approve": { canMaker: true },
     "zakah.distribution_approve": { canMaker: true },
     "zakah.distribution_mark_paid": { canMaker: true },
@@ -313,6 +323,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "clinic_waqf.establish": { canChecker: true },
     "clinic_waqf.asset_add": { canChecker: true },
     "clinic_waqf.asset_dispose": { canChecker: true },
+    "clinic_waqf.works_approve": { canChecker: true },
+    "clinic_waqf.spend_approve": { canChecker: true },
     "asset.dispose": { canChecker: true },
     "distribution.approve": { canChecker: true },
     "waqf.milestone_complete": { canChecker: true },
@@ -368,6 +380,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.recipient_change": { canChecker: true },
   },
   audit_committee: {
+    "clinic_waqf.spend_mark_paid": { canChecker: true },
     "asset.dispose": { canChecker: true },
     "investment.change": { canChecker: true },
     "counterparty.onboard": { canChecker: true },
@@ -378,6 +391,8 @@ const governedRolePermissions: Record<string, Grants> = {
     "zakah.refund_mark_paid": { canChecker: true },
   },
   compliance_officer: {
+    "clinic_waqf.spend_approve": { canChecker: true },
+    "clinic_waqf.spend_mark_paid": { canChecker: true },
     "distribution.approve": { canChecker: true },
     "waqf.milestone_complete": { canChecker: true },
     "beneficiary.criteria_update": { canChecker: true },

@@ -33,6 +33,7 @@ import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-rol
 import { FounderSuccessionService } from "../founder-succession/founder-succession.service";
 import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
 import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
+import { ClinicSpendingService } from "../clinic-waqfs/clinic-spending.service";
 import {
   assertPermissionChangesAllowed,
   checkPermissionChanges,
@@ -386,6 +387,7 @@ export class GovernedActionsService {
     private readonly founderSuccessionService: FounderSuccessionService,
     private readonly clinicWaqfsService: ClinicWaqfsService,
     private readonly clinicAssetsService: ClinicAssetsService,
+    private readonly clinicSpendingService: ClinicSpendingService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       // ---- The clinic waqf (2026-11-17). A Shariah board member alone
@@ -440,6 +442,67 @@ export class GovernedActionsService {
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicAssetsService.approveDispose(payload, ctx.governedActionId, tx);
             return { auditAction: "clinic_asset.disposed", entityType: "ClinicAsset", entityId: after.id, before, after };
+          },
+        },
+      ],
+      // Clinic waqf endowment spending (slice 5b). Works projects: the
+      // Board. Payments: the Board or Compliance approves; Compliance or the
+      // Audit Committee confirms it was paid, which books it.
+      [
+        "clinic_waqf.works_approve",
+        {
+          validatePropose: (payload) => this.clinicSpendingService.validateWorksProposal(payload),
+          checkDuplicate: (payload) => this.clinicSpendingService.checkDuplicateWorks(payload),
+          describePayload: (payload) => this.clinicSpendingService.describeWorks(payload),
+          describeCurrentState: (payload) => this.clinicSpendingService.currentWorksState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicSpendingService.approveWorks(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_works.approved", entityType: "ClinicWorksProject", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.clinicSpendingService.rejectWorks(payload, tx);
+            return {
+              auditAction: "clinic_works.rejected",
+              entityType: "ClinicWorksProject",
+              entityId: (payload as { worksProjectId: string }).worksProjectId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "clinic_waqf.spend_approve",
+        {
+          validatePropose: (payload) => this.clinicSpendingService.validateSpendProposal(payload),
+          checkDuplicate: (payload) => this.clinicSpendingService.checkDuplicateSpend(payload),
+          describePayload: (payload) => this.clinicSpendingService.describeSpend(payload),
+          describeCurrentState: (payload) => this.clinicSpendingService.currentSpendState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicSpendingService.approveSpend(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_spend.approved", entityType: "ClinicSpend", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.clinicSpendingService.rejectSpend(payload, tx);
+            return {
+              auditAction: "clinic_spend.rejected",
+              entityType: "ClinicSpend",
+              entityId: (payload as { spendId: string }).spendId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "clinic_waqf.spend_mark_paid",
+        {
+          validatePropose: (payload) => this.clinicSpendingService.validatePaidProposalAsync(payload),
+          checkDuplicate: (payload) => this.clinicSpendingService.checkDuplicatePaid(payload),
+          describePayload: (payload) => this.clinicSpendingService.describePaid(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicSpendingService.markPaid(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_spend.paid", entityType: "ClinicSpend", entityId: after.id, before, after };
           },
         },
       ],

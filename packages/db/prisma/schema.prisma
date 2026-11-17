@@ -387,6 +387,8 @@ model User {
   clinicWaqfDeedsCreated         ClinicWaqfDeed[]                @relation("ClinicWaqfDeedCreator")
   clinicGiftsInitiated           ClinicGift[]                    @relation("ClinicGiftInitiator")
   clinicAssetsRecorded           ClinicAsset[]                   @relation("ClinicAssetRecorder")
+  clinicWorksCreated             ClinicWorksProject[]            @relation("ClinicWorksCreator")
+  clinicSpendsCreated            ClinicSpend[]                   @relation("ClinicSpendCreator")
   createdInvestmentPlacements    InvestmentPlacement[]
   sentMessages                   Message[]
   mfaBackupCodes                 MfaBackupCode[]
@@ -1189,6 +1191,9 @@ model GovernedAction {
   approvedClinicWaqfDeed    ClinicWaqfDeed?      @relation("ClinicWaqfDeedApproval")
   approvedClinicAsset       ClinicAsset?         @relation("ClinicAssetApproval")
   disposedClinicAsset       ClinicAsset?         @relation("ClinicAssetDisposal")
+  approvedClinicWorks       ClinicWorksProject?  @relation("ClinicWorksApproval")
+  approvedClinicSpend       ClinicSpend?         @relation("ClinicSpendApproval")
+  paidClinicSpend           ClinicSpend?         @relation("ClinicSpendPayment")
 
   @@index([waqfId])
   @@index([status])
@@ -1717,6 +1722,9 @@ model Counterparty {
 
   zakahDistributions ZakahDistribution[]
   licenses           CounterpartyLicense[]
+
+  clinicWorksProjects ClinicWorksProject[] @relation("ClinicWorksContractor")
+  clinicSpends        ClinicSpend[]        @relation("ClinicSpendPayee")
 
   @@map("counterparties")
 }
@@ -4017,6 +4025,9 @@ model ClinicWaqf {
 
   assets ClinicAsset[]
 
+  worksProjects ClinicWorksProject[]
+  spends        ClinicSpend[]
+
   @@map("clinic_waqfs")
 }
 
@@ -4094,6 +4105,7 @@ enum ClinicJournalEntrySource {
   manual_adjustment
   asset_added
   asset_disposed
+  spend_paid
 }
 
 // Append-only, like every Birr ledger: a mistake is corrected with a new,
@@ -4205,6 +4217,11 @@ enum ClinicAssetKind {
   other
 }
 
+enum ClinicAssetAcquisition {
+  donated
+  purchased
+}
+
 enum ClinicAssetStatus {
   proposed // recorded, waiting for the Board (clinic_waqf.asset_add)
   active // in the endowment's register
@@ -4223,9 +4240,9 @@ enum ClinicAssetStatus {
 // care details (room, service dates, warranty) are kept up to date by
 // staff. Never deleted (triggers).
 model ClinicAsset {
-  id               String            @id @default(uuid())
+  id               String                 @id @default(uuid())
   clinicWaqfId     String
-  clinicWaqf       ClinicWaqf        @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  clinicWaqf       ClinicWaqf             @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
   kind             ClinicAssetKind
   name             String
   description      String?
@@ -4235,26 +4252,132 @@ model ClinicAsset {
   valuationNote    String
   // Who gave it, as they want it recorded.
   donorName        String?
-  acquiredOn       DateTime          @db.Date
+  acquiredOn       DateTime               @db.Date
   serialNumber     String?
   location         String?
-  warrantyUntil    DateTime?         @db.Date
-  lastServicedOn   DateTime?         @db.Date
-  nextServiceDue   DateTime?         @db.Date
-  status           ClinicAssetStatus @default(proposed)
+  warrantyUntil    DateTime?              @db.Date
+  lastServicedOn   DateTime?              @db.Date
+  nextServiceDue   DateTime?              @db.Date
+  status           ClinicAssetStatus      @default(proposed)
   createdByUserId  String
-  createdByUser    User              @relation("ClinicAssetRecorder", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  approvalActionId String?           @unique
-  approvalAction   GovernedAction?   @relation("ClinicAssetApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
-  disposalActionId String?           @unique
-  disposalAction   GovernedAction?   @relation("ClinicAssetDisposal", fields: [disposalActionId], references: [id], onDelete: Restrict)
-  disposedOn       DateTime?         @db.Date
+  createdByUser    User                   @relation("ClinicAssetRecorder", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  approvalActionId String?                @unique
+  approvalAction   GovernedAction?        @relation("ClinicAssetApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  disposalActionId String?                @unique
+  disposalAction   GovernedAction?        @relation("ClinicAssetDisposal", fields: [disposalActionId], references: [id], onDelete: Restrict)
+  disposedOn       DateTime?              @db.Date
   disposalNote     String?
   // What a sale or exchange brought into the endowment, in naira (0 if scrapped).
   disposalProceeds Decimal?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  // donated (slice 5a), or bought with endowment cash (slice 5b, ClinicSpend).
+  acquisition      ClinicAssetAcquisition @default(donated)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  purchase ClinicSpend?
 
   @@index([clinicWaqfId])
   @@map("clinic_assets")
+}
+
+// ---- Clinic waqf endowment spending (2026-11-17, clinic slice 5b) ----
+// Endowment cash turned into the endowment's own premises and equipment:
+// buying equipment, and paying for building or renovation work stage by
+// stage. Both stay in the endowment (1500 / 1000). Paid by bank transfer
+// from the clinic waqf's account, never a Paystack payout, and booked only
+// once a second person confirms the bank reference, as zakah
+// distributions are.
+
+enum ClinicWorksRoute {
+  build_on_donated_land
+  build_on_bought_land
+  renovate
+}
+
+enum ClinicWorksStatus {
+  proposed
+  approved // the Board approved the route and budget (clinic_waqf.works_approve)
+  rejected
+}
+
+// Building or renovation work on a clinic waqf's premises: the route the
+// Board chose for the site, the contractor (a vetted Counterparty) and the
+// budget the quantity surveyor priced. Stage payments (ClinicSpend) never
+// add up to more than the budget.
+model ClinicWorksProject {
+  id               String            @id @default(uuid())
+  clinicWaqfId     String
+  clinicWaqf       ClinicWaqf        @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  name             String
+  route            ClinicWorksRoute
+  contractorId     String
+  contractor       Counterparty      @relation("ClinicWorksContractor", fields: [contractorId], references: [id], onDelete: Restrict)
+  budget           Decimal
+  // The quantity surveyor's costing and the comparison behind the route.
+  budgetNote       String
+  status           ClinicWorksStatus @default(proposed)
+  approvalActionId String?           @unique
+  approvalAction   GovernedAction?   @relation("ClinicWorksApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  createdByUserId  String
+  createdByUser    User              @relation("ClinicWorksCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  spends ClinicSpend[]
+
+  @@index([clinicWaqfId])
+  @@map("clinic_works_projects")
+}
+
+enum ClinicSpendKind {
+  equipment // buying a piece of equipment; becomes a ClinicAsset once paid
+  works_stage // one certified stage of a works project
+}
+
+enum ClinicSpendStatus {
+  pending_approval
+  approved
+  rejected
+  paid
+}
+
+// One payment out of a clinic waqf's endowment cash. A Mutawalli Officer
+// proposes it (clinic_waqf.spend_approve: checker Board of Trustees or
+// Compliance); it's then paid by bank transfer from the clinic waqf's
+// account and booked only when a second person confirms the bank's
+// reference (clinic_waqf.spend_mark_paid: checker Compliance or the Audit
+// Committee). Spending never exceeds the endowment's cash, and a works
+// stage never takes its project past budget (both checked under a lock).
+model ClinicSpend {
+  id                  String              @id @default(uuid())
+  clinicWaqfId        String
+  clinicWaqf          ClinicWaqf          @relation(fields: [clinicWaqfId], references: [id], onDelete: Restrict)
+  kind                ClinicSpendKind
+  worksProjectId      String?
+  worksProject        ClinicWorksProject? @relation(fields: [worksProjectId], references: [id], onDelete: Restrict)
+  payeeId             String
+  payee               Counterparty        @relation("ClinicSpendPayee", fields: [payeeId], references: [id], onDelete: Restrict)
+  description         String
+  amount              Decimal
+  // The supplier's invoice, or the engineer's certificate for a works stage.
+  supportingReference String
+  status              ClinicSpendStatus   @default(pending_approval)
+  approvalActionId    String?             @unique
+  approvalAction      GovernedAction?     @relation("ClinicSpendApproval", fields: [approvalActionId], references: [id], onDelete: Restrict)
+  approvedAt          DateTime?
+  paymentActionId     String?             @unique
+  paymentAction       GovernedAction?     @relation("ClinicSpendPayment", fields: [paymentActionId], references: [id], onDelete: Restrict)
+  paidOn              DateTime?           @db.Date
+  bankReference       String?
+  // Equipment: the asset it bought, created when it's paid.
+  assetId             String?             @unique
+  asset               ClinicAsset?        @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  createdByUserId     String
+  createdByUser       User                @relation("ClinicSpendCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([clinicWaqfId])
+  @@index([worksProjectId])
+  @@map("clinic_spends")
 }

@@ -8,6 +8,7 @@ import {
 import { ClinicLedgerService } from "./clinic-ledger.service";
 import { ClinicGiftsService } from "./clinic-gifts.service";
 import { ClinicAssetsService, RecordClinicAssetInput, UpdateClinicAssetCareInput } from "./clinic-assets.service";
+import { ClinicSpendingService, CreateClinicSpendInput, ProposeClinicWorksInput } from "./clinic-spending.service";
 import { AuthenticatedBirrStaff, CurrentBirrStaff } from "../../common/auth/current-birr-staff";
 import { RequiresAccess } from "../../common/guards/permission.guard";
 
@@ -22,6 +23,7 @@ export class ClinicWaqfsController {
     private readonly ledger: ClinicLedgerService,
     private readonly gifts: ClinicGiftsService,
     private readonly assets: ClinicAssetsService,
+    private readonly spending: ClinicSpendingService,
   ) {}
 
   @Post()
@@ -86,6 +88,30 @@ export class ClinicWaqfsController {
   @Get(":id/assets")
   listAssets(@Param("id") id: string) {
     return this.assets.list(id);
+  }
+
+  // Endowment spending (slice 5b). Approving a works project or a payment,
+  // and confirming a payment was made, go through POST /governed-actions.
+  @Post(":id/works")
+  @RequiresAccess("clinic_waqf.manage")
+  proposeWorks(@Param("id") id: string, @Body() body: ProposeClinicWorksInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.spending.proposeWorks(id, body, staff.userId);
+  }
+
+  @Get(":id/works")
+  listWorks(@Param("id") id: string) {
+    return this.spending.listWorks(id);
+  }
+
+  @Post(":id/spends")
+  @RequiresAccess("clinic_waqf.manage")
+  createSpend(@Param("id") id: string, @Body() body: CreateClinicSpendInput, @CurrentBirrStaff() staff: AuthenticatedBirrStaff) {
+    return this.spending.createSpend(id, body, staff.userId);
+  }
+
+  @Get(":id/spends")
+  listSpends(@Param("id") id: string) {
+    return this.spending.listSpends(id);
   }
 
   @Get(":id/gifts")
