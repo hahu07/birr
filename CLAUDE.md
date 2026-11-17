@@ -1146,6 +1146,26 @@ Slice 5a, the asset register (built, `ClinicAsset`,
 - **Next:** buying equipment with endowment cash, and building work paid
   by stage, come with endowment spending (slice 5b).
 
+Slice 5b, endowment spending (built, `ClinicWorksProject`, `ClinicSpend`,
+`ClinicSpendingService`). Endowment cash becomes the endowment's own
+premises and equipment (1500/1000), so it stays in the endowment.
+- **Works projects:** a Mutawalli Officer proposes the route, contractor
+  (an active Counterparty) and the quantity surveyor's budget; the Board
+  approves (`clinic_waqf.works_approve`).
+- **Payments:** a payment is equipment (invoice) or a works stage (the
+  engineer's certificate, to the project's own contractor).
+  - Approval: the Board **or** Compliance (`clinic_waqf.spend_approve`).
+  - Paying: by bank transfer from the clinic waqf's account, never a
+    Paystack payout.
+  - Booking: only once Compliance **or** the Audit Committee confirms the
+    bank reference (`clinic_waqf.spend_mark_paid`). Paid equipment joins
+    the asset register at cost (`acquisition: purchased`).
+- **Limits, under the clinic row lock:** proposed and approved payments
+  never exceed the endowment's cash (1000), and a project's stages never
+  exceed its budget.
+- **Database:** what a payment or project is never changes; status only
+  moves forward; never deleted.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

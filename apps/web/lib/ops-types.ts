@@ -1704,3 +1704,29 @@ export interface ClinicAsset {
   disposalProceeds: string | null;
   createdByUser: { id: string; fullName: string };
 }
+
+// GET /clinic-waqfs/:id/works and /spends (2026-11-17, clinic slice 5b).
+export interface ClinicWorksProject {
+  id: string;
+  name: string;
+  route: "build_on_donated_land" | "build_on_bought_land" | "renovate";
+  contractor: { id: string; name: string };
+  budget: string;
+  budgetNote: string;
+  status: "proposed" | "approved" | "rejected";
+  spends: { amount: string; status: string }[];
+}
+
+export interface ClinicSpend {
+  id: string;
+  kind: "equipment" | "works_stage";
+  payee: { id: string; name: string };
+  worksProject: { id: string; name: string } | null;
+  description: string;
+  amount: string;
+  supportingReference: string;
+  status: "pending_approval" | "approved" | "rejected" | "paid";
+  paidOn: string | null;
+  bankReference: string | null;
+  createdAt: string;
+}
