@@ -500,7 +500,7 @@ function ContributionForm({
             <label htmlFor="contribution-donor-name" className="mb-1.5 block text-sm font-medium text-slate-700">
               Full name (optional)
             </label>
-            <Input id="contribution-donor-name" value={donorFullName} onChange={(e) => setDonorFullName(e.target.value)} />
+            <Input check="name" id="contribution-donor-name" value={donorFullName} onChange={(e) => setDonorFullName(e.target.value)} />
           </div>
         </div>
 
@@ -541,7 +541,7 @@ function ContributionForm({
                 <label htmlFor="contribution-id-number" className="mb-1.5 block text-sm font-medium text-slate-700">
                   ID number
                 </label>
-                <Input id="contribution-id-number" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
+                <Input check="reference" id="contribution-id-number" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} />
               </div>
             </div>
           </div>

@@ -6,6 +6,7 @@ import { fieldLabel } from "./messages";
 import { IsOptional } from "class-validator";
 import { RegisterCounterpartyInput } from "../../modules/counterparties/counterparties.service";
 import { CreateZakahRecipientInput } from "../../modules/zakah/zakah-distributions.service";
+import { ZakahPayerIdentityInput } from "../../modules/zakah/zakah-payments.service";
 
 // Every form's fields are checked the same way (owner's decision,
 // 2026-11-16), through the same pipe the API uses.
@@ -155,5 +156,22 @@ describe("fields that keep their own rules are trimmed too", () => {
   test("a reason padded with spaces still has to be a sentence", async () => {
     const errors = await errorsFor(CreateZakahRecipientInput, { ...recipient, eligibilityReason: "   poor     " });
     expect(errors).toEqual([expect.stringMatching(/why this person qualifies/)]);
+  });
+});
+
+describe("names need letters and ID numbers need digits, wherever they're asked for", () => {
+  test("a giver's identity: '1234' isn't a name and 'adewale' isn't an ID number", async () => {
+    expect(await errorsFor(ZakahPayerIdentityInput, { fullName: "1234", idType: "national_id", idNumber: "adewale" })).toEqual([
+      "Full name must contain letters.",
+      "Id number should include digits, like RC 1909785.",
+    ]);
+    const ok = (await run(ZakahPayerIdentityInput, { fullName: " Amina Bello ", idType: "national_id", idNumber: " 12345678901 " })) as ZakahPayerIdentityInput;
+    expect(ok).toMatchObject({ fullName: "Amina Bello", idNumber: "12345678901" });
+  });
+
+  test("a zakah recipient's bank and account names need letters", async () => {
+    const recipient = { name: "Amina Bello", categories: ["fuqara"], eligibilityReason: "Widowed, no income, three children at home." };
+    const errors = await errorsFor(CreateZakahRecipientInput, { ...recipient, bankName: "058", accountName: "0123456789" });
+    expect(errors).toEqual(["Bank name must contain letters.", "Account name must contain letters."]);
   });
 });

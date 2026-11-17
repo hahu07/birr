@@ -11,7 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate } from "../../../lib/format";
 import type { FounderMembership, PrimaryContactSuccession } from "../../../lib/types";
-import { Alert, Badge, Button, Select } from "@birr/ui";
+import { Alert, Badge, Button, Select, Input } from "@birr/ui";
 import { Panel, PanelHeader } from "../_components/ui";
 import { Field, inputClass } from "../_components/form";
 
@@ -300,10 +300,10 @@ function SuccessionForm({
         {choice === "new" && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Their full name" htmlFor="succession-name">
-              <input id="succession-name" required minLength={2} value={newFullName} onChange={(e) => setNewFullName(e.target.value)} className={inputClass} />
+              <Input check="name" id="succession-name" required minLength={2} value={newFullName} onChange={(e) => setNewFullName(e.target.value)} />
             </Field>
             <Field label="Their email" htmlFor="succession-email" hint="Birr invites them once it approves.">
-              <input id="succession-email" type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className={inputClass} />
+              <Input id="succession-email" type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
             </Field>
           </div>
         )}

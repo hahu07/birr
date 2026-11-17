@@ -12,9 +12,9 @@ import { formatDate, humanize } from "../../../lib/format";
 import { useFounderSession } from "../../../lib/founder-session";
 import { markNotificationsReadForEntity } from "../../../lib/notifications";
 import type { FounderMembership, Invitation } from "../../../lib/types";
-import { Alert, Badge, Button, IconPlus, Select, Skeleton } from "@birr/ui";
+import { Alert, Badge, Button, IconPlus, Select, Skeleton, Input } from "@birr/ui";
 import { linkButton, PageHeader, Panel, PanelHeader } from "../_components/ui";
-import { Field, inputClass } from "../_components/form";
+import { Field } from "../_components/form";
 import { SuccessionSection } from "./SuccessionSection";
 
 const ROLE_OPTIONS: FounderMembership["permissionLevel"][] = ["viewer", "requester", "primary_contact"];
@@ -247,7 +247,7 @@ function InviteForm({ onInvited, onCancel }: { onInvited: () => void; onCancel: 
       )}
       <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_12rem]">
         <Field label="Email" htmlFor="invite-email">
-          <input
+          <Input
             id="invite-email"
             type="email"
             required
@@ -255,7 +255,6 @@ function InviteForm({ onInvited, onCancel }: { onInvited: () => void; onCancel: 
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="colleague@example.com"
-            className={inputClass}
           />
         </Field>
         <Field label="Role" htmlFor="invite-role">

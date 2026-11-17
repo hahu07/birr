@@ -1,4 +1,4 @@
-import { IdField, PhoneField, Trimmed } from "../../common/validation/fields";
+import { IdField, PhoneField, Trimmed, HasLetters } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEnum, IsInt, IsNumberString, IsOptional, IsString, Matches, MaxLength, Min, MinLength } from "class-validator";
 import { prisma, Prisma, ZakahCategory, ZakahDistribution, ZakahPool } from "@birr/db";
@@ -24,6 +24,7 @@ export class CreateZakahRecipientInput {
   @IsString()
   @MinLength(2)
   @MaxLength(200)
+  @HasLetters()
   name!: string;
 
   @IsArray()
@@ -47,6 +48,7 @@ export class CreateZakahRecipientInput {
   @IsOptional()
   @IsString()
   @MaxLength(100)
+  @HasLetters()
   bankName?: string;
 
   @IsOptional()
@@ -57,6 +59,7 @@ export class CreateZakahRecipientInput {
   @IsOptional()
   @IsString()
   @MaxLength(200)
+  @HasLetters()
   accountName?: string;
 }
 

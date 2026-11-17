@@ -1,4 +1,4 @@
-import { IdField, Trimmed } from "../../common/validation/fields";
+import { IdField, Trimmed, HasLetters } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 import { prisma, Prisma, WaqfType } from "@birr/db";
@@ -23,6 +23,7 @@ export class ProposeCauseSuggestionInput {
   @IsString()
   @IsNotEmpty({ message: "Name is required." })
   @MaxLength(NAME_MAX_LENGTH)
+  @HasLetters()
   name!: string;
 
   @Trimmed()

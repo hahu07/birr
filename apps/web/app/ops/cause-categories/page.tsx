@@ -474,7 +474,7 @@ function CauseCategoryForm({
         </div>
         <div className="min-w-[10rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Name</label>
-          <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+          <Input check="name" required autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
         </div>
         <div className="min-w-[16rem] flex-[2] space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Description</label>

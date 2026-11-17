@@ -426,7 +426,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[14rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Name</label>
-          <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ramadan Relief" />
+          <Input check="name" required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ramadan Relief" />
         </div>
         <div className="min-w-[12rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Slug (public URL)</label>

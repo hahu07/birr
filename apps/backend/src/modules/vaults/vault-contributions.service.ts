@@ -1,4 +1,4 @@
-import { EmailField, IdField, LongTextField, NameField, TextField, Trimmed } from "../../common/validation/fields";
+import { EmailField, IdField, LongTextField, NameField, TextField, Trimmed, HasLetters, HasDigits } from "../../common/validation/fields";
 import { FIELD_LIMITS } from "@birr/shared";
 import { randomUUID } from "crypto";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
@@ -87,6 +87,7 @@ export class InitiateVaultContributionInput {
 
   @IsOptional()
   @TextField(FIELD_LIMITS.code)
+  @HasDigits()
   idNumber?: string;
 
   /** Give this every month (see RecurringGift): needs an email, a card, and naira. */
@@ -100,6 +101,7 @@ export class VaultDonorIdentityInput {
   @Trimmed()
   @IsString()
   @MaxLength(200)
+  @HasLetters()
   fullName!: string;
 
   @IsEnum(IdType)
@@ -108,6 +110,7 @@ export class VaultDonorIdentityInput {
   @Trimmed()
   @IsString()
   @MaxLength(50)
+  @HasDigits()
   idNumber!: string;
 }
 

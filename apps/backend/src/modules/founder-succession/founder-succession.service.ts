@@ -1,4 +1,4 @@
-import { EmailField, IdField, Trimmed } from "../../common/validation/fields";
+import { EmailField, IdField, Trimmed, HasLetters } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { prisma, Prisma, type PrimaryContactSuccession } from "@birr/db";
@@ -28,6 +28,7 @@ class NewContactInput {
   @IsOptional()
   @IsString()
   @MaxLength(200)
+  @HasLetters()
   newFullName?: string;
 }
 

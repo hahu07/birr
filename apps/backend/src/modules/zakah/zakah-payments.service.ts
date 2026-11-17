@@ -1,4 +1,4 @@
-import { EmailField, TextField, Trimmed } from "../../common/validation/fields";
+import { EmailField, TextField, Trimmed, HasLetters, HasDigits } from "../../common/validation/fields";
 import { FIELD_LIMITS } from "@birr/shared";
 import { randomUUID } from "crypto";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
@@ -48,6 +48,7 @@ export class ZakahPayerIdentityInput {
   @Trimmed()
   @IsString()
   @MaxLength(200)
+  @HasLetters()
   fullName!: string;
 
   @IsEnum(IdType)
@@ -56,6 +57,7 @@ export class ZakahPayerIdentityInput {
   @Trimmed()
   @IsString()
   @MaxLength(50)
+  @HasDigits()
   idNumber!: string;
 }
 
@@ -128,6 +130,7 @@ export class InitiateZakahPaymentInput {
   @IsOptional()
   @IsString()
   @MaxLength(200)
+  @HasLetters()
   payerFullName?: string;
 
   @IsOptional()
@@ -138,6 +141,7 @@ export class InitiateZakahPaymentInput {
   @IsOptional()
   @IsString()
   @MaxLength(50)
+  @HasDigits()
   idNumber?: string;
 
   // Which ruleset version produced the figure, when it came from the

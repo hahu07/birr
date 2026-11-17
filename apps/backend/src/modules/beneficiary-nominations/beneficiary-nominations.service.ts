@@ -1,4 +1,4 @@
-import { EmailField, IdField, PhoneField, Trimmed } from "../../common/validation/fields";
+import { EmailField, IdField, PhoneField, Trimmed, HasLetters } from "../../common/validation/fields";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ArrayMaxSize, ArrayMinSize, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
@@ -31,6 +31,7 @@ export class ProposeBeneficiaryNominationInput {
   @IsString()
   @IsNotEmpty({ message: "Name is required." })
   @MaxLength(NAME_MAX_LENGTH)
+  @HasLetters()
   name!: string;
 
   @IsOptional()
@@ -80,6 +81,7 @@ export class BulkBeneficiaryNominationRow {
   @IsString()
   @IsNotEmpty({ message: "Name is required." })
   @MaxLength(NAME_MAX_LENGTH)
+  @HasLetters()
   name!: string;
 
   @IsOptional()

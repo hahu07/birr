@@ -1,4 +1,4 @@
-import { EmailField, Trimmed } from "../../common/validation/fields";
+import { EmailField, Trimmed, HasLetters, HasDigits } from "../../common/validation/fields";
 import { randomBytes } from "crypto";
 import { GiverWhatsAppService } from "../../common/whatsapp/giver-whatsapp.service";
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
@@ -62,6 +62,7 @@ export class GiverIdentityInput {
   @Trimmed()
   @IsString()
   @MaxLength(200)
+  @HasLetters()
   fullName!: string;
 
   @IsEnum(IdType)
@@ -70,6 +71,7 @@ export class GiverIdentityInput {
   @Trimmed()
   @IsString()
   @MaxLength(50)
+  @HasDigits()
   idNumber!: string;
 }
 

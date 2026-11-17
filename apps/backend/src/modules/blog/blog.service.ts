@@ -1,4 +1,4 @@
-import { Trimmed } from "../../common/validation/fields";
+import { Trimmed, HasLetters } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { prisma, Prisma } from "@birr/db";
@@ -46,6 +46,7 @@ export class CreateBlogArticleInput {
   @IsString()
   @MinLength(2)
   @MaxLength(120)
+  @HasLetters()
   authorName!: string;
 }
 
@@ -89,6 +90,7 @@ export class UpdateBlogArticleInput {
   @IsString()
   @MinLength(2)
   @MaxLength(120)
+  @HasLetters()
   authorName?: string;
 }
 

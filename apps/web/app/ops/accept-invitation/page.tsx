@@ -255,7 +255,7 @@ function AcceptInvitationContent() {
               <FormSection step={2} title="Your account" description="How you'll sign in to Birr.">
                 <div className="space-y-5">
                   <Field label="Full name" htmlFor="fullName">
-                    <Input id="fullName" required value={fullName} onChange={(e) => setFullName(e.target.value)} />
+                    <Input check="name" id="fullName" required value={fullName} onChange={(e) => setFullName(e.target.value)} />
                   </Field>
                   <Field label="Password" htmlFor="password" hint="At least 8 characters.">
                     <PasswordInput
@@ -353,7 +353,7 @@ function AcceptInvitationContent() {
           <label htmlFor="fullName" className="mb-1.5 block text-sm font-medium text-slate-700">
             Full name
           </label>
-          <Input
+          <Input check="name"
             id="fullName"
             required
             autoFocus

@@ -208,7 +208,7 @@ export function ArticleForm({
           </div>
           <div className="min-w-[12rem] flex-1 space-y-1.5">
             <label className="text-sm font-medium text-slate-700">Author (byline)</label>
-            <Input required value={values.authorName} onChange={(e) => set("authorName", e.target.value)} />
+            <Input check="name" required value={values.authorName} onChange={(e) => set("authorName", e.target.value)} />
           </div>
         </div>
 

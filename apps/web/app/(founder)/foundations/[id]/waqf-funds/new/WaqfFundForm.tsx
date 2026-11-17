@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetchJson } from "../../../../../../lib/api";
 import { formatMoney } from "../../../../../../lib/format";
 import type { Waqf } from "../../../../../../lib/types";
-import { Alert, Button, IconShieldCheck, Select } from "@birr/ui";
+import { Alert, Button, IconShieldCheck, Select, Input } from "@birr/ui";
 import { TYPE_GUIDE, WaqfTypeGuide } from "./WaqfTypeGuide";
 import { ChoiceCard, Field, FormSection, inputClass, MoneyInput } from "../../../../_components/form";
 import { CountrySelect } from "../../../../../../components/forms/CountrySelect";
@@ -285,13 +285,12 @@ export function WaqfFundForm({
             <FormSection step={1} title="Fund details" description="What this Waqf Fund is, and the jurisdiction it's governed under.">
               <div className="space-y-5">
                 <Field label="Name" htmlFor="name">
-                  <input
+                  <Input check="name"
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
                     placeholder='e.g. "Northern Nigeria Orphan Education Fund"'
-                    className={inputClass}
                   />
                 </Field>
                 <fieldset>

@@ -326,7 +326,7 @@ function RecordPaymentForm({ distribution, onDone, onCancel }: { distribution: Z
     <form onSubmit={submit} className="space-y-2 text-left">
       <div>
         <label htmlFor={`ref-${distribution.id}`} className="mb-1 block text-xs font-medium text-slate-700">Bank reference</label>
-        <Input id={`ref-${distribution.id}`} required minLength={3} maxLength={100} value={bankReference} onChange={(e) => setBankReference(e.target.value)} />
+        <Input check="reference" id={`ref-${distribution.id}`} required minLength={3} maxLength={100} value={bankReference} onChange={(e) => setBankReference(e.target.value)} />
       </div>
       <div>
         <label htmlFor={`paid-${distribution.id}`} className="mb-1 block text-xs font-medium text-slate-700">Paid on</label>
@@ -675,7 +675,7 @@ function RecipientForm({ existing, onCreated, onCancel }: { existing?: ZakahReci
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="rec-name" className="text-sm font-medium text-slate-700">Full name</label>
-          <Input id="rec-name" required value={name} onChange={(e) => setName(e.target.value)} />
+          <Input check="name" id="rec-name" required value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <label htmlFor="rec-phone" className="text-sm font-medium text-slate-700">Phone (optional)</label>
@@ -700,7 +700,7 @@ function RecipientForm({ existing, onCreated, onCancel }: { existing?: ZakahReci
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
           <label htmlFor="rec-bank" className="text-sm font-medium text-slate-700">Bank</label>
-          <Input id="rec-bank" value={bankName} onChange={(e) => setBankName(e.target.value)} />
+          <Input check="name" id="rec-bank" value={bankName} onChange={(e) => setBankName(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <label htmlFor="rec-account" className="text-sm font-medium text-slate-700">Account number</label>
@@ -708,7 +708,7 @@ function RecipientForm({ existing, onCreated, onCancel }: { existing?: ZakahReci
         </div>
         <div className="space-y-1.5">
           <label htmlFor="rec-account-name" className="text-sm font-medium text-slate-700">Account name</label>
-          <Input id="rec-account-name" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+          <Input check="name" id="rec-account-name" value={accountName} onChange={(e) => setAccountName(e.target.value)} />
         </div>
       </div>
       {existing?.status === "approved" && (

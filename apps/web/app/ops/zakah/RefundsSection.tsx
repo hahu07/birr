@@ -101,7 +101,7 @@ export function RefundButton({ payment, onRequested }: { payment: ZakahPaymentRo
       <p className="pt-1 text-xs font-medium text-slate-700">Payer&apos;s bank account for the refund</p>
       <div>
         <label htmlFor={`rf-bank-${payment.id}`} className="mb-1 block text-xs text-slate-700">Bank</label>
-        <Input id={`rf-bank-${payment.id}`} required value={bankName} onChange={(e) => setBankName(e.target.value)} />
+        <Input check="name" id={`rf-bank-${payment.id}`} required value={bankName} onChange={(e) => setBankName(e.target.value)} />
       </div>
       <div>
         <label htmlFor={`rf-acct-${payment.id}`} className="mb-1 block text-xs text-slate-700">Account number</label>
@@ -109,7 +109,7 @@ export function RefundButton({ payment, onRequested }: { payment: ZakahPaymentRo
       </div>
       <div>
         <label htmlFor={`rf-name-${payment.id}`} className="mb-1 block text-xs text-slate-700">Account name</label>
-        <Input id={`rf-name-${payment.id}`} required value={accountName} onChange={(e) => setAccountName(e.target.value)} />
+        <Input check="name" id={`rf-name-${payment.id}`} required value={accountName} onChange={(e) => setAccountName(e.target.value)} />
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex gap-2">
@@ -241,7 +241,7 @@ function RefundRowActions({ refund: r, onChange }: { refund: ZakahRefundRow; onC
         <form onSubmit={submit} className="space-y-2">
           <div>
             <label htmlFor={`rfp-ref-${r.id}`} className="mb-1 block text-xs font-medium text-slate-700">Bank reference</label>
-            <Input id={`rfp-ref-${r.id}`} required minLength={3} maxLength={100} value={bankReference} onChange={(e) => setBankReference(e.target.value)} />
+            <Input check="reference" id={`rfp-ref-${r.id}`} required minLength={3} maxLength={100} value={bankReference} onChange={(e) => setBankReference(e.target.value)} />
           </div>
           <div>
             <label htmlFor={`rfp-date-${r.id}`} className="mb-1 block text-xs font-medium text-slate-700">Paid on</label>

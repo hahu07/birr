@@ -91,7 +91,7 @@ export default function SignUpPage() {
           <label htmlFor="fullName" className="mb-1 block text-sm font-medium text-slate-700">
             Full name
           </label>
-          <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+          <Input check="name" id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
         </div>
         <div>
           <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">

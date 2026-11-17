@@ -1,4 +1,4 @@
-import { IdField, Trimmed } from "../../common/validation/fields";
+import { IdField, Trimmed, HasLetters } from "../../common/validation/fields";
 import { BadRequestException, ConflictException, Injectable, NotFoundException, Logger } from "@nestjs/common";
 import { moneyText, whatsAppNotice } from "../../common/giving/giver-contact";
 import { TwilioWhatsAppAdapter } from "../../common/whatsapp/twilio-whatsapp.adapter";
@@ -39,6 +39,7 @@ export class CreateZakahRefundInput {
   @IsString()
   @MinLength(2)
   @MaxLength(100)
+  @HasLetters()
   bankName!: string;
 
   @Matches(/^\d{10}$/, { message: "accountNumber must be a 10-digit NUBAN." })
@@ -48,6 +49,7 @@ export class CreateZakahRefundInput {
   @IsString()
   @MinLength(2)
   @MaxLength(200)
+  @HasLetters()
   accountName!: string;
 }
 

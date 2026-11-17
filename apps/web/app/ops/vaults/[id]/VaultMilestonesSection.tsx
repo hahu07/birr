@@ -253,7 +253,7 @@ function MilestoneForm({ vaultId, nextSequence, onCreated }: { vaultId: string; 
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[14rem] flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Name</label>
-          <Input required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Foundation laid" />
+          <Input check="name" required autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Foundation laid" />
         </div>
         <div className="w-20 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Order</label>
