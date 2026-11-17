@@ -225,7 +225,10 @@ describe("ClinicGiftsService", () => {
       if (!threshold || threshold.thresholdAmount.lte(0)) return; // no NGN threshold configured in this database
       const giver = email("aml");
       const donor = await prisma.vaultDonor.create({ data: { email: giver } });
-      const vault = await prisma.vault.findFirstOrThrow({ where: { currency: "NGN" } });
+      // Its own Vault: a fresh database (CI) has none.
+      const vault = await prisma.vault.create({
+        data: { name: "Clinic AML Fixture Vault", slug: `clinic-aml-${randomUUID().slice(0, 8)}`, type: "project", currency: "NGN", jurisdiction: "NG", createdByUserId: makerUserId },
+      });
       const nearly = threshold.thresholdAmount.minus(1000);
       await prisma.vaultContribution.create({
         data: { vaultId: vault.id, donorId: donor.id, amount: nearly, currency: "NGN", provider: "paystack", providerReference: randomUUID(), status: "confirmed", confirmedAt: new Date() },
