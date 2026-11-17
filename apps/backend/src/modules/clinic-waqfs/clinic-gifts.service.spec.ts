@@ -132,6 +132,16 @@ describe("ClinicGiftsService", () => {
   });
 
   describe("before giving opens", () => {
+    test("the public list shows established clinics, and whether each is taking gifts", async () => {
+      subaccount = undefined;
+      expect((await service.publicClinics()).find((c) => c.slug === clinic.slug)).toMatchObject({ available: false });
+      subaccount = "ACCT_test_clinic";
+      expect((await service.publicClinics()).find((c) => c.slug === clinic.slug)).toMatchObject({ name: "Gift Test Clinic", city: "Ibadan", available: true });
+      // A draft clinic isn't listed.
+      const draft = await clinics.create({ name: "Draft Clinic", slug: `draft-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+      expect((await service.publicClinics()).some((c) => c.slug === draft.slug)).toBe(false);
+    });
+
     test("terms say it isn't open until the subaccount is set, and give the approved deed", async () => {
       subaccount = undefined;
       const closed = await service.givingTerms(clinic.slug);

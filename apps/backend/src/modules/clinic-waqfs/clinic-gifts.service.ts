@@ -192,12 +192,21 @@ export class ClinicGiftsService {
   }
 
   /** Established clinic waqfs, for a Founder choosing where to give. */
-  publicClinics() {
-    return prisma.clinicWaqf.findMany({
-      where: { status: "established" },
-      orderBy: { establishedAt: "asc" },
-      select: { name: true, slug: true, city: true, description: true },
-    });
+  /**
+   * Established clinics, for the public /clinics list and a Founder's Clinic
+   * support page. `available` is the same test the giving page uses: an
+   * approved deed, and the subaccount set.
+   */
+  async publicClinics() {
+    const [clinics, subaccount] = await Promise.all([
+      prisma.clinicWaqf.findMany({
+        where: { status: "established" },
+        orderBy: { establishedAt: "asc" },
+        select: { name: true, slug: true, city: true, description: true, deeds: { where: { status: "approved" }, select: { id: true } } },
+      }),
+      this.subaccount(),
+    ]);
+    return clinics.map(({ deeds, ...c }) => ({ ...c, available: deeds.length > 0 && subaccount !== undefined }));
   }
 
   /** What the public giving page needs: the clinic, whether it's taking gifts, and the deed to accept. */
