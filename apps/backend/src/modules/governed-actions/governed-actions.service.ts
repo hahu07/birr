@@ -36,6 +36,7 @@ import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
 import { ClinicSpendingService } from "../clinic-waqfs/clinic-spending.service";
 import { ClinicPriceListsService } from "../clinic-waqfs/clinic-price-lists.service";
 import { ClinicClaimsService } from "../clinic-waqfs/clinic-claims.service";
+import { ClinicReserveService } from "../clinic-waqfs/clinic-reserve.service";
 import {
   assertPermissionChangesAllowed,
   checkPermissionChanges,
@@ -392,6 +393,7 @@ export class GovernedActionsService {
     private readonly clinicSpendingService: ClinicSpendingService,
     private readonly clinicPriceListsService: ClinicPriceListsService,
     private readonly clinicClaimsService: ClinicClaimsService,
+    private readonly clinicReserveService: ClinicReserveService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       // ---- The clinic waqf (2026-11-17). A Shariah board member alone
@@ -573,6 +575,21 @@ export class GovernedActionsService {
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicClaimsService.markPaid(payload, ctx.governedActionId, tx);
             return { auditAction: "clinic_claim.paid", entityType: "ClinicClaim", entityId: after.id, before, after };
+          },
+        },
+      ],
+      // The equipment replacement reserve's share of income (slice 9): the
+      // Board sets it.
+      [
+        "clinic_waqf.reserve_share_set",
+        {
+          validatePropose: (payload) => this.clinicReserveService.validateShareProposal(payload),
+          checkDuplicate: (payload) => this.clinicReserveService.checkDuplicateShare(payload),
+          describePayload: (payload) => this.clinicReserveService.describeShare(payload),
+          describeCurrentState: (payload) => this.clinicReserveService.currentShareState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicReserveService.approveShare(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_waqf.reserve_share_set", entityType: "ClinicWaqf", entityId: after.id, before, after };
           },
         },
       ],

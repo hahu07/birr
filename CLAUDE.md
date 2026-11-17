@@ -1245,6 +1245,27 @@ Slice 8, public page and monthly report (built, `ClinicMonthlyReport`,
   approved claims. Nothing about any giver, patient or member of staff is
   shown.
 
+Slice 9, equipment replacement reserve (built, `ClinicReserveService`).
+**Owner's decision, 2026-11-17: a reserve is allowed, since it is spent
+only on replacing the waqf's own equipment. Built before the Shariah
+Supervisory Board ruled on it** (plan question 9); add it to the Board's
+review list.
+- **Funding:** the Board sets a share of the endowment's income
+  (`clinic_waqf.reserve_share_set`; a Mutawalli Officer proposes). Each
+  income receipt sets that share aside at once, rounded down to the kobo
+  (1150 / 1100, both running fund), in the same transaction that records
+  it. A CHECK refuses a share without an approving action.
+- **Use:** only replacing equipment on the register (`ClinicSpend` kind
+  `reserve_replacement`, naming `replacesAssetId`; one live replacement per
+  asset, a database index). It goes through endowment spending's approve,
+  pay and confirm flow, limited by the reserve's cash; endowment cash never
+  pays for it, and the reserve never pays anything else.
+- **Booking once paid:** the running fund pays (5200 / 1150), the new
+  equipment joins the endowment (1500 / 3100), and the item it replaces is
+  retired at its booked value (3000 / 1500). Each pot balances on its own.
+- **Public page:** what the reserve holds and has spent, under the running
+  fund.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

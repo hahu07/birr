@@ -18,6 +18,7 @@ import { countryLabel } from "@birr/shared";
 import { AssetsCard } from "./AssetsCard";
 import { SpendingCard } from "./SpendingCard";
 import { InvestmentsCard } from "./InvestmentsCard";
+import { ReserveCard } from "./ReserveCard";
 import { PriceListCard } from "./PriceListCard";
 import { ClaimsCard } from "./ClaimsCard";
 import { PublicReportCard } from "./PublicReportCard";
@@ -309,6 +310,8 @@ export default function ClinicWaqfPage() {
       <SpendingCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
 
       <InvestmentsCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
+
+      <ReserveCard clinic={clinic} ledger={ledger} pending={pending} onChange={load} />
 
       <PriceListCard clinicWaqfId={clinic.id} />
 

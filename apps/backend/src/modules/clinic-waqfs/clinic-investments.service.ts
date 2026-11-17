@@ -5,6 +5,7 @@ import { InvestmentInstrumentType, prisma, Prisma } from "@birr/db";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { ClinicLedgerService } from "./clinic-ledger.service";
 import { ClinicSpendingService } from "./clinic-spending.service";
+import { ClinicReserveService } from "./clinic-reserve.service";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -81,6 +82,7 @@ export class ClinicInvestmentsService {
   constructor(
     private readonly ledger: ClinicLedgerService,
     private readonly spending: ClinicSpendingService,
+    private readonly reserve: ClinicReserveService,
   ) {}
 
   async create(clinicWaqfId: string, input: CreateClinicInvestmentInput, actorUserId: string) {
@@ -166,6 +168,8 @@ export class ClinicInvestmentsService {
           { accountCode: "4100", credit: amount },
         ],
       });
+      // The equipment replacement reserve's share, set aside at once (slice 9).
+      await this.reserve.setAsideFromIncome(tx, clinicWaqfId, income.id, amount);
       await tx.auditLog.create({
         data: { actorType: "birr_staff", actorUserId, action: "clinic_investment.income_recorded", entityType: "ClinicInvestmentIncome", entityId: income.id, after: income as any },
       });

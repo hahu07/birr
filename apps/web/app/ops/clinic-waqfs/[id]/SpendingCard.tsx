@@ -6,13 +6,15 @@
 // the Board or Compliance approves each payment; it's paid by bank transfer
 // from the clinic waqf's account; Compliance or the Audit Committee
 // confirms the bank reference, which books it. Never more than the
-// endowment's free cash, nor a project's budget.
+// endowment's free cash, nor a project's budget. Replacing registered
+// equipment from the equipment replacement reserve (slice 9) goes the same
+// way, limited by the reserve instead; the old item is retired once paid.
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatAmount, formatDate, humanize } from "../../../../lib/format";
 import { useStaffSession } from "../../../../lib/staff-session";
-import type { ClinicSpend, ClinicWorksProject, Counterparty, GovernedAction } from "../../../../lib/ops-types";
+import type { ClinicAsset, ClinicSpend, ClinicWorksProject, Counterparty, GovernedAction } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, Input, Select } from "@birr/ui";
 import { FIELD_LIMITS } from "@birr/shared";
 
@@ -30,6 +32,7 @@ export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: stri
   const [works, setWorks] = useState<ClinicWorksProject[] | null>(null);
   const [spends, setSpends] = useState<ClinicSpend[] | null>(null);
   const [partners, setPartners] = useState<Counterparty[]>([]);
+  const [equipment, setEquipment] = useState<ClinicAsset[]>([]);
   const [pending, setPending] = useState<GovernedAction[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,11 +44,13 @@ export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: stri
       apiFetchJson<ClinicSpend[]>(`/clinic-waqfs/${clinicWaqfId}/spends`),
       apiFetchJson<Counterparty[]>("/counterparties?status=active"),
       apiFetchJson<GovernedAction[]>("/governed-actions?status=proposed"),
+      apiFetchJson<ClinicAsset[]>(`/clinic-waqfs/${clinicWaqfId}/assets`),
     ])
-      .then(([w, s, c, actions]) => {
+      .then(([w, s, c, actions, a]) => {
         setWorks(w);
         setSpends(s);
         setPartners(c);
+        setEquipment(a.filter((x) => x.kind === "equipment" && x.status === "active"));
         setPending(actions.filter((a) => a.permission.key.startsWith("clinic_waqf.")));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
@@ -107,6 +112,7 @@ export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: stri
       )}
       {form === "spend" && works && (
         <SpendForm
+          equipment={equipment}
           partners={partners}
           works={works.filter((w) => w.status === "approved")}
           disabled={busy}
@@ -158,7 +164,13 @@ export function SpendingCard({ clinicWaqfId, established }: { clinicWaqfId: stri
                     ₦{formatAmount(s.amount)} to {s.payee.name}: {s.description}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {s.kind === "works_stage" ? `${s.worksProject?.name} · engineer's certificate` : s.kind === "investment" ? "Investment placement · agreement" : "Equipment · invoice"}{" "}
+                    {s.kind === "works_stage"
+                      ? `${s.worksProject?.name} · engineer's certificate`
+                      : s.kind === "investment"
+                        ? "Investment placement · agreement"
+                        : s.kind === "reserve_replacement"
+                          ? `From the reserve, replacing ${s.replacesAsset?.name ?? "equipment"} · invoice`
+                          : "Equipment · invoice"}{" "}
                     {s.supportingReference}
                     {s.paidOn ? ` · paid ${formatDate(s.paidOn)}, bank reference ${s.bankReference}` : ""}
                   </p>
@@ -267,18 +279,29 @@ function WorksForm({
 }
 
 function SpendForm({
+  equipment,
   partners,
   works,
   disabled,
   onSubmit,
 }: {
+  equipment: ClinicAsset[];
   partners: Counterparty[];
   works: ClinicWorksProject[];
   disabled: boolean;
-  onSubmit: (input: { kind: ClinicSpend["kind"]; worksProjectId?: string; payeeId: string; description: string; amount: string; supportingReference: string }) => void;
+  onSubmit: (input: {
+    kind: ClinicSpend["kind"];
+    worksProjectId?: string;
+    replacesAssetId?: string;
+    payeeId: string;
+    description: string;
+    amount: string;
+    supportingReference: string;
+  }) => void;
 }) {
   const [kind, setKind] = useState<ClinicSpend["kind"]>("equipment");
   const [worksProjectId, setWorksProjectId] = useState("");
+  const [replacesAssetId, setReplacesAssetId] = useState("");
   const [payeeId, setPayeeId] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -292,6 +315,7 @@ function SpendForm({
         onSubmit({
           kind,
           ...(kind === "works_stage" && { worksProjectId }),
+          ...(kind === "reserve_replacement" && { replacesAssetId }),
           payeeId: kind === "works_stage" ? (project?.contractor.id ?? "") : payeeId,
           description,
           amount: clean(amount),
@@ -305,8 +329,22 @@ function SpendForm({
           <Select value={kind} onChange={(e) => setKind(e.target.value as ClinicSpend["kind"])} className="w-full">
             <option value="equipment">Equipment</option>
             <option value="works_stage">A works stage</option>
+            <option value="reserve_replacement">Replacing equipment, from the reserve</option>
           </Select>
         </div>
+        {kind === "reserve_replacement" && (
+          <div className="min-w-[12rem] flex-1 space-y-1.5">
+            <label className="block text-sm font-medium text-slate-700">Equipment it replaces</label>
+            <Select value={replacesAssetId} onChange={(e) => setReplacesAssetId(e.target.value)} className="w-full">
+              <option value="">Choose…</option>
+              {equipment.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} (₦{formatAmount(a.value)})
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
         {kind === "works_stage" ? (
           <div className="min-w-[12rem] flex-1 space-y-1.5">
             <label className="block text-sm font-medium text-slate-700">Approved project</label>
@@ -341,7 +379,7 @@ function SpendForm({
         </div>
       </div>
       <div className="flex justify-end">
-        <Button type="submit" disabled={disabled || (kind === "works_stage" ? !project : !payeeId)}>
+        <Button type="submit" disabled={disabled || (kind === "works_stage" ? !project : !payeeId) || (kind === "reserve_replacement" && !replacesAssetId)}>
           Save payment
         </Button>
       </div>

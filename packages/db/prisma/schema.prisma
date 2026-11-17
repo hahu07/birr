@@ -1203,6 +1203,7 @@ model GovernedAction {
   paidClinicSpend           ClinicSpend?         @relation("ClinicSpendPayment")
   approvedClinicPriceList   ClinicPriceList?     @relation("ClinicPriceListApproval")
   assignedClinicOperator    ClinicWaqf?          @relation("ClinicOperatorAssignment")
+  setClinicReserveShare     ClinicWaqf?          @relation("ClinicReserveShare")
   approvedClinicClaim       ClinicClaim?         @relation("ClinicClaimApproval")
   paidClinicClaim           ClinicClaim?         @relation("ClinicClaimPayment")
 
@@ -4069,6 +4070,13 @@ model ClinicWaqf {
 
   monthlyReports ClinicMonthlyReport[]
 
+  // The equipment replacement reserve (slice 9): this share of every
+  // endowment income receipt is set aside automatically (1150 / 1100). Set
+  // by the Board (clinic_waqf.reserve_share_set).
+  reserveSharePercent  Int             @default(0)
+  reserveShareActionId String?         @unique
+  reserveShareAction   GovernedAction? @relation("ClinicReserveShare", fields: [reserveShareActionId], references: [id], onDelete: Restrict)
+
   @@map("clinic_waqfs")
 }
 
@@ -4149,6 +4157,7 @@ enum ClinicJournalEntrySource {
   spend_paid
   investment_returned
   claim_paid
+  reserve_set_aside
 }
 
 // Append-only, like every Birr ledger: a mistake is corrected with a new,
@@ -4317,7 +4326,9 @@ model ClinicAsset {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  purchase ClinicSpend?
+  purchase   ClinicSpend?
+  // Reserve replacements of this asset (slice 9).
+  replacedBy ClinicSpend[] @relation("ClinicSpendReplaces")
 
   @@index([clinicWaqfId])
   @@map("clinic_assets")
@@ -4376,6 +4387,7 @@ enum ClinicSpendKind {
   equipment // buying a piece of equipment; becomes a ClinicAsset once paid
   works_stage // one certified stage of a works project
   investment // placing endowed cash in a Shariah-screened ClinicInvestment (slice 5c)
+  reserve_replacement // replacing registered equipment from the equipment replacement reserve (slice 9)
 }
 
 enum ClinicSpendStatus {
@@ -4418,6 +4430,10 @@ model ClinicSpend {
   // Equipment: the asset it bought, created when it's paid.
   assetId             String?             @unique
   asset               ClinicAsset?        @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  // A reserve replacement (slice 9): the registered equipment it replaces,
+  // retired when it's paid.
+  replacesAssetId     String?
+  replacesAsset       ClinicAsset?        @relation("ClinicSpendReplaces", fields: [replacesAssetId], references: [id], onDelete: Restrict)
   createdByUserId     String
   createdByUser       User                @relation("ClinicSpendCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
   createdAt           DateTime            @default(now())

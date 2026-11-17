@@ -188,6 +188,9 @@ export class ClinicReportsService {
         subsidisedVisits: bal("5000"),
         runningCosts: bal("5100"),
         cash: bal("1100"),
+        // Set aside from income for replacing equipment (slice 9).
+        equipmentReserve: bal("1150"),
+        spentOnReplacements: bal("5200"),
       },
       // Zakah, never part of the waqf: paid for poor or needy patients' bills.
       zakah: { paidForPatients: (zakahPaid._sum.zakahAmount ?? zero()).toFixed(2) },

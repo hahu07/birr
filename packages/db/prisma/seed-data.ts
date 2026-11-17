@@ -133,6 +133,7 @@ const governedPermissions = [
   { key: "clinic_waqf.operator_assign", category: "clinic", requiresMakerChecker: true, description: "Assign the licensed healthcare provider that runs a clinic waqf's clinic, whose monthly claims it pays." },
   { key: "clinic_waqf.claim_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a clinic's monthly claim, checked against the price list, bands and monthly cap, so its running fund part may be paid." },
   { key: "clinic_waqf.claim_mark_paid", category: "clinic", requiresMakerChecker: true, description: "Confirm a clinic claim's running fund part was paid, from the bank's reference, which books it." },
+  { key: "clinic_waqf.reserve_share_set", category: "clinic", requiresMakerChecker: true, description: "Set the share of a clinic waqf's endowment income set aside for replacing its equipment." },
   { key: "clinic_waqf.deed_approve", category: "clinic", requiresMakerChecker: true, description: "Approve a version of a clinic waqf's deed, the wording supporters accept when they endow." },
   { key: "zakah.ruleset_approve", category: "zakah", requiresMakerChecker: true, description: "Approve a draft zakah ruleset, making it the version the zakah calculator applies." },
   { key: "zakah.metal_price_set", category: "zakah", requiresMakerChecker: true, description: "Set the gold and silver prices that fix the zakah nisab in Naira." },
@@ -297,6 +298,7 @@ type Grants = Record<string, { canMaker?: boolean; canChecker?: boolean }>;
 
 const governedRolePermissions: Record<string, Grants> = {
   mutawalli_officer: {
+    "clinic_waqf.reserve_share_set": { canMaker: true },
     "clinic_waqf.operator_assign": { canMaker: true },
     "clinic_waqf.claim_approve": { canMaker: true },
     "clinic_waqf.claim_mark_paid": { canMaker: true },
@@ -338,6 +340,7 @@ const governedRolePermissions: Record<string, Grants> = {
   // Compliance and the Audit Committee (see their definitions above) —
   // except zakah.refund_approve, which the Board approves.
   board_of_trustees: {
+    "clinic_waqf.reserve_share_set": { canChecker: true },
     "clinic_waqf.operator_assign": { canChecker: true },
     "clinic_waqf.claim_approve": { canChecker: true },
     "clinic_waqf.establish": { canChecker: true },
