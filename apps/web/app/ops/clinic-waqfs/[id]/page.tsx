@@ -15,6 +15,7 @@ import { useStaffSession } from "../../../../lib/staff-session";
 import type { ClinicGiftRow, ClinicLedger, ClinicLedgerRow, ClinicWaqf, ClinicWaqfDeed, GovernedAction } from "../../../../lib/ops-types";
 import { Alert, Badge, Button, Card, DetailGrid, EmptyState, Skeleton } from "@birr/ui";
 import { countryLabel } from "@birr/shared";
+import { AssetsCard } from "./AssetsCard";
 
 const DEED_TONE: Record<ClinicWaqfDeed["status"], "success" | "warning" | "neutral" | "danger"> = {
   draft: "warning",
@@ -297,6 +298,8 @@ export default function ClinicWaqfPage() {
           ))}
         </ul>
       </Card>
+
+      <AssetsCard clinicWaqfId={clinic.id} established={clinic.status === "established"} />
 
       <Card className="mt-5">
         <p className="text-sm font-medium text-slate-700">Gifts</p>

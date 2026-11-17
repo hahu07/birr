@@ -32,6 +32,7 @@ import { withFounderScope } from "../../common/db/founder-scope";
 import { ROLE_NAMES, holdsAnyRole, roleNames } from "../../common/auth/staff-roles";
 import { FounderSuccessionService } from "../founder-succession/founder-succession.service";
 import { ClinicWaqfsService } from "../clinic-waqfs/clinic-waqfs.service";
+import { ClinicAssetsService } from "../clinic-waqfs/clinic-assets.service";
 import {
   assertPermissionChangesAllowed,
   checkPermissionChanges,
@@ -384,6 +385,7 @@ export class GovernedActionsService {
     private readonly zakahFitrService: ZakahFitrService,
     private readonly founderSuccessionService: FounderSuccessionService,
     private readonly clinicWaqfsService: ClinicWaqfsService,
+    private readonly clinicAssetsService: ClinicAssetsService,
   ) {
     this.handlers = new Map<string, GovernedActionHandler>([
       // ---- The clinic waqf (2026-11-17). A Shariah board member alone
@@ -400,6 +402,44 @@ export class GovernedActionsService {
           onApprove: async (payload, tx, ctx) => {
             const { before, after } = await this.clinicWaqfsService.approveDeed(payload, ctx.governedActionId, ctx.checkerUserId, tx);
             return { auditAction: "clinic_waqf_deed.approved", entityType: "ClinicWaqfDeed", entityId: after.id, before, after };
+          },
+        },
+      ],
+      // Clinic waqf assets (slice 5a): the Board approves adding a gift in
+      // kind to the endowment, and disposing of an asset.
+      [
+        "clinic_waqf.asset_add",
+        {
+          validatePropose: (payload) => this.clinicAssetsService.validateAddProposal(payload),
+          checkDuplicate: (payload) => this.clinicAssetsService.checkDuplicateAdd(payload),
+          describePayload: (payload) => this.clinicAssetsService.describeAdd(payload),
+          describeCurrentState: (payload) => this.clinicAssetsService.currentAddState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicAssetsService.approveAdd(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_asset.added", entityType: "ClinicAsset", entityId: after.id, before, after };
+          },
+          onReject: async (payload, tx) => {
+            const result = await this.clinicAssetsService.rejectAdd(payload, tx);
+            return {
+              auditAction: "clinic_asset.rejected",
+              entityType: "ClinicAsset",
+              entityId: (payload as { assetId: string }).assetId,
+              before: result?.before ?? null,
+              after: result?.after ?? null,
+            };
+          },
+        },
+      ],
+      [
+        "clinic_waqf.asset_dispose",
+        {
+          validatePropose: (payload) => this.clinicAssetsService.validateDisposeProposalAsync(payload),
+          checkDuplicate: (payload) => this.clinicAssetsService.checkDuplicateDispose(payload),
+          describePayload: (payload) => this.clinicAssetsService.describeDispose(payload),
+          describeCurrentState: (payload) => this.clinicAssetsService.currentDisposeState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicAssetsService.approveDispose(payload, ctx.governedActionId, tx);
+            return { auditAction: "clinic_asset.disposed", entityType: "ClinicAsset", entityId: after.id, before, after };
           },
         },
       ],
