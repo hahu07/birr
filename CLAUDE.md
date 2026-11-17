@@ -986,12 +986,26 @@ scratch database as production, changing each value as staff would, and
 seeding again.
 
 **Update, 2026-11-17 — the Mother & Child Clinic, a fourth product, and
-its first slice.** Owner's decisions (plan:
+its first slice.**
+
+**In short:** the Mother & Child Clinic is a Birr product in its own
+right: a laboratory and clinic in Ibadan, for women and young children
+only, offered as one bundle and held in one clinic waqf. Birr establishes
+the waqf, Founders and the public endow or give to it, and a licensed
+operator runs the clinic. Birr stays trustee: it holds the assets, pays
+agreed subsidies and checks the results, but does not practise medicine.
+All nine slices are built (the clinic is the first waqf programme:
+`modules/waqf-programmes` and `modules/clinics`): a waqf Birr
+establishes, which Founders and the public alike can fund, by endowing it
+or giving to its running costs, once or monthly. It isn't open for giving
+yet; see "Next steps for the clinic" below.
+
+Owner's decisions (plan:
 https://claude.ai/artifact/54WMUrmrsk7kL17AjAa5GC):
 - **What it is:** a laboratory and mini clinic in Ibadan for women and
   young children only, sold as one bundle and held in **one clinic waqf
   that Birr establishes and curates** (not Founders' own funds owning
-  parts). Its own module when built, never extending Waqf or Vault tables.
+  parts). Its own module, never extending Waqf or Vault tables.
 - **Two pots:** an endowment (kept: premises, equipment, invested cash)
   and a running fund (spent). Founders (with an account, from ₦250,000)
   and the public (no account, from ₦5,000) choose to endow or give. Zakah
