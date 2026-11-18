@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { WaqfProgrammesController } from "./waqf-programmes.controller";
 import { WaqfProgrammesService } from "./waqf-programmes.service";
 import { ProgrammeLedgerService } from "./programme-ledger.service";
+import { ProgrammeReportService } from "./programme-report.service";
 import { ProgrammeGiftsController } from "./programme-gifts.controller";
 import { ProgrammeGiftsService } from "./programme-gifts.service";
 import { ProgrammeAssetsService } from "./programme-assets.service";
@@ -25,7 +26,7 @@ import { RecurringGiftsCoreModule } from "../recurring-gifts/recurring-gifts-cor
   imports: [SettingsModule, WhatsAppOtpModule, VaultsModule, RecurringGiftsCoreModule],
   controllers: [WaqfProgrammesController, ProgrammeGiftsController],
   // PaystackAdapter: each consuming module provides its own instance, as VaultsModule and ZakahModule do.
-  providers: [WaqfProgrammesService, ProgrammeLedgerService, ProgrammeGiftsService, ProgrammeAssetsService, ProgrammeSpendingService, ProgrammeInvestmentsService, ProgrammeReserveService, ResendProgrammeReceiptEmailAdapter, PaystackAdapter],
+  providers: [WaqfProgrammesService, ProgrammeLedgerService, ProgrammeGiftsService, ProgrammeAssetsService, ProgrammeSpendingService, ProgrammeInvestmentsService, ProgrammeReserveService, ProgrammeReportService, ResendProgrammeReceiptEmailAdapter, PaystackAdapter],
   exports: [WaqfProgrammesService, ProgrammeLedgerService, ProgrammeGiftsService, ProgrammeAssetsService, ProgrammeSpendingService, ProgrammeInvestmentsService, ProgrammeReserveService],
 })
 export class WaqfProgrammesModule {}

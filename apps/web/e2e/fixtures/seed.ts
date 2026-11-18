@@ -15,7 +15,7 @@
 // directly, and why each one was decided that way.
 import { prisma } from "@birr/db";
 import { hash } from "bcryptjs";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 
 // Matches apps/backend/src/common/auth/password-auth.ts's own constant —
 // not imported from there (a different workspace package, and this is
@@ -203,4 +203,41 @@ export async function seedWaqfWithActiveAsset() {
     },
   });
   return { foundationId: foundation.id, waqfId: waqf.id, assetId: asset.id, assetName: asset.name };
+}
+
+/** A decided governed action, to hang a programme approval on (as the backend specs do). */
+async function decidedAction(key: string, makerUserId: string, checkerUserId: string, payload: object) {
+  const permission = await prisma.permission.findUniqueOrThrow({ where: { key } });
+  return prisma.governedAction.create({
+    data: { permissionId: permission.id, makerType: "human", makerUserId, checkerUserId, status: "approved", decidedAt: new Date(), payload },
+  });
+}
+
+/**
+ * An established need-based waqf taking gifts (need-based NB4): an approved
+ * deed version, establishment, and its own Paystack subaccount, each with a
+ * decided approval by a second person, as the Ops Console's two-person
+ * steps leave it. Waqf programmes are never deleted (a trigger), so these
+ * stay in the database, named per run.
+ */
+export async function seedNeedBasedWaqf(makerUserId: string, checkerUserId: string) {
+  const run = randomUUID().slice(0, 8);
+  const programme = await prisma.waqfProgramme.create({
+    data: { product: "need_based", name: `E2E Households Waqf ${run}`, slug: `e2e-need-${run}`, city: "Kano", jurisdiction: "NG", createdByUserId: makerUserId },
+  });
+  const text = `Deed of the E2E Households Waqf ${run} waqf\n\n1. Establishment. A fixture deed for the end-to-end tests.`;
+  const deed = await prisma.waqfProgrammeDeed.create({
+    data: { programmeId: programme.id, version: 1, text, textHash: createHash("sha256").update(text, "utf8").digest("hex"), createdByUserId: makerUserId },
+  });
+  const deedAction = await decidedAction("waqf_programme.deed_approve", makerUserId, checkerUserId, { deedId: deed.id, textHash: deed.textHash });
+  await prisma.waqfProgrammeDeed.update({ where: { id: deed.id }, data: { status: "approved", approvedAt: new Date(), approvedActionId: deedAction.id } });
+  const establish = await decidedAction("waqf_programme.establish", makerUserId, checkerUserId, { programmeId: programme.id });
+  await prisma.waqfProgramme.update({ where: { id: programme.id }, data: { status: "established", establishedAt: new Date(), establishedActionId: establish.id } });
+  const subaccountCode = `ACCT_e2e${run}`;
+  const subaccount = await decidedAction("waqf_programme.subaccount_set", makerUserId, checkerUserId, { programmeId: programme.id, subaccountCode });
+  await prisma.waqfProgramme.update({
+    where: { id: programme.id },
+    data: { paystackSubaccountCode: subaccountCode, paystackSubaccountSetAt: new Date(), paystackSubaccountActionId: subaccount.id },
+  });
+  return { programmeId: programme.id, slug: programme.slug, name: programme.name };
 }

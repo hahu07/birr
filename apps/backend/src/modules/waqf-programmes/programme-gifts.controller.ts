@@ -4,6 +4,7 @@ import type { Request } from "express";
 import type { WaqfProgrammeProduct } from "@birr/db";
 import { ProgrammeGiftsService, InitiateProgrammeGiftInput, InitiateFounderProgrammeGiftInput } from "./programme-gifts.service";
 import { PRODUCTS } from "./programme-products";
+import { ProgrammeReportService } from "./programme-report.service";
 import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { Public } from "../../common/guards/public.decorator";
 
@@ -14,15 +15,30 @@ import { Public } from "../../common/guards/public.decorator";
 // public list of clinics and each clinic's report are in ClinicsModule.
 @Controller("programme-gifts")
 export class ProgrammeGiftsController {
-  constructor(private readonly service: ProgrammeGiftsService) {}
+  constructor(
+    private readonly service: ProgrammeGiftsService,
+    private readonly reports: ProgrammeReportService,
+  ) {}
+
+  private product(product: string): WaqfProgrammeProduct {
+    if (!Object.hasOwn(PRODUCTS, product)) throw new NotFoundException(`No product "${product}".`);
+    return product as WaqfProgrammeProduct;
+  }
 
   // One product's established programmes, for its public list (need-based
   // NB3: /need-based-waqf). The clinics keep their own GET /clinics.
   @Public()
   @Get("programmes/:product")
   programmes(@Param("product") product: string) {
-    if (!Object.hasOwn(PRODUCTS, product)) throw new NotFoundException(`No product "${product}".`);
-    return this.service.publicProgrammes(product as WaqfProgrammeProduct);
+    return this.service.publicProgrammes(this.product(product));
+  }
+
+  // One programme's public report, each pot on its own (need-based NB4).
+  // The clinics keep their own fuller one at GET /clinics/:slug/report.
+  @Public()
+  @Get("programmes/:product/:slug/report")
+  report(@Param("product") product: string, @Param("slug") slug: string) {
+    return this.reports.publicReport(this.product(product), slug);
   }
 
   @Public()
