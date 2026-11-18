@@ -26,9 +26,15 @@ describe("NeedBasedWaqfGivingPage", () => {
   });
 
   it("says support hasn't started, with no figure, and offers the endowment and the spending fund", async () => {
-    mockedFetch.mockResolvedValue(terms("need_based"));
+    mockedFetch.mockImplementation(async (path: string) =>
+      path.endsWith("/report")
+        ? { currency: "NGN", targets: { endowment: null, runningMonthly: null }, endowment: { endowed: "0", cash: "0", invested: "0" }, running: { gifts: "7500", endowmentIncome: "0", receivedThisMonth: "7500", held: "7500" } }
+        : terms("need_based"),
+    );
     render(<NeedBasedWaqfGivingPage />);
     await waitFor(() => expect(screen.getByText("Kano Households Waqf")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Held for support")).toBeTruthy());
+    expect(mockedFetch).toHaveBeenCalledWith("/programme-gifts/programmes/need_based/kano/report");
     expect(mockedFetch).toHaveBeenCalledWith("/programme-gifts/terms/kano");
     expect(screen.getByText("Support hasn't started yet")).toBeTruthy();
     expect(screen.getByText("Endow it")).toBeTruthy();

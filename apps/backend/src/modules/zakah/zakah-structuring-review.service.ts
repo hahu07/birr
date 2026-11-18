@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { prisma, Prisma } from "@birr/db";
+import { reviewName } from "../waqf-programmes/programme-products";
 
 const CURRENCY = "NGN";
 
@@ -108,8 +109,9 @@ export class ZakahStructuringReviewService {
    */
   private async acrossVault(rows: { ipAddress: string | null; row: PaymentRow }[], threshold: Prisma.Decimal | null) {
     const donor = { select: { email: true, whatsappNumber: true, fullName: true, idType: true } };
-    // Public clinic waqf gifts (2026-11-17) have the same givers as Vault,
-    // so they sit on the Vault side, their name marked as a clinic waqf.
+    // Public waqf programme gifts (2026-11-17) have the same givers as
+    // Vault, so they sit on the Vault side, their name marked with their
+    // product ("clinic waqf", "need-based waqf").
     const vaultGifts = [
       ...(await prisma.vaultContribution.findMany({
         where: { status: "confirmed", currency: CURRENCY, donorId: { not: null } },
@@ -119,10 +121,10 @@ export class ZakahStructuringReviewService {
       ...(
         await prisma.programmeGift.findMany({
           where: { status: "confirmed", currency: CURRENCY, donorId: { not: null } },
-          include: { donor, programme: { select: { name: true } } },
+          include: { donor, programme: { select: { name: true, product: true } } },
           orderBy: { createdAt: "desc" },
         })
-      ).map((g) => ({ ...g, vault: { name: `${g.programme.name} (clinic waqf)` } })),
+      ).map((g) => ({ ...g, vault: { name: reviewName(g.programme) } })),
     ];
     const vaultRow = (g: (typeof vaultGifts)[number]) => ({
       id: g.id,

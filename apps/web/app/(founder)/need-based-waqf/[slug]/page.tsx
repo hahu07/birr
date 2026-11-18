@@ -5,8 +5,13 @@
 // kifayah line are in place, and states no figure about support.
 import { useParams } from "next/navigation";
 import { ProgrammeGivingPage } from "../../_components/ProgrammeGivingPage";
+import { NeedBasedReport } from "./NeedBasedReport";
 
 export default function NeedBasedWaqfGivingPage() {
   const { slug } = useParams<{ slug: string }>();
-  return <ProgrammeGivingPage product="need_based" slug={slug} />;
+  return (
+    <ProgrammeGivingPage product="need_based" slug={slug}>
+      <NeedBasedReport slug={slug} />
+    </ProgrammeGivingPage>
+  );
 }

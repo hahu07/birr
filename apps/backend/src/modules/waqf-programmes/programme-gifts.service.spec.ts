@@ -15,6 +15,7 @@ import { FoundersService } from "../founders/founders.service";
 import { MfaService } from "../../common/auth/mfa.service";
 import { ProgrammeLedgerService } from "./programme-ledger.service";
 import { WaqfProgrammesService } from "./waqf-programmes.service";
+import { ProgrammeReportService } from "./programme-report.service";
 import type { ProgrammeGiftReceipt, ResendProgrammeReceiptEmailAdapter } from "./programme-receipt-email.adapter";
 
 // A fake Paystack: records what would be sent, and lets each test decide
@@ -395,6 +396,14 @@ describe("ProgrammeGiftsService", () => {
       expect((await service.publicProgrammes("clinic")).some((p) => p.slug === needBased.slug)).toBe(false);
       expect((await service.publicProgrammes("need_based")).find((p) => p.slug === needBased.slug)).toMatchObject({ available: true });
       expect((await service.givingTerms(needBased.slug)).clinic.product).toBe("need_based");
+
+      // Its public report shows each pot on its own, and the gift once confirmed.
+      await confirmViaWebhook(gift.id);
+      const reports = new ProgrammeReportService(new ProgrammeLedgerService());
+      const report = await reports.publicReport("need_based", needBased.slug);
+      expect(report.running).toMatchObject({ gifts: "7500.00", held: "7500.00" });
+      expect(report.endowment).toMatchObject({ endowed: "0.00" });
+      await expect(reports.publicReport("clinic", needBased.slug)).rejects.toThrow(NotFoundException);
     });
 
     test("a code is refused if it isn't a Paystack code, is unchanged, or is another programme's", async () => {

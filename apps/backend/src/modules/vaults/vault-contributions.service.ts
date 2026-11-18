@@ -20,6 +20,7 @@ import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { FunnelEventsService } from "../funnel-events/funnel-events.service";
 import { RecurringGiftsCoreService } from "../recurring-gifts/recurring-gifts-core.service";
 import type { SavedCardChargeResult } from "../contributions/providers/payment-provider.interface";
+import { reviewName } from "../waqf-programmes/programme-products";
 
 export class HoldVaultContributionInput {
   @LongTextField()
@@ -937,21 +938,21 @@ export class VaultContributionsService {
   }
 
   /**
-   * Public clinic waqf gifts in the shape the AML review reads Vault gifts
-   * in (2026-11-17): the clinic stands where the vault would, its name
-   * marked as a clinic waqf, so a reviewer sees both products' giving by
-   * the same people together.
+   * Public waqf programme gifts in the shape the AML review reads Vault
+   * gifts in (2026-11-17): the programme stands where the vault would, its
+   * name marked with its product ("clinic waqf", "need-based waqf"), so a
+   * reviewer sees every product's giving by the same people together.
    */
   private async clinicGiftsAsContributions(where: Prisma.ProgrammeGiftWhereInput) {
     const gifts = await prisma.programmeGift.findMany({
       where: { ...where, donorId: where.donorId ?? { not: null } },
-      include: { programme: { select: { id: true, name: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
+      include: { programme: { select: { id: true, name: true, product: true } }, donor: { select: { id: true, email: true, whatsappNumber: true, fullName: true, idType: true } } },
       orderBy: { createdAt: "desc" },
     });
     return gifts.map((g) => ({
       ...g,
       vaultId: g.programmeId,
-      vault: { id: g.programme.id, name: `${g.programme.name} (clinic waqf)` },
+      vault: { id: g.programme.id, name: reviewName(g.programme) },
     }));
   }
 

@@ -32,6 +32,11 @@ When hosting is chosen, these come on top of the checklist below:
 - **Platform Settings.** Paystack secret and webhook secret, the zakah
   subaccount code (no zakah is taken without it), Resend, Twilio, and
   Birr's contact email and phone.
+- **Each waqf programme's own subaccount** (the clinic waqf, the
+  need-based waqf). Not in Platform Settings: on the programme's Ops page
+  ("Where gifts settle"), a platform admin proposes its Paystack
+  subaccount code and the Board of Trustees or Compliance approves it
+  (`waqf_programme.subaccount_set`). No gift is taken until it's set.
 - **Paystack webhook.** Point Paystack's webhook URL at the deployed
   backend, and check one test payment confirms.
 - **Monitoring and backups.** Before any real money arrives, follow

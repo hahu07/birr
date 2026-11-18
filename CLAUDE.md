@@ -1563,6 +1563,35 @@ Need-based slice NB3, pages (built 2026-11-19, under the working name):
   item, the web folder `app/(founder)/need-based-waqf`, `PUBLIC_ROUTES` and
   the layout's title.
 
+Need-based slice NB4, finish (built 2026-11-19; with it the launch scope,
+giving first, is complete):
+- **AML review lists:** the Vault structuring review and zakah's
+  cross-product review already counted every programme's public gifts, but
+  named them all "(clinic waqf)". Each is now named by its product
+  (`reviewName` in `programme-products.ts`, typed so a new product needs
+  one).
+- **A public report, each pot on its own** (`ProgrammeReportService`;
+  `GET /programme-gifts/programmes/:product/:slug/report`), shown on the
+  need-based giving page:
+  - the endowment: endowed, invested, cash;
+  - the spending fund: gifts, endowment income, received this month, held
+    for support;
+  - nothing about support until it starts, and nothing about any giver.
+  - The clinic keeps its fuller report at `GET /clinics/:slug/report`.
+- **End-to-end:** `e2e/need-based-waqf.spec.ts`, with `seedNeedBasedWaqf`
+  (established, deed approved, own subaccount, each by a second person),
+  goes from the list to a gift to the spending fund. The Paystack checkout
+  is faked, as in `donation-flow.spec.ts`. It also checks a need-based
+  slug at a clinic address isn't found.
+- **Deploy checklist:** each programme's subaccount is set on its Ops page
+  by two people, not in Platform Settings.
+- **After launch (the support phase), gated on the licensed partner's
+  contract and the approved kifayah line:** people helped (the kifayah
+  line, poverty measures, two-person approval), the non-productive track
+  (allowances, bills), the financing fund through the partner (murabahah,
+  qard hasan, instalments, rescheduling, loss reserve), the productive
+  track's extras, zakah links and monthly figures.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

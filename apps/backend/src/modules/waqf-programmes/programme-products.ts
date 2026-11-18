@@ -26,6 +26,20 @@ export function productOf(programme: { product: WaqfProgrammeProduct }): WaqfPro
   return PRODUCTS[programme.product];
 }
 
+/**
+ * How a programme's gifts are named in the AML review lists, beside Vault
+ * gifts: "Kano Households (need-based waqf)". Typed by the database's
+ * products, so a new product needs its own name here.
+ */
+const REVIEW_NAMES: Record<WaqfProgrammeProduct, string> = {
+  clinic: "clinic waqf",
+  need_based: "need-based waqf",
+};
+
+export function reviewName(programme: { name: string; product: WaqfProgrammeProduct }): string {
+  return `${programme.name} (${REVIEW_NAMES[programme.product]})`;
+}
+
 /** The product's standard deed wording, filled in for this programme: a draft for Legal and the Shariah Supervisory Board. */
 export function standardDeedText(programme: { product: WaqfProgrammeProduct; name: string; city: string }): string {
   return DEED_TEMPLATES[programme.product](programme);
