@@ -11,7 +11,7 @@ import { ProgrammeSpendingService } from "./programme-spending.service";
 import { WaqfProgrammesService } from "./waqf-programmes.service";
 
 // A product's own parts, and payment kinds it doesn't list, are refused on
-// another product (2026-11-19, with the need-based waqf as the second
+// another product (2026-11-18, with the need-based waqf as the second
 // product): by the services, with a plain message, and by the database.
 // Programmes are never deleted (a trigger), so these fixtures stay in the
 // dev database, named per run.

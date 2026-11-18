@@ -190,7 +190,7 @@ export class ProgrammeGiftsService {
   /**
    * The Paystack subaccount a programme's gifts settle into: its own,
    * set by an approved waqf_programme.subaccount_set (need-based NB2,
-   * 2026-11-19). Undefined until then, and no gift is taken.
+   * 2026-11-18). Undefined until then, and no gift is taken.
    */
   private subaccount(programme: { paystackSubaccountCode: string | null }): string | undefined {
     return programme.paystackSubaccountCode ?? undefined;

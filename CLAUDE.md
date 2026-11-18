@@ -1477,7 +1477,7 @@ from the Board:
 - **Giving first, support later:** it takes gifts from launch; support
   starts once the partner and the kifayah line are in place.
 
-Need-based slice NB1, the product (built 2026-11-19; the launch plan's
+Need-based slice NB1, the product (built 2026-11-18; the launch plan's
 four slices are NB1 product, NB2 giving, NB3 pages, NB4 finish):
 - **A second product:** `WaqfProgrammeProduct.need_based`
   (`20261119000000_need_based_product`), in `WAQF_PROGRAMME_PRODUCTS` as
@@ -1507,7 +1507,7 @@ four slices are NB1 product, NB2 giving, NB3 pages, NB4 finish):
 - **Waits for later slices:** the financing pot, people helped and
   allowances wait for the support phase.
 
-Need-based slice NB2, giving (built 2026-11-19):
+Need-based slice NB2, giving (built 2026-11-18):
 - **Each waqf programme settles into its own Paystack subaccount**, on the
   programme (`paystackSubaccountCode`), not in Platform Settings.
   `CLINIC_WAQF_SUBACCOUNT_CODE` is gone. Owner's decision: two people
@@ -1532,7 +1532,7 @@ Need-based slice NB2, giving (built 2026-11-19):
 - **Next:** NB3, the public page under the chosen name, the Founder
   Portal page, and the Ops product filter.
 
-Need-based slice NB3, pages (built 2026-11-19, under the working name):
+Need-based slice NB3, pages (built 2026-11-18, under the working name):
 - **Public pages:** `/need-based-waqf` (list, from `GET
   /programme-gifts/programmes/:product`) and `/need-based-waqf/:slug`
   (giving), in the site menu as "Need-based waqf". Both say plainly that
@@ -1563,7 +1563,7 @@ Need-based slice NB3, pages (built 2026-11-19, under the working name):
   item, the web folder `app/(founder)/need-based-waqf`, `PUBLIC_ROUTES` and
   the layout's title.
 
-Need-based slice NB4, finish (built 2026-11-19; with it the launch scope,
+Need-based slice NB4, finish (built 2026-11-18; with it the launch scope,
 giving first, is complete):
 - **AML review lists:** the Vault structuring review and zakah's
   cross-product review already counted every programme's public gifts, but
