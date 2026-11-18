@@ -1377,8 +1377,10 @@ Shariah Supervisory Board and Legal decided their parts on 2026-11-18
   then establishing the clinic waqf (`waqf_programme.establish`), before
   launch.
 - **Finance:** open the clinic waqf's bank account and Paystack subaccount
-  by 2026-12-01, then set `CLINIC_WAQF_SUBACCOUNT_CODE` in Platform
-  Settings; no gift is taken until it's set.
+  by 2026-12-01. A platform admin then proposes its code on the
+  programme, and the Board or Compliance approves
+  (`waqf_programme.subaccount_set`, need-based NB2); no gift is taken
+  until it's set.
 - **Engineering:** choose always-on production hosting and deploy
   (`docs/deploy-checklist-2026-11.md`); monthly charges and the daily
   reconciliation need it.
@@ -1429,8 +1431,8 @@ sections 13 and 14.
     `CorpusMinimum` at ₦1,500,000; the dev database's ₦250,000 was set by
     staff);
   - mark the approved wordings as final versions;
-  - give each waqf programme its own Paystack subaccount setting (only
-    `CLINIC_WAQF_SUBACCOUNT_CODE` exists);
+  - give each waqf programme its own Paystack subaccount setting (done
+    in need-based NB2);
   - build the need-based waqf.
 - **Day-by-day plan:** the Claude Doc "Birr Launch Plan: 20 December
   2026" (https://claude.ai/artifact/VXRkYbsasUKpLMfQWTgXU5). Key dates: a
@@ -1500,10 +1502,35 @@ four slices are NB1 product, NB2 giving, NB3 pages, NB4 finish):
     placements alone. `programme_spend_kind_allowed` must match the list,
     which a test checks.
 - **No gift until NB2:** gifts settled into `CLINIC_WAQF_SUBACCOUNT_CODE`
-  for every programme. Now only a clinic has a subaccount, so a
-  need-based waqf takes no gift until NB2 gives each programme its own.
+  for every programme, so until NB2 (below) only a clinic had a
+  subaccount and a need-based waqf took no gift.
 - **Waits for later slices:** the financing pot, people helped and
   allowances wait for the support phase.
+
+Need-based slice NB2, giving (built 2026-11-19):
+- **Each waqf programme settles into its own Paystack subaccount**, on the
+  programme (`paystackSubaccountCode`), not in Platform Settings.
+  `CLINIC_WAQF_SUBACCOUNT_CODE` is gone. Owner's decision: two people
+  decide where a waqf's money settles. A platform admin proposes the
+  governed `waqf_programme.subaccount_set`, and the Board of Trustees or
+  Compliance approves it. No gift is taken until it's set, and one
+  programme can't use another's code.
+- **The database** (`20261119010000_programme_subaccount`): an `ACCT_`
+  code, set only with its approval and date (a CHECK), changed only with
+  a new approval, never cleared (a trigger).
+- **Giving works for every product:** the need-based waqf takes one-off
+  and monthly gifts, from the public and from Founders, to its endowment
+  (accepting the deed) or its spending fund, through the clinic's flow.
+  Receipts (email and WhatsApp) name each product's pots and say what each
+  pot does (`POT_PURPOSE`); the need-based waqf's say support starts
+  later, with no figure.
+- **Ops Console:** a "Where gifts settle" card on each programme. Fixed
+  along the way: the programme page, Spending and Claims cards looked for
+  pending proposals under `clinic_waqf.*`, renamed in step 2, so "waiting
+  for approval" never showed; the reserve card shows only for products
+  with a reserve.
+- **Next:** NB3, the public page under the chosen name, the Founder
+  Portal page, and the Ops product filter.
 
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed

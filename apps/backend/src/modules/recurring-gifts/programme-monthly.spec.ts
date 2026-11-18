@@ -26,7 +26,7 @@ describe("Monthly clinic waqf gifts", () => {
   const paystack = new FakeRecurringPaystack();
   const { core, emails } = createFakeRecurringGiftsCore(paystack);
   const settings = {
-    get: async (provider: string, key: string) => (provider === "paystack" && key === "CLINIC_WAQF_SUBACCOUNT_CODE" ? "ACCT_test_clinic" : undefined),
+    get: async () => undefined,
   } as unknown as SettingsService;
   const unused = {} as any;
   const vaultContributions = new VaultContributionsService(
@@ -110,6 +110,14 @@ describe("Monthly clinic waqf gifts", () => {
     return { gift, firstGiftId: row.id, giver };
   }
 
+  // Each programme settles into its own subaccount (need-based NB2).
+  async function ownSubaccount(programmeId: string) {
+    const payload = { programmeId, subaccountCode: `ACCT_test${randomUUID().replace(/-/g, "").slice(0, 12)}` };
+    const action = await decidedAction("waqf_programme.subaccount_set", payload);
+    await prisma.$transaction((tx) => clinics.setSubaccount(payload, action.id, tx));
+    return payload.subaccountCode;
+  }
+
   beforeAll(async () => {
     makerUserId = await staff("mutawalli_officer");
     checkerUserId = await staff("board_of_trustees");
@@ -117,6 +125,7 @@ describe("Monthly clinic waqf gifts", () => {
     deed = await approveDeed(created.id);
     const establish = await decidedAction("waqf_programme.establish", { programmeId: created.id });
     await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establish.id, tx));
+    await ownSubaccount(created.id);
     clinic = created;
   });
 
@@ -160,11 +169,47 @@ describe("Monthly clinic waqf gifts", () => {
     expect((await reload(gift)).nextPeriod).not.toBe(gift.nextPeriod);
   });
 
+  test("a need-based waqf's monthly endowment gift is charged a second month, into its own subaccount and endowment", async () => {
+    const needBased = await clinics.create({ product: "need_based", name: "Monthly Need-Based", slug: `monthly-need-${run}`, city: "Kano", jurisdiction: "NG" }, makerUserId);
+    const nbDeed = await approveDeed(needBased.id);
+    const establish = await decidedAction("waqf_programme.establish", { programmeId: needBased.id });
+    await prisma.$transaction((tx) => clinics.establish({ programmeId: needBased.id }, establish.id, tx));
+    const code = await ownSubaccount(needBased.id);
+
+    const result = await gifts.initiate({
+      slug: needBased.slug,
+      pot: "endowment",
+      amount: "10000",
+      coverFee: false,
+      donorEmail: email(),
+      monthly: true,
+      deedId: nbDeed.id,
+      deedTextHash: nbDeed.textHash,
+    });
+    const first = await prisma.programmeGift.findUniqueOrThrow({ where: { id: result.gift.id } });
+    expect(first.settlementSubaccount).toBe(code);
+    await gifts.reconcile(first.id);
+    const gift = await waitFor(() => reload({ id: first.recurringGiftId! }), (g) => g.status !== "pending_setup");
+    expect(gift.status).toBe("active");
+
+    await due(gift);
+    await service.processDue(gift.id);
+    const charged = await waitFor(
+      () => prisma.programmeGift.findMany({ where: { recurringGiftId: gift.id, recurringPeriod: gift.nextPeriod } }),
+      (rows) => rows.some((r) => r.status === "confirmed"),
+    );
+    expect(charged).toHaveLength(1);
+    expect(charged[0]).toMatchObject({ programmeId: needBased.id, pot: "endowment", settlementSubaccount: code, deedId: nbDeed.id, status: "confirmed" });
+    const entries = await prisma.programmeJournalEntry.findMany({ where: { source: "gift", sourceId: charged[0].id }, include: { lines: { include: { ledgerAccount: true } } } });
+    expect(entries[0].lines.map((l) => l.ledgerAccount.code).sort()).toEqual(["1000", "3000"]);
+  });
+
   test("a new deed version pauses a monthly endowment gift until the giver accepts it", async () => {
     const separate = await clinics.create({ product: "clinic", name: "Deed Change Clinic", slug: `deed-change-${run}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
     const v1 = await approveDeed(separate.id, "Version one.");
     const establish = await decidedAction("waqf_programme.establish", { programmeId: separate.id });
     await prisma.$transaction((tx) => clinics.establish({ programmeId: separate.id }, establish.id, tx));
+    await ownSubaccount(separate.id);
     const giver = email();
     const result = await gifts.initiate({ slug: separate.slug, pot: "endowment", amount: "10000", coverFee: false, donorEmail: giver, monthly: true, deedId: v1.id, deedTextHash: v1.textHash });
     const row = await prisma.programmeGift.findUniqueOrThrow({ where: { id: result.gift.id } });

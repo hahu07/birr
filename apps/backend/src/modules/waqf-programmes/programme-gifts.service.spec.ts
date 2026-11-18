@@ -48,10 +48,10 @@ const unusedAdapter = {} as any;
 // these fixtures stay in the dev database, identifiable by per-run emails.
 describe("ProgrammeGiftsService", () => {
   const run = Date.now().toString(36);
-  let subaccount: string | undefined = "ACCT_test_clinic";
-  const settings = {
-    get: async (provider: string, key: string) => (provider === "paystack" && key === "CLINIC_WAQF_SUBACCOUNT_CODE" ? subaccount : undefined),
-  } as unknown as SettingsService;
+  // Each programme settles into its own subaccount, set on it by an
+  // approved waqf_programme.subaccount_set; nothing comes from settings.
+  const settings = { get: async () => undefined } as unknown as SettingsService;
+  const newCode = () => `ACCT_test${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   const paystack = new FakePaystack();
   const receipts = new FakeReceipts();
   const encryption = new EncryptionService();
@@ -79,6 +79,7 @@ describe("ProgrammeGiftsService", () => {
   let makerUserId: string;
   let checkerUserId: string;
   let clinic: { id: string; slug: string };
+  let clinicCode: string;
   let deed: { id: string; textHash: string };
 
   async function staff(role: "mutawalli_officer" | "board_of_trustees", label: string) {
@@ -96,15 +97,26 @@ describe("ProgrammeGiftsService", () => {
     });
   }
 
-  async function establishedClinic() {
-    const created = await clinics.create({ product: "clinic", name: "Gift Test Clinic", slug: `gift-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
+  async function setSubaccount(programmeId: string, subaccountCode: string) {
+    const payload = { programmeId, subaccountCode };
+    const action = await decidedAction("waqf_programme.subaccount_set", payload);
+    await prisma.$transaction((tx) => clinics.setSubaccount(payload, action.id, tx));
+  }
+
+  /** An established programme; with its own subaccount unless `subaccountCode` is null. */
+  async function establishedClinic(subaccountCode: string | null = newCode(), product: "clinic" | "need_based" = "clinic") {
+    const created = await clinics.create(
+      { product, name: product === "clinic" ? "Gift Test Clinic" : "Gift Test Need-Based", slug: `gift-${product === "clinic" ? "clinic" : "need"}-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" },
+      makerUserId,
+    );
     const draft = await clinics.draftDeed(created.id, {}, makerUserId);
     const deedPayload = { deedId: draft.id, textHash: draft.textHash };
     const deedAction = await decidedAction("waqf_programme.deed_approve", deedPayload);
     await prisma.$transaction((tx) => clinics.approveDeed(deedPayload, deedAction.id, checkerUserId, tx));
     const establishAction = await decidedAction("waqf_programme.establish", { programmeId: created.id });
     await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establishAction.id, tx));
-    return { clinic: created, deed: draft };
+    if (subaccountCode) await setSubaccount(created.id, subaccountCode);
+    return { clinic: created, deed: draft, code: subaccountCode };
   }
 
   const endowment = () => ({ slug: clinic.slug, pot: "endowment" as const, amount: "10000", coverFee: false, deedId: deed.id, deedTextHash: deed.textHash });
@@ -118,11 +130,12 @@ describe("ProgrammeGiftsService", () => {
   beforeAll(async () => {
     makerUserId = await staff("mutawalli_officer", "maker");
     checkerUserId = await staff("board_of_trustees", "checker");
-    ({ clinic, deed } = await establishedClinic());
+    let code: string | null;
+    ({ clinic, deed, code } = await establishedClinic());
+    clinicCode = code!;
   });
 
   beforeEach(() => {
-    subaccount = "ACCT_test_clinic";
     paystack.nextWebhook = null;
     paystack.nextVerify = null;
   });
@@ -133,9 +146,8 @@ describe("ProgrammeGiftsService", () => {
 
   describe("before giving opens", () => {
     test("the public list shows established clinics, and whether each is taking gifts", async () => {
-      subaccount = undefined;
-      expect((await service.publicProgrammes("clinic")).find((c) => c.slug === clinic.slug)).toMatchObject({ available: false });
-      subaccount = "ACCT_test_clinic";
+      const { clinic: noAccount } = await establishedClinic(null);
+      expect((await service.publicProgrammes("clinic")).find((c) => c.slug === noAccount.slug)).toMatchObject({ available: false });
       expect((await service.publicProgrammes("clinic")).find((c) => c.slug === clinic.slug)).toMatchObject({ name: "Gift Test Clinic", city: "Ibadan", available: true });
       // A draft clinic isn't listed.
       const draft = await clinics.create({ product: "clinic", name: "Draft Clinic", slug: `draft-clinic-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
@@ -143,17 +155,15 @@ describe("ProgrammeGiftsService", () => {
     });
 
     test("terms say it isn't open until the subaccount is set, and give the approved deed", async () => {
-      subaccount = undefined;
-      const closed = await service.givingTerms(clinic.slug);
-      expect(closed).toMatchObject({ available: false, minimumAmount: CLINIC_PUBLIC_MINIMUM_NGN, deed: { id: deed.id, textHash: deed.textHash } });
-      subaccount = "ACCT_test_clinic";
+      const { clinic: noAccount, deed: noAccountDeed } = await establishedClinic(null);
+      const closed = await service.givingTerms(noAccount.slug);
+      expect(closed).toMatchObject({ available: false, minimumAmount: CLINIC_PUBLIC_MINIMUM_NGN, deed: { id: noAccountDeed.id, textHash: noAccountDeed.textHash } });
       expect((await service.givingTerms(clinic.slug)).available).toBe(true);
     });
 
     test("no gift is taken without the clinic waqf's own subaccount, or by a clinic that isn't established", async () => {
-      subaccount = undefined;
-      await expect(service.initiate(running())).rejects.toThrow(ServiceUnavailableException);
-      subaccount = "ACCT_test_clinic";
+      const { clinic: noAccount } = await establishedClinic(null);
+      await expect(service.initiate({ ...running(), slug: noAccount.slug })).rejects.toThrow(ServiceUnavailableException);
       const draft = await clinics.create({ product: "clinic", name: "Draft Clinic", slug: `gift-draft-${randomUUID().slice(0, 8)}`, city: "Ibadan", jurisdiction: "NG" }, makerUserId);
       await expect(service.initiate({ ...running(), slug: draft.slug })).rejects.toThrow(/isn't taking gifts/);
       await expect(service.initiate({ ...running(), slug: "no-such-clinic" })).rejects.toThrow(NotFoundException);
@@ -178,10 +188,10 @@ describe("ProgrammeGiftsService", () => {
         amount: new Prisma.Decimal(10000).plus(fee).toFixed(2),
         reference: gift.id,
         returnPath: "clinic-gifts",
-        split: { subaccount: "ACCT_test_clinic", mainAccountShareMinorUnits: Math.round(Number(fee) * 100) },
+        split: { subaccount: clinicCode, mainAccountShareMinorUnits: Math.round(Number(fee) * 100) },
       });
       const row = await prisma.programmeGift.findUniqueOrThrow({ where: { id: gift.id } });
-      expect(row).toMatchObject({ settlementSubaccount: "ACCT_test_clinic", deedId: deed.id, deedTextHash: deed.textHash, contactEmail: email("endow") });
+      expect(row).toMatchObject({ settlementSubaccount: clinicCode, deedId: deed.id, deedTextHash: deed.textHash, contactEmail: email("endow") });
       expect(row.donorId).not.toBeNull();
       expect(await prisma.auditLog.count({ where: { entityId: gift.id, action: "programme_gift.initiated" } })).toBe(1);
     });
@@ -374,25 +384,45 @@ describe("ProgrammeGiftsService", () => {
       await expect(prisma.programmeGift.delete({ where: { id: gift.id } })).rejects.toThrow(/never deleted/);
     });
   });
-  describe("a need-based waqf, before it has its own subaccount", () => {
-    test("takes no gift, even once established and with the clinic's subaccount set", async () => {
-      const created = await clinics.create(
-        { product: "need_based", name: "Gift Test Need-Based", slug: `gift-need-${randomUUID().slice(0, 8)}`, city: "Kano", jurisdiction: "NG" },
-        makerUserId,
-      );
-      const draft = await clinics.draftDeed(created.id, {}, makerUserId);
-      const deedPayload = { deedId: draft.id, textHash: draft.textHash };
-      const deedAction = await decidedAction("waqf_programme.deed_approve", deedPayload);
-      await prisma.$transaction((tx) => clinics.approveDeed(deedPayload, deedAction.id, checkerUserId, tx));
-      const establishAction = await decidedAction("waqf_programme.establish", { programmeId: created.id });
-      await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establishAction.id, tx));
+  describe("each programme's own subaccount", () => {
+    test("a need-based waqf's gifts settle into its own subaccount, never a clinic's", async () => {
+      const { clinic: needBased, code } = await establishedClinic(newCode(), "need_based");
+      expect((await service.givingTerms(needBased.slug)).available).toBe(true);
+      const { gift } = await service.initiate({ ...running(), slug: needBased.slug, donorEmail: email("need-based") });
+      expect(paystack.created.at(-1)?.split?.subaccount).toBe(code);
+      expect(code).not.toBe(clinicCode);
+      expect(await prisma.programmeGift.findUniqueOrThrow({ where: { id: gift.id } })).toMatchObject({ settlementSubaccount: code });
+      expect((await service.publicProgrammes("clinic")).some((p) => p.slug === needBased.slug)).toBe(false);
+    });
 
-      expect(subaccount).toBe("ACCT_test_clinic");
-      expect((await service.givingTerms(created.slug)).available).toBe(false);
+    test("a code is refused if it isn't a Paystack code, is unchanged, or is another programme's", async () => {
+      const programmeId = clinic.id;
+      await expect(clinics.validateSubaccountProposal({ programmeId, subaccountCode: "not a code" })).rejects.toThrow(/must be a Paystack subaccount code/);
+      await expect(clinics.validateSubaccountProposal({ programmeId, subaccountCode: clinicCode })).rejects.toThrow(/already settles into/);
+      const { clinic: other, code } = await establishedClinic();
+      await expect(clinics.validateSubaccountProposal({ programmeId, subaccountCode: code! })).rejects.toThrow(/is Gift Test Clinic's subaccount/);
+      expect(other.id).not.toBe(programmeId);
+    });
+
+    test("the database refuses a code set without an approval, changed without a new one, cleared, or malformed", async () => {
+      const { clinic: bare } = await establishedClinic(null);
+      await expect(prisma.waqfProgramme.update({ where: { id: bare.id }, data: { paystackSubaccountCode: newCode(), paystackSubaccountSetAt: new Date() } })).rejects.toThrow(
+        /changes only with a new approval/,
+      );
+      // With an approval but no date, the CHECK refuses it.
+      const undated = await decidedAction("waqf_programme.subaccount_set", { programmeId: bare.id, subaccountCode: "ACCT_undated" });
       await expect(
-        service.initiate({ ...running(), slug: created.slug, donorEmail: email("need-based") }),
-      ).rejects.toBeInstanceOf(ServiceUnavailableException);
-      expect((await service.publicProgrammes("clinic")).some((p) => p.slug === created.slug)).toBe(false);
+        prisma.waqfProgramme.update({ where: { id: bare.id }, data: { paystackSubaccountCode: "ACCT_undated", paystackSubaccountActionId: undated.id } }),
+      ).rejects.toThrow(/waqf_programmes_subaccount_approved/);
+      await expect(prisma.waqfProgramme.update({ where: { id: clinic.id }, data: { paystackSubaccountCode: newCode() } })).rejects.toThrow(/changes only with a new approval/);
+      await expect(
+        prisma.waqfProgramme.update({ where: { id: clinic.id }, data: { paystackSubaccountCode: null, paystackSubaccountActionId: null, paystackSubaccountSetAt: null } }),
+      ).rejects.toThrow(/never cleared/);
+      const payload = { programmeId: bare.id, subaccountCode: "ACCT_bad-code" };
+      const action = await decidedAction("waqf_programme.subaccount_set", payload);
+      await expect(
+        prisma.waqfProgramme.update({ where: { id: bare.id }, data: { paystackSubaccountCode: "ACCT_bad-code", paystackSubaccountActionId: action.id, paystackSubaccountSetAt: new Date() } }),
+      ).rejects.toThrow(/waqf_programmes_subaccount_code_format/);
     });
   });
 });

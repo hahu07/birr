@@ -92,6 +92,14 @@ interface DeedApprovalPayload {
   textHash: string;
 }
 
+interface SubaccountPayload {
+  programmeId: string;
+  subaccountCode: string;
+}
+
+/** A Paystack subaccount code: ACCT_ and letters or digits (the database checks the same). */
+const SUBACCOUNT_CODE = /^ACCT_[A-Za-z0-9]+$/;
+
 interface EstablishPayload {
   programmeId: string;
 }
@@ -392,6 +400,68 @@ export class WaqfProgrammesService {
     const after = await tx.waqfProgramme.update({
       where: { id: programmeId },
       data: { status: "established", establishedAt: new Date(), establishedActionId: governedActionId },
+    });
+    return { before, after };
+  }
+
+  // ---- waqf_programme.subaccount_set (maker: platform_admin; checker: Board or Compliance) ----
+  //
+  // Owner's decision (2026-11-19): two people decide where a waqf
+  // programme's money settles. Its gifts settle into this subaccount, its
+  // own bank account; none is taken until it's set.
+
+  private parseSubaccountPayload(payload: unknown): SubaccountPayload {
+    const p = (payload ?? {}) as Partial<Record<keyof SubaccountPayload, unknown>>;
+    if (typeof p.programmeId !== "string") throw new BadRequestException("payload.programmeId is required.");
+    const code = typeof p.subaccountCode === "string" ? p.subaccountCode.trim() : "";
+    if (!SUBACCOUNT_CODE.test(code)) {
+      throw new BadRequestException("payload.subaccountCode must be a Paystack subaccount code, like ACCT_8f4s1eq7ml6rlzj.");
+    }
+    return { programmeId: p.programmeId, subaccountCode: code };
+  }
+
+  private async checkSubaccount(db: Prisma.TransactionClient | typeof prisma, payload: unknown) {
+    const { programmeId, subaccountCode } = this.parseSubaccountPayload(payload);
+    const programme = await db.waqfProgramme.findUnique({ where: { id: programmeId } });
+    if (!programme) throw new NotFoundException(`Waqf programme "${programmeId}" not found.`);
+    if (programme.paystackSubaccountCode === subaccountCode) throw new BadRequestException(`${programme.name} already settles into ${subaccountCode}.`);
+    const other = await db.waqfProgramme.findFirst({ where: { paystackSubaccountCode: subaccountCode, id: { not: programmeId } } });
+    if (other) throw new BadRequestException(`${subaccountCode} is ${other.name}'s subaccount. Each waqf programme settles into its own account.`);
+    return { programme, subaccountCode };
+  }
+
+  async validateSubaccountProposal(payload: unknown) {
+    await this.checkSubaccount(prisma, payload);
+  }
+
+  async checkDuplicateSubaccountProposal(payload: unknown) {
+    if (await this.pendingAction("waqf_programme.subaccount_set", "programmeId", this.parseSubaccountPayload(payload).programmeId)) {
+      throw new ConflictException("A change to this programme's subaccount is already waiting for approval — check the Approvals queue.");
+    }
+  }
+
+  async describeSubaccountProposal(payload: unknown): Promise<string> {
+    const { programmeId, subaccountCode } = this.parseSubaccountPayload(payload);
+    const programme = await prisma.waqfProgramme.findUnique({ where: { id: programmeId } });
+    if (!programme) return "Waqf programme not found.";
+    return programme.paystackSubaccountCode
+      ? `Change where ${programme.name}'s gifts settle, from Paystack subaccount ${programme.paystackSubaccountCode} to ${subaccountCode}`
+      : `Settle ${programme.name}'s gifts into Paystack subaccount ${subaccountCode}, its own bank account`;
+  }
+
+  async currentSubaccountState(payload: unknown): Promise<Record<string, unknown>> {
+    const { programmeId } = this.parseSubaccountPayload(payload);
+    const programme = await prisma.waqfProgramme.findUniqueOrThrow({ where: { id: programmeId } });
+    return { subaccountCode: programme.paystackSubaccountCode, setAt: programme.paystackSubaccountSetAt };
+  }
+
+  async setSubaccount(payload: unknown, governedActionId: string, tx: Prisma.TransactionClient) {
+    const { programmeId } = this.parseSubaccountPayload(payload);
+    await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
+    const { programme: before, subaccountCode } = await this.checkSubaccount(tx, payload);
+    const after = await tx.waqfProgramme.update({
+      where: { id: programmeId },
+      data: { paystackSubaccountCode: subaccountCode, paystackSubaccountSetAt: new Date(), paystackSubaccountActionId: governedActionId },
     });
     return { before, after };
   }

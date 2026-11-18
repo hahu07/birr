@@ -51,7 +51,7 @@ export function SpendingCard({ programmeId, established }: { programmeId: string
         setSpends(s);
         setPartners(c);
         setEquipment(a.filter((x) => x.kind === "equipment" && x.status === "active"));
-        setPending(actions.filter((a) => a.permission.key.startsWith("clinic_waqf.")));
+        setPending(actions.filter((a) => a.permission.key.startsWith("waqf_programme.") || a.permission.key.startsWith("clinic.")));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, [programmeId]);

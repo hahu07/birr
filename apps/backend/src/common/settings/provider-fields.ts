@@ -46,9 +46,9 @@ export const PROVIDER_FIELDS: Record<string, ProviderFieldSpec[]> = {
     // zakah never settles into the main account (owner's decision,
     // 2026-11-11).
     { key: "ZAKAH_SUBACCOUNT_CODE", label: "Zakah subaccount code (ACCT_…)", secret: false },
-    // Clinic waqf gifts settle here, never into Birr's main balance (owner's
-    // decision, 2026-11-17); none is taken until it's set.
-    { key: "CLINIC_WAQF_SUBACCOUNT_CODE", label: "Clinic waqf subaccount code (ACCT_…)", secret: false },
+    // A waqf programme's gifts settle into its own subaccount, set on the
+    // programme by an approved waqf_programme.subaccount_set (two people;
+    // 2026-11-19), not here. The old single clinic code is gone.
   ],
   // Env var prefix is COINBASE_COMMERCE_ (matches .env's existing
   // COINBASE_COMMERCE_API_KEY/COINBASE_COMMERCE_WEBHOOK_SECRET), not

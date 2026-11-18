@@ -117,6 +117,11 @@ const governedPermissions = [
   // Child Clinic. The Board alone approves establishing one; a Shariah
   // board member alone approves each version of its deed.
   { key: "waqf_programme.establish", category: "waqf_programme", requiresMakerChecker: true, description: "Establish a waqf programme, after its deed is approved. Once established it's a waqf for ever." },
+  // A waqf programme's own Paystack subaccount (2026-11-19, need-based NB2):
+  // where its gifts settle. Owner's decision: two people, since it decides
+  // where a waqf's money goes. A platform admin proposes; the Board or
+  // Compliance approves.
+  { key: "waqf_programme.subaccount_set", category: "waqf_programme", requiresMakerChecker: true, description: "Set or change the Paystack subaccount a waqf programme's gifts settle into: its own bank account." },
   // Clinic waqf assets (2026-11-17, slice 5a): adding a gift in kind to the
   // endowment, and disposing of an asset, both approved by the Board.
   { key: "waqf_programme.asset_add", category: "waqf_programme", requiresMakerChecker: true, description: "Add land, a building or equipment given in kind to a waqf programme's endowment, at its valuation." },
@@ -367,6 +372,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "founder.mfa_reset": { canChecker: true },
     "staff.mfa_reset": { canChecker: true },
     "staff.invite": { canChecker: true },
+    "waqf_programme.subaccount_set": { canChecker: true },
     "staff.role_add": { canChecker: true },
     "staff.role_remove": { canChecker: true },
     "staff.suspend": { canChecker: true },
@@ -443,6 +449,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "founder.mfa_reset": { canChecker: true },
     "staff.mfa_reset": { canChecker: true },
     "staff.invite": { canChecker: true },
+    "waqf_programme.subaccount_set": { canChecker: true },
     "staff.role_add": { canChecker: true },
     "staff.role_remove": { canChecker: true },
     "staff.suspend": { canChecker: true },
@@ -474,6 +481,7 @@ const governedRolePermissions: Record<string, Grants> = {
     "founder.mfa_reset": { canMaker: true },
     "staff.mfa_reset": { canMaker: true },
     "staff.invite": { canMaker: true },
+    "waqf_programme.subaccount_set": { canMaker: true },
     "staff.role_add": { canMaker: true },
     "staff.role_remove": { canMaker: true },
     "staff.suspend": { canMaker: true },

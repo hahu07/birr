@@ -607,6 +607,19 @@ export class GovernedActionsService {
         },
       ],
       [
+        "waqf_programme.subaccount_set",
+        {
+          validatePropose: (payload) => this.clinicWaqfsService.validateSubaccountProposal(payload),
+          checkDuplicate: (payload) => this.clinicWaqfsService.checkDuplicateSubaccountProposal(payload),
+          describePayload: (payload) => this.clinicWaqfsService.describeSubaccountProposal(payload),
+          describeCurrentState: (payload) => this.clinicWaqfsService.currentSubaccountState(payload),
+          onApprove: async (payload, tx, ctx) => {
+            const { before, after } = await this.clinicWaqfsService.setSubaccount(payload, ctx.governedActionId, tx);
+            return { auditAction: "waqf_programme.subaccount_set", entityType: "WaqfProgramme", entityId: after.id, before, after };
+          },
+        },
+      ],
+      [
         "asset.dispose",
         {
           resolveWaqfId: async (payload) => {
