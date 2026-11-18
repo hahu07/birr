@@ -1,5 +1,5 @@
 // What each waqf programme product's public pages say (need-based NB3,
-// 2026-11-19): the list page, the giving page, and the thank-you page
+// 2026-11-18): the list page, the giving page, and the thank-you page
 // after checkout. Labels and addresses come from WAQF_PROGRAMME_PRODUCTS
 // in @birr/shared; this file holds the sentences. The clinic's are the
 // wording its pages already used.

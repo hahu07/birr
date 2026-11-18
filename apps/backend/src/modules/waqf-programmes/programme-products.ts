@@ -11,7 +11,7 @@ import { draftNeedBasedDeedText } from "../need-based/need-based-deed";
 // deed template here (programme-products.spec.ts checks the reverse).
 //
 // A product's own parts, and payment kinds it doesn't list, are refused on
-// any other product (2026-11-19): here, for a plain message, and by the
+// any other product (2026-11-18): here, for a plain message, and by the
 // database (migration 20261119000500), which programme-products.spec.ts
 // checks agrees with this list.
 

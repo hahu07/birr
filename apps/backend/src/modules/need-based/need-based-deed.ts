@@ -1,5 +1,5 @@
 /**
- * The starting wording for a need-based waqf's deed (2026-11-19), from the
+ * The starting wording for a need-based waqf's deed (2026-11-18), from the
  * draft for Legal and the Shariah Supervisory Board ("Need-Based Waqf Deed,
  * draft", 18 November 2026). A DRAFT: the joint sittings of 26 November and
  * 3 December settle its open points (D1 to D17 in that draft), and the

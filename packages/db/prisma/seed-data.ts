@@ -117,7 +117,7 @@ const governedPermissions = [
   // Child Clinic. The Board alone approves establishing one; a Shariah
   // board member alone approves each version of its deed.
   { key: "waqf_programme.establish", category: "waqf_programme", requiresMakerChecker: true, description: "Establish a waqf programme, after its deed is approved. Once established it's a waqf for ever." },
-  // A waqf programme's own Paystack subaccount (2026-11-19, need-based NB2):
+  // A waqf programme's own Paystack subaccount (2026-11-18, need-based NB2):
   // where its gifts settle. Owner's decision: two people, since it decides
   // where a waqf's money goes. A platform admin proposes; the Board or
   // Compliance approves.

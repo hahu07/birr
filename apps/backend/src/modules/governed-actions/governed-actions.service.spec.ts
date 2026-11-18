@@ -3092,7 +3092,7 @@ describe("GovernedActionsService", () => {
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
     });
 
-    // waqf_programme.subaccount_set (need-based NB2, 2026-11-19). Owner's
+    // waqf_programme.subaccount_set (need-based NB2, 2026-11-18). Owner's
     // decision: two people decide where a programme's money settles.
     test("a platform admin proposes a programme's subaccount; only the Board or Compliance approves it", async () => {
       const grants = async (flag: "canMaker" | "canChecker") =>

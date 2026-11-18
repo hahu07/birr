@@ -1,6 +1,6 @@
 "use client";
 
-// Where a waqf programme's gifts settle (2026-11-19, need-based NB2): its
+// Where a waqf programme's gifts settle (2026-11-18, need-based NB2): its
 // own Paystack subaccount, tied to its own bank account. Owner's decision:
 // two people decide it, so a platform admin proposes the code and the Board
 // of Trustees or Compliance approves it (waqf_programme.subaccount_set). No

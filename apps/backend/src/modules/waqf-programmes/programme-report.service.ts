@@ -5,7 +5,7 @@ import { ProgrammeLedgerService } from "./programme-ledger.service";
 
 /**
  * A waqf programme's public report, each pot on its own, from its ledger
- * (need-based NB4, 2026-11-19). The clinic keeps its own, fuller report
+ * (need-based NB4, 2026-11-18). The clinic keeps its own, fuller report
  * (claims, subsidised visits, monthly figures: ClinicReportsService); this
  * one serves products without those parts.
  *

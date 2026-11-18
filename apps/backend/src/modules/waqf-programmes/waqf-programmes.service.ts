@@ -406,7 +406,7 @@ export class WaqfProgrammesService {
 
   // ---- waqf_programme.subaccount_set (maker: platform_admin; checker: Board or Compliance) ----
   //
-  // Owner's decision (2026-11-19): two people decide where a waqf
+  // Owner's decision (2026-11-18): two people decide where a waqf
   // programme's money settles. Its gifts settle into this subaccount, its
   // own bank account; none is taken until it's set.
 
