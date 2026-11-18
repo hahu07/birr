@@ -5,6 +5,7 @@ import { ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsNumberString, Max, Min, V
 import { prisma, Prisma } from "@birr/db";
 import { LongTextField, NameField, TextField } from "../../common/validation/fields";
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
+import { assertProduct } from "../waqf-programmes/programme-products";
 
 const CODE = /^[A-Z0-9][A-Z0-9-]{0,29}$/;
 
@@ -123,6 +124,7 @@ export class ClinicPriceListsService {
       await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
       const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
       if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
+      assertProduct(clinic, "clinic", "Price lists");
       const open = await tx.clinicPriceList.findFirst({ where: { programmeId, status: "draft" } });
       if (open) throw new ConflictException(`Version ${open.version} is still a draft. Discard it, or have it approved, before drafting another.`);
       const latest = await tx.clinicPriceList.aggregate({ where: { programmeId }, _max: { version: true } });

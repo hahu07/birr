@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { prisma, Prisma } from "@birr/db";
 import { ProgrammeLedgerService } from "./programme-ledger.service";
+import { assertSpendKind } from "./programme-products";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -77,6 +78,7 @@ export class ProgrammeReserveService {
   async validateShareProposal(payload: unknown) {
     const { programmeId, percent } = this.parse(payload);
     const clinic = await this.find(prisma, programmeId);
+    assertSpendKind(clinic, "reserve_replacement", "equipment replacement reserve");
     if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't established yet.`);
     if (clinic.reserveSharePercent === percent) throw new BadRequestException(`The reserve already takes ${percent}% of income.`);
   }

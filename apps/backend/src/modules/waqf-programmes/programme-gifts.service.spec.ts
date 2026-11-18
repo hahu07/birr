@@ -374,4 +374,25 @@ describe("ProgrammeGiftsService", () => {
       await expect(prisma.programmeGift.delete({ where: { id: gift.id } })).rejects.toThrow(/never deleted/);
     });
   });
+  describe("a need-based waqf, before it has its own subaccount", () => {
+    test("takes no gift, even once established and with the clinic's subaccount set", async () => {
+      const created = await clinics.create(
+        { product: "need_based", name: "Gift Test Need-Based", slug: `gift-need-${randomUUID().slice(0, 8)}`, city: "Kano", jurisdiction: "NG" },
+        makerUserId,
+      );
+      const draft = await clinics.draftDeed(created.id, {}, makerUserId);
+      const deedPayload = { deedId: draft.id, textHash: draft.textHash };
+      const deedAction = await decidedAction("waqf_programme.deed_approve", deedPayload);
+      await prisma.$transaction((tx) => clinics.approveDeed(deedPayload, deedAction.id, checkerUserId, tx));
+      const establishAction = await decidedAction("waqf_programme.establish", { programmeId: created.id });
+      await prisma.$transaction((tx) => clinics.establish({ programmeId: created.id }, establishAction.id, tx));
+
+      expect(subaccount).toBe("ACCT_test_clinic");
+      expect((await service.givingTerms(created.slug)).available).toBe(false);
+      await expect(
+        service.initiate({ ...running(), slug: created.slug, donorEmail: email("need-based") }),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      expect((await service.publicProgrammes("clinic")).some((p) => p.slug === created.slug)).toBe(false);
+    });
+  });
 });
