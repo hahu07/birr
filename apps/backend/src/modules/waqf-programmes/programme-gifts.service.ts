@@ -186,7 +186,14 @@ export class ProgrammeGiftsService {
     private readonly whatsApp?: TwilioWhatsAppAdapter,
   ) {}
 
-  private async subaccount(): Promise<string | undefined> {
+  /**
+   * The Paystack subaccount a product's gifts settle into. Only clinics have
+   * one so far: until each programme gets its own setting (need-based slice
+   * NB2), any other product takes no gift, so its money can never settle
+   * into the clinic waqf's account.
+   */
+  private async subaccount(product: WaqfProgrammeProduct): Promise<string | undefined> {
+    if (product !== "clinic") return undefined;
     const code = (await this.settings.get("paystack", "CLINIC_WAQF_SUBACCOUNT_CODE"))?.trim();
     return code ? code : undefined;
   }
@@ -204,7 +211,7 @@ export class ProgrammeGiftsService {
         orderBy: { establishedAt: "asc" },
         select: { name: true, slug: true, city: true, description: true, deeds: { where: { status: "approved" }, select: { id: true } } },
       }),
-      this.subaccount(),
+      this.subaccount(product),
     ]);
     return programmes.map(({ deeds, ...p }) => ({ ...p, available: deeds.length > 0 && subaccount !== undefined }));
   }
@@ -219,7 +226,7 @@ export class ProgrammeGiftsService {
     const deed = clinic.deeds[0] ?? null;
     return {
       clinic: { name: clinic.name, slug: clinic.slug, city: clinic.city, description: clinic.description },
-      available: clinic.status === "established" && deed !== null && (await this.subaccount()) !== undefined,
+      available: clinic.status === "established" && deed !== null && (await this.subaccount(clinic.product)) !== undefined,
       currency: CURRENCY,
       minimumAmount: CLINIC_PUBLIC_MINIMUM_NGN,
       deed,
@@ -476,7 +483,7 @@ export class ProgrammeGiftsService {
     const clinic = await prisma.waqfProgramme.findUnique({ where });
     if (!clinic) throw new NotFoundException("Clinic not found.");
     if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't taking gifts yet.`);
-    const subaccount = await this.subaccount();
+    const subaccount = await this.subaccount(clinic.product);
     if (!subaccount) {
       // Owner's decision: clinic waqf money never settles into Birr's main
       // balance, so no gift is taken until its own account is set up.

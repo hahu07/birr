@@ -4,6 +4,7 @@ import { prisma, Prisma } from "@birr/db";
 import { TextField } from "../../common/validation/fields";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
 import { ProgrammeLedgerService } from "../waqf-programmes/programme-ledger.service";
+import { assertProduct } from "../waqf-programmes/programme-products";
 
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 const COUNT_MAX = 1_000_000;
@@ -68,6 +69,7 @@ export class ClinicReportsService {
     return prisma.$transaction(async (tx) => {
       const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
       if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
+      assertProduct(clinic, "clinic", "Monthly figures");
       if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't established yet.`);
       const existing = await tx.clinicMonthlyReport.findFirst({ where: { programmeId, period: input.period, status: { in: ["draft", "published"] } } });
       if (existing) {
@@ -122,7 +124,7 @@ export class ClinicReportsService {
   /** The public report. Only established clinics have one. */
   async publicReport(slug: string) {
     const clinic = await prisma.waqfProgramme.findUnique({ where: { slug } });
-    if (!clinic || clinic.status !== "established") throw new NotFoundException("Clinic not found.");
+    if (!clinic || clinic.status !== "established" || clinic.product !== "clinic") throw new NotFoundException("Clinic not found.");
     const balances = await this.ledger.balances(clinic.id);
     const all = [...balances.endowment, ...balances.running];
     const bal = (code: string) => all.find((a) => a.code === code)?.balance ?? "0.00";

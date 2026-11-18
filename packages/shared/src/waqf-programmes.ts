@@ -4,9 +4,13 @@
 // causes) and the web (labels, public address, monthly figures).
 //
 // A product's own parts (a clinic's price list, operator and claims) live
-// in that product's module; this list only names them. The need-based waqf
-// joins once it has the go-ahead and the Shariah Supervisory Board and
-// Legal have answered the lending questions (its loan pot depends on them).
+// in that product's module; this list only names them, and a product's
+// parts, pots and payment kinds are refused on any other product (in the
+// services, and by the database: migration 20261119000500).
+//
+// The need-based waqf (approved 2026-11-18) launches giving first: gifts
+// and endowments, no support yet. Its financing fund, people helped and
+// allowances come once the licensed partner and the kifayah line exist.
 
 export interface MonthlyMeasure {
   key: string;
@@ -22,6 +26,8 @@ export interface WaqfProgrammeProductDefinition {
   publicPath: string;
   /** The pots its ledger uses. */
   pots: readonly ("endowment" | "running")[];
+  /** What each pot is called for this product: the running pot is a clinic's "running fund". */
+  potLabels: { readonly endowment: string; readonly running: string };
   /** Kinds of endowment payment it makes (ProgrammeSpend.kind). */
   spendKinds: readonly ("equipment" | "works_stage" | "investment" | "reserve_replacement")[];
   /** Cause catalog entries (by name) a new programme is tagged with. */
@@ -38,6 +44,7 @@ export const WAQF_PROGRAMME_PRODUCTS = {
     plural: "Clinics",
     publicPath: "/clinics",
     pots: ["endowment", "running"],
+    potLabels: { endowment: "Endowment", running: "Running fund" },
     spendKinds: ["equipment", "works_stage", "investment", "reserve_replacement"],
     defaultCauses: ["Healthcare"],
     monthlyMeasures: [
@@ -47,6 +54,22 @@ export const WAQF_PROGRAMME_PRODUCTS = {
       { key: "referrals", label: "Referrals" },
     ],
     ownParts: ["operator", "price list", "monthly claims", "monthly figures"],
+  },
+  // "Need-based waqf" is a working name; the public name (and so its
+  // address) is chosen before launch.
+  need_based: {
+    label: "Need-based waqf",
+    plural: "Need-based waqfs",
+    publicPath: "/need-based-waqf",
+    pots: ["endowment", "running"],
+    potLabels: { endowment: "Endowment", running: "Spending fund" },
+    // Endowed cash is invested; it never buys equipment, works or a
+    // replacement reserve (equipment is sold by murabahah or given, never held).
+    spendKinds: ["investment"],
+    defaultCauses: ["Poverty Relief", "Livelihood & Skills Empowerment", "Widow & Vulnerable Family Support"],
+    // No figures until support starts: the page states none about support.
+    monthlyMeasures: [],
+    ownParts: [],
   },
 } as const satisfies Record<string, WaqfProgrammeProductDefinition>;
 

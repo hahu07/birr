@@ -1475,6 +1475,36 @@ from the Board:
 - **Giving first, support later:** it takes gifts from launch; support
   starts once the partner and the kifayah line are in place.
 
+Need-based slice NB1, the product (built 2026-11-19; the launch plan's
+four slices are NB1 product, NB2 giving, NB3 pages, NB4 finish):
+- **A second product:** `WaqfProgrammeProduct.need_based`
+  (`20261119000000_need_based_product`), in `WAQF_PROGRAMME_PRODUCTS` as
+  "Need-based waqf" at `/need-based-waqf` (both working names until the
+  public name is chosen). Its running pot is called the "spending fund"
+  (`potLabels`, new for every product). Its default causes are Poverty
+  Relief, Livelihood & Skills Empowerment, and Widow & Vulnerable Family
+  Support. It has no monthly figures yet.
+- **Its deed wording:** `modules/need-based/need-based-deed.ts`, from the
+  draft for the 26 Nov and 3 Dec sittings. It is a **draft**: clause 6(a)
+  leaves out the maximum share (D5 is open), and the approved text replaces
+  it.
+- **A product's own parts are refused on another product** (the step 3
+  item deferred until now):
+  - in the services, with a plain message (`assertProduct`,
+    `assertSpendKind` in `programme-products.ts`);
+  - by the database (`20261119000500_programme_product_parts`): a
+    programme's product never changes; the clinic's price lists, claims
+    and monthly figures take clinic rows only; the replacement reserve is
+    clinic-only (a CHECK); works projects and endowment payments only of
+    kinds the product lists. The need-based waqf lists investment
+    placements alone. `programme_spend_kind_allowed` must match the list,
+    which a test checks.
+- **No gift until NB2:** gifts settled into `CLINIC_WAQF_SUBACCOUNT_CODE`
+  for every programme. Now only a clinic has a subaccount, so a
+  need-based waqf takes no gift until NB2 gives each programme its own.
+- **Waits for later slices:** the financing pot, people helped and
+  allowances wait for the support phase.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

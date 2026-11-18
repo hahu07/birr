@@ -15,7 +15,8 @@ describe("waqf programme products", () => {
     for (const pot of def.pots) expect(Object.values(WaqfProgrammePot)).toContain(pot);
     for (const kind of def.spendKinds) expect(Object.values(ProgrammeSpendKind)).toContain(kind);
     expect(def.publicPath).toMatch(/^\/[a-z-]+$/);
-    expect(def.monthlyMeasures.length).toBeGreaterThan(0);
+    expect(new Set(def.monthlyMeasures.map((m) => m.key)).size).toBe(def.monthlyMeasures.length);
+    expect(Object.keys(def.potLabels).sort()).toEqual([...def.pots].sort());
     expect(standardDeedText({ product, name: "Bodija Clinic", city: "Ibadan" })).toContain("Bodija Clinic");
   });
 });

@@ -4025,6 +4025,7 @@ enum WaqfProgrammeStatus {
 // waqf Birr establishes and curates; the clinic is the first product.
 enum WaqfProgrammeProduct {
   clinic
+  need_based // the need-based waqf (2026-11-18): giving first, support later
 }
 
 model WaqfProgramme {

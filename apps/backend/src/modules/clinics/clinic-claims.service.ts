@@ -6,6 +6,7 @@ import { DateField, IdField, TextField } from "../../common/validation/fields";
 import { assertLicensesCurrent, lagosToday } from "../counterparties/counterparty-licenses.service";
 import { ProgrammeLedgerService } from "../waqf-programmes/programme-ledger.service";
 import { ClinicPriceListsService } from "./clinic-price-lists.service";
+import { assertProduct } from "../waqf-programmes/programme-products";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -99,6 +100,7 @@ export class ClinicClaimsService {
     const { programmeId, counterpartyId } = this.parseOperator(payload);
     const clinic = await db.waqfProgramme.findUnique({ where: { id: programmeId } });
     if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
+    assertProduct(clinic, "clinic", "Operators");
     if (clinic.operatorId === counterpartyId) throw new BadRequestException("That provider already runs this clinic.");
     const provider = await db.counterparty.findUnique({ where: { id: counterpartyId } });
     if (!provider || provider.deletedAt) throw new NotFoundException("Counterparty not found.");
@@ -153,6 +155,7 @@ export class ClinicClaimsService {
       await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
       const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
       if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
+      assertProduct(clinic, "clinic", "Monthly claims");
       if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't established yet.`);
       if (!clinic.operatorId) throw new BadRequestException("No operator has been assigned to this clinic yet.");
       const list = await this.priceLists.current(tx, programmeId);

@@ -5,6 +5,7 @@ import { ProgrammeAsset, ProgrammeSpendKind, ProgrammeWorksRoute, prisma, Prisma
 import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { ProgrammeLedgerService } from "./programme-ledger.service";
 import { lagosToday } from "../counterparties/counterparty-licenses.service";
+import { assertSpendKind } from "./programme-products";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -66,6 +67,14 @@ const COMMITTED = ["pending_approval", "approved"] as const;
 // Which money a payment draws on: the equipment replacement reserve (1150,
 // running fund) for a reserve replacement, endowment cash (1000) otherwise.
 type Pool = "endowment" | "reserve";
+// For "X is a need-based waqf, which has no equipment purchases."
+const SPEND_KIND_NAMES: Record<ProgrammeSpendKind, string> = {
+  equipment: "equipment purchases",
+  works_stage: "works stages",
+  investment: "investment placements",
+  reserve_replacement: "equipment replacement reserve",
+};
+
 const poolOf = (kind: ProgrammeSpendKind): Pool => (kind === "reserve_replacement" ? "reserve" : "endowment");
 
 /**
@@ -101,6 +110,7 @@ export class ProgrammeSpendingService {
     if (budget.decimalPlaces() > 2) throw new BadRequestException("Enter the budget in naira and kobo.");
     const clinic = await prisma.waqfProgramme.findUnique({ where: { id: programmeId } });
     if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
+    assertSpendKind(clinic, "works_stage", "works projects");
     await this.activeCounterparty(input.contractorId, "contractor");
     return prisma.$transaction(async (tx) => {
       const project = await tx.programmeWorksProject.create({
@@ -208,6 +218,7 @@ export class ProgrammeSpendingService {
       await tx.$queryRaw`SELECT "id" FROM "waqf_programmes" WHERE "id" = ${programmeId} FOR UPDATE`;
       const clinic = await tx.waqfProgramme.findUnique({ where: { id: programmeId } });
       if (!clinic) throw new NotFoundException(`Clinic waqf "${programmeId}" not found.`);
+      assertSpendKind(clinic, input.kind, SPEND_KIND_NAMES[input.kind]);
       if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't established yet.`);
       if (input.worksProjectId) {
         const project = await tx.programmeWorksProject.findUnique({ where: { id: input.worksProjectId } });
