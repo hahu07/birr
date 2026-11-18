@@ -1,20 +1,26 @@
 "use client";
 
-// A Founder's support for Birr's clinic waqfs (2026-11-17, clinic slice 4a):
-// what they've given to each clinic's endowment and running fund, every
-// gift, and where they can give. Used by /clinic-support, and as the home
-// page of a Founder who joined only to support clinics.
+// A Founder's support for the waqfs Birr establishes (2026-11-17, clinic
+// slice 4a; every waqf programme product since need-based NB3): what
+// they've given to each programme's endowment and running pot, every gift,
+// and where they can give. Used by /clinic-support, and as the home page of
+// a Founder who joined only to support them.
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetchJson } from "../../../lib/api";
 import { formatDate, formatMoney, humanize } from "../../../lib/format";
 import { Alert, Badge, Button, Card, EmptyState, IconHeart, Skeleton } from "@birr/ui";
+import { WAQF_PROGRAMME_PRODUCTS, type WaqfProgrammeProductKey } from "@birr/shared";
+import { programmePath } from "../../../lib/programme-copy";
+
+/** A pot's name for this product, e.g. "running fund" or "spending fund". */
+const potName = (product: WaqfProgrammeProductKey, pot: "endowment" | "running") => WAQF_PROGRAMME_PRODUCTS[product].potLabels[pot].toLowerCase();
 
 interface FounderClinicGifts {
-  clinics: { clinic: { name: string; slug: string; city: string }; endowment: string; running: string }[];
+  clinics: { clinic: { name: string; slug: string; city: string; product: WaqfProgrammeProductKey }; endowment: string; running: string }[];
   gifts: {
     id: string;
-    clinic: { name: string; slug: string };
+    clinic: { name: string; slug: string; product: WaqfProgrammeProductKey };
     pot: "endowment" | "running";
     amount: string;
     feeCover: string;
@@ -43,6 +49,7 @@ interface PublicClinic {
   slug: string;
   city: string;
   description: string | null;
+  product: WaqfProgrammeProductKey;
 }
 
 export function ClinicSupport() {
@@ -55,11 +62,12 @@ export function ClinicSupport() {
     Promise.all([
       apiFetchJson<FounderClinicGifts>("/programme-gifts/founder/mine"),
       apiFetchJson<PublicClinic[]>("/clinics"),
+      apiFetchJson<PublicClinic[]>("/programme-gifts/programmes/need_based"),
       apiFetchJson<ClinicMonthlyGift[]>("/programme-gifts/founder/monthly"),
     ])
-      .then(([m, c, g]) => {
+      .then(([m, c, n, g]) => {
         setMine(m);
-        setClinics(c);
+        setClinics([...c.map((p) => ({ ...p, product: "clinic" as const })), ...n.map((p) => ({ ...p, product: "need_based" as const }))]);
         setMonthly(g);
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
@@ -69,7 +77,7 @@ export function ClinicSupport() {
     load();
   }, [load]);
 
-  if (error) return <Alert tone="danger" title="Couldn't load your clinic support">{error}</Alert>;
+  if (error) return <Alert tone="danger" title="Couldn't load the waqfs you support">{error}</Alert>;
   if (!mine || !clinics || !monthly) {
     return (
       <div className="space-y-3">
@@ -86,9 +94,9 @@ export function ClinicSupport() {
           <IconHeart className="h-5 w-5" />
         </span>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Clinic support</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Supported waqfs</h1>
           <p className="mt-0.5 text-sm text-slate-500">
-            Laboratories and clinics for women and young children, each held in a waqf with Birr as trustee.
+            Clinics and other waqfs Birr establishes, each held in its own waqf with Birr as trustee.
           </p>
         </div>
       </header>
@@ -105,11 +113,11 @@ export function ClinicSupport() {
                   <dd className="tabular-nums font-medium text-slate-900">{formatMoney(c.endowment, "NGN")}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-slate-500">Running fund (spent on care)</dt>
+                  <dt className="text-xs text-slate-500">{WAQF_PROGRAMME_PRODUCTS[c.clinic.product].potLabels.running} (spent)</dt>
                   <dd className="tabular-nums font-medium text-slate-900">{formatMoney(c.running, "NGN")}</dd>
                 </div>
               </dl>
-              <Link href={`/clinics/${c.clinic.slug}`} className="mt-4 inline-block">
+              <Link href={programmePath(c.clinic.product, c.clinic.slug)} className="mt-4 inline-block">
                 <Button variant="secondary" className="px-3 py-1.5 text-xs">
                   Give again
                 </Button>
@@ -123,23 +131,25 @@ export function ClinicSupport() {
         <Card>
           <p className="text-sm font-medium text-slate-900">Where you can give</p>
           {clinics.length === 0 ? (
-            <p className="mt-1 text-sm text-slate-500">No clinic is taking gifts yet.</p>
+            <p className="mt-1 text-sm text-slate-500">None is taking gifts yet.</p>
           ) : (
             <ul className="mt-3 divide-y divide-slate-100">
               {clinics.map((c) => (
                 <li key={c.slug} className="flex items-center justify-between gap-3 py-2.5">
                   <div>
                     <p className="text-sm text-slate-800">{c.name}</p>
-                    <p className="text-xs text-slate-500">{c.city}</p>
+                    <p className="text-xs text-slate-500">
+                      {WAQF_PROGRAMME_PRODUCTS[c.product].label} · {c.city}
+                    </p>
                   </div>
-                  <Link href={`/clinics/${c.slug}`}>
+                  <Link href={programmePath(c.product, c.slug)}>
                     <Button className="px-3 py-1.5 text-xs">Give</Button>
                   </Link>
                 </li>
               ))}
             </ul>
           )}
-          <p className="mt-3 text-xs text-slate-500">Your first gift to a clinic is at least ₦250,000; later gifts from ₦5,000.</p>
+          <p className="mt-3 text-xs text-slate-500">Your first gift to each is at least ₦250,000; later gifts from ₦5,000.</p>
         </Card>
       )}
 
@@ -157,14 +167,14 @@ export function ClinicSupport() {
       <Card>
         <p className="mb-3 text-sm font-medium text-slate-700">Your gifts</p>
         {mine.gifts.length === 0 ? (
-          <EmptyState title="No gifts yet" description="Gifts you make to a clinic appear here, with your receipt references." />
+          <EmptyState title="No gifts yet" description="Gifts you make to a clinic or other waqf appear here, with your receipt references." />
         ) : (
           <ul className="divide-y divide-slate-100">
             {mine.gifts.map((g) => (
               <li key={g.id} className="flex items-start justify-between gap-3 py-2.5 text-sm">
                 <div>
                   <p className="text-slate-800">
-                    {formatMoney(g.amount, g.currency)} to {g.clinic.name}&apos;s {g.pot === "endowment" ? "endowment" : "running fund"}
+                    {formatMoney(g.amount, g.currency)} to {g.clinic.name}&apos;s {potName(g.clinic.product, g.pot)}
                     {g.deedVersion ? <span className="text-slate-500"> (deed v{g.deedVersion})</span> : null}
                   </p>
                   <p className="text-xs text-slate-500">

@@ -230,7 +230,7 @@ export class ProgrammeGiftsService {
     if (!clinic) throw new NotFoundException("Clinic not found.");
     const deed = clinic.deeds[0] ?? null;
     return {
-      clinic: { name: clinic.name, slug: clinic.slug, city: clinic.city, description: clinic.description },
+      clinic: { name: clinic.name, slug: clinic.slug, city: clinic.city, description: clinic.description, product: clinic.product },
       available: clinic.status === "established" && deed !== null && this.subaccount(clinic) !== undefined,
       currency: CURRENCY,
       minimumAmount: CLINIC_PUBLIC_MINIMUM_NGN,
@@ -461,9 +461,9 @@ export class ProgrammeGiftsService {
     const gifts = await prisma.programmeGift.findMany({
       where: { founderId },
       orderBy: { createdAt: "desc" },
-      include: { programme: { select: { name: true, slug: true, city: true } }, deed: { select: { version: true } } },
+      include: { programme: { select: { name: true, slug: true, city: true, product: true } }, deed: { select: { version: true } } },
     });
-    const totals = new Map<string, { clinic: { name: string; slug: string; city: string }; endowment: Prisma.Decimal; running: Prisma.Decimal }>();
+    const totals = new Map<string, { clinic: { name: string; slug: string; city: string; product: WaqfProgrammeProduct }; endowment: Prisma.Decimal; running: Prisma.Decimal }>();
     for (const g of gifts) {
       if (g.status !== "confirmed") continue;
       const t = totals.get(g.programmeId) ?? { clinic: g.programme, endowment: new Prisma.Decimal(0), running: new Prisma.Decimal(0) };
@@ -530,7 +530,7 @@ export class ProgrammeGiftsService {
    */
   private async checkout(
     gift: { id: string; amount: Prisma.Decimal; feeCover: Prisma.Decimal; contactEmail: string | null; pot: WaqfProgrammePot; currency: string; status: string; createdAt: Date; confirmedAt: Date | null },
-    clinic: { name: string; slug: string },
+    clinic: { name: string; slug: string; product: WaqfProgrammeProduct },
     subaccount: string,
     actor: GiftActor,
     monthly?: ProgrammeMonthlyMode,
@@ -741,11 +741,12 @@ export class ProgrammeGiftsService {
   // fields: never the giver, contacts, IP or settlement account.
   private publicView(
     g: { id: string; pot: WaqfProgrammePot; amount: Prisma.Decimal; feeCover: Prisma.Decimal; currency: string; status: string; createdAt: Date; confirmedAt: Date | null },
-    clinic: { name: string; slug: string },
+    clinic: { name: string; slug: string; product: WaqfProgrammeProduct },
   ) {
     return {
       id: g.id,
-      clinic: { name: clinic.name, slug: clinic.slug },
+      // `clinic` is kept as the key the pages already read; `product` says which kind of programme it is.
+      clinic: { name: clinic.name, slug: clinic.slug, product: clinic.product },
       pot: g.pot,
       amount: g.amount.toFixed(2),
       feeCover: g.feeCover.toFixed(2),
@@ -759,7 +760,7 @@ export class ProgrammeGiftsService {
   async findPublicStatus(id: string) {
     const gift = await prisma.programmeGift.findUnique({
       where: { id },
-      include: { programme: { select: { name: true, slug: true } }, recurringGift: { select: { status: true } } },
+      include: { programme: { select: { name: true, slug: true, product: true } }, recurringGift: { select: { status: true } } },
     });
     // Whether this was the first payment of a monthly gift, for the thank-you page.
     return gift ? { ...this.publicView(gift, gift.programme), recurringGift: gift.recurringGift } : null;

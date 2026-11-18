@@ -44,7 +44,7 @@ const NAV_GROUPS = [
       { href: "/", label: "Overview", icon: IconHome },
       { href: "/portfolio", label: "Portfolio", icon: IconBriefcase },
       { href: "/impact", label: "Impact", icon: IconHeart },
-      { href: "/clinic-support", label: "Clinic support", icon: IconHeart },
+      { href: "/clinic-support", label: "Supported waqfs", icon: IconHeart },
     ],
   },
   {
@@ -96,6 +96,8 @@ const PUBLIC_ROUTES = [
   "/vaults",
   // The public list of clinic waqfs (2026-11-17); each clinic's page is under "/clinics/".
   "/clinics",
+  // The public list of need-based waqfs (need-based NB3); each one's page is under "/need-based-waqf/".
+  "/need-based-waqf",
   "/forgot-password",
   "/reset-password",
   "/privacy-policy",
@@ -105,7 +107,7 @@ const PUBLIC_ROUTES = [
   // Monthly giving (2026-11-15): a giver's own private link, and asking for one.
   "/giving/manage",
 ];
-const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/", "/blog/", "/zakah-payments/", "/giving/manage/", "/clinics/", "/programme-gifts/"];
+const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/", "/blog/", "/zakah-payments/", "/giving/manage/", "/clinics/", "/need-based-waqf/", "/programme-gifts/"];
 function isPublicRoutePath(pathname: string) {
   return PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
@@ -472,7 +474,7 @@ const MOBILE_TABS = [
   { href: "/messages", label: "Messages", icon: IconMessageCircle },
 ];
 const MORE_LINKS = [
-  { href: "/clinic-support", label: "Clinic support", icon: IconHeart },
+  { href: "/clinic-support", label: "Supported waqfs", icon: IconHeart },
   { href: "/team", label: "Team", icon: IconUsers },
   { href: "/activity", label: "Activity", icon: IconClock },
   { href: "/account", label: "Account & security", icon: IconSettings },

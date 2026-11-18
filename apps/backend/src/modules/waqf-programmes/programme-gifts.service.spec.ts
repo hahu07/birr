@@ -393,6 +393,8 @@ describe("ProgrammeGiftsService", () => {
       expect(code).not.toBe(clinicCode);
       expect(await prisma.programmeGift.findUniqueOrThrow({ where: { id: gift.id } })).toMatchObject({ settlementSubaccount: code });
       expect((await service.publicProgrammes("clinic")).some((p) => p.slug === needBased.slug)).toBe(false);
+      expect((await service.publicProgrammes("need_based")).find((p) => p.slug === needBased.slug)).toMatchObject({ available: true });
+      expect((await service.givingTerms(needBased.slug)).clinic.product).toBe("need_based");
     });
 
     test("a code is refused if it isn't a Paystack code, is unchanged, or is another programme's", async () => {

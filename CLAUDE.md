@@ -1532,6 +1532,37 @@ Need-based slice NB2, giving (built 2026-11-19):
 - **Next:** NB3, the public page under the chosen name, the Founder
   Portal page, and the Ops product filter.
 
+Need-based slice NB3, pages (built 2026-11-19, under the working name):
+- **Public pages:** `/need-based-waqf` (list, from `GET
+  /programme-gifts/programmes/:product`) and `/need-based-waqf/:slug`
+  (giving), in the site menu as "Need-based waqf". Both say plainly that
+  support starts once the licensed financing partner and the kifayah line
+  are in place, and give no figure about support.
+- **Shared, not copied:** the clinic's list and giving pages became
+  `ProgrammeListPage` and `ProgrammeGivingPage`
+  (`app/(founder)/_components`). Each product's sentences are in
+  `lib/programme-copy.ts` (the clinic's unchanged), its addresses come
+  from `programmePath`, and a clinic's public report comes in as a child.
+- **Wrong address:** a programme opened at another product's address
+  shows "not found".
+- **What the backend now returns:** the giving terms, a gift's status and
+  a Founder's gifts each carry the programme's `product`.
+- **After checkout:** the thank-you page (`/clinic-gifts/:id`, still the
+  Paystack return path for every product) words and links each gift by its
+  product.
+- **Founder Portal:** "Clinic support" is now "Supported waqfs"
+  (`/clinic-support`). It lists clinics and need-based waqfs to give to,
+  with each product's own pot names.
+- **Ops Console:**
+  - a programme's "Giving page" link follows its product;
+  - the Spending card offers works and payments only to products that
+    make them. A need-based waqf's investment placements still show
+    there, and are proposed from the Investments card.
+- **When the public name is chosen:** change the label and `publicPath`
+  in `WAQF_PROGRAMME_PRODUCTS`, the copy in `programme-copy.ts`, the menu
+  item, the web folder `app/(founder)/need-based-waqf`, `PUBLIC_ROUTES` and
+  the layout's title.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)

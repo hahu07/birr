@@ -1,6 +1,8 @@
 "use client";
 
-// Where Paystack sends a clinic waqf giver back after checkout (2026-11-17).
+// Where Paystack sends a waqf programme giver back after checkout
+// (2026-11-17; the address keeps "clinic-gifts", the Paystack return path,
+// for every product since need-based NB3).
 // Same polling as /zakah-payments/[id]: read the status every couple of
 // seconds, and every few reads ask the backend to check with Paystack
 // directly, so a gift never looks stuck because its webhook was slow.
@@ -9,11 +11,13 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiFetchJson } from "../../../../lib/api";
 import { formatMoney } from "../../../../lib/format";
+import { programmeCopy, programmePath } from "../../../../lib/programme-copy";
+import type { WaqfProgrammeProductKey } from "@birr/shared";
 import { Alert, Button, Card, IconCheckCircle, IconClock, IconXCircle, Skeleton } from "@birr/ui";
 
 interface ProgrammeGiftStatus {
   id: string;
-  clinic: { name: string; slug: string };
+  clinic: { name: string; slug: string; product: WaqfProgrammeProductKey };
   pot: "endowment" | "running";
   amount: string;
   feeCover: string;
@@ -133,9 +137,7 @@ export default function ClinicGiftStatusPage() {
           <p className="mt-4 text-sm font-medium text-slate-900">Thank you — your gift has been received</p>
           <p className="mt-1 text-sm text-slate-500">
             {formatMoney(payment.amount, payment.currency)} to {payment.clinic.name}
-            {payment.pot === "endowment"
-              ? ", endowed for ever: it's never spent, and its income pays for care."
-              : ", for subsidised visits and the clinic's running costs."}
+            {programmeCopy(payment.clinic.product).thanks[payment.pot]}
             {Number(payment.feeCover) > 0 && ` Thank you for also covering the ${formatMoney(payment.feeCover, payment.currency)} processing fee.`}
           </p>
           {payment.recurringGift && payment.recurringGift.status !== "ended" && (
@@ -151,7 +153,7 @@ export default function ClinicGiftStatusPage() {
           )}
           <p className="mt-2 text-xs text-slate-500">If you gave an email or WhatsApp number, a receipt is on its way. May Allah accept it from you.</p>
           {reference}
-          <Link href={`/clinics/${payment.clinic.slug}`} className="mt-4 inline-block text-sm font-medium text-primary-700 hover:text-primary-800">
+          <Link href={programmePath(payment.clinic.product, payment.clinic.slug)} className="mt-4 inline-block text-sm font-medium text-primary-700 hover:text-primary-800">
             Back to {payment.clinic.name} →
           </Link>
         </Card>
@@ -165,7 +167,7 @@ export default function ClinicGiftStatusPage() {
           <p className="mt-4 text-sm font-medium text-slate-900">The payment didn&apos;t go through</p>
           <p className="mt-1 text-sm text-slate-500">No money was taken. You can try again.</p>
           {reference}
-          <Link href={`/clinics/${payment.clinic.slug}`} className="mt-4 inline-block text-sm font-medium text-primary-700 hover:text-primary-800">
+          <Link href={programmePath(payment.clinic.product, payment.clinic.slug)} className="mt-4 inline-block text-sm font-medium text-primary-700 hover:text-primary-800">
             Back to {payment.clinic.name} →
           </Link>
         </Card>

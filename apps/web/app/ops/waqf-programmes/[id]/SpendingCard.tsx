@@ -27,8 +27,16 @@ const SPEND_TONE: Record<ProgrammeSpend["status"], "success" | "warning" | "neut
 };
 const clean = (v: string) => v.replace(/[,\s₦]/g, "");
 
-export function SpendingCard({ programmeId, established }: { programmeId: string; established: boolean }) {
+/**
+ * `kinds`: the endowment payments this programme's product makes
+ * (WAQF_PROGRAMME_PRODUCTS[product].spendKinds). A need-based waqf makes
+ * investment placements only, proposed from the Investments card, so it
+ * gets no works or payment forms here; its placements still show below.
+ */
+export function SpendingCard({ programmeId, established, kinds }: { programmeId: string; established: boolean; kinds: readonly ProgrammeSpend["kind"][] }) {
   const { can } = useStaffSession();
+  const hasWorks = kinds.includes("works_stage");
+  const hasPayments = kinds.some((k) => k !== "investment");
   const [works, setWorks] = useState<ProgrammeWorksProject[] | null>(null);
   const [spends, setSpends] = useState<ProgrammeSpend[] | null>(null);
   const [partners, setPartners] = useState<Counterparty[]>([]);
@@ -85,13 +93,19 @@ export function SpendingCard({ programmeId, established }: { programmeId: string
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-700">Endowment spending</p>
-          <p className="text-xs text-slate-500">Equipment and building work, paid from endowment cash by bank transfer from the clinic waqf&apos;s account.</p>
+          <p className="text-xs text-slate-500">
+            {hasPayments
+              ? "Equipment and building work, paid from endowment cash by bank transfer from the programme's own account."
+              : "Placements of endowment cash in investments, approved, paid by bank transfer and confirmed here."}
+          </p>
         </div>
-        {canManage && (
+        {canManage && hasPayments && (
           <div className="flex shrink-0 gap-2">
-            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setForm(form === "works" ? "none" : "works")}>
-              Propose works
-            </Button>
+            {hasWorks && (
+              <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setForm(form === "works" ? "none" : "works")}>
+                Propose works
+              </Button>
+            )}
             <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setForm(form === "spend" ? "none" : "spend")}>
               New payment
             </Button>
