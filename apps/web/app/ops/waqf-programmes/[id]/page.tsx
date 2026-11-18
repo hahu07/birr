@@ -23,6 +23,7 @@ import { PriceListCard } from "./PriceListCard";
 import { ClaimsCard } from "./ClaimsCard";
 import { PublicReportCard } from "./PublicReportCard";
 import { CausesEditor } from "./CausesEditor";
+import { SubaccountCard } from "./SubaccountCard";
 
 const DEED_TONE: Record<WaqfProgrammeDeed["status"], "success" | "warning" | "neutral" | "danger"> = {
   draft: "warning",
@@ -56,7 +57,8 @@ export default function ClinicWaqfPage() {
         setClinic(c);
         setLedger(l);
         setGifts(g);
-        setPending(actions.filter((a) => a.permission.key.startsWith("clinic_waqf.")));
+        // The programme's own proposals: waqf_programme.* and clinic.* (renamed from clinic_waqf.* in step 2).
+        setPending(actions.filter((a) => a.permission.key.startsWith("waqf_programme.") || a.permission.key.startsWith("clinic.")));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, [id]);
@@ -194,6 +196,8 @@ export default function ClinicWaqfPage() {
         )}
       </Card>
 
+      <SubaccountCard programme={clinic} pending={pending} onChange={load} />
+
       <Card className="mt-5">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
@@ -316,7 +320,9 @@ export default function ClinicWaqfPage() {
 
       <InvestmentsCard programmeId={clinic.id} established={clinic.status === "established"} />
 
-      <ReserveCard clinic={clinic} ledger={ledger} pending={pending} onChange={load} />
+      {(WAQF_PROGRAMME_PRODUCTS[clinic.product].spendKinds as readonly string[]).includes("reserve_replacement") && (
+        <ReserveCard clinic={clinic} ledger={ledger} pending={pending} onChange={load} />
+      )}
 
       {/* The clinic product's own parts (modules/clinics). */}
       {clinic.product === "clinic" && (

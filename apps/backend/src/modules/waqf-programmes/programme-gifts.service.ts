@@ -21,6 +21,7 @@ import { IsPositiveDecimal } from "../../common/validation/positive-decimal";
 import { PaystackAdapter } from "../contributions/providers/paystack.adapter";
 import { VaultContributionsService } from "../vaults/vault-contributions.service";
 import { ProgrammeLedgerService } from "./programme-ledger.service";
+import { productOf } from "./programme-products";
 import { assertFounderVerified, findPrimaryContactMembership } from "../../common/auth/current-founder";
 import { RecurringGiftsCoreService } from "../recurring-gifts/recurring-gifts-core.service";
 import type { SavedCardChargeResult } from "../contributions/providers/payment-provider.interface";
@@ -187,15 +188,12 @@ export class ProgrammeGiftsService {
   ) {}
 
   /**
-   * The Paystack subaccount a product's gifts settle into. Only clinics have
-   * one so far: until each programme gets its own setting (need-based slice
-   * NB2), any other product takes no gift, so its money can never settle
-   * into the clinic waqf's account.
+   * The Paystack subaccount a programme's gifts settle into: its own,
+   * set by an approved waqf_programme.subaccount_set (need-based NB2,
+   * 2026-11-19). Undefined until then, and no gift is taken.
    */
-  private async subaccount(product: WaqfProgrammeProduct): Promise<string | undefined> {
-    if (product !== "clinic") return undefined;
-    const code = (await this.settings.get("paystack", "CLINIC_WAQF_SUBACCOUNT_CODE"))?.trim();
-    return code ? code : undefined;
+  private subaccount(programme: { paystackSubaccountCode: string | null }): string | undefined {
+    return programme.paystackSubaccountCode ?? undefined;
   }
 
   /** Established clinic waqfs, for a Founder choosing where to give. */
@@ -205,15 +203,22 @@ export class ProgrammeGiftsService {
    * giving page uses: an approved deed, and the subaccount set.
    */
   async publicProgrammes(product: WaqfProgrammeProduct) {
-    const [programmes, subaccount] = await Promise.all([
-      prisma.waqfProgramme.findMany({
-        where: { status: "established", product },
-        orderBy: { establishedAt: "asc" },
-        select: { name: true, slug: true, city: true, description: true, deeds: { where: { status: "approved" }, select: { id: true } } },
-      }),
-      this.subaccount(product),
-    ]);
-    return programmes.map(({ deeds, ...p }) => ({ ...p, available: deeds.length > 0 && subaccount !== undefined }));
+    const programmes = await prisma.waqfProgramme.findMany({
+      where: { status: "established", product },
+      orderBy: { establishedAt: "asc" },
+      select: {
+        name: true,
+        slug: true,
+        city: true,
+        description: true,
+        paystackSubaccountCode: true,
+        deeds: { where: { status: "approved" }, select: { id: true } },
+      },
+    });
+    return programmes.map(({ deeds, paystackSubaccountCode, ...p }) => ({
+      ...p,
+      available: deeds.length > 0 && this.subaccount({ paystackSubaccountCode }) !== undefined,
+    }));
   }
 
   /** What the public giving page needs: the clinic, whether it's taking gifts, and the deed to accept. */
@@ -226,7 +231,7 @@ export class ProgrammeGiftsService {
     const deed = clinic.deeds[0] ?? null;
     return {
       clinic: { name: clinic.name, slug: clinic.slug, city: clinic.city, description: clinic.description },
-      available: clinic.status === "established" && deed !== null && (await this.subaccount(clinic.product)) !== undefined,
+      available: clinic.status === "established" && deed !== null && this.subaccount(clinic) !== undefined,
       currency: CURRENCY,
       minimumAmount: CLINIC_PUBLIC_MINIMUM_NGN,
       deed,
@@ -483,11 +488,11 @@ export class ProgrammeGiftsService {
     const clinic = await prisma.waqfProgramme.findUnique({ where });
     if (!clinic) throw new NotFoundException("Clinic not found.");
     if (clinic.status !== "established") throw new BadRequestException(`${clinic.name} isn't taking gifts yet.`);
-    const subaccount = await this.subaccount(clinic.product);
+    const subaccount = this.subaccount(clinic);
     if (!subaccount) {
       // Owner's decision: clinic waqf money never settles into Birr's main
       // balance, so no gift is taken until its own account is set up.
-      throw new ServiceUnavailableException("Gifts to this clinic aren't open yet.");
+      throw new ServiceUnavailableException(`Gifts to ${clinic.name} aren't open yet.`);
     }
     return { clinic, subaccount };
   }
@@ -678,14 +683,14 @@ export class ProgrammeGiftsService {
         this.logger.error(`Failed to save the card for monthly clinic gift "${outcome.recurringGiftId}":`, err instanceof Error ? err.stack : String(err));
       });
     }
-    if (status === "confirmed") this.sendReceipts(outcome, gift.programme.name, gift.deed?.version ?? null);
+    if (status === "confirmed") this.sendReceipts(outcome, gift.programme, gift.deed?.version ?? null);
     return this.publicView(outcome, gift.programme);
   }
 
   /** Only to what was given with this gift; never holds up the confirmation. */
   private sendReceipts(
     gift: { id: string; pot: WaqfProgrammePot; amount: Prisma.Decimal; feeCover: Prisma.Decimal; contactEmail: string | null; contactWhatsApp: string | null },
-    clinicName: string,
+    programme: { name: string; product: WaqfProgrammeProduct },
     deedVersion: number | null,
   ) {
     const fail = (channel: string) => (err: unknown) =>
@@ -694,7 +699,8 @@ export class ProgrammeGiftsService {
       this.receiptEmail
         .sendReceipt({
           to: gift.contactEmail,
-          clinicName,
+          clinicName: programme.name,
+          product: programme.product,
           pot: gift.pot,
           amount: gift.amount.toFixed(2),
           feeCover: gift.feeCover.toFixed(2),
@@ -705,7 +711,7 @@ export class ProgrammeGiftsService {
     }
     if (gift.contactWhatsApp && this.whatsApp) {
       const amount = moneyText(gift.amount);
-      const givenTo = `${clinicName} (${gift.pot === "endowment" ? "endowment" : "running fund"})`;
+      const givenTo = `${programme.name} (${productOf(programme).potLabels[gift.pot].toLowerCase()})`;
       const text = whatsAppNotice("Thank you for your gift", [`We received ${amount} for ${givenTo}.`, `Receipt reference: ${gift.id}`]);
       this.whatsApp.sendTemplate(gift.contactWhatsApp, "gift_receipt", [amount, givenTo, gift.id], text).catch(fail("WhatsApp"));
     }

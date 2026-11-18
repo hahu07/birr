@@ -63,7 +63,7 @@ export function ClaimsCard({ clinic, onChange }: { clinic: WaqfProgramme; onChan
       .then(([c, p, a]) => {
         setClaims(c);
         setProviders(p.filter((x) => x.institutionType === "healthcare_provider"));
-        setPending(a.filter((x) => x.permission.key.startsWith("clinic_waqf.")));
+        setPending(a.filter((x) => x.permission.key.startsWith("waqf_programme.") || x.permission.key.startsWith("clinic.")));
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Something went wrong."));
   }, [clinic.id]);

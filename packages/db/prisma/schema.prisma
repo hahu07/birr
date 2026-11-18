@@ -1205,6 +1205,7 @@ model GovernedAction {
   paidProgrammeSpend        ProgrammeSpend?        @relation("ProgrammeSpendPayment")
   approvedClinicPriceList   ClinicPriceList?       @relation("ClinicPriceListApproval")
   assignedClinicOperator    WaqfProgramme?         @relation("ClinicOperatorAssignment")
+  programmeSubaccountSet    WaqfProgramme?         @relation("ProgrammeSubaccountSet")
   setProgrammeReserveShare  WaqfProgramme?         @relation("ProgrammeReserveShare")
   approvedClinicClaim       ClinicClaim?           @relation("ClinicClaimApproval")
   paidClinicClaim           ClinicClaim?           @relation("ClinicClaimPayment")
@@ -4067,11 +4068,19 @@ model WaqfProgramme {
 
   // The licensed operator running the clinic (slice 7), a healthcare
   // provider Counterparty, assigned by the Board (clinic_waqf.operator_assign).
-  operatorId         String?
-  operator           Counterparty?   @relation("ClinicWaqfOperator", fields: [operatorId], references: [id], onDelete: Restrict)
-  operatorAssignedAt DateTime?
-  operatorActionId   String?         @unique
-  operatorAction     GovernedAction? @relation("ClinicOperatorAssignment", fields: [operatorActionId], references: [id], onDelete: Restrict)
+  // Its own Paystack subaccount (need-based NB2, 2026-11-19): where its
+  // gifts settle, its own bank account. Set only by an approved
+  // waqf_programme.subaccount_set (a platform admin proposes; the Board or
+  // Compliance approves). No gift is taken until it's set.
+  paystackSubaccountCode     String?
+  paystackSubaccountSetAt    DateTime?
+  paystackSubaccountActionId String?         @unique
+  paystackSubaccountAction   GovernedAction? @relation("ProgrammeSubaccountSet", fields: [paystackSubaccountActionId], references: [id], onDelete: Restrict)
+  operatorId                 String?
+  operator                   Counterparty?   @relation("ClinicWaqfOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  operatorAssignedAt         DateTime?
+  operatorActionId           String?         @unique
+  operatorAction             GovernedAction? @relation("ClinicOperatorAssignment", fields: [operatorActionId], references: [id], onDelete: Restrict)
 
   claims     ClinicClaim[]
   claimLines ClinicClaimLine[]

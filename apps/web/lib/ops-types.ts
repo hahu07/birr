@@ -1662,6 +1662,10 @@ export interface WaqfProgramme {
   runningMonthlyTarget?: string | null;
   // Equipment replacement reserve's share of endowment income (slice 9).
   reserveSharePercent?: number;
+  // Its own Paystack subaccount (need-based NB2): set by an approved
+  // waqf_programme.subaccount_set; no gift is taken until it's set.
+  paystackSubaccountCode?: string | null;
+  paystackSubaccountSetAt?: string | null;
 }
 
 export interface ClinicLedgerRow {

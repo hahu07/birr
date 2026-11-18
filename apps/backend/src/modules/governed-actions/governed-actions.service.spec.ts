@@ -3091,6 +3091,51 @@ describe("GovernedActionsService", () => {
       const action = await service.propose({ permissionKey: "waqf_programme.establish", payload: { programmeId: clinic.id }, makerUserId });
       await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
     });
+
+    // waqf_programme.subaccount_set (need-based NB2, 2026-11-19). Owner's
+    // decision: two people decide where a programme's money settles.
+    test("a platform admin proposes a programme's subaccount; only the Board or Compliance approves it", async () => {
+      const grants = async (flag: "canMaker" | "canChecker") =>
+        (
+          await prisma.rolePermission.findMany({ where: { permission: { key: "waqf_programme.subaccount_set" }, [flag]: true }, select: { role: { select: { key: true } } } })
+        )
+          .map((g) => g.role.key)
+          .sort();
+      expect(await grants("canMaker")).toEqual(["platform_admin"]);
+      expect(await grants("canChecker")).toEqual(["board_of_trustees", "compliance_officer"]);
+    });
+
+    test("waqf_programme.subaccount_set: approved, it sets where gifts settle, audited; a change needs another approval", async () => {
+      const clinic = await newClinic();
+      const code = `ACCT_ga${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+      const action = await service.propose({ permissionKey: "waqf_programme.subaccount_set", payload: { programmeId: clinic.id, subaccountCode: code }, makerUserId });
+      await expect(
+        service.propose({ permissionKey: "waqf_programme.subaccount_set", payload: { programmeId: clinic.id, subaccountCode: code }, makerUserId }),
+      ).rejects.toThrow(ConflictException);
+      expect((await prisma.waqfProgramme.findUniqueOrThrow({ where: { id: clinic.id } })).paystackSubaccountCode).toBeNull();
+
+      await service.decide({ governedActionId: action.id, checkerUserId: boardCheckerUserId, approve: true });
+      expect(await prisma.waqfProgramme.findUniqueOrThrow({ where: { id: clinic.id } })).toMatchObject({
+        paystackSubaccountCode: code,
+        paystackSubaccountActionId: action.id,
+      });
+      const logs = await prisma.auditLog.findMany({ where: { entityId: clinic.id, action: "waqf_programme.subaccount_set" } });
+      expect(logs).toHaveLength(1);
+      expect(logs[0].actorUserId).toBe(boardCheckerUserId);
+      await expect(
+        service.propose({ permissionKey: "waqf_programme.subaccount_set", payload: { programmeId: clinic.id, subaccountCode: code }, makerUserId }),
+      ).rejects.toThrow(/already settles into/);
+    });
+
+    test("the database refuses whoever proposed a programme's subaccount as its checker", async () => {
+      const clinic = await newClinic();
+      const action = await service.propose({
+        permissionKey: "waqf_programme.subaccount_set",
+        payload: { programmeId: clinic.id, subaccountCode: `ACCT_ga${randomUUID().replace(/-/g, "").slice(0, 12)}` },
+        makerUserId,
+      });
+      await expect(prisma.governedAction.update({ where: { id: action.id }, data: { checkerUserId: makerUserId } })).rejects.toThrow();
+    });
   });
 
   // waqf_programme.asset_add / waqf_programme.asset_dispose (slice 5a). Maker
