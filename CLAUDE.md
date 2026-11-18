@@ -1432,6 +1432,16 @@ sections 13 and 14.
   - give each waqf programme its own Paystack subaccount setting (only
     `CLINIC_WAQF_SUBACCOUNT_CODE` exists);
   - build the need-based waqf.
+- **Day-by-day plan:** the Claude Doc "Birr Launch Plan: 20 December
+  2026" (https://claude.ai/artifact/VXRkYbsasUKpLMfQWTgXU5). Key dates: a
+  pilot on Render's free plan with at least 10 participants, 21 Nov to
+  4 Dec; real hosting chosen 23 Nov and bought 7 Dec; Legal and Shariah
+  joint sittings 26 Nov and 3 Dec (the privacy policy and terms of
+  service, still placeholders in the app, plus the need-based deed and the
+  single-founder Foundation Deed); approvals entered in Ops 9 to 14 Dec;
+  code freeze 11 Dec 18:00; go/no-go 18 Dec 14:00, product by product. A
+  late dependency holds back only its own product; only hosting, Paystack
+  live activation and the privacy policy and terms can hold back all five.
 
 **Update, 2026-11-18 — the need-based waqf is approved, as murabahah.**
 Design: https://claude.ai/artifact/HChJqo1PiWG592hc6UwTda. "Need-based
