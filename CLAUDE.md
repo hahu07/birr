@@ -1367,30 +1367,113 @@ Vault and zakah stay separate.
   its own parts on it once it has the go-ahead (see the design doc's
   build order).
 
-Next steps for the clinic (2026-11-17; all nine slices are built and
-merged, nothing is live, no operator or site exists yet; the plan doc's
-"Timeline and next steps" is the working list):
-- **Board of Trustees:** agree the direction, approve establishing the
-  clinic waqf, and approve the search for an operator.
-- **Shariah Supervisory Board:** rule on plan questions 2 to 4 first
-  (categories, Birr's two roles, supporters as co-waqifs), and confirm the
-  owner's decisions on questions 1 and 9.
-- **Legal:** answer its questions 1 to 3 first (legal form, operator
-  agreement, property), and approve the draft deed wording
-  (`clinic-waqf-deed.ts`) with the Shariah Supervisory Board.
-- **Mutawalli Officer:** open the call for operators in Ibadan and ask each
-  shortlisted one for a costed plan.
-- **Finance:** open the clinic waqf's bank account and Paystack subaccount,
-  then set `CLINIC_WAQF_SUBACCOUNT_CODE` in Platform Settings; no gift is
-  taken until it's set.
+Next steps for the clinic (updated 2026-11-18; all nine slices are built
+and merged, nothing is live, no operator or site exists yet; the plan
+doc's "Timeline and next steps" is the working list). The Board, the
+Shariah Supervisory Board and Legal decided their parts on 2026-11-18
+(see the launch note below). Still to do:
+- **Shariah Supervisory Board, then the Board of Trustees:** in the Ops
+  Console, approve the clinic deed version (`waqf_programme.deed_approve`),
+  then establishing the clinic waqf (`waqf_programme.establish`), before
+  launch.
+- **Finance:** open the clinic waqf's bank account and Paystack subaccount
+  by 2026-12-01, then set `CLINIC_WAQF_SUBACCOUNT_CODE` in Platform
+  Settings; no gift is taken until it's set.
 - **Engineering:** choose always-on production hosting and deploy
   (`docs/deploy-checklist-2026-11.md`); monthly charges and the daily
   reconciliation need it.
+- **Mutawalli Officer:** open the call for operators in Ibadan and ask each
+  shortlisted one for a costed plan. **Legal** then drafts its management
+  contract.
 - **Investment Committee:** register the shortlisted operator as a
   counterparty (`counterparty.register` is theirs alone unless Roles &
   Access changes it).
 - **Compliance:** record and verify the operator's four licences before it
-  is onboarded and assigned (`clinic_waqf.operator_assign`).
+  is onboarded and assigned (`clinic.operator_assign`).
+
+**Update, 2026-11-18 — launch on 20 December 2026, and the decisions that
+unblock it.** Taken in one session with the owner, the Board of Trustees,
+the Shariah Supervisory Board, Legal, Finance, Compliance, Engineering and
+a Mutawalli Officer. The record is `docs/product/Birr-Products-Document.docx`,
+sections 13 and 14.
+- **Launch:** all five products together on **2026-12-20**: Waqf Funds,
+  Vault, Zakah, the clinic waqf and the need-based waqf (below). Vault opens
+  with one campaign, Ramadan food packs.
+- **Shariah Supervisory Board:** all four zakah rulesets approved for
+  launch. Confirmed what was built ahead of its review: monthly zakah in
+  advance (ta'jil), the payer's gold or silver nisab with silver by
+  default, and the clinic's tamlik (plan question 1) and equipment reserve
+  (9). Ruled on clinic questions 2 to 4: zakah pays the bills of poor and
+  needy patients only; Birr may establish the clinic waqf and be its
+  Mutawalli; each endower is a co-waqif, and accepting the deed online is
+  enough. None of these is on a review list any more.
+- **Legal, with the Shariah Supervisory Board for the first three:**
+  approved as they stand the zakah wakalah statement (`zakah-terms.ts`),
+  the joint deed and co-founders' statements, the clinic deed
+  (`clinic-waqf-deed.ts`) and the succession notice
+  (`succession-notice.ts`). Birr holds the clinic waqf under its own deed,
+  not a separate trustee body; a future operator runs it under a
+  management contract.
+- **Decisions don't change data.** The approvals still have to be entered
+  in the Ops Console by two people: each ruleset (`zakah.ruleset_approve`),
+  the clinic deed version and the establishment (above).
+- **Compliance:** the public-giver ID threshold rises to ₦50,000,000 (from
+  ₦15,000,000), set in Ops (`vault.donor_threshold_set`). Flagged in the
+  session: check it against the MLPPA 2022 before setting it.
+- **Finance:** the zakah, clinic and need-based bank accounts and Paystack
+  subaccounts by 2026-12-01.
+- **Engineering:**
+  - recommend hosting this week, then deploy;
+  - Meta verification and the WhatsApp templates;
+  - set the minimums in the new database (a fresh one seeds the NGN
+    `CorpusMinimum` at ₦1,500,000; the dev database's ₦250,000 was set by
+    staff);
+  - mark the approved wordings as final versions;
+  - give each waqf programme its own Paystack subaccount setting (only
+    `CLINIC_WAQF_SUBACCOUNT_CODE` exists);
+  - build the need-based waqf.
+- **Day-by-day plan:** the Claude Doc "Birr Launch Plan: 20 December
+  2026" (https://claude.ai/artifact/VXRkYbsasUKpLMfQWTgXU5). Key dates: a
+  pilot on Render's free plan with at least 10 participants, 21 Nov to
+  4 Dec; real hosting chosen 23 Nov and bought 7 Dec; Legal and Shariah
+  joint sittings 26 Nov and 3 Dec (the privacy policy and terms of
+  service, still placeholders in the app, plus the need-based deed and the
+  single-founder Foundation Deed); approvals entered in Ops 9 to 14 Dec;
+  code freeze 11 Dec 18:00; go/no-go 18 Dec 14:00, product by product. A
+  late dependency holds back only its own product; only hosting, Paystack
+  live activation and the privacy policy and terms can hold back all five.
+
+**Update, 2026-11-18 — the need-based waqf is approved, as murabahah.**
+Design: https://claude.ai/artifact/HChJqo1PiWG592hc6UwTda. "Need-based
+waqf" is a working name; the public one is chosen before launch. The
+answers come from Birr's Shariah adviser and lawyer, and the go-ahead
+from the Board:
+- **What it is:** the second waqf programme, supporting poor households
+  that can work (productive track) and that can't (allowances and bills).
+- **Who qualifies:** households measured against a **kifayah line** per
+  city: the cost of basic needs, set by Birr and approved by the Shariah
+  Supervisory Board and the Board. Being below it qualifies a household
+  (headcount); how far below sizes the support (poverty gap); the poorest
+  come first (severity).
+- **Productive track: murabahah, not qard.** The person buys as Birr's
+  agent; Birr then sells to them, in a separate later contract, at cost
+  plus one markup rate far below market. The Board sets the rate after the
+  Shariah Supervisory Board approves it, reviews it yearly, and a signed
+  price never changes. Qard hasan only for the poorest. Late payers are
+  rescheduled; there is never a late charge.
+- **Through a licensed partner** (a CBN-licensed non-interest microfinance
+  bank or similar), on its own contracts, reviewed by Legal and the Shariah
+  Supervisory Board.
+- **Pots:** a **financing fund** (a set share of the endowment, capped by
+  the Board) is the "loan pot" step 3 deferred. Losses come only from a
+  loss reserve in the spending fund, never the endowment; the markup fills
+  the reserve first, then the spending fund.
+- **Zakah** may pay allowances, bills, the debts of al-gharimin and tools
+  given outright, never financing. Equipment is sold by murabahah or
+  given, never lent or leased. Records are kept 6 years after support ends
+  (NDPA 2023).
+- **Giving first, support later:** it takes gifts from launch; support
+  starts once the partner and the kifayah line are in place.
 
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
