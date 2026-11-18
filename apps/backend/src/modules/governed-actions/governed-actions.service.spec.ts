@@ -3248,7 +3248,7 @@ describe("GovernedActionsService", () => {
     const partner = (name: string) =>
       prisma.counterparty.create({ data: { name: `${name} ${randomUUID()}`, institutionType: "business", jurisdiction: "NG", status: "active", businessActivities: "Supplies and builds for clinics." } });
 
-    const paid = (spendId: string, paidOn = "2026-11-17") => ({ spendId, bankReference: "ZENITH/TRF/0001", paidOn });
+    const paid = (spendId: string, paidOn = lagosToday()) => ({ spendId, bankReference: "ZENITH/TRF/0001", paidOn });
 
     test("the Board approves works; the Board or Compliance approves a payment; Compliance or Audit confirms it", async () => {
       const checkers = async (key: string) =>
@@ -3391,7 +3391,7 @@ describe("GovernedActionsService", () => {
       await service.decide({ governedActionId: approve.id, checkerUserId: boardCheckerUserId, approve: true });
       const markPaid = await service.propose({
         permissionKey: "waqf_programme.spend_mark_paid",
-        payload: { spendId: placement.id, bankReference: "ZENITH/INV/0001", paidOn: "2026-11-17" },
+        payload: { spendId: placement.id, bankReference: "ZENITH/INV/0001", paidOn: lagosToday() },
         makerUserId: investmentMakerUserId,
       });
       await service.decide({ governedActionId: markPaid.id, checkerUserId: distributionCheckerUserId, approve: true });
@@ -3399,10 +3399,10 @@ describe("GovernedActionsService", () => {
       expect((await prisma.programmeInvestment.findUniqueOrThrow({ where: { id: investment.id } })).status).toBe("placed");
       expect(await balances(clinic.id)).toMatchObject({ "1000": "5000000.00", "1200": "15000000.00" });
 
-      await investments.recordIncome(clinic.id, investment.id, { amount: "600000", receivedOn: "2026-11-17", bankReference: "ZENITH/PRF/0001", description: "First quarter's profit share" }, makerUserId);
+      await investments.recordIncome(clinic.id, investment.id, { amount: "600000", receivedOn: lagosToday(), bankReference: "ZENITH/PRF/0001", description: "First quarter's profit share" }, makerUserId);
       expect(await balances(clinic.id)).toMatchObject({ "1100": "600000.00", "4100": "600000.00", "1000": "5000000.00", "3000": "20000000.00" });
 
-      await investments.recordReturn(clinic.id, investment.id, { returnedOn: "2026-11-17", bankReference: "ZENITH/RET/0001" }, investmentMakerUserId);
+      await investments.recordReturn(clinic.id, investment.id, { returnedOn: lagosToday(), bankReference: "ZENITH/RET/0001" }, investmentMakerUserId);
       expect(await balances(clinic.id)).toMatchObject({ "1000": "20000000.00", "1200": "0.00" });
       expect((await prisma.programmeInvestment.findUniqueOrThrow({ where: { id: investment.id } })).status).toBe("returned");
     });
