@@ -24,6 +24,7 @@ import { ClaimsCard } from "./ClaimsCard";
 import { PublicReportCard } from "./PublicReportCard";
 import { CausesEditor } from "./CausesEditor";
 import { SubaccountCard } from "./SubaccountCard";
+import { programmePath } from "../../../../lib/programme-copy";
 
 const DEED_TONE: Record<WaqfProgrammeDeed["status"], "success" | "warning" | "neutral" | "danger"> = {
   draft: "warning",
@@ -146,11 +147,11 @@ export default function ClinicWaqfPage() {
               label: "Giving page",
               value:
                 clinic.status === "established" ? (
-                  <Link href={`/clinics/${clinic.slug}`} className="font-medium text-primary-700 hover:text-primary-800">
-                    /clinics/{clinic.slug}
+                  <Link href={programmePath(clinic.product, clinic.slug)} className="font-medium text-primary-700 hover:text-primary-800">
+                    {programmePath(clinic.product, clinic.slug)}
                   </Link>
                 ) : (
-                  `/clinics/${clinic.slug} (opens once established)`
+                  `${programmePath(clinic.product, clinic.slug)} (opens once established)`
                 ),
             },
             { label: "Created", value: `${formatDate(clinic.createdAt)}${clinic.createdByUser ? ` by ${clinic.createdByUser.fullName}` : ""}` },
@@ -316,7 +317,11 @@ export default function ClinicWaqfPage() {
 
       <AssetsCard programmeId={clinic.id} established={clinic.status === "established"} />
 
-      <SpendingCard programmeId={clinic.id} established={clinic.status === "established"} />
+      <SpendingCard
+        programmeId={clinic.id}
+        established={clinic.status === "established"}
+        kinds={WAQF_PROGRAMME_PRODUCTS[clinic.product].spendKinds}
+      />
 
       <InvestmentsCard programmeId={clinic.id} established={clinic.status === "established"} />
 

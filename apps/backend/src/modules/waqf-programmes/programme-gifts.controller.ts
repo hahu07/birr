@@ -1,7 +1,9 @@
 import { Body, Controller, Get, NotFoundException, Param, Post, Req } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { Request } from "express";
+import type { WaqfProgrammeProduct } from "@birr/db";
 import { ProgrammeGiftsService, InitiateProgrammeGiftInput, InitiateFounderProgrammeGiftInput } from "./programme-gifts.service";
+import { PRODUCTS } from "./programme-products";
 import { assertPrimaryContact, resolveFounderFromSession, resolveUserFromSession } from "../../common/auth/current-founder";
 import { Public } from "../../common/guards/public.decorator";
 
@@ -13,6 +15,15 @@ import { Public } from "../../common/guards/public.decorator";
 @Controller("programme-gifts")
 export class ProgrammeGiftsController {
   constructor(private readonly service: ProgrammeGiftsService) {}
+
+  // One product's established programmes, for its public list (need-based
+  // NB3: /need-based-waqf). The clinics keep their own GET /clinics.
+  @Public()
+  @Get("programmes/:product")
+  programmes(@Param("product") product: string) {
+    if (!Object.hasOwn(PRODUCTS, product)) throw new NotFoundException(`No product "${product}".`);
+    return this.service.publicProgrammes(product as WaqfProgrammeProduct);
+  }
 
   @Public()
   @Get("terms/:slug")
