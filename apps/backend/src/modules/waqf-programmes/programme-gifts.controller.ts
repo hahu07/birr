@@ -26,7 +26,7 @@ export class ProgrammeGiftsController {
   }
 
   // One product's established programmes, for its public list (need-based
-  // NB3: /need-based-waqf). The clinics keep their own GET /clinics.
+  // NB3; Kifayah's /kifayah). The clinics keep their own GET /clinics.
   @Public()
   @Get("programmes/:product")
   programmes(@Param("product") product: string) {

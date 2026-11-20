@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import NeedBasedWaqfGivingPage from "./page";
+import KifayahGivingPage from "./page";
 import { apiFetchJson } from "../../../../lib/api";
 
 vi.mock("next/navigation", () => ({ useParams: () => ({ slug: "kano" }) }));
@@ -20,7 +20,7 @@ const terms = (product: "need_based" | "clinic") => ({
   deed: { id: "deed-1", version: 1, text: "Deed of the Kano Households Waqf waqf", textHash: "a".repeat(64) },
 });
 
-describe("NeedBasedWaqfGivingPage", () => {
+describe("KifayahGivingPage", () => {
   beforeEach(() => {
     mockedFetch.mockReset();
   });
@@ -31,7 +31,7 @@ describe("NeedBasedWaqfGivingPage", () => {
         ? { currency: "NGN", targets: { endowment: null, runningMonthly: null }, endowment: { endowed: "0", cash: "0", invested: "0" }, running: { gifts: "7500", endowmentIncome: "0", receivedThisMonth: "7500", held: "7500" } }
         : terms("need_based"),
     );
-    render(<NeedBasedWaqfGivingPage />);
+    render(<KifayahGivingPage />);
     await waitFor(() => expect(screen.getByText("Kano Households Waqf")).toBeTruthy());
     await waitFor(() => expect(screen.getByText("Held for support")).toBeTruthy());
     expect(mockedFetch).toHaveBeenCalledWith("/programme-gifts/programmes/need_based/kano/report");
@@ -40,12 +40,12 @@ describe("NeedBasedWaqfGivingPage", () => {
     expect(screen.getByText("Endow it")).toBeTruthy();
     expect(screen.getByText("Give to the spending fund")).toBeTruthy();
     expect(screen.queryByText(/running fund/i)).toBeNull();
-    expect(screen.getByText(/A waqf for poor households in Kano/).textContent).not.toMatch(/₦/);
+    expect(screen.getByText(/Birr's graduation programme for poor households in Nigeria/).textContent).not.toMatch(/₦/);
   });
 
-  it("doesn't show a clinic at a need-based address", async () => {
+  it("doesn't show a clinic at a Kifayah address", async () => {
     mockedFetch.mockResolvedValue(terms("clinic"));
-    render(<NeedBasedWaqfGivingPage />);
+    render(<KifayahGivingPage />);
     await waitFor(() => expect(screen.getByText("We couldn't find this page.")).toBeTruthy());
     expect(screen.queryByText("Endow it")).toBeNull();
   });

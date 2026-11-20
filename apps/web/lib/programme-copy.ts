@@ -4,9 +4,10 @@
 // in @birr/shared; this file holds the sentences. The clinic's are the
 // wording its pages already used.
 //
-// The need-based waqf launches giving first: its pages say plainly that
-// support starts once the licensed financing partner and the kifayah line
-// are in place, and state no figure about support.
+// Kifayah (the need_based product, named 2026-11-20) launches giving
+// first: its pages say plainly that support starts once the licensed
+// financing partner and the kifayah line are in place, and state no figure
+// about support.
 import { WAQF_PROGRAMME_PRODUCTS, type WaqfProgrammeProductKey } from "@birr/shared";
 
 export interface ProgrammeCopy {
@@ -56,30 +57,30 @@ const COPY: Record<WaqfProgrammeProductKey, ProgrammeCopy> = {
   need_based: {
     list: {
       eyebrow: WAQF_PROGRAMME_PRODUCTS.need_based.label,
-      title: "Help poor households earn a living, or live with dignity.",
+      title: "Enough to live with dignity, by their own means.",
       intro:
-        "Each waqf helps households in its city whose means fall below the cost of basic needs: tools and stock on easy terms for those who can work, and allowances and bills for those who can't. Birr is its trustee. Endow it, and your gift is kept for ever; or give to its spending fund. Support starts once its licensed financing partner and kifayah line are in place.",
-      empty: "No waqf is open yet. Please check back soon.",
-      loadError: "Couldn't load the waqfs",
+        "Kifayah, Arabic for sufficiency, is Birr's graduation programme. It helps poor households in Nigeria reach the kifayah line, the cost of basic needs in their state, and stay above it: support to live on, tools or stock to earn with, training, help to save and a coach, in that order. Birr is its trustee. Endow it, and your gift is kept for ever; or give to its spending fund. Support starts once its licensed financing partner and kifayah line are in place.",
+      empty: "Kifayah isn't open yet. Please check back soon.",
+      loadError: "Couldn't load Kifayah",
     },
-    subtitle: (city) => `A waqf for poor households in ${city}, held with Birr as trustee.`,
+    subtitle: () => "Birr's graduation programme for poor households in Nigeria, held in a waqf with Birr as trustee.",
     notice:
-      "Support starts once this waqf's licensed financing partner and its kifayah line (the cost of basic needs in the city) are in place. Until then, gifts to the spending fund are held for that support, and the endowment is kept for ever.",
+      "Support starts once Kifayah's licensed financing partner and its kifayah line (the cost of basic needs in each state) are in place, one state at a time. Until then, gifts to the spending fund are held for that support, and the endowment is kept for ever.",
     pots: {
       endowment: {
         title: "Endow it",
-        body: "Your gift is kept for ever: it's never spent, and its income supports poor households. You give it as a waqf, under the deed below.",
+        body: "Your gift is kept for ever: it's never spent, and its income helps poor households reach sufficiency. You give it as a waqf, under the deed below.",
       },
       running: {
         title: "Give to the spending fund",
-        body: "Your gift is spent on support for poor households: monthly allowances, essential bills, and tools for people who can work.",
+        body: "Your gift is spent on support for poor households: living support, tools and stock for those who can work, training and coaching.",
       },
     },
-    notTakingGifts: "This waqf isn't taking gifts yet. Please check back soon.",
-    giftReaches: "the waqf",
+    notTakingGifts: "Kifayah isn't taking gifts yet. Please check back soon.",
+    giftReaches: "Kifayah",
     thanks: {
-      endowment: ", endowed for ever: it's never spent, and its income supports poor households.",
-      running: ", for allowances, bills and tools for poor households, once support starts.",
+      endowment: ", endowed for ever: it's never spent, and its income helps poor households reach sufficiency.",
+      running: ", for support for poor households, once support starts.",
     },
   },
 };
@@ -88,7 +89,7 @@ export function programmeCopy(product: WaqfProgrammeProductKey): ProgrammeCopy {
   return COPY[product];
 }
 
-/** A programme's public page: e.g. /clinics/bodija or /need-based-waqf/kano. */
+/** A programme's public page: e.g. /clinics/bodija or /kifayah/kifayah. */
 export function programmePath(product: WaqfProgrammeProductKey, slug: string): string {
   return `${WAQF_PROGRAMME_PRODUCTS[product].publicPath}/${slug}`;
 }

@@ -11,7 +11,7 @@ import { ProgrammeSpendingService } from "./programme-spending.service";
 import { WaqfProgrammesService } from "./waqf-programmes.service";
 
 // A product's own parts, and payment kinds it doesn't list, are refused on
-// another product (2026-11-18, with the need-based waqf as the second
+// another product (2026-11-18, with the need-based waqf, now Kifayah, as the second
 // product): by the services, with a plain message, and by the database.
 // Programmes are never deleted (a trigger), so these fixtures stay in the
 // dev database, named per run.
@@ -45,7 +45,7 @@ describe("waqf programme product parts", () => {
     await prisma.$disconnect();
   });
 
-  describe("the need-based waqf", () => {
+  describe("Kifayah (the need_based product)", () => {
     test("is created with its product's default causes and its own deed wording", async () => {
       const found = await prisma.waqfProgramme.findUniqueOrThrow({
         where: { id: needBased.id },
@@ -57,7 +57,8 @@ describe("waqf programme product parts", () => {
       const draft = await programmes.draftDeed(needBased.id, {}, makerUserId);
       expect(draft.text).toContain("Deed of the Kano Support Test waqf");
       expect(draft.text).toContain("The financing fund");
-      expect(draft.text).toContain("in Kano whose means fall below the kifayah line");
+      expect(draft.text).toContain("whose means fall below the kifayah line of their state");
+      expect(draft.text).toContain("16. The name. This waqf is called Kifayah");
       expect(draft.text).not.toContain("laboratory and clinic care");
     });
 
@@ -74,7 +75,7 @@ describe("waqf programme product parts", () => {
     };
 
     test("an operator, monthly figures", async () => {
-      await refused(claims.validateOperatorProposal({ programmeId: needBased.id, counterpartyId: randomUUID() }), /Operators belong to clinics only; Kano Support Test is a need-based waqf/);
+      await refused(claims.validateOperatorProposal({ programmeId: needBased.id, counterpartyId: randomUUID() }), /Operators belong to clinics only; Kano Support Test is a Kifayah waqf/);
       await refused(
         reports.record(needBased.id, { period: "2026-10", visits: 1, childrenImmunised: 0, testsRun: 0, referrals: 0 }, makerUserId),
         /Monthly figures belong to clinics only/,
@@ -84,7 +85,7 @@ describe("waqf programme product parts", () => {
     test("a works project and a replacement reserve", async () => {
       await refused(
         spending.proposeWorks(needBased.id, { name: "Shop fit-out", route: Object.values(ProgrammeWorksRoute)[0], contractorId: randomUUID(), budget: "100000", budgetNote: "QS estimate" }, makerUserId),
-        /Kano Support Test is a need-based waqf, which has no works projects/,
+        /Kano Support Test is a Kifayah waqf, which has no works projects/,
       );
       await refused(reserve.validateShareProposal({ programmeId: needBased.id, percent: 10 }), /which has no equipment replacement reserve/);
     });

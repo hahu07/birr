@@ -38,6 +38,9 @@ const nextConfig = {
     return [
       { source: "/ops/clinic-waqfs", destination: "/ops/waqf-programmes", permanent: true },
       { source: "/ops/clinic-waqfs/:id", destination: "/ops/waqf-programmes/:id", permanent: true },
+      // The need-based waqf became Kifayah (Board of Trustees, 2026-11-20).
+      { source: "/need-based-waqf", destination: "/kifayah", permanent: true },
+      { source: "/need-based-waqf/:slug", destination: "/kifayah/:slug", permanent: true },
     ];
   },
   // Founder-facing and Ops Console surfaces are merged into this one
