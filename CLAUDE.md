@@ -1614,7 +1614,10 @@ https://claude.ai/artifact/TAaTuPdsLXB58WFKsEcHrm).
   (with the licensed partner only; Birr never holds them), coaching, and
   a measured exit. Success is a household above the kifayah line ("kifayah
   line" in public copy too), still above it 12 and 24 months after
-  joining.
+  leaving support (up to 24 months, one 6-month extension; graduation
+  on three tests: 3 months above the line, an earning asset, a month's
+  line saved; operating design
+  https://claude.ai/artifact/FwoFTX66LeTJ9vHJrqLbkC).
 - **Money:** only Kifayah's own waqf (endowment, spending fund,
   financing fund) and zakah given "for Kifayah's households", held in
   its own zakah pool outside the waqf. Vault campaigns and Founders'
