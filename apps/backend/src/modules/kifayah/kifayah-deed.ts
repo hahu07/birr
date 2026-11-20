@@ -29,7 +29,7 @@ export function draftKifayahDeedText(programme: { name: string }): string {
 (c) Tier C, households in which no one can be expected to work: a monthly allowance on an approved scale, essential bills paid straight to the landlord, school, clinic or company, help in kind, and coaching. Their need is reassessed at set intervals, and support pauses if a reassessment is late.
 The Board of Trustees sets the line between tiers A and B, the allowances and their length, for each state.
 
-3A. Leaving support. Support ends when two people agree, after a second home visit, that the household is above the kifayah line and its means will keep it there. Birr follows each household up 12 and 24 months after it joined. A household that falls back below the line may apply again.
+3A. Leaving support. Support for a household that can work lasts up to 24 months, with one extension of up to 6 months. It ends when two people agree, after a second home visit, that the household is above the kifayah line and its means will keep it there. Birr follows each household up 12 and 24 months after it leaves support. A household that falls back below the line may apply again.
 
 4. Three pots, kept apart.
 (a) The endowment: what givers endow. It is kept for ever: never spent, given away, sold for any other purpose, or pledged.
@@ -59,7 +59,7 @@ Money moves between the pots only as this deed says: the endowment's income to t
 
 12. Gifts made by mistake. A gift paid twice, for the wrong amount, or without the payer's authority is not endowed, and may be returned. A gift is never returned because the giver changed their mind.
 
-13. Reports. Birr has the waqf's accounts audited each year and reports to supporters every month, for each state: how many households each tier supports; allowances and bills paid; assets given; financing made and repaid on time; debts written off; how far below the kifayah line the households served are; how many left support above the line; how many were still above it 12 and 24 months after joining; and how many reached the goal in their plan.
+13. Reports. Birr has the waqf's accounts audited each year and reports to supporters every month, for each state: how many households each tier supports; allowances and bills paid; assets given; financing made and repaid on time; debts written off; how far below the kifayah line the households served are; how many left support above the line; how many were still above it 12 and 24 months after leaving; and how many reached the goal in their plan.
 
 14. If the purpose can't be served. If this purpose can no longer be served in Nigeria, the endowment and the financing fund serve the closest purpose the Shariah Supervisory Board approves. Debts already owed are still collected on their signed terms, and with the same kindness.
 
