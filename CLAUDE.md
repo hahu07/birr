@@ -1607,7 +1607,8 @@ https://claude.ai/artifact/TAaTuPdsLXB58WFKsEcHrm).
   until one is established. It may return as a later stage, on evidence
   from Kifayah's health-bill records.
 - **Kifayah** (Arabic for sufficiency) is Birr's graduation programme
-  and a standalone product. It replaces the need-based waqf (a working
+  and a standalone product, a programme name of Birr's, not registered
+  separately with the CAC. It replaces the need-based waqf (a working
   name) with its own waqf and deed. Each household gets six parts in
   order: support to live on, a productive asset, skills, savings
   (with the licensed partner only; Birr never holds them), coaching, and
@@ -1637,8 +1638,7 @@ https://claude.ai/artifact/TAaTuPdsLXB58WFKsEcHrm).
 - **Still to do:** Legal and the Shariah Supervisory Board settle
   Kifayah's deed (the need-based draft reworked) on 26 November and
   3 December, with questions on online zakah assessment, the separate
-  zakah pool and paying across states; a CAC and name-clash check on
-  "Kifayah"; renaming the need-based product to Kifayah in the code
+  zakah pool and paying across states; renaming the need-based product to Kifayah in the code
   before the 11 December freeze; the zakah pool and the support build
   after launch.
 
