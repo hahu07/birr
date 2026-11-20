@@ -1592,6 +1592,56 @@ giving first, is complete):
   qard hasan, instalments, rescheduling, loss reserve), the productive
   track's extras, zakah links and monthly figures.
 
+**Update, 2026-11-20 — Kifayah replaces the need-based waqf; the clinic
+waqf is deferred; launch is four products.** Decided by the Board of
+Trustees with the owner on 2026-11-20, to focus Birr on poverty
+reduction and empowerment (papers: Board paper
+https://claude.ai/artifact/35sAecwvDBUvUcjVznm9uA; design
+https://claude.ai/artifact/TAaTuPdsLXB58WFKsEcHrm).
+- **Launch on 20 December 2026 with four products:** Waqf Funds, Vault,
+  Zakah and **Kifayah** (giving only). This replaces the five agreed on
+  2026-11-18.
+- **The clinic waqf is not established for now.** Its code, the approved
+  deed wording and the Shariah rulings stay on file, and it is still
+  tested. "Clinics" is out of the site menu; its pages list no clinic
+  until one is established. It may return as a later stage, on evidence
+  from Kifayah's health-bill records.
+- **Kifayah** (Arabic for sufficiency) is Birr's graduation programme
+  and a standalone product, a programme name of Birr's, not registered
+  separately with the CAC. It replaces the need-based waqf (a working
+  name) with its own waqf and deed. Each household gets six parts in
+  order: support to live on, a productive asset, skills, savings
+  (with the licensed partner only; Birr never holds them), coaching, and
+  a measured exit. Success is a household above the kifayah line ("kifayah
+  line" in public copy too), still above it 12 and 24 months after
+  joining.
+- **Money:** only Kifayah's own waqf (endowment, spending fund,
+  financing fund) and zakah given "for Kifayah's households", held in
+  its own zakah pool outside the waqf. Vault campaigns and Founders'
+  own Waqf Funds don't fund it; Founders may give to it directly.
+  Birr's own platform costs never come from either.
+- **Tiers:** A (furthest below the line) gets its asset outright, from
+  zakah or the spending fund; B buys by murabahah (qard hasan for the
+  smallest cases); C (can't work) gets an allowance and bills.
+- **Online-first, two home visits:** applying, identity (NIN, one
+  household per person), plans, payments, training, coaching and
+  follow-up run online, by web, WhatsApp, phone or a community partner;
+  a field partner visits every household before admission and before
+  graduation. Two people approve admission, the plan and graduation.
+- **Health bills:** zakah first, then the spending fund within a yearly
+  limit per household.
+- **Phased by state; Oyo first.** A state opens only when the Board
+  approves it after six gates (kifayah line, licensed partner, field
+  and training partners, local languages, money for a full cohort, a
+  cohort size). Oyo's line, cohort, allowance and health-bill limit are
+  set in February 2027; first households in the second quarter of 2027.
+- **Still to do:** Legal and the Shariah Supervisory Board settle
+  Kifayah's deed (the need-based draft reworked) on 26 November and
+  3 December, with questions on online zakah assessment, the separate
+  zakah pool and paying across states; renaming the need-based product to Kifayah in the code
+  before the 11 December freeze; the zakah pool and the support build
+  after launch.
+
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed
   entity (Founder, Waqf, Asset, Beneficiary, Distribution, Investment)
