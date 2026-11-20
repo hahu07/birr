@@ -96,11 +96,12 @@ function useScrolled(thresholdPx = 8) {
 // some other public page like /waqf-types/investment (a real
 // navigation to "/" that then scrolls), so every page can share one
 // nav without needing to know which page it's currently rendering.
+// No "Clinics" link while the clinic waqf is deferred (Board of Trustees,
+// 2026-11-20); its pages stay, and list no clinic until one is established.
 const NAV_LINKS = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#waqf-types", label: "Waqf funds" },
   { href: "/vaults", label: "Support a cause" },
-  { href: "/clinics", label: "Clinics" },
   { href: "/need-based-waqf", label: "Need-based waqf" },
   { href: "/zakah", label: "Zakah" },
   { href: "/#governance", label: "Governance" },
@@ -180,7 +181,6 @@ const FOOTER_PLATFORM_LINKS = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#waqf-types", label: "Waqf funds" },
   { href: "/vaults", label: "Support a cause" },
-  { href: "/clinics", label: "Clinics" },
   { href: "/need-based-waqf", label: "Need-based waqf" },
   { href: "/zakah", label: "Zakah" },
   { href: "/#governance", label: "Governance" },
