@@ -1,6 +1,6 @@
 "use client";
 
-// A need-based waqf's public report (need-based NB4): its endowment and its
+// Kifayah's public report (built as the need-based waqf's in NB4): its endowment and its
 // spending fund, each on its own, from GET
 // /programme-gifts/programmes/need_based/:slug/report. Giving first: it
 // shows what has been given and what's held, and nothing about support
@@ -28,7 +28,7 @@ function Figure({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function NeedBasedReport({ slug }: { slug: string }) {
+export function KifayahReport({ slug }: { slug: string }) {
   const [report, setReport] = useState<PublicProgrammeReport | null>(null);
 
   useEffect(() => {

@@ -18,16 +18,16 @@ export interface ProgrammeGiftReceipt {
   deedVersion?: number | null;
 }
 
-// What each pot does, per product, for the receipt. The need-based waqf
-// launches giving first, so it says support starts later, with no figure.
+// What each pot does, per product, for the receipt. Kifayah launches giving
+// first, so it says support starts later, with no figure.
 const POT_PURPOSE: Record<WaqfProgrammeProduct, { endowment: string; running: string }> = {
   clinic: {
     endowment: "its income pays for the clinic's care of women and children.",
     running: "It pays for subsidised visits and the clinic's running costs.",
   },
   need_based: {
-    endowment: "its income supports poor households, once support starts.",
-    running: "It pays for support for poor households: allowances, bills and tools. Support starts once the waqf's financing partner and kifayah line are in place.",
+    endowment: "its income helps poor households reach sufficiency, by their own means, once support starts.",
+    running: "It pays for support for poor households: living support, tools and stock, training and coaching. Support starts once Kifayah's financing partner and kifayah line are in place.",
   },
 };
 

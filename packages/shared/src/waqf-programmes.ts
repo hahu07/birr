@@ -8,8 +8,9 @@
 // parts, pots and payment kinds are refused on any other product (in the
 // services, and by the database: migration 20261119000500).
 //
-// The need-based waqf (approved 2026-11-18) launches giving first: gifts
-// and endowments, no support yet. Its financing fund, people helped and
+// Kifayah, Birr's graduation programme (approved as the need-based waqf on
+// 2026-11-18, renamed by the Board on 2026-11-20), launches giving first:
+// gifts and endowments, no support yet. Its financing fund, households and
 // allowances come once the licensed partner and the kifayah line exist.
 
 export interface MonthlyMeasure {
@@ -55,12 +56,13 @@ export const WAQF_PROGRAMME_PRODUCTS = {
     ],
     ownParts: ["operator", "price list", "monthly claims", "monthly figures"],
   },
-  // "Need-based waqf" is a working name; the public name (and so its
-  // address) is chosen before launch.
+  // Kifayah (Arabic for sufficiency), named by the Board on 2026-11-20. Its
+  // key stays need_based, the database's name for the product since it was
+  // the need-based waqf; only what people see changed.
   need_based: {
-    label: "Need-based waqf",
-    plural: "Need-based waqfs",
-    publicPath: "/need-based-waqf",
+    label: "Kifayah",
+    plural: "Kifayah",
+    publicPath: "/kifayah",
     pots: ["endowment", "running"],
     potLabels: { endowment: "Endowment", running: "Spending fund" },
     // Endowed cash is invested; it never buys equipment, works or a

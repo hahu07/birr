@@ -67,7 +67,7 @@ const COMMITTED = ["pending_approval", "approved"] as const;
 // Which money a payment draws on: the equipment replacement reserve (1150,
 // running fund) for a reserve replacement, endowment cash (1000) otherwise.
 type Pool = "endowment" | "reserve";
-// For "X is a need-based waqf, which has no equipment purchases."
+// For "X is a Kifayah waqf, which has no equipment purchases."
 const SPEND_KIND_NAMES: Record<ProgrammeSpendKind, string> = {
   equipment: "equipment purchases",
   works_stage: "works stages",

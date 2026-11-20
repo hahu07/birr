@@ -214,18 +214,18 @@ async function decidedAction(key: string, makerUserId: string, checkerUserId: st
 }
 
 /**
- * An established need-based waqf taking gifts (need-based NB4): an approved
+ * An established Kifayah waqf taking gifts (the need-based waqf's in NB4): an approved
  * deed version, establishment, and its own Paystack subaccount, each with a
  * decided approval by a second person, as the Ops Console's two-person
  * steps leave it. Waqf programmes are never deleted (a trigger), so these
  * stay in the database, named per run.
  */
-export async function seedNeedBasedWaqf(makerUserId: string, checkerUserId: string) {
+export async function seedKifayahWaqf(makerUserId: string, checkerUserId: string) {
   const run = randomUUID().slice(0, 8);
   const programme = await prisma.waqfProgramme.create({
-    data: { product: "need_based", name: `E2E Households Waqf ${run}`, slug: `e2e-need-${run}`, city: "Kano", jurisdiction: "NG", createdByUserId: makerUserId },
+    data: { product: "need_based", name: `E2E Kifayah ${run}`, slug: `e2e-kifayah-${run}`, city: "Ibadan", jurisdiction: "NG", createdByUserId: makerUserId },
   });
-  const text = `Deed of the E2E Households Waqf ${run} waqf\n\n1. Establishment. A fixture deed for the end-to-end tests.`;
+  const text = `Deed of the E2E Kifayah ${run} waqf\n\n1. Establishment. A fixture deed for the end-to-end tests.`;
   const deed = await prisma.waqfProgrammeDeed.create({
     data: { programmeId: programme.id, version: 1, text, textHash: createHash("sha256").update(text, "utf8").digest("hex"), createdByUserId: makerUserId },
   });

@@ -1638,9 +1638,15 @@ https://claude.ai/artifact/TAaTuPdsLXB58WFKsEcHrm).
 - **Still to do:** Legal and the Shariah Supervisory Board settle
   Kifayah's deed (the need-based draft reworked) on 26 November and
   3 December, with questions on online zakah assessment, the separate
-  zakah pool and paying across states; renaming the need-based product to Kifayah in the code
-  before the 11 December freeze; the zakah pool and the support build
-  after launch.
+  zakah pool and paying across states; the zakah pool and the support
+  build after launch.
+- **Renamed in the code (2026-11-20):** the product's key stays
+  `need_based` (the database enum); what people see is Kifayah. Label and
+  address in `WAQF_PROGRAMME_PRODUCTS` (`/kifayah`, with
+  `/need-based-waqf` redirecting in `next.config.mjs`), the copy in
+  `programme-copy.ts`, the web folder `app/(founder)/kifayah`, receipts,
+  the AML review name, and the standard deed wording
+  (`modules/kifayah/kifayah-deed.ts`, the draft for the sittings).
 
 ## Non-negotiables (apply to every feature, every session)
 - **Immutable audit trail**: every create/update/delete on a governed

@@ -96,8 +96,8 @@ const PUBLIC_ROUTES = [
   "/vaults",
   // The public list of clinic waqfs (2026-11-17); each clinic's page is under "/clinics/".
   "/clinics",
-  // The public list of need-based waqfs (need-based NB3); each one's page is under "/need-based-waqf/".
-  "/need-based-waqf",
+  // Kifayah's public list (the need-based waqf's until 2026-11-20); each page is under "/kifayah/".
+  "/kifayah",
   "/forgot-password",
   "/reset-password",
   "/privacy-policy",
@@ -107,7 +107,7 @@ const PUBLIC_ROUTES = [
   // Monthly giving (2026-11-15): a giver's own private link, and asking for one.
   "/giving/manage",
 ];
-const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/", "/blog/", "/zakah-payments/", "/giving/manage/", "/clinics/", "/need-based-waqf/", "/programme-gifts/"];
+const PUBLIC_ROUTE_PREFIXES = ["/waqf-types/", "/vaults/", "/vault-contributions/", "/blog/", "/zakah-payments/", "/giving/manage/", "/clinics/", "/kifayah/", "/programme-gifts/"];
 function isPublicRoutePath(pathname: string) {
   return PUBLIC_ROUTES.includes(pathname) || PUBLIC_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
